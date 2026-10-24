@@ -1,3 +1,4 @@
+import type { ObservationBuild } from '../observability/types.js'
 import type { PromptResourceStore } from '@loom-studio/application-data'
 import type { ExtensionPromptAddition, ExtensionPromptBuildInput } from '@loom-studio/extension-sdk'
 import { renderVariableMacros } from '@loom-studio/shared'
@@ -6,7 +7,7 @@ import { fromStoredResource } from './prompt-resource-mapper.js'
 import { isExtensionResourceAvailable } from '../runtime/extension-resource-access.js'
 import { isPromptActivation } from './prompt-activation.js'
 import type { PromptContribution, SourceNode } from './prompt-builder.js'
-import { compilePromptDataModel } from './prompt-build-pipeline.js'
+import { appendBuildEvidence, recordMacroReads, compilePromptDataModel } from './prompt-build-pipeline.js'
 import { createVariableRenderContext, type VariableRenderContext } from './variables.js'
 import { processPrompt } from './process-prompt.js'
 import type { PromptProcessorRegistry } from './prompt-processor-registry.js'
@@ -53,11 +54,11 @@ export async function readExtensionPromptInputs(input: {
     if (item.activation && !isPromptActivation(item.activation))
       throw new Error('Invalid Prompt content activation')
     const id = `${input.sourceId}.content.${index}`
-    sourceNodes.push({ id, sourceId: input.sourceId, parentId: null, displayName: id, orderIndex: index, kind: 'entry' })
+    sourceNodes.push({ id, sourceId: input.sourceId, parentId: null, displayName: id, orderIndex: index, kind: 'entry', evidence: { original: item.content } })
     contributions.push({
       id,
       sourceRef: { kind: 'runtime', sourceId: input.sourceId, sourceNodeId: id },
-      content: renderVariableMacros(item.content, input.variables),
+      content: renderVariableMacros(item.content, input.variables, { hostId: id, stage: 'source' }),
       capabilities: {
         targetAnchorId: item.targetAnchorId,
         ...(item.localDepth === undefined ? {} : { localDepth: item.localDepth }),
@@ -70,6 +71,7 @@ export async function readExtensionPromptInputs(input: {
 }
 
 export async function buildExtensionPrompt(input: {
+  observation?: ObservationBuild
   build: ExtensionPromptBuildInput
   promptResources: PromptResourceStore
   installations: ReadonlyMap<string, string>
@@ -77,52 +79,61 @@ export async function buildExtensionPrompt(input: {
   processors?: PromptProcessorRegistry
   cardId?: string
 }) {
-  if (input.build.presetResourceId !== undefined
-    && (typeof input.build.presetResourceId !== 'string' || !input.build.presetResourceId))
-    throw new Error('Prompt preset ID must be non-empty')
+  const observation = input.observation ?? {}
   const variables = createVariableRenderContext()
-  const preset = input.build.presetResourceId
-    ? await input.promptResources.getResource(input.build.presetResourceId)
-    : undefined
-  if (input.build.presetResourceId && (!preset || preset.resourceKind !== 'preset'))
-    throw new Error(`Prompt preset not found: ${input.build.presetResourceId}`)
-  if (preset && !isExtensionResourceAvailable(preset.metadata.origin, input.installations))
-    throw new Error(`Prompt preset is not available in this context: ${preset.id}`)
-  if (preset && input.owner && !isOwnedResource(preset.metadata.origin, input.owner.installationId, input.owner.packageId))
-    throw new Error(`Prompt preset is not owned by this extension installation: ${preset.id}`)
-  const base = preset ? await readPromptResourceInputs({
-    promptResources: input.promptResources, resourceIds: [preset.id], variables,
-  }) : { sourceNodes: [], contributions: [] }
-  const added = await readExtensionPromptInputs({
-    addition: input.build, promptResources: input.promptResources,
-    installations: input.installations, variables, sourceId: 'extension.prompt',
-    ownerInstallationId: input.owner?.installationId,
-    ownerPackageId: input.owner?.packageId,
-  })
-  if (!preset) {
-    const anchors = [...new Set(added.contributions.map(item => item.capabilities.targetAnchorId).filter((id): id is string => Boolean(id)))]
-    for (const [index, id] of anchors.entries()) {
-      if (!added.sourceNodes.some(node => node.id === id))
-        added.sourceNodes.push({ id, sourceId: 'extension.prompt', parentId: null, displayName: id, orderIndex: index, kind: 'virtual' })
+  try {
+    if (input.build.presetResourceId !== undefined
+      && (typeof input.build.presetResourceId !== 'string' || !input.build.presetResourceId))
+      throw new Error('Prompt preset ID must be non-empty')
+    const preset = input.build.presetResourceId
+      ? await input.promptResources.getResource(input.build.presetResourceId)
+      : undefined
+    if (input.build.presetResourceId && (!preset || preset.resourceKind !== 'preset'))
+      throw new Error(`Prompt preset not found: ${input.build.presetResourceId}`)
+    if (preset && !isExtensionResourceAvailable(preset.metadata.origin, input.installations))
+      throw new Error(`Prompt preset is not available in this context: ${preset.id}`)
+    if (preset && input.owner && !isOwnedResource(preset.metadata.origin, input.owner.installationId, input.owner.packageId))
+      throw new Error(`Prompt preset is not owned by this extension installation: ${preset.id}`)
+    const base = preset ? await readPromptResourceInputs({
+      promptResources: input.promptResources, resourceIds: [preset.id], variables,
+    }) : { sourceNodes: [], contributions: [] }
+    const added = await readExtensionPromptInputs({
+      addition: input.build, promptResources: input.promptResources,
+      installations: input.installations, variables, sourceId: 'extension.prompt',
+      ownerInstallationId: input.owner?.installationId,
+      ownerPackageId: input.owner?.packageId,
+    })
+    if (!preset) {
+      const anchors = [...new Set(added.contributions.map(item => item.capabilities.targetAnchorId).filter((id): id is string => Boolean(id)))]
+      for (const [index, id] of anchors.entries()) {
+        if (!added.sourceNodes.some(node => node.id === id))
+          added.sourceNodes.push({ id, sourceId: 'extension.prompt', parentId: null, displayName: id, orderIndex: index, kind: 'virtual' })
+      }
     }
+    const model = {
+      sourceNodes: [...base.sourceNodes, ...added.sourceNodes],
+      contributions: [...base.contributions, ...added.contributions],
+      ...(preset ? { skeletonRootId: fromStoredResource(preset).rootNode.id } : {}),
+      currentInput: input.build.currentInput,
+      activationFacts: input.build.activationFacts,
+    }
+    if (!input.processors) return compilePromptDataModel(model, observation)
+    return (await processPrompt(model, {
+      registry: input.processors,
+      observation,
+      context: {
+        mode: 'preview',
+        signal: input.build.signal ?? new AbortController().signal,
+        ...(input.cardId ? { cardId: input.cardId } : {}),
+      },
+      renderText: (content, hostId) => renderVariableMacros(content, variables, { hostId, stage: 'render' }),
+    })).projection
+  } catch (error) {
+    appendBuildEvidence(observation, 'diagnostics', { code: 'prompt.build_failed', message: error instanceof Error ? error.message : String(error) })
+    throw error
+  } finally {
+    recordMacroReads(observation, variables.trace)
   }
-  const model = {
-    sourceNodes: [...base.sourceNodes, ...added.sourceNodes],
-    contributions: [...base.contributions, ...added.contributions],
-    ...(preset ? { skeletonRootId: fromStoredResource(preset).rootNode.id } : {}),
-    currentInput: input.build.currentInput,
-    activationFacts: input.build.activationFacts,
-  }
-  if (!input.processors) return compilePromptDataModel(model)
-  return (await processPrompt(model, {
-    registry: input.processors,
-    context: {
-      mode: 'preview',
-      signal: input.build.signal ?? new AbortController().signal,
-      ...(input.cardId ? { cardId: input.cardId } : {}),
-    },
-    renderText: content => renderVariableMacros(content, variables),
-  })).projection
 }
 
 function isOwnedResource(origin: unknown, installationId: string, packageId: string): boolean {

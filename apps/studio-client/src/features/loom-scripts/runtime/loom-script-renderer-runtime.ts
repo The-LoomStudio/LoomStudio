@@ -10,6 +10,7 @@ import { isJsonObject, type JsonValue } from '@loom-studio/shared'
 import type { ClientRendererHost, ClientRendererHandle } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { rendererContributionKey } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { mountLoomSandboxRenderer } from './sandbox-renderer-protocol.js'
+import { prepareScriptSource } from './prepare-script-source.js'
 
 export type LoomScriptRendererContribution = {
   kind: 'renderer'
@@ -19,6 +20,7 @@ export type LoomScriptRendererContribution = {
 
 type ResolvedLoomScriptMount = {
   mountId: string
+  mountVersion?: number
   enabled: boolean
   orderIndex: number
   grantedCapabilities: string[]
@@ -27,6 +29,7 @@ type ResolvedLoomScriptMount = {
     version: number
     requestedCapabilities: string[]
     contributions: LoomScriptRendererContribution[]
+    requires?: string[]
   }
   source: string
 }
@@ -57,12 +60,13 @@ export function createLoomScriptRendererRuntime(input: {
   stateRead(target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }): Promise<JsonValue>
   notify?(owner: string, input: ClientNotification): void
 }): LoomScriptRendererRuntime {
-  const active = new Map<string, { fingerprint: string; handles: ClientRendererHandle[]; instances: Set<() => void> }>()
+  const active = new Map<string, { fingerprint: string; handles: ClientRendererHandle[]; instances: Set<() => void>; sourceController: AbortController }>()
 
   function disposeMount(mountId: string): void {
     const current = active.get(mountId)
     if (!current) return
     active.delete(mountId)
+    current.sourceController.abort()
     for (const dispose of current.instances) dispose()
     for (const handle of current.handles.reverse()) void handle.dispose()
   }
@@ -74,14 +78,17 @@ export function createLoomScriptRendererRuntime(input: {
 
       for (const mount of [...mounts].sort((left, right) => left.orderIndex - right.orderIndex || left.mountId.localeCompare(right.mountId))) {
         if (!mount.enabled) continue
-        const fingerprint = `${mount.script.id}@${mount.script.version}:${mount.source}:${mount.grantedCapabilities.join(',')}:${mount.script.requestedCapabilities.join(',')}`
+        // Running code changes only when its adoption is explicitly refreshed or changed.
+        const fingerprint = `${mount.script.id}:${mount.mountVersion ?? 0}:${mount.grantedCapabilities.join(',')}`
         if (active.get(mount.mountId)?.fingerprint === fingerprint) continue
         disposeMount(mount.mountId)
         const declaredContributionIds = mount.script.contributions.map(item => item.renderer.id)
         const handles: ClientRendererHandle[] = []
         const instances = new Set<() => void>()
+        const sourceController = new AbortController()
+        let preparedSource: Promise<string> | undefined
         for (const contribution of mount.script.contributions) {
-          const owner = { kind: 'script' as const, scriptDocumentId: mount.script.id, documentVersion: mount.script.version }
+          const owner = { kind: 'script' as const, scriptDocumentId: mount.script.id, documentVersion: mount.script.version, mountId: mount.mountId }
           const contributionKey = rendererContributionKey({ owner, contributionId: contribution.renderer.id })
           const effectiveCapabilities = mount.grantedCapabilities.filter(capability => mount.script.requestedCapabilities.includes(capability))
           const inline = contribution.renderer.surface === 'narrative.entry.inline' || contribution.renderer.surface === 'agent.message.inline'
@@ -127,6 +134,20 @@ export function createLoomScriptRendererRuntime(input: {
                   if (disposed || request !== generation) return
                   const inputs = selectMountedInputs(projectLoomScriptInputs(contribution, projection), nextContext.part)
                   if (sandbox) { sandbox.update(nextContext, inputs); return }
+                  let source: string
+                  try {
+                    preparedSource ??= prepareScriptSource(mount.source, mount.script.requires ?? [], sourceController.signal)
+                    source = await preparedSource
+                  } catch (error) {
+                    if (disposed || request !== generation) return
+                    input.rendererHost.reportDiagnostic({
+                      code: 'renderer.sandbox_failed',
+                      contributionKey,
+                      message: error instanceof Error ? error.message : String(error),
+                    })
+                    return
+                  }
+                  if (disposed || request !== generation) return
                   sandbox = mountLoomSandboxRenderer(root, nextContext, {
                     contributionId: contribution.renderer.id,
                     declaredContributionIds,
@@ -134,7 +155,7 @@ export function createLoomScriptRendererRuntime(input: {
                     inputs,
                     scriptDocumentId: mount.script.id,
                     documentVersion: mount.script.version,
-                    source: mount.source,
+                    source,
                     stateRead: async target => {
                       const assertTarget = () => {
                         const mounted = input.rendererHost.scopeSnapshot()
@@ -177,7 +198,7 @@ export function createLoomScriptRendererRuntime(input: {
             },
           }))
         }
-        active.set(mount.mountId, { fingerprint, handles, instances })
+        active.set(mount.mountId, { fingerprint, handles, instances, sourceController })
       }
     },
     dispose: () => {

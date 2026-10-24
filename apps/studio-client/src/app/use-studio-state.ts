@@ -1,3 +1,4 @@
+import { useUserProfilesQuery } from '../features/user-profiles/model/use-user-profiles-query.js'
 import { useNewStoryExtensions } from '../features/extension-renderers/ui/new-story-extensions.js'
 import { readStudioLocale, saveStudioLocale } from '../features/onboarding/model/onboarding-preferences.js'
 import { createStudioTrpcClient } from '../shared/api/trpc-client.js'
@@ -50,6 +51,15 @@ export function useStudioState(transportLogger: Logger) {
   const operations = useAsyncOperations()
   const trpc = useMemo(() => createStudioTrpcClient({ endpoint: transportEndpoint, logger: transportLogger }), [transportEndpoint, transportLogger])
   const api = useMemo(() => createStudioApi(trpc), [trpc])
+  const userProfilesQuery = useUserProfilesQuery(api.userProfiles, endpoint)
+  const userConfig = userProfilesQuery.data?.config
+  const selectedUser = userConfig?.profiles.find(profile => profile.id === userConfig.currentProfileId)
+  const userIdentity = {
+    name: selectedUser?.name.trim() || 'User',
+    ...(selectedUser?.avatarAssetId ? { avatarUrl: `/assets/${encodeURIComponent(selectedUser.avatarAssetId)}` } : {}),
+  }
+  const userMacroValues = useMemo(() => ({ name: selectedUser?.name.trim() || 'User', description: selectedUser?.description ?? '' }), [selectedUser])
+
   const apiRef = useRef<typeof api | undefined>(api)
   apiRef.current = api
   const clientExtensionApi = useMemo(() => ({
@@ -187,13 +197,14 @@ export function useStudioState(transportLogger: Logger) {
     presetId: narrativeRuntime.primarySession?.agentPresetId, timelineId: narrativeRuntime.timeline?.id,
   })
   const macroKey = macroSelection.targetKey(narrativeRuntime.timeline?.id, narrativeRuntime.branch?.id)
+  const macroPreviewKey = `${macroKey}:user:${userConfig?.version ?? 'loading'}`
   const macroSelections = macroSelection.readSelections(macroKey)
   const macroPreviewState = useMacroPreview({
     api: api.macros,
     branchId: narrativeRuntime.branch?.id,
     cardId: cardsState.selectedCardId,
     cardVersion: cardsState.selectedCardDetails?.version,
-    key: macroKey,
+    key: macroPreviewKey,
     lastRunId: narrativeRuntime.lastRun?.runId,
     presetId: narrativeRuntime.primarySession?.agentPresetId,
     resourceRevision: promptResources,
@@ -246,7 +257,9 @@ export function useStudioState(transportLogger: Logger) {
     agentSession: narrativeRuntime.agentSession,
     agentChatBusy: operations.isPending('agent-chat'),
     macroPreview,
-    macroKey,
+    macroKey: macroPreviewKey,
+    user: userMacroValues,
+    macroInspection: narrativeRuntime.promptPreview?.macroInspection ?? narrativeRuntime.lastRun?.macroInspection,
     macroContextCard: cardsState.selectedCardDetails,
   })
 
@@ -315,6 +328,7 @@ export function useStudioState(transportLogger: Logger) {
     updateNetworkSettings,
     // bridge
     endpoint, setEndpoint,
+    userIdentity,
     logsApi: api.logs,
     statesApi: api.states,
     textTransformsApi: api.textTransforms,
@@ -335,9 +349,9 @@ export function useStudioState(transportLogger: Logger) {
     updateCardStateConfig: cardsState.updateCardStateConfig,
     updateCardExtensionAdoptions: cardsState.updateCardExtensionAdoptions,
     updateCardMacros: cardsState.updateCardMacros,
-    macroInspection: macroPreview.key === macroKey ? macroPreview.inspection : undefined,
-    macroInspectionLoading: macroPreview.key !== macroKey || macroPreview.loading || macroSelection.loading,
-    macroInspectionError: macroSelection.readError(macroKey) ?? (macroPreview.key === macroKey ? macroPreview.error : undefined),
+    macroInspection: macroPreview.key === macroPreviewKey ? macroPreview.inspection : undefined,
+    macroInspectionLoading: macroPreview.key !== macroPreviewKey || macroPreview.loading || macroSelection.loading,
+    macroInspectionError: macroSelection.readError(macroKey) ?? (macroPreview.key === macroPreviewKey ? macroPreview.error : undefined),
     macroSelections,
     macroTargetKey: macroKey,
     selectMacroSource: (name: string, sourceId: import('@loom-studio/shared').MacroSelection | undefined) => { void macroSelection.selectSource(macroKey, name, sourceId) },

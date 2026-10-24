@@ -57,6 +57,8 @@ export type AiGatewayInvokeInput = {
 }
 
 export type AiGatewayRegisteredInvokeInput = {
+  /** Host-only observation after validation/defaults; never receives credentials. */
+  onPrepared?: (evidence: { readonly providerCallId: string; readonly input: Readonly<JsonValue>; readonly profileConfig: Readonly<JsonObject> }) => void
   providerId: string
   capabilityId: string
   accountConfig: JsonObject
@@ -176,6 +178,11 @@ export function createAiGatewayCapabilityRegistry(): AiGatewayCapabilityRegistry
       const capabilityInput = applyFieldDefaults(capability.inputFields ?? [], input.input)
       validateFieldValues(capability.inputFields ?? [], capabilityInput, 'input')
       const providerCallId = createId('provider-call')
+      if (input.onPrepared) {
+        try {
+          input.onPrepared({ providerCallId, input: capabilityInput, profileConfig })
+        } catch { /* Host observation cannot affect provider execution. */ }
+      }
       const output = await handler({
         providerCallId,
         accountConfig: structuredClone(accountConfig),

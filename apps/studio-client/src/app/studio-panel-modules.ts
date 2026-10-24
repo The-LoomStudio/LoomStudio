@@ -13,9 +13,10 @@ const loadStudioStatePanel = () => import('./studio-state-panel.js')
 const loadMacroPanel = () => import('./studio-macro-panel.js')
 const loadTextTransformPanel = () => import('./studio-text-transform-panel.js')
 const loadInspectorPanel = () => import('../widgets/inspector-panel/inspector-panel.js')
-const loadLogViewer = () => import('../widgets/log-viewer/log-viewer.js')
+const loadLogViewer = () => import('../widgets/log-viewer/logs-panel.js')
 const loadRendererWorkspacePanel = () => import('../features/extension-renderers/ui/renderer-workspace-panel.js')
 const loadSettingsPanel = () => import('../widgets/settings-panel/settings-panel.js')
+const loadMyProfilePanel = () => import('../widgets/my-profile/my-profile-panel.js')
 const loadUserResourcesPanel = () => import('../widgets/user-resources-panel/user-resources-panel.js')
 
 export const LazyMemoryPanel = lazy(async () => ({ default: (await loadMemoryPanel()).MemoryPanel }))
@@ -30,16 +31,17 @@ export const LazyStudioStatePanel = lazy(async () => ({ default: (await loadStud
 export const LazyMacroPanel = lazy(async () => ({ default: (await loadMacroPanel()).StudioMacroPanel }))
 export const LazyTextTransformPanel = lazy(async () => ({ default: (await loadTextTransformPanel()).StudioTextTransformPanel }))
 export const LazyInspectorPanel = lazy(async () => ({ default: (await loadInspectorPanel()).InspectorPanel }))
-export const LazyLogViewer = lazy(async () => ({ default: (await loadLogViewer()).LogViewer }))
+export const LazyLogViewer = lazy(async () => ({ default: (await loadLogViewer()).LogsPanel }))
 export const LazyRendererWorkspacePanel = lazy(async () => ({ default: (await loadRendererWorkspacePanel()).RendererWorkspacePanel }))
 export const LazySettingsPanel = lazy(async () => ({ default: (await loadSettingsPanel()).SettingsPanel }))
+export const LazyMyProfilePanel = lazy(async () => ({ default: (await loadMyProfilePanel()).MyProfilePanel }))
 export const LazyUserResourcesPanel = lazy(async () => ({ default: (await loadUserResourcesPanel()).UserResourcesPanel }))
 
 const panelLoaders: Record<StudioPanelId, () => Promise<unknown>> = {
   memory: loadMemoryPanel,
   model: loadModelPanel,
   agent: loadPresetWorkbench,
-  user: loadUserResourcesPanel,
+  user: () => Promise.all([loadMyProfilePanel(), loadUserResourcesPanel()]),
   play: loadCharacterPanel,
   recent: () => Promise.all([loadHistoryPanel(), loadPlayPanel(), loadSessionsPanel()]),
   sessions: loadSessionsPanel,

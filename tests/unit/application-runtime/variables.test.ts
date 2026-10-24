@@ -9,7 +9,7 @@ describe('variable macro renderer', () => {
     const variables = createVariableRenderContext({
       global: { user: { name: 'Mio' }, writingStyle: 'concise' },
       timeline: { entities: { alice: { attitude: 'warm' } } },
-      computed: { global: { time: { now: '2026-08-25T02:00:00.000Z' } } },
+      computed: { user: { name: 'Mio', description: '' }, global: { time: { now: '2026-08-25T02:00:00.000Z' } } },
     })
     const rendered = renderVariableMacros(
       '{{User}} / {{global.user.name}} / {{global.writingStyle}} / {{timeline.entities.alice.attitude}} / {{global.time.now}}',
@@ -18,7 +18,7 @@ describe('variable macro renderer', () => {
 
     expect(rendered).toBe('Mio / Mio / concise / warm / 2026-08-25T02:00:00.000Z')
     expect(variables.trace.reads).toEqual([
-      { requestedPath: 'User', resolvedPath: 'global.user.name', source: 'global' },
+      { requestedPath: 'User', resolvedPath: 'computed.user.name', source: 'computed' },
       { requestedPath: 'global.user.name', resolvedPath: 'global.user.name', source: 'global' },
       { requestedPath: 'global.writingStyle', resolvedPath: 'global.writingStyle', source: 'global' },
       { requestedPath: 'timeline.entities.alice.attitude', resolvedPath: 'timeline.entities.alice.attitude', source: 'timeline' },
@@ -59,6 +59,7 @@ describe('variable macro renderer', () => {
         WritingStyle: '轻小说细腻文风',
         共同属性: '全局值',
       },
+      computed: { user: { name: '开拓者', description: '沉默寡言的旅人，携带着神秘星核' } },
       timeline: {
         爱丽丝好感第一阶段语料: '红着脸低下头，小声地回应着。',
         共同属性: '世界线局部覆盖值',
@@ -72,8 +73,8 @@ describe('variable macro renderer', () => {
 
     expect(rendered).toBe('【开拓者】(沉默寡言的旅人，携带着神秘星核) 风格:轻小说细腻文风 语料:红着脸低下头，小声地回应着。 覆盖:世界线局部覆盖值')
     expect(variables.trace.reads).toEqual([
-      { requestedPath: 'User', resolvedPath: 'global.user.name', source: 'global' },
-      { requestedPath: 'user.description', resolvedPath: 'user.description', source: 'global' },
+      { requestedPath: 'User', resolvedPath: 'computed.user.name', source: 'computed' },
+      { requestedPath: 'user.description', resolvedPath: 'computed.user.description', source: 'computed' },
       { requestedPath: 'WritingStyle', resolvedPath: 'WritingStyle', source: 'global' },
       { requestedPath: '爱丽丝好感第一阶段语料', resolvedPath: '爱丽丝好感第一阶段语料', source: 'timeline' },
       { requestedPath: '共同属性', resolvedPath: '共同属性', source: 'timeline' },
@@ -84,6 +85,7 @@ describe('variable macro renderer', () => {
     const variables = createVariableRenderContext({
       global: { user: { name: '晴人' } },
       computed: {
+        user: { name: '晴人', description: '' },
         char: { name: '柚木凛' },
         bot: { name: '柚木凛' },
       },
@@ -92,11 +94,11 @@ describe('variable macro renderer', () => {
     expect(rendered).toBe('你好 晴人，我是 柚木凛 也是 柚木凛')
   })
 
-  it('keeps one case-insensitive user alias and leaves State paths as variable injection', () => {
+  it('keeps user config aliases separate from explicit State paths', () => {
     const variables = createVariableRenderContext({ global: { user: { name: '晴人' } } })
-    expect(Object.keys(variables.snapshot.aliases).filter(name => name.toLowerCase().startsWith('user'))).toEqual(['user'])
+    expect(Object.keys(variables.snapshot.aliases).filter(name => name.toLowerCase().startsWith('user'))).toEqual(['user', 'user.description'])
     expect(renderVariableMacros('{{user}} / {{User}} / {{global.user.name}} / {{user_name}}', variables))
-      .toBe('晴人 / 晴人 / 晴人 / {{user_name}}')
+      .toBe('User / User / 晴人 / {{user_name}}')
   })
 
   it('supports case-insensitive custom variables in prompt expansion', () => {

@@ -113,7 +113,7 @@ export function createTimelineExtensionStateInitializationMethods(ctx: Context) 
         await assertTimelineExtensionLease(ctx, ctx.documents, lease)
         const timeline = (await requireNarratives(ctx).getTimeline(input.timelineId))!
         const installations = await readAvailableExtensionInstallations(ctx.documents, runtime.content.sourceCardId, input.timelineId)
-        const variables = await readAgentTurnVariables(ctx, runtime.content.fallbackUserName, state.value, runtime.content.cardName)
+        const variables = await readAgentTurnVariables(ctx, state.value, runtime.content.cardName)
         const resources = await readStateInitializationResources(ctx, installations, timeline.promptResourceIds, variables)
         const contributions: StateContribution[] = []
         for (const source of sources) {

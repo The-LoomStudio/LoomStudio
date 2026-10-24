@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { formatEntityReference, formatResourceReference, type EntityReference } from '@loom-studio/shared'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
+import { loadEntityReference } from '../../../apps/studio-client/src/features/resource-references/entity-reference-model.js'
 import { buildStudioTargetLink, resolveStudioTarget } from '../../../apps/studio-client/src/shared/studio-shell/studio-target.js'
 
 function fixture() {
@@ -18,10 +19,12 @@ function fixture() {
     },
   })
   const extensions = vi.fn().mockResolvedValue({ items: [{ packageId: 'package /?&#' }] })
+  const session = vi.fn().mockResolvedValue({ session: { id: 'session' } })
   const api = {
+    agentSessions: { get: session },
     cards: { get: card }, narratives: { get: timeline }, promptResources: { get: resource }, extensions: { list: extensions },
   } as unknown as StudioApi
-  return { api, card, timeline, resource, extensions }
+  return { api, card, timeline, resource, extensions, session }
 }
 const uri = (reference: Omit<EntityReference, 'kind'>) => formatEntityReference({ kind: 'entity', ...reference } as EntityReference)
 
@@ -110,17 +113,26 @@ describe('Studio target URI entry', () => {
     await expect(resolveStudioTarget(f.api, uri({ type: 'extension', id }))).rejects.toBe(failure)
   })
 
-  it('opens model management for a Provider without claiming row-level identity or querying it again', async () => {
+  it('opens model management with the exact Provider selection', async () => {
     await expect(resolveStudioTarget({} as StudioApi, uri({ type: 'provider', id: 'provider' })))
-      .resolves.toEqual({ panel: 'model' })
+      .resolves.toEqual({ panel: 'model', search: 'providerProfileId=provider' })
   })
 
-  it('explicitly rejects Session targets without a direct navigation entry', async () => {
+  it('opens the exact Session summary and propagates missing-session errors', async () => {
     const f = fixture()
-    await expect(resolveStudioTarget(f.api, uri({ type: 'session', id: 'id' })))
-      .rejects.toThrow('Studio target type does not support direct navigation: session')
-    expect(f.card).not.toHaveBeenCalled()
-    expect(f.timeline).not.toHaveBeenCalled()
-    expect(f.resource).not.toHaveBeenCalled()
+    const target = await resolveStudioTarget(f.api, uri({ type: 'session', id: 'session' }))
+    expect(target.panel).toBe('recent')
+    expect(Object.fromEntries(new URLSearchParams(target.search))).toEqual({ historyTab: 'sessions', sessionId: 'session', sessionView: 'summary' })
+    f.session.mockRejectedValueOnce(new Error('Session not found'))
+    await expect(resolveStudioTarget(f.api, uri({ type: 'session', id: 'missing' }))).rejects.toThrow('Session not found')
   })
+})
+
+
+it('does not offer a false provider navigation target outside the supported chat configuration view', async () => {
+  const api = { providerProfiles: { list: async () => ({ providerProfiles: [{ id: 'provider', displayName: 'Image service', providerExtensionId: 'custom.images' }] }) } } as unknown as StudioApi
+  const view = await loadEntityReference(api, { kind: 'entity', type: 'provider', id: 'provider' })
+  expect(view.title).toBe('Image service')
+  expect(view.uri).toBeUndefined()
+  expect(view.note).toBeTruthy()
 })

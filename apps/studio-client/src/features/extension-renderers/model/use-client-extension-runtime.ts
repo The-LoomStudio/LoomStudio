@@ -9,6 +9,7 @@ import { invalidateCardMedia } from '../../../shared/lib/card-media.js'
 import { createClientExtensionHost, type ClientExtensionDataApi, type ClientTimelineParticipation } from './client-extension-host.js'
 import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { createRendererSessionHost } from './renderer-session.js'
+import { migrateOfficialBackground } from './resolve-background.js'
 import { extensionInstallationId, type ClientNotification, type ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
 
 export function createClientExtensionDataApi(api: Pick<StudioApi, 'extensionRuntime' | 'states' | 'textTransforms'>): ClientExtensionDataApi {
@@ -112,7 +113,11 @@ export function useClientExtensionRuntime(input: {
       }
       if (stale()) return false
       await host.reconcile(toClientPackages(catalog), { reload, timeline })
-      return !stale()
+      if (stale()) return false
+      const saved = useAppearanceStore.getState().background
+      const background = migrateOfficialBackground(saved, host.backgrounds())
+      if (background !== saved) useAppearanceStore.setState({ background })
+      return true
     } catch (reason) {
       if (stale()) return false
       await host.reconcile(toClientPackages(catalog))
@@ -342,8 +347,8 @@ export function mapPackageImportState(
 function toClientPackages(packages: readonly ManagedExtensionPackage[]): ManagedClientExtensionPackage[] {
   return packages.flatMap(extensionPackage => {
     const modules = extensionPackage.modules.filter((module): module is ManagedClientExtensionModule => (
-      module.runtimeKind === 'client' && typeof module.entryUrl === 'string'
+      (module.runtimeKind === 'client' || module.runtimeKind === 'client-worker') && typeof module.entryUrl === 'string'
     ))
-    return modules.length > 0 ? [{ ...extensionPackage, modules }] : []
+    return modules.length > 0 || extensionPackage.resources?.backgrounds?.length ? [{ ...extensionPackage, modules }] : []
   })
 }

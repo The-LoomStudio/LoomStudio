@@ -1,3 +1,4 @@
+import { createId } from '@loom-studio/shared'
 import { useEffect, useState } from 'react'
 import type { CharacterCardSummary } from './character-card-summary.js'
 import { notify } from '../../../shared/notifications/index.js'
@@ -71,7 +72,7 @@ export function useCharacterProfileEditor({ selected, onUpdateCardProfile, refre
   async function handleAddAlternative() {
     if (!selected?.opening) return
     const currentAlts = selected.opening.alternatives ?? []
-    const newAlts = [...currentAlts, { id: crypto.randomUUID(), content: '' }]
+    const newAlts = [...currentAlts, { id: createId(), content: '' }]
     const updatedOpening = {
       ...selected.opening,
       alternatives: newAlts,

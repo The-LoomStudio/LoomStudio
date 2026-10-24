@@ -269,7 +269,7 @@ describe('durable Agent Run recovery', () => {
     } finally { fixture.engine.close() }
   })
 
-  it.each([false, true])('reopens a persisted Run without repeating user or completed tools (afterTool=%s)', async afterTool => {
+  it.each([false, true])('resumes with the current preset model without repeating user or completed tools (afterTool=%s)', async afterTool => {
     const root = await mkdtemp(join(tmpdir(), 'loom-run-recovery-'))
     const filename = join(root, 'state.sqlite')
     let calls = 0
@@ -299,9 +299,12 @@ describe('durable Agent Run recovery', () => {
           { runId: 'original-run', entry: { kind: 'run-state', state: 'running', recovery: checkpoint.entry.recovery } },
         ],
       })
+      const replacement = (await first.runtime.createProviderProfile({
+        providerExtensionId: 'official.openai-compatible', displayName: 'Replacement', config: {}, enabledModelIds: ['replacement-model'],
+      })).providerProfile
       await first.runtime.updateAgentPreset({
         agentPresetId: preset.id, expectedVersion: (await first.runtime.getPromptResource({ resourceId: preset.id })).resource.version,
-        model: { providerProfileId: provider.id, modelId: 'other' },
+        model: { providerProfileId: replacement.id, modelId: 'replacement-model' },
       })
       first.engine.close()
       const gateway = vi.fn<NonNullable<ApplicationRuntimeOptions['gateway']>['invokeChat']>(async () => ({
@@ -315,7 +318,7 @@ describe('durable Agent Run recovery', () => {
         .toMatchObject({ accepted: true, sourceRunId: 'original-run' })
       await invoke.mock.results[0]!.value
       expect(gateway).toHaveBeenCalledOnce()
-      expect(gateway.mock.calls[0]![0].model).toEqual({ providerProfileId: provider.id, modelId: 'original' })
+      expect(gateway.mock.calls[0]![0].model).toEqual({ providerProfileId: replacement.id, modelId: 'replacement-model' })
       expect(gateway.mock.calls[0]![0].request.metadata?.providerStep).toBe(afterTool ? 2 : 1)
       expect(invoke.mock.calls[0]![0].narrativeTarget).toEqual(target)
       expect(first.execute).toHaveBeenCalledTimes(afterTool ? 1 : 0)

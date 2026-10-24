@@ -1,10 +1,11 @@
+import type { ObservationBuild } from '../observability/types.js'
 import type {
   ExtensionPromptEntry,
   ExtensionPromptProcessingContext,
   ExtensionPromptProcessingSession,
 } from '@loom-studio/extension-sdk'
 import type { PromptProcessorRegistry } from './prompt-processor-registry.js'
-import { emitPromptBlocks, planPromptBlocks, type PromptDataModel } from './prompt-build-pipeline.js'
+import { appendBuildEvidence, captureBuildEvidence, recordPromptSources, emitObservedPromptBlocks, planPromptBlocks, type PromptDataModel } from './prompt-build-pipeline.js'
 import type { CompiledPrompt, PromptContribution, SourceNode } from './prompt-builder.js'
 
 export type ProcessedPromptSnapshot = {
@@ -22,9 +23,15 @@ export type PromptProcessingExecution = {
 export async function processPrompt(input: PromptDataModel, processing: {
   registry: PromptProcessorRegistry
   context: ExtensionPromptProcessingContext
-  renderText?: (content: string) => string
+  observation?: ObservationBuild
+  renderText?: (content: string, hostId: string) => string
 }) {
-  const model = structuredClone(input)
+  recordPromptSources(input, processing.observation)
+  // Raw source evidence remains on the caller's input; do not duplicate it into
+  // the mutable processor model or the recovery snapshot.
+  const model: PromptDataModel = structuredClone({
+    ...input, sourceNodes: input.sourceNodes.map(({ evidence: _evidence, ...node }) => node),
+  })
   const nodes = new Map(model.sourceNodes.map(node => [node.id, node]))
   const entries = new Map<string, ProcessedEntry>()
   const groups = new Map<string, ExtensionPromptEntry[]>()
@@ -57,6 +64,7 @@ export async function processPrompt(input: PromptDataModel, processing: {
   const diagnostics: Array<{ severity: 'warning'; code: string; processorId: string; resourceId?: string; entryId?: string; message: string }> = []
   const skipped = new Set<string>()
   const skipOrThrow = (processorId: string, group: ExtensionPromptEntry[], stage: string, error: unknown) => {
+    appendBuildEvidence(processing.observation, 'diagnostics', { code: 'prompt.processor_failed', processorId, stage, message: error instanceof Error ? error.message : String(error) })
     signal.throwIfAborted()
     const location = group.map(entry => `${entry.sourceId}/${entry.sourceNodeId}`).join(', ')
     if (isBlockingProcessingError(error)) throw error
@@ -68,6 +76,10 @@ export async function processPrompt(input: PromptDataModel, processing: {
       const selected = entries.get(entry.id)!
       applyProcessedEntryPatch(selected, { active: false })
       if (selected.node) selected.node.enabled = false
+      captureBuildEvidence(() => {
+        const source = processing.observation?.sources?.find(source => source.id === entry.sourceNodeId)
+        if (source) { source.active = false; source.reason = `processor ${processorId} ${stage} failed` }
+      })
       diagnostics.push({ severity: 'warning', code: 'prompt.processor_entry_skipped', processorId,
         resourceId: entry.sourceId, entryId: entry.sourceNodeId,
         message: `Skipped Lore ${entry.sourceId}/${entry.sourceNodeId}: ${processorId} ${stage} failed: ${error instanceof Error ? error.message : String(error)}` })
@@ -91,13 +103,19 @@ export async function processPrompt(input: PromptDataModel, processing: {
             || (patch.active !== undefined && typeof patch.active !== 'boolean'))
             throw new Error(`Invalid Prompt preparation patch: ${processorId}`)
         }
-        for (const patch of patches) applyProcessedEntryPatch(entries.get(patch.id)!, patch)
+        for (const patch of patches) {
+          const selected = entries.get(patch.id)!
+          appendBuildEvidence(processing.observation, 'transformations', { kind: 'processor', stage: 'prepare', processorId,
+            hostId: selected.entry.sourceNodeId, entryId: patch.id, before: selected.entry.content,
+            after: patch.content ?? selected.entry.content, active: patch.active })
+          applyProcessedEntryPatch(selected, patch)
+        }
         executions.push({ processorId, stage: 'prepare' })
       } catch (error) {
         skipOrThrow(processorId, group, 'prepare', error)
       }
     }
-    const blocks = planPromptBlocks(model)
+    const blocks = planPromptBlocks(model, processing.observation)
     const rendered = new Map<string, string>()
     for (const fragment of blocks.flat()) {
       const selected = entries.get(fragment.id)
@@ -109,7 +127,10 @@ export async function processPrompt(input: PromptDataModel, processing: {
           content = await sessions.get(selected.processorId)!.render(structuredClone(selected.entry))
           signal.throwIfAborted()
           if (typeof content !== 'string') throw new Error(`Prompt processor must return text: ${selected.processorId}`)
-          if (processing.renderText) content = processing.renderText(content)
+          appendBuildEvidence(processing.observation, 'transformations', { kind: 'processor', stage: 'render',
+            processorId: selected.processorId, hostId: selected.entry.sourceNodeId, entryId: fragment.id,
+            before: selected.entry.content, after: content })
+          if (processing.renderText) content = processing.renderText(content, selected.entry.sourceNodeId)
           rendered.set(fragment.id, content)
           applyProcessedEntryPatch(selected, { content })
           executions.push({ processorId: selected.processorId, stage: 'render', entryId: fragment.id })
@@ -121,7 +142,7 @@ export async function processPrompt(input: PromptDataModel, processing: {
       fragment.content = content
     }
     signal.throwIfAborted()
-    return { projection: emitPromptBlocks(blocks.map(block => block.filter(fragment => !skipped.has(fragment.id)))), model, executions, diagnostics }
+    return { projection: emitObservedPromptBlocks(blocks.map(block => block.filter(fragment => !skipped.has(fragment.id))), input, processing.observation), model, executions, diagnostics }
   } catch (error) {
     failed = true
     primaryError = error
@@ -131,6 +152,7 @@ export async function processPrompt(input: PromptDataModel, processing: {
     const cleanup = await Promise.allSettled([...sessions.values()].map(async session => session.dispose?.()))
     const errors = cleanup.flatMap((result, index) => {
       if (result.status === 'fulfilled') return []
+      appendBuildEvidence(processing.observation, 'diagnostics', { code: 'prompt.processor_cleanup_failed', processorId: owners[index], message: String(result.reason) })
       diagnostics.push({ severity: 'warning', code: 'prompt.processor_cleanup_failed', processorId: owners[index]!,
         message: `Prompt processor cleanup failed: ${owners[index]}: ${String(result.reason)}` })
       return [result.reason]

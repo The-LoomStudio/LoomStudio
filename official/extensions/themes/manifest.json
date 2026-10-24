@@ -1,0 +1,101 @@
+{
+  "manifestVersion": 2,
+  "id": "official.themes",
+  "version": "1.1.0",
+  "displayName": "官方主题",
+  "description": "纸页与潮汐主题，以及轻动效、薄荷和琥珀样式增强。",
+  "author": "Loom Studio",
+  "engines": {
+    "studio": "^0.1.0"
+  },
+  "modules": [
+    {
+      "id": "motion",
+      "runtime": "client",
+      "entry": "./client.js"
+    }
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "id": "paper",
+        "label": "纸页",
+        "description": "暖色叙事画布、包内纹理与设置图标，不需要运行代码。",
+        "css": "./paper.css",
+        "nativeMotion": "retain",
+        "parameters": [
+          {
+            "id": "canvas-width",
+            "label": "正文画布宽度",
+            "variable": "--loom-canvas-width",
+            "type": "number",
+            "default": 760,
+            "min": 540,
+            "max": 1120,
+            "step": 20,
+            "unit": "px"
+          },
+          {
+            "id": "blur",
+            "label": "面板模糊",
+            "variable": "--loom-preview-blur",
+            "type": "number",
+            "default": 12,
+            "min": 0,
+            "max": 32,
+            "step": 1,
+            "unit": "px"
+          },
+          {
+            "id": "texture",
+            "label": "纸张纹理强度",
+            "variable": "--extension-paper-texture",
+            "type": "number",
+            "default": 0.5,
+            "min": 0,
+            "max": 1,
+            "step": 0.05
+          }
+        ]
+      },
+      {
+        "id": "tide",
+        "label": "潮汐",
+        "css": "./tide.css",
+        "parameters": [
+          {
+            "id": "radius",
+            "label": "输入框圆角",
+            "variable": "--extension-tide-radius",
+            "type": "number",
+            "default": 12,
+            "min": 0,
+            "max": 24,
+            "unit": "px"
+          }
+        ]
+      }
+    ],
+    "styles": [
+      {
+        "id": "smooth-motion",
+        "label": "轻动效",
+        "description": "替换原生装饰动效；CSS 模式提供按钮反馈，授权代码后增加面板进入与退出动画。",
+        "css": "./motion.css",
+        "moduleId": "motion",
+        "supportsCssOnly": true,
+        "nativeMotion": "disable"
+      },
+      {
+        "id": "mint",
+        "label": "薄荷强调色",
+        "css": "./mint.css"
+      },
+      {
+        "id": "amber",
+        "label": "琥珀强调色",
+        "css": "./amber.css"
+      }
+    ]
+  }
+}

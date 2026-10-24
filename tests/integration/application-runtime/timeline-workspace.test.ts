@@ -29,6 +29,49 @@ async function setup() {
 }
 
 describe('Timeline Workspace foundation', () => {
+  it('exports a consistent archive while a node edit waits behind the read snapshot', async () => {
+    const f = await setup()
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const handle = f.runtime.registerTimelineArchiveParticipant({ namespace: 'snapshot-test', version: 1,
+      export: async () => { entered.resolve(); await release.promise; return undefined }, import: () => {},
+    })
+    try {
+      const exporting = f.runtime.exportTimelineArchive({ timelineId: f.target.timelineId })
+      await entered.promise
+      const node = f.story.nodes[0]!
+      const editing = f.narratives.editBranchNode({ actor: { kind: 'system', id: 'test' }, ...f.target,
+        nodeId: node.id, expectedHeadNodeId: node.id, expectedBody: node.body,
+        body: { format: 'loom-markdown.v1', raw: 'Edited after snapshot' } })
+      release.resolve()
+      const { archive } = await exporting
+      await editing
+      expect(archive.nodes.map(item => item.body.raw)).toEqual(['Opening'])
+      expect(archive.recoveryPoints?.every(point => archive.nodes.some(item => item.id === point.nodeId))).toBe(true)
+      await expect(f.runtime.importTimelineArchive({ source: JSON.stringify(archive) })).resolves.toBeDefined()
+      expect((await f.narratives.getPage(f.target)).nodes[0]?.body.raw).toBe('Edited after snapshot')
+    } finally { handle.unregister(); await f.close() }
+  })
+
+  it('commits the deduplicated Blob ID for equal binary writes and their copies', async () => {
+    const f = await setup()
+    try {
+      const bytes = new Uint8Array([10, 20, 30])
+      await f.mutate([
+        ...['a', 'b'].map(id => ({ kind: 'create' as const, entry: { id, kind: 'file' as const, name: `${id}.bin`, content: { text: '' } } })),
+        ...['a', 'b'].map(entryId => ({ kind: 'write' as const, entryId, content: bytes })),
+        { kind: 'copy', entryId: 'b', name: 'copy.bin' },
+      ])
+      const revision = await f.runtime.getTimelineWorkspace(f.target)
+      const binaries = revision.entries.filter(entry => entry.kind === 'file' && 'blobId' in entry.content)
+      expect(binaries).toHaveLength(3)
+      for (const entry of binaries) expect(Array.from((await f.runtime.readWorkspaceFile({ ...f.target, entryId: entry.id })).bytes)).toEqual(Array.from(bytes))
+      expect(new Set(binaries.map(entry => entry.kind === 'file' && 'blobId' in entry.content ? entry.content.blobId : null)).size).toBe(1)
+      const archive = (await f.runtime.exportTimelineArchive({ timelineId: f.target.timelineId })).archive
+      await expect(f.runtime.importTimelineArchive({ source: JSON.stringify(archive) })).resolves.toBeDefined()
+    } finally { await f.close() }
+  })
+
   it('recovers the complete tree at a departed floor, isolates forks, and rejects stale writes and deleted targets', async () => {
     const f = await setup()
     try {

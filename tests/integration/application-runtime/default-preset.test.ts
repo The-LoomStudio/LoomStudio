@@ -46,6 +46,47 @@ function flatten(node: PromptResourceNode): PromptResourceNode[] {
 }
 
 describe('bundled default preset', () => {
+  it('uses one global user configuration across stories and places author context after the fixed description', async () => {
+    const { engine, runtime, calls } = createFixture()
+    try {
+      const first = (await runtime.createUserProfile({ expectedVersion: 0, name: '林间', description: 'FIXED_FIRST' })).config
+      const firstId = first.currentProfileId!
+      const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Writer' })
+      const { resource: lore } = await runtime.createPromptResource({ resourceKind: 'lore', name: 'User relationships' })
+      await runtime.createPromptResourceAsset({
+        resourceId: lore.id, targetAssetId: lore.rootNode.id, position: 'inside',
+        asset: { id: 'user-context', kind: 'entry', label: 'User context', body: '{{User}} is her brother.', capabilities: { targetAnchorId: '@user.context' } },
+      })
+      await runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.id }, loreResourceIds: [lore.id] })
+      const { providerProfile } = await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test-model'] })
+      await runtime.updateAgentPreset({ agentPresetId: preset.id, name: 'Writer', expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version, model: { providerProfileId: providerProfile.id, modelId: 'test-model' } })
+      const { card } = await runtime.createCard({ name: 'Story', userName: 'CARD_AUTHOR', opening: '{{User}} enters.' })
+      const storyA = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const storyB = await runtime.createNarrativeTimeline({ cardId: card.id })
+      expect(storyA.nodes[0]!.body.raw).toBe('林间 enters.')
+      const sessions = await Promise.all([storyA, storyB].map(story => runtime.createAgentSession({ agentPresetId: preset.id, timelineId: story.timeline.id })))
+      const before = await runtime.previewAgentTurn({ agentSessionId: sessions[0]!.session.id, input: 'Continue' })
+      expect(before.messages.some(message => message.content === 'FIXED_FIRST\n\n林间 is her brother.')).toBe(true)
+      const second = (await runtime.createUserProfile({ expectedVersion: first.version, name: '旅人', description: 'FIXED_SECOND' })).config
+      for (const { session } of sessions) {
+        const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'Continue' })
+        expect(preview.messages.some(message => message.content === 'FIXED_SECOND\n\n旅人 is her brother.')).toBe(true)
+        expect(preview.macroInspection.entries.find(entry => entry.name === 'user')?.value).toBe('旅人')
+      }
+      await runtime.invokeAgentTurn({ agentSessionId: sessions[0]!.session.id, input: 'Continue' })
+      expect(calls[0]!.messages.some(message => message.content === 'FIXED_SECOND\n\n旅人 is her brother.')).toBe(true)
+      expect((await runtime.getNarrativePage({ timelineId: storyA.timeline.id })).nodes[0]!.body.raw).toBe('林间 enters.')
+      expect((await runtime.getCard({ cardId: card.id })).card.userName).toBe('CARD_AUTHOR')
+      const restored = (await runtime.selectUserProfile({ expectedVersion: second.version, profileId: firstId })).config
+      expect((await runtime.inspectMacros({ cardId: card.id })).macroInspection.entries.find(entry => entry.name === 'user.description')?.value).toBe('FIXED_FIRST')
+      const isolated = await runtime.previewAgentTurn({ agentSessionId: sessions[0]!.session.id, input: 'Continue', contextMode: 'isolated' })
+      expect(isolated.macroInspection.entries.find(entry => entry.name === 'user.description')?.value).toBe('')
+      expect(isolated.macroInspection.entries.find(entry => entry.name === 'user')?.value).toBe('User')
+      await runtime.deleteUserProfile({ expectedVersion: restored.version, profileId: firstId })
+      expect((await runtime.inspectMacros({ cardId: card.id })).macroInspection.entries.find(entry => entry.name === 'user')?.value).toBe('User')
+    } finally { engine.close() }
+  })
+
   it('runs registered processing in Preview and real Agent requests without changing stored resources', async () => {
     const { engine, runtime, calls, promptProcessors, promptResources } = createFixture()
     const modes: string[] = []
@@ -80,6 +121,18 @@ describe('bundled default preset', () => {
       expect(modes).toEqual(['preview', 'runtime'])
       expect(preview.messages.some(message => message.content?.includes('PROCESSED:AUTHOR_SOURCE'))).toBe(true)
       expect(calls[0]!.messages).toEqual(preview.messages)
+      const observations = await runtime.listObservations({ kind: 'run', agentSessionId: session.id })
+      const run = observations.records.find(record => record.status === 'completed')!
+      expect(run).toBeDefined()
+      const detail = await runtime.getObservation({ id: run.id })
+      const build = detail!.children.find(record => record.kind === 'build')!
+      const request = detail!.children.find(record => record.kind === 'request')!
+      expect(build).toBeDefined()
+      expect(request).toBeDefined()
+      expect((await runtime.getObservationRequest({ id: request.id }))?.request?.messages).toEqual(calls[0]!.messages)
+      expect((await runtime.getObservationBuild({ id: build.id }))?.build?.sources).toContainEqual(expect.objectContaining({
+        original: 'AUTHOR_SOURCE', rendered: 'PROCESSED:AUTHOR_SOURCE', resourceId: preset.id,
+      }))
       expect(result.promptBuildTrace.executions).toEqual([
         { processorId: 'test/template', stage: 'prepare' },
         { processorId: 'test/template', stage: 'render', entryId: expect.any(String) },
@@ -91,6 +144,11 @@ describe('bundled default preset', () => {
         preset: stored.resource, userInput: 'hello',
         processing: { registry: promptProcessors, context: { mode: 'runtime', signal: new AbortController().signal } },
       })
+      expect(accepted.processingSnapshot?.projection).not.toHaveProperty('observation')
+      expect(accepted.processingSnapshot?.sourceNodes.some(node => node.evidence)).toBe(false)
+      expect(accepted.promptBuildTrace.observation?.sources).toContainEqual(expect.objectContaining({
+        resourceId: stored.resource.id, version: stored.resource.version, original: 'AUTHOR_SOURCE', rendered: 'PROCESSED:AUTHOR_SOURCE',
+      }))
       const resumed = await composeAgentTurnPrompt({
         agentMessages: [], promptResources, contextResourceIds: [],
         preset: stored.resource, userInput: 'hello',
@@ -102,6 +160,13 @@ describe('bundled default preset', () => {
       expect(resumed.messages.map(message => message.content)).toEqual(['CHECKPOINT'])
       expect(resumed.promptBuildTrace.executions).toEqual([])
       expect(resumed.toolExecutionScope.context).toEqual(accepted.toolExecutionScope.context)
+      await runtime.updatePromptResourceAsset({
+        resourceId: preset.id, assetId: flatten(stored.resource.rootNode).find(node => node.label === 'Template')!.id,
+        body: 'EDITED_AFTER_BUILD',
+      })
+      expect((await runtime.getObservationBuild({ id: build.id }))?.build?.sources).toContainEqual(expect.objectContaining({
+        original: 'AUTHOR_SOURCE', rendered: 'PROCESSED:AUTHOR_SOURCE',
+      }))
     } finally {
       engine.close()
     }
@@ -149,6 +214,9 @@ describe('bundled default preset', () => {
       const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'CURRENT_INPUT' })
       await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'CURRENT_INPUT' })
       expect(calls[1]!.messages).toEqual(preview.messages)
+      expect(preview.promptBuildTrace.observation?.transformations).toContainEqual(expect.objectContaining({
+        kind: 'history-projection', before: 'HISTORY_RAW', after: mode === 'empty' ? '' : 'HISTORY_FINAL', appliedRuleIds: ['start', 'finish'],
+      }))
       const contents = preview.messages.map(message => message.content)
       expect(contents.filter(content => content === 'HISTORY_FINAL')).toHaveLength(mode === 'ordered' ? 2 : 0)
       expect(JSON.stringify(contents)).not.toMatch(/HISTORY_RAW|HISTORY_INTERMEDIATE/)

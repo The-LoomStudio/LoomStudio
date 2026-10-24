@@ -1,3 +1,4 @@
+import { createId } from '@loom-studio/shared'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type {
@@ -15,6 +16,7 @@ import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
 import {
   loadTranscript, releasePrimaryRun, resolveSessionRun, runAgentTurn,
   type ActiveAgentRun, type ObservedRun, type RunRecovery,
+  retainToolPresentation,
 } from './agent-run-observer.js'
 export { inspectSessionRunStatus, releasePrimaryRun, mergeAgentRunEntries } from './agent-run-observer.js'
 export type { ActiveAgentRun, RunRecovery } from './agent-run-observer.js'
@@ -77,7 +79,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     const signature = JSON.stringify(request)
     const previous = pendingSends.current.get(request.agentSessionId)
     const pending = previous?.api === input.api && previous.signature === signature ? previous
-      : { api: input.api, signature, requestId: crypto.randomUUID() }
+      : { api: input.api, signature, requestId: createId() }
     pendingSends.current.set(request.agentSessionId, pending)
     const started = await input.api.agentSessions.createRun({ ...request, requestId: pending.requestId })
     if (pendingSends.current.get(request.agentSessionId) === pending) pendingSends.current.delete(request.agentSessionId)
@@ -184,7 +186,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (request !== transcriptReadRef.current || selection !== agentSelectionRef.current
       || input.api !== cardSourceRef.current.api || cardSourceRef.current.disposed
       || sessionId !== agentSessionRef.current?.id) return
-    setAgentTranscriptEntries(transcript.entries)
+    setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
   }
 
   async function selectSwipe(candidateId: string) {
@@ -699,7 +701,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         let submission = retry ?? (previous && ownsNarrativeSubmission(previous)
           && !previous.delivered && previous.content === content ? previous : {
             api: input.api, timelineId: currentTimeline.id, branchId: currentBranch.id,
-            nodeId: crypto.randomUUID(), expectedHeadNodeId: currentBranch.headNodeId ?? null,
+            nodeId: createId(), expectedHeadNodeId: currentBranch.headNodeId ?? null,
             content, committed: false, delivered: false,
           })
         publishNarrativeSubmission(submission)
@@ -922,7 +924,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (!ownsRun(run)) return
     if (agentSessionRef.current?.id === run.sessionId) {
       publishAgentSession(transcript.session)
-      setAgentTranscriptEntries(transcript.entries)
+      setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
     } else {
       setAllAgentSessions(current => current.map(item => item.id === run.sessionId ? transcript.session : item))
     }
@@ -942,9 +944,9 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function refreshTerminalRun(run: ObservedRun, error?: unknown) {
-    if (!ownsRun(run) || (run.status !== 'failed' && run.status !== 'cancelled')) return
+    if (!ownsRun(run) || (run.status !== 'failed' && run.status !== 'cancelled' && run.status !== 'suspended')) return
     clearRunPlaceholders(run)
-    if (run.status === 'failed' && error) {
+    if ((run.status === 'failed' || run.status === 'suspended') && error) {
       notify.providerError(error, input.t)
     }
     const recovery: RunRecovery = {
@@ -977,7 +979,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           () => setRunRecovery(current => current?.status === 'disconnected' ? undefined : current))
       } catch (error) {
         if (!ownsRun(run)) return
-        if (run.status === 'failed' || run.status === 'cancelled') await refreshTerminalRun(run, error)
+        if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'suspended') await refreshTerminalRun(run, error)
         else setRunRecovery({ target: run.target, status: 'disconnected', error: error instanceof Error ? error.message : String(error) })
         throw error
       }
@@ -1490,7 +1492,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       const restoredRun = await resolveSessionRun(input.api, selected.id, transcript.entries)
       if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
       publishAgentSession(transcript.session)
-      setAgentTranscriptEntries(transcript.entries)
+      setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
       setActiveAgentRun(restoredRun)
       if (restoredRun?.status === 'running') followSessionRun(selected.id, restoredRun.runId)
     }
@@ -1540,7 +1542,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         }
         setAgentSessions(sessions)
         publishAgentSession(transcript.session)
-        setAgentTranscriptEntries(transcript.entries)
+        setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
         setActiveAgentRun(restoredRun)
         if (restoredRun?.status === 'running') followSessionRun(sessionId, restoredRun.runId)
         markAgentSessionReady(true)
@@ -1642,7 +1644,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     ? swipeDisplay.node : undefined
   const visibleRecovery: RunRecovery | undefined = visibleActiveRun?.status === 'suspended'
     ? { target: observedRunRef.current?.target ?? (agentSession?.id === primarySession?.id ? 'narrative' : 'agent'),
-      status: 'suspended', ...(runRecovery?.status === 'suspended' ? { error: runRecovery.error } : {}) }
+      status: 'suspended', error: visibleActiveRun.error ?? (runRecovery?.status === 'suspended' ? runRecovery.error : undefined) }
     : observedRunRef.current && ownsRun(observedRunRef.current) ? runRecovery : undefined
 
   return {

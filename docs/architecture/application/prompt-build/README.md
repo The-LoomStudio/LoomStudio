@@ -25,7 +25,7 @@ PromptBuild 拥有 Card、Lore、Narrative Timeline、Ordered Tree、Anchor、Sl
 
 扩展通过 `ctx.prompt.registerProcessor()` 注册包命名空间下的处理器（例如 `sillytavern.importer/ejs`），需声明 `prompt.process`。Preset / Lore Entry 用 `capabilities.processorId` 显式采用；安装扩展不会自动执行任意文本。Host 跟踪注销、取消和 Card 安装作用域；只有声明 `state.read` 的模块才收到当前 Timeline / Branch 的 State 快照。注册代码仍属于可信扩展代码，这个接口本身不是作者脚本沙箱。
 
-每次构建创建独立会话。`prepare` 接收该处理器的候选条目，只能返回这些条目的正文和本轮激活修改；`render` 按 DFS / Anchor 深度确定的发送顺序，对实际使用的条目执行一次。持久 `enabled: false` 不可被激活补丁复活。带处理器的正文在语言处理后才展开普通宏，加工结果同步用于消息和工具上下文；原始资源不改写。Native Session 消息、Tool Result 和运行时贡献不能注册为作者正文。缺失处理器或处理失败会阻断构建，而不是将原始模板静默发给模型。
+每次构建创建独立会话。`prepare` 接收该处理器的候选条目，只能返回这些条目的正文和本轮激活修改；`render` 按 DFS / Anchor 深度确定的发送顺序，对实际使用的条目执行一次。持久 `enabled: false` 不可被激活补丁复活。带处理器的正文在语言处理后才展开普通宏，加工结果同步用于消息和工具上下文；原始资源不改写。Native Session 消息、Tool Result 和运行时贡献不能注册为作者正文。处理器缺失或失败时不把原始模板静默发给模型：取消、权限等阻断类错误直接失败；必要 Preset 的处理失败阻断构建。仅含可选 Lore 的准备失败会跳过该组，Lore 单条渲染失败则跳过该条，并记录 `prompt.processor_entry_skipped` 警告；共享同一处理器的准备组若包含 Preset，仍按必要依赖失败。
 
 Agent Preview、新 Run 和 `ctx.prompt.build` 均接入该流程。独立扩展构建是无 Timeline State 的 preview 上下文，不隐式读取“当前聊天”；需要 State 的处理器应明确拒绝无上下文调用。工具后续 Step 不重建模板。处理过的来源与投影随 Run checkpoint 保存，热/冷 Resume 都复用已接受消息与加工快照，不重新运行处理器。语言引擎属于扩展，平台不理解 EJS/MVU 标签。
 

@@ -14,6 +14,58 @@ afterEach(async () => {
 })
 
 describe('Studio Server Extension Package install lifecycle', () => {
+  it('serves and enables a Worker module without evaluating it in the server process', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'loom-extension-worker-'))
+    temporaryDirectories.push(root)
+    const sourceDirectory = await writeTestPackage(root)
+    const manifestPath = join(sourceDirectory, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.modules = [{ id: 'worker', runtime: 'client-worker', entry: './dist/worker.js', capabilities: { 'ui.notify': true, 'state.read': true } }]
+    await writeFile(manifestPath, JSON.stringify(manifest))
+    const source = 'if (typeof window !== "undefined" || typeof process !== "undefined") throw new Error("Wrong execution environment"); export function activate(ctx) {}'
+    await writeFile(join(sourceDirectory, 'dist/worker.js'), source)
+    const server = createStudioServer({
+      localPaths: resolveLoomStudioLocalPaths({ home: join(root, 'home') }),
+      extensionRootDirectory: join(root, 'empty-repository'), extensionInstalledDirectory: join(root, 'app/extensions'),
+    })
+    const address = await server.listen(0)
+    try {
+      await callRpc(address.port, 'extensions.installPackage', { sourceDirectory })
+      const enabled = await callRpc<{ module: { runtimeKind: string; entryUrl: string; desired: { enabled: boolean; grants: { ui: string[] } } } }>(address.port, 'extensions.enableModule', {
+        packageId: manifest.id, moduleId: 'worker', grants: { ui: ['ui.notify'] },
+      })
+      expect(enabled.module).toMatchObject({ runtimeKind: 'client-worker', desired: { enabled: true, grants: { ui: ['ui.notify'] } } })
+      const response = await authenticatedFetch(address.port, enabled.module.entryUrl)
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe(source)
+    } finally { await server.close() }
+  })
+
+  it('serves a package icon whose filename starts with two dots', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'loom-extension-dot-icon-'))
+    temporaryDirectories.push(root)
+    const sourceDirectory = await writeTestPackage(root)
+    const manifestPath = join(sourceDirectory, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.icon = './..icon.png'
+    await writeFile(manifestPath, JSON.stringify(manifest))
+    const bytes = new Uint8Array([137, 80, 78, 71])
+    await writeFile(join(sourceDirectory, '..icon.png'), bytes)
+    const server = createStudioServer({
+      localPaths: resolveLoomStudioLocalPaths({ home: join(root, 'home') }),
+      extensionRootDirectory: join(root, 'empty-repository'), extensionInstalledDirectory: join(root, 'app/extensions'),
+    })
+    const address = await server.listen(0)
+    try {
+      await callRpc(address.port, 'extensions.installPackage', { sourceDirectory })
+      const response = await authenticatedFetch(address.port, '/extensions/example.installed/1.0.0/icon')
+      expect(response.status).toBe(200)
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
+    } finally {
+      await server.close()
+    }
+  })
+
   it('installs, restores after restart, and uninstalls without deleting published data', async () => {
     const root = await mkdtemp(join(tmpdir(), 'loom-extension-install-server-'))
     temporaryDirectories.push(root)

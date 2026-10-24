@@ -47,7 +47,7 @@ Streaming domain lifecycle   -> owning Agent / Narrative feature
 | ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩/解压。Card 另用现有 `zip-checksums.ts` 读取完整性元数据、配合 Node CRC32 验证实际数据；这不是第二套解压器，不另建重复编解码。 |
 | 边界 Schema | Zod | 用于 tRPC 输入边界、AI Gateway Provider 配置和 Shared Lore Mount RPC Schema；既有领域 reader 通过 adapter 接入 tRPC，不要求全部改写为 Zod object。新增跨端结构化边界且没有既有 parser 时优先复用；可信内部纯函数不重复 parse。 |
 | 系统凭据与敏感密钥托管 | `@napi-rs/keyring` + `@loom-studio/secret-store` | 操作系统安全凭据链（Keychain/SecretService）与 SQLite 元数据双层物理隔离；受控闭包临时借用、写入意图防丢失持久化与生命周期清理队列，绝不向数据库或日志写入明文。 |
-| 沙箱代码隔离执行 | `quickjs-emscripten` / `node:vm` | CodeAct 与命令行沙箱的隔离执行环境；提供确定性内存/时间预算，杜绝未经授权的宿主文件、网络或进程访问。 |
+| CodeAct 隔离与受信任实验执行 | `quickjs-emscripten` / `node:vm` | 正式 CodeAct 使用 QuickJS 的内存上限、截止时间中断与受控宿主桥，不直接提供宿主文件、网络或进程能力。Playground 的 `node:vm` 仅执行受信任实验片段，不构成不可信代码的安全边界，也不承诺与 QuickJS 相同的资源隔离。 |
 | 跨端纯契约 | `@loom-studio/shared` | 纯领域 JSON DTO、Schema 和浏览器/Node 都可执行的纯逻辑；主应用 RPC 方法签名由 Server `AppRouter` 推导，不在 Shared 另建一份方法表。不得依赖 React、数据库、Node 专属 API 或 Application Runtime。 |
 | 基础文本 Token 计数 | `gpt-tokenizer` / `@loom-studio/tokenizer` | 固定 `o200k_base`，按字面计数；目标模型系数是估算，不替代 Provider usage。词表由独立包拥有，Client 仅在共享 Worker 加载；派生资源计数不写数据库。 |
 

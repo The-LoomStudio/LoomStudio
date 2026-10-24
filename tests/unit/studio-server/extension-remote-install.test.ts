@@ -425,7 +425,7 @@ it('isolates malformed bundled manifests and failed resource imports during init
 })
 
 
-it('installs bundled Markdown presets once and preserves explicit module disablement across restart', async () => {
+it('loads bundled packages in place, imports presets once and preserves explicit module disablement across restart', async () => {
   const packageId = 'official.story-memory'
   const f = await manager(async root => {
     const directory = join(root, 'bundled', packageId)
@@ -443,10 +443,13 @@ it('installs bundled Markdown presets once and preserves explicit module disable
   expect(f.runtime.listPackages().find(item => item.packageId === packageId)?.available).toBe(true)
   expect(f.importPackageResources).toHaveBeenCalledOnce()
   expect(f.importPackageResources.mock.calls[0]![0].promptResources[0]!.artifact).toMatchObject({
-    resourceKind: 'preset', rootNode: { id: 'official.story-memory.summary', category: 'preset', children: [
-      { children: [{ body: expect.stringContaining('剧情记忆整理助手') }, { body: expect.stringContaining('LV1') }, { body: expect.stringContaining('LV2') }] },
-      {}, {},
-    ] },
+    resourceKind: 'preset', rootNode: { id: 'official.story-memory.summary', category: 'preset', children: expect.arrayContaining([
+      expect.objectContaining({ children: expect.arrayContaining([
+        expect.objectContaining({ body: expect.stringContaining('剧情记忆整理助手') }),
+        expect.objectContaining({ body: expect.stringContaining('LV1') }),
+        expect.objectContaining({ body: expect.stringContaining('LV2') }),
+      ]) }),
+    ]) },
   })
   expect(f.state.get(packageId, 'server')?.enabled).toBe(true)
   expect(f.state.get(packageId, 'client')?.enabled).toBe(true)
@@ -461,6 +464,40 @@ it('installs bundled Markdown presets once and preserves explicit module disable
   await persisted.load()
   expect(persisted.get(packageId, 'server')?.enabled).toBe(false)
   expect(persisted.get(packageId, 'client')?.enabled).toBe(false)
-  await restarted.uninstallPackage(packageId)
-  expect((await f.restart()).listPackages().some(item => item.packageId === packageId)).toBe(false)
+  expect(restarted.listPackages().find(item => item.packageId === packageId)?.sourceKinds).toEqual(['repository'])
+  await expect(readFile(join(f.root, 'app/extensions', packageId, 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  await expect(restarted.uninstallPackage(packageId)).rejects.toThrow('Only an installed or dev-linked')
+  expect((await f.restart()).listPackages().some(item => item.packageId === packageId)).toBe(true)
+})
+
+
+it('discovers official packages in place, refreshes file revisions on restart and reports installed duplicates', async () => {
+  const packageId = 'official.test-theme'
+  const f = await manager(async root => {
+    const repositoryDirectory = join(root, 'official/extensions')
+    const directory = join(repositoryDirectory, 'themes')
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, 'manifest.json'), JSON.stringify({
+      manifestVersion: 2, id: packageId, version: '1.0.0', displayName: 'Official themes', engines: { studio: '*' },
+      modules: [], contributes: { themes: [{ id: 'paper', label: 'Paper', css: './paper.css' }] },
+    }))
+    await writeFile(join(directory, 'paper.css'), 'body { color: red }')
+    return { repositoryDirectory, bundledDirectories: [directory] }
+  })
+  const first = f.runtime.listPackages().find(item => item.packageId === packageId)!
+  expect(first).toMatchObject({ available: true, sourceKinds: ['repository'], modules: [] })
+  await expect(readFile(join(f.root, 'app/extensions', packageId, 'manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  expect(Buffer.from((await f.runtime.readPackageFile(packageId, first.fileRevision!, 'paper.css')).bytes).toString()).toContain('red')
+  const directory = join(f.root, 'official/extensions/themes')
+  await writeFile(join(directory, 'paper.css'), 'body { color: blue }')
+  const restarted = await f.restart()
+  const next = restarted.listPackages().find(item => item.packageId === packageId)!
+  expect(next.fileRevision).not.toBe(first.fileRevision)
+  expect(Buffer.from((await restarted.readPackageFile(packageId, next.fileRevision!, 'paper.css')).bytes).toString()).toContain('blue')
+  await expect(restarted.readPackageFile(packageId, first.fileRevision!, 'paper.css')).rejects.toThrow('revision')
+  await cp(directory, join(f.root, 'app/extensions', packageId), { recursive: true })
+  const conflicted = await f.restart()
+  expect(conflicted.listPackages().find(item => item.packageId === packageId)).toMatchObject({ available: false, sourceKinds: ['repository', 'installed'] })
+  expect(f.diagnostics.list().some(item => item.code === 'extension.package_source_conflict' && item.packageId === packageId)).toBe(true)
+  expect(await readFile(join(directory, 'paper.css'), 'utf8')).toContain('blue')
 })

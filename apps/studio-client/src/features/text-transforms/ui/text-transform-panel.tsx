@@ -8,6 +8,7 @@ import { PanelTabs } from '../../../shared/ui/panel-tabs/index.js'
 import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { PipelineWorkbenchView, type PipelineWorkbenchGroup } from './pipeline-workbench-view.js'
 import { RuleEditorFields, readRuleEditorValue } from './rule-editor-fields.js'
+import { scriptCapabilityLabel } from '../../loom-scripts/model/script-capabilities.js'
 import { LoomScriptSourceFields } from './loom-script-source-fields.js'
 import { sourceLabel, useTextTransformController, type OwnerScope, type TextTransformProps, type TextTransformController } from '../model/use-text-transform-controller.js'
 import styles from './text-transform-panel.module.scss'
@@ -134,7 +135,7 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
       if (controller.loomScriptsApi) {
         const sortedScripts = [...controller.visibleScripts].sort((a, b) => a.mount.orderIndex - b.mount.orderIndex)
         for (const { script, mount } of sortedScripts) {
-          const ownerStr = script.owner.kind === 'extension' ? t('textTransform.ownerExtensionNamed', { name: script.owner.packageId }) : t('textTransform.ownerRuntime')
+          const ownerStr = script.owner.kind === 'user' ? t('textTransform.ownerUserOverride') : script.owner.kind === 'workspace' ? t('textTransform.ownerWorkspace') : ownerLabel(script.owner, t, controller.getOwnerName)
           addNode(ownerStr, {
             id: `script:${script.id}`,
             label: script.name,
@@ -144,10 +145,8 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
         }
       }
 
-      if (itemsByOwner.size === 0) {
-        // Ensure at least the editing owner is present so we can show the + buttons
-        itemsByOwner.set(ownerLabel(controller.editingOwner, t, controller.getOwnerName), [])
-      }
+      const editingOwnerLabel = ownerLabel(controller.editingOwner, t, controller.getOwnerName)
+      if (!itemsByOwner.has(editingOwnerLabel)) itemsByOwner.set(editingOwnerLabel, [])
 
       return Array.from(itemsByOwner.entries())
         .sort(([ownerA], [ownerB]) => ownerA.localeCompare(ownerB))
@@ -234,9 +233,10 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
             <div style={{ display: 'flex', gap: 2 }}>
               <button className={styles.navAddBtn} title={t('textTransform.newRule')} type="button" onClick={event => { event.stopPropagation(); controller.startNewRule() }}><Plus aria-hidden="true" size={14} /></button>
               <button className={styles.navAddBtn} title={t('textTransform.newExtractor')} type="button" onClick={event => { event.stopPropagation(); controller.startNewExtractor() }}><FileSearch aria-hidden="true" size={14} /></button>
-              {controller.loomScriptsApi ? (
+              {controller.loomScriptsApi && controller.canCreateScript ? (
                 <>
-                  <button aria-label={t('textTransform.importScript')} className={styles.navAddBtn} title={t('textTransform.importScript')} type="button" onClick={event => { event.stopPropagation(); scriptInputRef.current?.click() }}><Code2 aria-hidden="true" size={14} /></button>
+                  <button aria-label="新建脚本" className={styles.navAddBtn} title="新建脚本" disabled={controller.busy} type="button" onClick={event => { event.stopPropagation(); void controller.createScript() }}><Plus aria-hidden="true" size={14} /></button>
+                  <button aria-label={t('textTransform.importScript')} className={styles.navAddBtn} title={t('textTransform.importScript')} disabled={controller.busy} type="button" onClick={event => { event.stopPropagation(); scriptInputRef.current?.click() }}><Code2 aria-hidden="true" size={14} /></button>
                   <input aria-label={t('textTransform.importScript')} ref={scriptInputRef} accept=".loom.js,text/javascript" hidden type="file" onChange={event => { const file = event.target.files?.[0]; if (file) void controller.importScript(file); event.currentTarget.value = '' }} />
                 </>
               ) : null}
@@ -444,10 +444,10 @@ function ScriptDetail({ controller }: { controller: TextTransformController }) {
   if (resolved) return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{resolved.script.name}</h3><small>{resolved.script.metadataId} · v{resolved.script.version}</small></div></header><div className={styles.inspectionContainer}><section className={styles.inspectionSection}><h4>{t('textTransform.metadata')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ mountId: resolved.mountId, enabled: resolved.enabled, orderIndex: resolved.orderIndex, grantedCapabilities: resolved.grantedCapabilities, scriptVersion: resolved.script.scriptVersion, requestedCapabilities: resolved.script.requestedCapabilities, contributions: resolved.script.contributions }, null, 2)}</pre></section><section className={styles.inspectionSection}><h4>{t('textTransform.source')}</h4><textarea aria-label={t('textTransform.source')} className={styles.rawJsonTextarea} readOnly spellCheck={false} value={resolved.source} /></section></div></>
   if (!selected) return <div className={styles.editorContainer}><p className={styles.emptyState}>{t('textTransform.ownerScriptsEmpty')}</p></div>
   const { script, mount } = selected
-  return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{script.name}</h3><small>{script.metadataId} · v{script.version}</small></div><div className={styles.headerActions}><label><input checked={mount.enabled} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { enabled: event.target.checked })} /> {t('textTransform.enabled')}</label><input aria-label={t('textTransform.order')} className={styles.inlineInput} type="number" value={mount.orderIndex} onChange={event => void controller.updateScriptMount(mount, { orderIndex: Number(event.target.value) })} /><Button size="small" variant="ghost" disabled={controller.busy} onClick={() => void controller.saveScript()}>{t('textTransform.save')}</Button></div></header><div className={styles.inspectionContainer}>
+  return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{script.name}</h3><small>{script.metadataId} · v{script.version}</small></div><div className={styles.headerActions}><label><input checked={mount.enabled} disabled={controller.busy || (!mount.enabled && script.requestedCapabilities.some(capability => !mount.grantedCapabilities.includes(capability)))} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { enabled: event.target.checked })} /> {mount.target.kind === 'user' ? '在全局启用' : mount.target.kind === 'card' ? '在当前角色启用' : t('textTransform.enabled')}</label><input aria-label={t('textTransform.order')} className={styles.inlineInput} type="number" value={mount.orderIndex} onChange={event => void controller.updateScriptMount(mount, { orderIndex: Number(event.target.value) })} /><Button size="small" variant="ghost" disabled={controller.busy || !mount.enabled} onClick={() => void controller.refreshScriptMount(mount)}><RefreshCw aria-hidden="true" size={14} />刷新此实例</Button><Button size="small" variant="ghost" disabled={controller.busy} onClick={() => void controller.saveScript()}>{t('textTransform.save')}</Button></div></header><div className={styles.inspectionContainer}>
     <section className={styles.inspectionSection}><h4>{t('textTransform.metadata')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ owner: script.owner, scriptVersion: script.scriptVersion, runtime: script.runtime, requestedCapabilities: script.requestedCapabilities, contributions: script.contributions }, null, 2)}</pre></section>
-    <section className={styles.inspectionSection}><h4>{t('textTransform.grants')}</h4>{script.requestedCapabilities.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noGrants')}</p> : script.requestedCapabilities.map(capability => <label key={capability}><input checked={mount.grantedCapabilities.includes(capability)} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { grantedCapabilities: event.target.checked ? [...mount.grantedCapabilities, capability] : mount.grantedCapabilities.filter(value => value !== capability) })} /> {capability}</label>)}</section>
-    <LoomScriptSourceFields fileName={controller.scriptFileName} source={controller.scriptSource}
+    <section className={styles.inspectionSection}><h4>{t('textTransform.grants')}</h4><p className={styles.metaLine}>逐项确认后启用；修改授权前请先停用此实例。</p>{script.requestedCapabilities.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noGrants')}</p> : script.requestedCapabilities.map(capability => <label key={capability}><input checked={mount.grantedCapabilities.includes(capability)} disabled={controller.busy || mount.enabled} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { grantedCapabilities: event.target.checked ? [...mount.grantedCapabilities, capability] : mount.grantedCapabilities.filter(value => value !== capability) })} /> {scriptCapabilityLabel(capability)}</label>)}</section>
+    <LoomScriptSourceFields fileName={controller.scriptFileName} source={controller.scriptSource} disabled={controller.busy}
       onFileNameChange={controller.setScriptFileName} onSourceChange={controller.setScriptSource} t={t} />
   </div></>
 }

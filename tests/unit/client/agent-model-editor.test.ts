@@ -47,6 +47,13 @@ function fixture() {
 }
 
 describe('Agent model slot', () => {
+  it('closes an unchanged selection without submitting a no-op mutation', async () => {
+    const f = fixture()
+    await f.picker().onSelect({ ...f.props.preset.model! }, false)
+    expect(f.props.onSave).not.toHaveBeenCalled()
+    expect(f.picker()).toMatchObject({ open: false, current: f.props.preset.model })
+  })
+
   it('saves approval scopes without changing the model binding', async () => {
     const f = fixture()
     const scope = f.render().find(element => element.type === 'select' && element.props['aria-label'] === 'Shared workspace writes')!

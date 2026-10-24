@@ -14,7 +14,7 @@ import { DirectoryDiscoveryNotice, type CardDirectoryApi } from './card-resource
 import { CardResourceDirectory } from './card-resource-directory.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { OpeningChoice } from '../../features/cards/model/opening-choice.js'
 import type { CharacterCardSummary } from '../../features/cards/model/character-card-summary.js'
 import { useCharacterProfileEditor } from '../../features/cards/model/use-character-profile-editor.js'
@@ -111,6 +111,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
     }
   }, [props.routeCardId])
 
+  const queryClient = useQueryClient()
   const targetCardId = activeCardId ?? props.selectedCard?.id ?? galleryCards[0]?.id
   const targetSummary = galleryCards.find(card => card.id === targetCardId)
     ?? (props.selectedCard?.id === targetCardId ? props.selectedCard : undefined)
@@ -221,7 +222,9 @@ export function CharacterPanel(props: CharacterPanelProps) {
       setMediaNotice(props.t('character.mediaTooLarge'))
       return
     }
-    void props.onUpdateCardMedia(card.id, target, file).catch(error => {
+    void props.onUpdateCardMedia(card.id, target, file).then(() =>
+      queryClient.invalidateQueries({ queryKey: ['character-browser', props.endpoint, card.id] }),
+    ).catch(error => {
       setMediaNotice(error instanceof Error ? error.message : String(error))
     })
     setMediaNotice('')

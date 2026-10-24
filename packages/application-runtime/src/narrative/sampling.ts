@@ -6,10 +6,13 @@ export type NarrativeSampleSelection =
   | {
       kind: 'tail'
       count: number
+      throughFloor?: number
       throughNodeId?: string
     }
   | {
       kind: 'range'
+      afterFloor?: number
+      throughFloor?: number
       afterNodeId?: string
       throughNodeId?: string
     }
@@ -43,6 +46,7 @@ export type NarrativeSampleResult = {
   text: string
   complete: boolean
   nextBeforeNodeId?: string
+  nextBeforeFloor?: number
   missingFloors?: number[]
   processing?: {
     phase: TextTransformPhase
@@ -78,6 +82,32 @@ async function sampleNarrative(
   validateBudget(maxNodes, maxCharacters)
   validateSelection(request.selection)
   signal?.throwIfAborted()
+  if (request.selection.kind !== 'floors'
+    && (request.selection.throughFloor !== undefined || (request.selection.kind === 'range' && request.selection.afterFloor !== undefined))) {
+    const selection = request.selection
+    const first = await store.getPage({ timelineId: request.timelineId, branchId: request.branchId, limit: 1 })
+    const branchId = first.branch.id
+    const head = selection.throughNodeId ?? access?.throughNodeId ?? first.branch.headNodeId
+    if (access && (request.timelineId !== access.timelineId || branchId !== access.branchId || access.throughNodeId === null)) throw readRangeError()
+    const resolveFloor = async (floor: number): Promise<string> => {
+      let cursor = head
+      while (cursor) {
+        signal?.throwIfAborted()
+        const page = await store.getPage({ timelineId: request.timelineId, branchId, cursor, limit: pageLimit })
+        const node = page.nodes.find(node => node.floor === floor)
+        if (node) return node.id
+        cursor = page.nextCursor
+      }
+      throw new Error(`Narrative floor ${floor} is unavailable on this path`)
+    }
+    const throughNodeId = selection.throughFloor === undefined ? head : await resolveFloor(selection.throughFloor)
+    const afterNodeId = selection.kind === 'range'
+      ? selection.afterFloor === undefined ? selection.afterNodeId : await resolveFloor(selection.afterFloor)
+      : undefined
+    return sampleNarrative(store, { ...request, branchId, selection: selection.kind === 'tail'
+      ? { kind: 'tail', count: selection.count, throughNodeId }
+      : { kind: 'range', afterNodeId, throughNodeId } }, signal, access)
+  }
   if (request.selection.kind === 'floors') {
     const selection = request.selection
     const first = await store.getPage({ timelineId: request.timelineId, branchId: request.branchId, limit: 1 })
@@ -140,6 +170,7 @@ async function sampleNarrative(
   let foundAfter = !afterNodeId || request.selection.kind === 'tail'
   let finished = false
   let nextBeforeNodeId: string | undefined
+  let nextBeforeFloor: number | undefined
   // Keep only the budgeted tail while checking the requested ancestor, not the entire history.
   while (true) {
     for (const node of [...page.nodes].reverse()) {
@@ -156,6 +187,7 @@ async function sampleNarrative(
       } else if (!nextBeforeNodeId) {
         if (!selected.length) throw new Error('Narrative sample maxCharacters is smaller than a single node')
         nextBeforeNodeId = node.id
+        nextBeforeFloor = node.floor
       }
       if (request.selection.kind === 'tail' && visited === request.selection.count) {
         finished = true
@@ -196,7 +228,7 @@ async function sampleNarrative(
     nodes,
     text: nodes.map(node => node.body.raw).join('\n\n'),
     complete: nextBeforeNodeId === undefined,
-    ...(nextBeforeNodeId ? { nextBeforeNodeId } : {}),
+    ...(nextBeforeNodeId ? { nextBeforeNodeId, nextBeforeFloor } : {}),
   }
 }
 
@@ -253,6 +285,10 @@ function validateBudget(maxNodes: number, maxCharacters: number): void {
 
 function validateSelection(selection: NarrativeSampleSelection): void {
   if (!selection || typeof selection !== 'object') throw new Error('Narrative selection must be an object')
+  for (const name of ['throughFloor', 'afterFloor'] as const) {
+    const value = (selection as unknown as Record<string, unknown>)[name]
+    if (value !== undefined && (!Number.isSafeInteger(value) || (value as number) < 1)) throw new Error(`Narrative ${name} must be a positive integer`)
+  }
   for (const name of ['throughNodeId', 'afterNodeId'] as const) {
     if (name in selection) {
       const value = (selection as unknown as Record<string, unknown>)[name]
@@ -274,7 +310,7 @@ function validateSelection(selection: NarrativeSampleSelection): void {
     return
   }
   if (selection.kind !== 'range') throw new Error('Unsupported Narrative sample selection')
-  if (!selection.afterNodeId && !selection.throughNodeId) {
+  if (!selection.afterNodeId && !selection.throughNodeId && selection.afterFloor === undefined && selection.throughFloor === undefined) {
     throw new Error('Narrative range requires afterNodeId or throughNodeId')
   }
 }

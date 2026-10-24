@@ -1,3 +1,8 @@
+export type ExtensionObservationContext = {
+  moduleId?: string; instanceId?: string; eventId?: string; eventName?: string
+  correlationId?: string; callId?: string; parentCallId?: string
+}
+
 import type { Diagnostic, DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHostLogWriter, ExtensionLogPage, ExtensionLogQuery } from '@loom-studio/logging'
@@ -99,10 +104,13 @@ export type ExtensionHostOptions = {
   subscribeNarrativeActivity?(handler: (event: import('@loom-studio/extension-sdk').ExtensionNarrativeActivity) => void): Disposable
   registerReadonlyFiles?(provider: import('@loom-studio/extension-sdk').ExtensionReadonlyFiles, owner: { target: ExtensionInstallationTarget; isAvailable(target: { timelineId: string; branchId: string }): Promise<boolean> }): Disposable
   extensionAgentTasks?: {
-    create(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, input: { presetId: string; title?: string } | { presetContributionId: string; title?: string }, signal: AbortSignal): Promise<{ sessionId: string }>
-    invoke(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, input: { sessionId: string; input: string; activationFacts?: import('@loom-studio/shared').JsonObject }, signal: AbortSignal): Promise<{ sessionId: string; runId: string; state: string; text?: string }>
-    read(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, sessionId: string, signal: AbortSignal): Promise<{ sessionId: string; presetId: string; title?: string; state: string; lastOutput?: string }>
+    create(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, input: import('@loom-studio/extension-sdk').ExtensionAgentTaskCreate, signal: AbortSignal): Promise<{ sessionId: string }>
+    invoke(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, input: import('@loom-studio/extension-sdk').ExtensionAgentTaskInvoke, signal: AbortSignal, observation?: ExtensionObservationContext): Promise<import('@loom-studio/extension-sdk').ExtensionAgentTaskResult>
+    read(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, sessionId: string, signal: AbortSignal): Promise<import('@loom-studio/extension-sdk').ExtensionAgentTaskSnapshot>
+    subscribe(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, input: { sessionId: string; cursor?: number }, signal: AbortSignal): Promise<import('@loom-studio/extension-sdk').ExtensionAgentTaskProgress>
+    acknowledge(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, sessionId: string, signal: AbortSignal): Promise<void>
     cancel(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, sessionId: string, signal: AbortSignal): Promise<unknown>
+    dispose(owner: { packageId: string; installationId: string }, target: { timelineId: string; branchId: string }, sessionId: string, signal: AbortSignal): Promise<unknown>
   }
 
   documents: DocumentStore
@@ -154,9 +162,9 @@ export type ExtensionHostOptions = {
   }
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
-  invokeModel?: (input: Parameters<import('@loom-studio/extension-sdk').ExtensionActivationContext['ai']['invokeModel']>[0]) =>
+  invokeModel?: (input: Parameters<import('@loom-studio/extension-sdk').ExtensionActivationContext['ai']['invokeModel']>[0], owner?: { packageId: string; installationId: string; moduleId: string; timelineId?: string } & ExtensionObservationContext) =>
     ReturnType<import('@loom-studio/extension-sdk').ExtensionActivationContext['ai']['invokeModel']>
-  buildPrompt?: (input: import('@loom-studio/extension-sdk').ExtensionPromptBuildInput, target: ExtensionInstallationTarget, packageId: string, lease?: import('@loom-studio/extension-sdk').ExtensionTimelineLease) =>
+  buildPrompt?: (input: import('@loom-studio/extension-sdk').ExtensionPromptBuildInput, target: ExtensionInstallationTarget, packageId: string, lease?: import('@loom-studio/extension-sdk').ExtensionTimelineLease, observation?: ExtensionObservationContext) =>
     Promise<import('@loom-studio/extension-sdk').ExtensionPromptBuildResult>
   registerPromptProcessor?(processor: import('@loom-studio/extension-sdk').ExtensionPromptProcessor, owner: {
     packageId: string
@@ -232,6 +240,13 @@ export type ExtensionHostOptions = {
 }
 
 export type ExtensionHost = {
+  /** Registers an already prepared server module without an installed package directory. */
+  registerModule?(input: {
+    manifest: ExtensionManifest
+    moduleId: string
+    target?: ExtensionInstallationTarget
+    load(instanceId: string): Promise<import('@loom-studio/extension-sdk').ServerExtensionModule>
+  }): ExtensionModuleSummary
   discover(directory: string, target?: ExtensionInstallationTarget): Promise<ExtensionModuleSummary[]>
   activate(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ExtensionModuleSummary>
   activateAll(): Promise<ExtensionModuleSummary[]>
@@ -280,6 +295,7 @@ export type ExtensionModuleRecord = {
   moduleManifest: ExtensionModuleManifest & { runtime: 'server' }
   state: ExtensionState
   instance?: ExtensionInstance
+  load?: (instanceId: string) => Promise<import('@loom-studio/extension-sdk').ServerExtensionModule>
 }
 
 export const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit']

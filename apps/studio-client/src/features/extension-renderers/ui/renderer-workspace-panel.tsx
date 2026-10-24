@@ -23,6 +23,7 @@ import { ExtensionRemoteControls, RemoteExtensionInstall } from './remote-extens
 import { Button, Dialog } from '@loom-studio/ui'
 import { PanelTabs } from '../../../shared/ui/panel-tabs/index.js'
 import { TimelineExtensionPanel, type TimelineExtensionPanelProps } from './timeline-extension-panel.js'
+import { ScriptManagementPanel } from '../../loom-scripts/ui/script-management-panel.js'
 import styles from './renderer-workspace-panel.module.scss'
 
 const WORKSPACE_SCOPE_KEY = 'workspace'
@@ -50,6 +51,9 @@ export function RendererWorkspacePanel(props: {
   t: Translator
   extensionRuntime: Pick<StudioApi['extensionRuntime'], 'getConfig' | 'listConfigs' | 'upsertConfig'>
   extensionApi: StudioApi['extensions']
+  scriptApi: StudioApi['loomScripts']
+  onScriptsChanged(): void
+  scriptsRefreshToken?: number
   onRefreshExtensions(): Promise<unknown>
   runtimeError?: string
   configRevision: number
@@ -90,8 +94,9 @@ export function RendererWorkspacePanel(props: {
   const [removal, setRemoval] = useState<{ packageId: string; version: string }>()
   const [deleteData, setDeleteData] = useState(false)
   const [installOpen, setInstallOpen] = useState(false)
-  const view = searchParams.get('extensionView') === 'participation' ? 'participation' : 'packages'
-  const setView = (next: 'packages' | 'participation') => {
+  const requestedView = searchParams.get('extensionView')
+  const view = requestedView === 'participation' || requestedView === 'scripts' ? requestedView : 'packages'
+  const setView = (next: 'packages' | 'participation' | 'scripts') => {
     const params = new URLSearchParams(searchParams)
     params.set('extensionView', next)
     navigate(`/studio/extensions?${params}`)
@@ -253,6 +258,16 @@ export function RendererWorkspacePanel(props: {
     }
   }
 
+  if (view === 'scripts') return <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel">
+    {runtimeAlert}
+    <ScriptManagementPanel api={props.scriptApi} cardId={props.settingScopeContext.cardId} onScriptsChanged={props.onScriptsChanged} refreshToken={props.scriptsRefreshToken} t={props.t}
+      header={<div className={styles.packageTreeHeader}><PanelTabs activeId={view} onChange={setView} ariaLabel={props.t('renderer.workspaceTitle')} items={[
+        { id: 'packages', label: props.t('renderer.packages') },
+        { id: 'scripts', label: '脚本' },
+        { id: 'participation', label: props.t('participation.title') },
+      ]} /></div>} />
+  </section>
+
   return (
     <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel">
       {runtimeAlert}
@@ -284,6 +299,7 @@ export function RendererWorkspacePanel(props: {
                 ariaLabel={props.t('renderer.workspaceTitle')}
                 items={[
                   { id: 'packages', label: props.t('renderer.packages') },
+                  { id: 'scripts', label: '脚本' },
                   { id: 'participation', label: props.t('participation.title') },
                 ]}
               />
@@ -788,6 +804,7 @@ function PackageControls(props: {
           return (
             <div key={module.moduleId} className={styles.runtimeModuleRow}>
               <strong>{module.moduleId}</strong>
+              {module.runtimeKind === 'client-worker' ? <small>Worker · 线程隔离，可访问浏览器网络与存储</small> : null}
               <span className={module.desired.enabled ? styles.runtimeEnabledText : styles.runtimeDisabledText}>
                 {props.t(module.desired.enabled ? 'renderer.enabled' : 'renderer.disabled')}
               </span>
@@ -800,7 +817,7 @@ function PackageControls(props: {
         })}
       </div>
       {modules.map(module => <div key={`${module.moduleId}:grants`}>
-        {module.desired.enabled && module.runtimeKind === 'client' && module.requestedUiCapabilities?.includes('ui.notify') ? <label>
+        {module.desired.enabled && (module.runtimeKind === 'client' || module.runtimeKind === 'client-worker') && module.requestedUiCapabilities?.includes('ui.notify') ? <label>
           <input type="checkbox" disabled={props.busy} checked={module.desired.grants?.ui?.includes('ui.notify') ?? false}
             onChange={event => void props.onGrant(module, { ui: event.currentTarget.checked ? ['ui.notify'] : [] })} />
           {module.moduleId}: {props.t('renderer.allowNotifications')}

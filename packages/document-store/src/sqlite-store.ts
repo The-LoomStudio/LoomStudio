@@ -207,7 +207,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     assertExpectedVersion(input.id, existing, input.expectedVersion)
 
     const document: DocumentRecord = {
-      id: input.id ?? createId(input.type),
+      id: input.id ?? createId(input.type, id => getCurrent(database, id) !== undefined),
       type: input.type,
       version: existing ? existing.version + 1 : 1,
       content: input.content,

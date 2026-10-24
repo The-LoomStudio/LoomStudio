@@ -1,5 +1,6 @@
 import { createAgentStore } from '@loom-studio/application-data'
 import {
+  createObservationStore,
   createAgentToolRegistry,
   createOfficialAgentToolRegistry,
   createApplicationRuntime,
@@ -63,6 +64,32 @@ const testContentTool: ToolDefinition = {
 }
 
 describe('Native Function Tool Loop', () => {
+  it.each(['count', 'bytes'] as const)('bounds producer tool evidence (%s) without interrupting tool execution', async budget => {
+    let calls = 0
+    const fixture = await createFixture({
+      execute: ({ invocation, scope }) => {
+        if (budget === 'bytes') scope?.observeToolEvent?.({ kind: 'receipt', content: 'x'.repeat(1024 * 1024) })
+        for (let index = 0; index < 140; index += 1) scope?.observeToolEvent?.({ kind: 'receipt', index })
+        return { invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [{ type: 'text', text: 'done' }] }
+      },
+      invokeChat: async () => ++calls === 1 ? toolCall('bounded', 'read_context', { query: 'test' }) : {
+        provider: 'test', model: 'test-model', text: 'done', finishReason: 'stop', message: { role: 'assistant', content: 'done' },
+      },
+    })
+    try {
+      await expect(fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'test' }))
+        .resolves.toMatchObject({ entries: { assistant: { entry: { content: 'done' } } } })
+      const run = fixture.observations.list({ kind: 'run' }).records[0]!
+      const request = fixture.observations.children(run.id).find(entry => entry.kind === 'request' && entry.providerStep === 1)!
+      const evidence = fixture.observations.get(request.id)!
+      expect(evidence.availability).toBe('partial')
+      expect(evidence.request?.toolExecutions?.[0]?.events).toHaveLength(budget === 'count' ? 128 : 1)
+      if (budget === 'bytes') expect(evidence.request?.toolExecutions?.[0]?.resultOmitted).toBe(true)
+      expect(evidence.request?.toolExecutions?.[0]?.status).toBe('completed')
+      expect(calls).toBe(2)
+    } finally { fixture.close() }
+  })
+
   it('stops an output-limited step with no visible progress and preserves native reasoning', async () => {
     let calls = 0
     const fixture = await createFixture({ execute: vi.fn(), invokeChat: async () => {
@@ -231,7 +258,7 @@ describe('Native Function Tool Loop', () => {
       const page = await fixture.runtime.getNarrativePage({ timelineId: timeline.timeline.id })
       expect(page.nodes.map(node => node.body.raw)).toEqual(scenario === 'success' ? ['Tool story.'] : scenario === 'conflict' ? ['Concurrent story.'] : [])
       if (scenario === 'success') {
-        expect(toolResult).toMatchObject({ content: [{ type: 'json', value: { nodeId: page.nodes[0]!.id } }] })
+        expect(toolResult).toMatchObject({ content: [{ type: 'json', value: { floor: page.nodes[0]!.floor, path: `/narrative/${page.nodes[0]!.floor}.md` } }] })
         const changeset = fixture.engine.database.prepare('SELECT reason FROM changesets WHERE id = ?').get(page.nodes[0]!.source!.changesetId!)
         expect(changeset).toEqual({ reason: 'application.tool.appendNarrative' })
       } else {
@@ -250,7 +277,7 @@ describe('Native Function Tool Loop', () => {
       agentTools: createOfficialAgentToolRegistry(),
       tools: [officialEditNarrativeTool],
       invokeChat: async () => steps++ === 0
-        ? toolCall('edit-branch-node', 'edit_narrative', { nodeId, content: 'Agent edit' })
+        ? toolCall('edit-branch-node', 'edit_narrative', { floor: scenario === 'outside' ? 2 : 1, content: 'Agent edit' })
         : { provider: 'test', model: 'test-model', text: 'Done.', finishReason: 'stop', message: { role: 'assistant', content: 'Done.' } },
     })
     try {
@@ -299,8 +326,8 @@ describe('Native Function Tool Loop', () => {
         expect(injected).toBe(true)
         expect(result).toMatchObject({ error: { code: 'narrative.head_conflict' } })
       } else if (scenario === 'outside') {
-        expect(result).toMatchObject({ error: { code: 'narrative.node_not_in_branch' } })
-      } else expect(result).toMatchObject({ content: [{ type: 'json', value: { nodeId: edited.nodes[0]!.id, branchId: branch.id } }] })
+        expect(JSON.stringify(result)).toContain('floor 2 is unavailable')
+      } else expect(result).toMatchObject({ content: [{ type: 'json', value: { floor: 1, path: '/narrative/1.md' } }] })
     } finally {
       await fixture.close()
     }
@@ -630,6 +657,21 @@ describe('Native Function Tool Loop', () => {
     })).entries.map(entry => entry.entry)
 
     expect(requests).toHaveLength(3)
+    const observedRun = fixture.observations.list({ kind: 'run' }).records[0]!
+    const observedRequests = fixture.observations.children(observedRun.id).filter(entry => entry.kind === 'request')
+      .sort((a, b) => a.providerStep! - b.providerStep!)
+    expect(observedRequests).toHaveLength(3)
+    expect(fixture.observations.list({ kind: 'api' }).records).toHaveLength(0)
+    observedRequests.forEach((entry, index) => {
+      const request = fixture.observations.get(entry.id)!.request!
+      expect(request.messages).toEqual(requests[index]!.messages)
+      expect(request.tools).toEqual(requests[index]!.tools)
+      expect(request.phase).toBe('completed')
+    })
+    expect(fixture.observations.get(observedRequests[0]!.id)!.request!.toolExecutions).toEqual([
+      expect.objectContaining({ status: 'completed', events: [expect.objectContaining({ kind: 'approval' })],
+        result: expect.objectContaining({ contextMounts: [expect.objectContaining({ id: 'context-weather' })] }) }),
+    ])
     expect(requests[1]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'tool', tool_call_id: 'provider-native-call' }),
       { role: 'system', content: '[Fresh Context: Weather]\nFresh weather context.' },
@@ -1220,7 +1262,9 @@ async function createFixture(input: {
   const narratives = createNarrativeStore({ engine, createId, now })
   const logs = createMemoryLogSink({ capacity: 100 })
   const logger = createRootLogger({ service: 'test', instanceId: 'test', sinks: [logs] })
+  const observations = createObservationStore()
   const runtime = createApplicationRuntime({
+    observations,
     agents,
     agentTools: input.agentTools ?? createAgentToolRegistry(
       tools,
@@ -1270,10 +1314,11 @@ async function createFixture(input: {
   return {
     engine,
     runtime,
+    observations,
     narratives,
     logs,
     sessionId,
-    close: () => engine.close(),
+    close: () => { observations.dispose(); engine.close() },
   }
 }
 

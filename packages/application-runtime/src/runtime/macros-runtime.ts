@@ -96,7 +96,7 @@ export async function inspectApplicationMacros(
       timelineId: page.timeline.id,
       branchId: page.branch.id,
     })
-    base = await readAgentTurnVariables(ctx, card ? card.userName : runtimeContext?.fallbackUserName, state.value, card?.name ?? runtimeContext?.cardName)
+    base = await readAgentTurnVariables(ctx, state.value, card?.name ?? runtimeContext?.cardName)
     context = {
       timelineTarget: { timelineId: page.timeline.id, branchId: page.branch.id },
       global: base.snapshot.global,
@@ -109,7 +109,7 @@ export async function inspectApplicationMacros(
     }
   } else if (input.cardId) {
     const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
-    base = await readAgentTurnVariables(ctx, card.content.userName, undefined, card.content.name)
+    base = await readAgentTurnVariables(ctx, undefined, card.content.name)
     context = { global: base.snapshot.global, cardId: card.id, ...(preset ? { presetId: preset.id } : {}) }
     if (card.content.macros || card.content.macroOptions) staticSources.push({ sourceId: `card:${card.id}`, sourceKind: 'card', sourceLabel: card.content.name, macros: card.content.macros ?? {}, macroOptions: card.content.macroOptions })
   } else {

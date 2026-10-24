@@ -21,6 +21,15 @@ export type ExtensionNarrativeSnapshot = {
   missingFloors?: number[]
 }
 export type ExtensionNarrativeActivity = {
+  /** Post-commit invalidation hint. Re-read and validate the source before writing. */
+  kind: 'changed'
+  timelineId: string
+  branchId: string
+  headNodeId: string | null
+  /** Identifies the committed changeset; it is not a sortable branch revision. */
+  changesetId: string
+  committedAt: string
+} | {
   kind: 'input' | 'run-completed'
   timelineId: string
   branchId: string

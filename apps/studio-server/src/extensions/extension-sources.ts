@@ -24,6 +24,7 @@ export type ExtensionSourceFailure = {
 
 export async function discoverExtensionSources(options: {
   repositoryDirectory?: string
+  bundledDirectories?: readonly string[]
   installedDirectory: string
   devLinksFile: string
 }): Promise<{
@@ -43,6 +44,7 @@ export async function discoverExtensionSources(options: {
       failures,
     )
   }
+  sources.push(...(options.bundledDirectories ?? []).map(directory => ({ kind: 'repository' as const, directory })))
   await collectSources(
     { kind: 'dev-link', directory: options.devLinksFile },
     () => readDevLinks(options.devLinksFile),
@@ -56,15 +58,22 @@ export async function discoverExtensionSources(options: {
     failures,
   )
 
+  const seen = new Set<string>()
   for (const source of sources) {
     try {
       const directory = await realpath(source.directory)
+      const identity = JSON.stringify([source.kind, directory])
+      if (seen.has(identity)) continue
+      seen.add(identity)
       const manifest = parseExtensionManifest(JSON.parse(await readFile(resolve(directory, 'manifest.json'), 'utf8')) as unknown)
       if (source.declaredPackageId && source.declaredPackageId !== manifest.id) {
         throw new Error(`Dev link package id ${source.declaredPackageId} does not match manifest id ${manifest.id}`)
       }
       for (const moduleManifest of manifest.modules ?? []) {
         await assertEntryInsideDirectory(directory, moduleManifest.entry)
+      }
+      for (const background of manifest.contributes?.backgrounds ?? []) {
+        await assertEntryInsideDirectory(directory, background.image)
       }
       for (const rule of manifest.contributes?.transformRules ?? []) {
         await assertEntryInsideDirectory(directory, rule.source)

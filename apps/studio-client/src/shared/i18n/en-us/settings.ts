@@ -1,6 +1,19 @@
 import type { messages as zhCN } from '../zh-cn/settings.js'
 
 export const messages = {
+  "appearance.extensionBackgroundGroup": "Extension · {{name}}",
+  "appearance.cardBackgroundGroup": "Character · {{name}}",
+
+
+  "appearance.myBackgrounds": "My backgrounds",
+  "appearance.importBackground": "Import backgrounds",
+  "appearance.removeNamedBackground": "Remove background “{{name}}”",
+  "appearance.backgroundLoading": "Loading backgrounds…",
+  "appearance.backgroundWorking": "Saving backgrounds…",
+  "appearance.backgroundLoadFailed": "Backgrounds have not loaded. Please retry.",
+  "appearance.backgroundImageLimit": "Use PNG, JPEG, WebP, GIF or AVIF images up to 64 MiB each.",
+  "appearance.backgroundUploadFailed": "Background upload failed.",
+
   'settings.themes': "Themes and styles",
   'settings.themeMain': "Main theme",
   'settings.themeDefault': "Studio default",

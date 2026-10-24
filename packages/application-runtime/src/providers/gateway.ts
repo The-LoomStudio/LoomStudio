@@ -4,6 +4,7 @@ import {
   createOfficialProviderAdapterRegistry,
   createProfiledAiGateway,
   officialFakeModelId,
+  parseProviderOptions,
   type AiGatewayCapabilityRegistry,
   type ProfiledAiGateway,
   type ProviderAdapterRegistry,
@@ -14,6 +15,8 @@ import type { SecretStore } from '@loom-studio/secret-store'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import { fetch as undiciFetch, ProxyAgent } from 'undici'
+import type { ObservationStore } from '../observability/types.js'
+import { safeGenerationConfiguration } from '../observability/gateway.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { readDocument } from '../foundation/document-store.js'
 import type {
@@ -27,9 +30,21 @@ export function createDocumentBackedProfiledAiGateway(options: {
   documents: DocumentStore
   registry: AiGatewayCapabilityRegistry
   secrets?: SecretStore
+  observations?: ObservationStore
 }): ProfiledAiGateway {
-  return createProfiledAiGateway({
-    registry: options.registry,
+  const buildGateway = (id?: string, profileId?: string) => createProfiledAiGateway({
+    registry: id && options.observations ? {
+      ...options.registry,
+      invokeRegistered: input => options.registry.invokeRegistered({
+        ...input,
+        onPrepared: evidence => options.observations!.capture(() => options.observations!.patch(id, {
+          request: { phase: 'invoking', input: evidence.input,
+            capability: { profileId: profileId!, providerId: input.providerId, capabilityId: input.capabilityId },
+            providerCallId: evidence.providerCallId,
+            configuration: safeGenerationConfiguration(evidence.profileConfig) },
+        })),
+      }),
+    } : options.registry,
     resolveProfile: async profileId => {
       const profile = await readDocument<AiCapabilityProfileContent>(
         options.documents,
@@ -67,6 +82,45 @@ export function createDocumentBackedProfiledAiGateway(options: {
       },
     },
   })
+  // A per-call closure preserves correlation through asynchronous profile/credential resolution.
+  function prepare(input: Parameters<ProfiledAiGateway['invoke']>[0]) {
+    const id = createId('api')
+    const startedAt = performance.now()
+    options.observations?.capture(() => options.observations!.write({
+      id, kind: 'api', title: input.profileId, status: 'running',
+      origin: { actor: input.caller?.id },
+      request: { phase: 'prepared', capability: { profileId: input.profileId } },
+    }))
+    const complete = async (result: ReturnType<ProfiledAiGateway['invoke']>) => {
+      try {
+        const value = await result
+        options.observations?.capture(() => options.observations!.patch(id, {
+          status: 'completed', durationMs: performance.now() - startedAt,
+          request: { phase: 'completed', providerCallId: value.providerCallId, response: value.output },
+        }))
+        return value
+      } catch (error) {
+        options.observations?.capture(() => {
+          const status = input.signal?.aborted || (error instanceof Error && error.name === 'AbortError') ? 'aborted' : 'failed'
+          options.observations!.patch(id, { status, durationMs: performance.now() - startedAt,
+            diagnostic: error instanceof Error ? error.message : String(error), request: { phase: status } })
+        })
+        throw error
+      }
+    }
+    return { gateway: buildGateway(id, input.profileId), complete }
+  }
+  if (!options.observations) return buildGateway()
+  return {
+    invoke: input => { const call = prepare(input); return call.complete(call.gateway.invoke(input)) },
+    createRun: input => {
+      const call = prepare(input)
+      const run = call.gateway.createRun(input)
+      const result = call.complete(run.result)
+      result.catch(() => undefined)
+      return { ...run, result }
+    },
+  }
 }
 
 export function createFakeAiGateway(): AiGateway {
@@ -81,6 +135,7 @@ export function createDocumentBackedAiGateway(options: {
   fallback?: AiGateway
   resolveProxyUrl?: () => string | undefined
   providerAdapters?: ProviderAdapterRegistry
+  observations?: ObservationStore
 }): AiGateway {
   const fallback = options.fallback ?? createFakeAiGateway()
   const providerAdapters = options.providerAdapters ?? createOfficialProviderAdapterRegistry()
@@ -154,6 +209,14 @@ export function createDocumentBackedAiGateway(options: {
                 || Boolean(message.tool_calls && message.tool_calls.length > 0)
             }
             return typeof message.content === 'string' && message.content.trim().length > 0
+          })
+          const providerKind = resolved.provider.kind
+          options.observations?.capture(() => {
+            const id = input.request.metadata?.observationRequestId
+            if (typeof id === 'string') options.observations!.patch(id, { request: {
+              messages: sanitizedMessages,
+              configuration: { provider: providerKind, ...safeGenerationConfiguration(parseProviderOptions(providerKind, input.request.providerOptions)?.[providerKind]) },
+            } })
           })
           return await invokePlatformGateway(createAiGateway(), {
             provider: resolved.provider,

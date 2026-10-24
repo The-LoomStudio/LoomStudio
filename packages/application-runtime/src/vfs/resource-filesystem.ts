@@ -1,12 +1,12 @@
 import type { WorkspaceMutation } from '../runtime/workspace-runtime.js'
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import type {
   PromptResourceNodePatch,
   PromptResourceNodeDraft,
   PromptResourceStore,
   PromptResourceTreeNode,
 } from '@loom-studio/application-data'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { createId, type JsonObject, type JsonValue } from '@loom-studio/shared'
 import { applyPatch, parsePatch } from 'diff'
 import { parse, stringify } from 'yaml'
 import { listVfs, readVfs, searchVfs, vfsError, vfsPath } from './read.js'
@@ -130,7 +130,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
       if (args.length !== 2 || source.kind !== 'directory' || !draft || typeof draft.name !== 'string'
         || (draft.kind !== 'file' && draft.kind !== 'directory') || (draft.content !== undefined && typeof draft.content !== 'string'))
         throw vfsError('vfs.invalid_arguments', 'Use ctx.create(directory, { name, kind: "file" | "directory", content?: string }).')
-      operations.push({ kind: 'create', entry: { id: randomUUID(), parentId: binding.entryId || undefined, name: draft.name,
+      operations.push({ kind: 'create', entry: { id: createId(), parentId: binding.entryId || undefined, name: draft.name,
         ...(draft.kind === 'directory' ? { kind: 'directory' } : { kind: 'file', content: { text: draft.content as string ?? '' } }) } })
       resultPath = `${path}/${draft.name}`
     } else {
@@ -405,7 +405,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
     async write(
       args: unknown[],
       signal: AbortSignal,
-      operationId: string = randomUUID(),
+      operationId: string = createId(),
       approvalControl?: VfsApprovalControl,
     ) {
       if (args.length < 2 || args.length > 3)
@@ -444,8 +444,8 @@ export function createResourceVfs(options: ResourceVfsOptions) {
         if (typeof args[1] !== 'string' || !args[1].trim())
           throw vfsError('vfs.value_invalid', 'Narrative content must be nonempty text.')
         await approveMutation({ action: 'replace', path, kind: 'narrative', before: file.content!, after: args[1] }, signal, approvalControl)
-        const result = await options.narrative!.write({ nodeId: binding.nodeId, expectedRaw: binding.raw, content: args[1] })
-        return { path: `/narrative/${encodeURIComponent(result.nodeId)}.md`, modified: true }
+        await options.narrative!.write({ nodeId: binding.nodeId, expectedRaw: binding.raw, content: args[1] })
+        return { path, modified: true }
       }
       if (binding?.kind === 'prompt-resource') {
         requireAuthorMode()

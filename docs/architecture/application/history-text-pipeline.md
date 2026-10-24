@@ -67,7 +67,7 @@ Studio 将定义编辑、预设使用配置和运行检查分离：文本资源�
 
 ## 当前限制
 
-- Archive / Summary 尚无正式 Store 字段；Pipeline 已保留 `archived` 排除合同，但不会伪造归档状态；
+- Agent Session 已持久化 `work-summary`、摘要策略与任务记录；历史读取按已采用摘要的退休边界选择有效工作段，保留原始 Transcript。摘要的来源校验与采用合同见[Agent Runtime](agent/runtime-and-session.md)。Pipeline 的 `archived` 仍是投影输入合同，没有通用的持久化 Entry Archive 状态，不能把摘要退休解释为删除或归档原记录；
 - 内置 `listRenderers` 仍只返回官方兼容 Renderer；专门 Runtime 面板从 Client Renderer Host 读取实际 Extension / Loom Script Registry；
 - Node Render Mount 第一版限制为每个 Node 64 个 Mount、20 万字符；
 - Regex 使用 JavaScript 原生 `RegExp`，由输入、输出、Entry 和 Match 预算限制资源消耗，尚未进入可中断的独立执行进程。

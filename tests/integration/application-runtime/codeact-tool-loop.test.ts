@@ -159,7 +159,7 @@ print(await ctx.write(result.path, "EDITED_STORY"));
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
       const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
       expect(result).toMatchObject({ status: 'completed' })
-      expect(JSON.stringify(result)).toContain(`/narrative/${page.nodes.at(-1)!.id}.md`)
+      expect(JSON.stringify(result)).toContain(`/narrative/${page.nodes.at(-1)!.floor}.md`)
     } finally { f.engine.close() }
   })
 
@@ -197,7 +197,7 @@ await ctx.write(node.path, "STALE_AGENT_EDIT");
 
   it('does not bypass old-history authorization through an exact VFS path', async () => {
     const f = await fixture('json', 'stop', `
-const old = await ctx.read("/narrative/node-secret.md");
+const old = await ctx.read("/narrative/1.md");
 print(old);
 `)
     try {
@@ -244,8 +244,8 @@ await ctx.appendNarrative({ content: "MUST_NOT_APPEND" });
       expect(results).toHaveLength(1)
       expect(results[0]!.entry).toMatchObject({ status: 'aborted' })
       const text = JSON.stringify(results[0]!.entry)
-      expect(text).toContain(node.id)
-      expect(text).toContain(`/narrative/${node.id}.md`)
+      expect(text).not.toContain(node.id)
+      expect(text).toContain(`/narrative/${node.floor}.md`)
       expect(text).not.toContain('MUST_NOT_APPEND')
       expect(f.calls).toHaveLength(1)
     } finally { f.engine.close() }
@@ -267,13 +267,13 @@ await ctx.appendNarrative({ content: "MUST_NOT_APPEND" });
       expect(entries.find(entry => entry.entry.kind === 'tool-result')!.entry).toMatchObject({ status: 'completed' })
       expect(JSON.stringify(entries)).toContain(after.nodes.at(-1)!.id)
       const resultText = JSON.stringify(entries.find(entry => entry.entry.kind === 'tool-result')!.entry)
-      expect(resultText.split(`/narrative/${after.nodes.at(-1)!.id}.md`)).toHaveLength(2)
+      expect(resultText.split(`/narrative/${after.nodes.at(-1)!.floor}.md`)).toHaveLength(2)
       await expect(f.runtime.getPromptResource({ resourceId: f.setting.id }))
         .resolves.toMatchObject({ resource: { rootNode: { children: [{ body: 'KEY_SENTINEL belongs to C.' }] } } })
     } finally { f.engine.close() }
   })
 
-  it.each(['content', 'json'] as const)('reports committed Narrative IDs when %s fails afterward', async mode => {
+  it.each(['content', 'json'] as const)('reports committed Narrative floors when %s fails afterward', async mode => {
     const f = await fixture(mode, 'stop', 'await ctx.appendNarrative({ content: "COMMITTED_STORY" }); throw new Error("later failure");')
     try {
       const { card } = await f.runtime.createCard({ name: 'Story', opening: 'OPENING' })
@@ -287,8 +287,8 @@ await ctx.appendNarrative({ content: "MUST_NOT_APPEND" });
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
       const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
       expect(result).toMatchObject({ status: 'failed' })
-      expect(JSON.stringify(result)).toContain(node.id)
-      expect(JSON.stringify(result)).toContain(`/narrative/${node.id}.md`)
+      expect(JSON.stringify(result)).not.toContain(node.id)
+      expect(JSON.stringify(result)).toContain(`/narrative/${node.floor}.md`)
     } finally { f.engine.close() }
   })
 

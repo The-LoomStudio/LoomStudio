@@ -122,14 +122,14 @@ Guest 执行预算为 10 秒，宿主 ctx 操作（包括 API 与审批）等待
 - `ctx.ls(path?, { offset?, limit?, format? }?)`：默认一层文本目录与状态，默认 50 项；`format: "json"` 返回完整路径、类型、状态、total、offset、hasMore 和可选 nextOffset。空目录与翻到末尾在文本中分别提示。
 - `ctx.search({ path?, terms, match?, limit? })`：同一文件内 all/any 字面匹配，返回路径、行范围和少量原文。
 - `ctx.read(path, { startLine?, endLine? }?)`：纯正文字符串，每次最多 16384 字符；读取路径/行范围另外显示在结果中。
-- `ctx.readNarrative({ selection, maxNodes?, maxCharacters? })`：采样读取当前授权 Timeline 的历史节点，返回结构化 JSON 对象（节点列表、拼接正文与截断标记），受节点上限和字符预算保护。
+- `ctx.readNarrative({ selection, maxNodes?, maxCharacters?, view? })`：按当前分支楼层采样授权 Timeline 的历史正文。`selection` 支持 `{ kind: "floors", from, through }`、`{ kind: "tail", count, throughFloor? }`、`{ kind: "range", afterFloor?, throughFloor? }`，不接受节点 ID 字段。返回节点的 `floor / path`、拼接正文、`complete` 以及可选 `nextBeforeFloor / missingFloors`；`view` 可选 `raw / prompt`，读取仍受节点上限、字符预算及历史授权约束。
 - `ctx.appendNarrative({ content })`：向当前绑定的 Timeline/Branch 追加非空剧情正文；不能传目标 ID，返回 `{ path }`。路径可用于 `ctx.read`，完整读取后可用 `ctx.write` 替换，替换成功返回新节点路径。无绑定或非法参数明确失败。追加不推进默认投影 Head；即使后续脚本失败或取消，结果仍保留已提交路径，不能盲目重试。
 - 宿主方法返回值支持结构化 `JsonValue`，不强制将对象转换为扁平字符串。其余写方法（`write`, `patch`, `create`, `delete` 等）按授权受控提供。
 - `ctx.readValue(path)`：直接读取 State 值文件为 JSON 值，并建立完整读后写基线；只支持 `/state/current.yaml` 和属性的 `@value.yaml`，不解析其他资源的 YAML。完整 JSON 超过 16384 字符则拒绝，不返回部分对象；普通 `ctx.read` 继续返回文本。
 - `ctx.write(path, value, { mode: "replace", allowTypeChange?: boolean })`：必须先完整读取同一路径；支持作者模式下的 Prompt Resource、State 属性及 Narrative 节点正文替换。使用资源版本、State Revision 或正文读取基线做冲突检查。State 对象/数组改为其他类型默认报 `vfs.type_change`，有意改变类型需显式 `allowTypeChange: true`；该选项不跳过审批、CAS 或领域 Schema 校验，也不适用于文本资源。字符串不会自动解析成 YAML/JSON。
-- `ctx.patch(path, unifiedDiff)`：必须先读取覆盖所有修改上下文的正文范围；当前只允许 Prompt Resource 单文件 unified diff，按唯一旧文本上下文定位，不依赖行号，不支持模糊匹配、创建、删除或移动。
+- `ctx.patch(path, unifiedDiff)`：必须先读取覆盖所有修改上下文的正文范围；支持 Workspace 文本与 Prompt Resource 正文的单文件 unified diff，按唯一旧文本上下文定位，不依赖行号。两者均校验读取基线、执行对应写入审批及版本 CAS；Prompt Resource 另需作者模式，Workspace 不要求作者模式。State、Narrative 与 Metadata 不支持 patch，也不支持模糊匹配、创建、删除或移动。
 
-写入支持宿主 `approveMutation(preview, signal)` 回调：预览提供前后文本，State 使用 YAML 并附带目标与 Pointer；只返回 allow 或 deny/reason。审批期间取消不再写入，通过后仍由领域 CAS 拒绝过期版本。 Agent Preset 的 `approvalPolicy` 按共享工作区写入、设定资源写入、State 写入、剧情正文修改、历史读取及作者模式分别选择 `ask / allow / deny`，缺省为询问。策略只处理已有审批点，不扩大挂载或读取范围，也不替代工具挂载与 Registry 权限；不经过这些审批点的操作（如剧情追加）不因此新增审批。策略随后续 Run 读取的 Preset 生效。Agent Run 已将预览转为等待事件，Studio Agent Panel 提供允许/拒绝弹窗并回传决定；关闭弹窗只隐藏预览，可从当前 Session 的“查看审批”重新打开。订阅每轮返回待审批快照，刷新后重新观察存活 Run 可以恢复预览；未提供 Run 回调的直接 Runtime 调用仍沿用此前直接写入行为。
+写入支持宿主 `approveMutation(preview, signal)` 回调：预览提供前后文本，State 使用 YAML 并附带目标与 Pointer；只返回 allow 或 deny/reason。审批期间取消不再写入，通过后仍由领域 CAS 拒绝过期版本。 Agent Preset 的 `approvalPolicy` 按共享工作区写入、设定资源写入、State 写入、剧情正文修改、历史读取及作者模式分别选择 `ask / allow / deny`，缺省为询问。策略只处理已有审批点，不扩大挂载或读取范围，也不替代工具挂载与 Registry 权限；不经过这些审批点的操作（如剧情追加）不因此新增审批。策略随后续 Run 读取的 Preset 生效。Agent Run 已将预览转为等待事件，Studio Agent Panel 提供允许/拒绝弹窗并回传决定；关闭弹窗只隐藏预览，可从当前 Session 的“查看审批”重新打开。订阅每轮返回待审批快照，刷新后重新观察存活 Run 可以恢复预览；直接 Runtime 调用即使没有 Run 审批回调，只要配置了 `approvalPolicy`，仍按策略决策：`allow` 放行、`deny` 拒绝、`ask`（包括未配置该项的默认值）因缺少 handler 而拒绝。只有策略与回调都未提供的旧路径才跳过此写入审批；其他挂载、访问和 CAS 限制继续生效。
 
 Narrative 追加复用 `ToolExecutionScope.narrative.appendNode`，与官方 `append_narrative` 共用当前 Run 的宿主目标绑定和 Head CAS；不经过 VFS 的资源/State 变更审批，也不新增单独的追加审批。工具本身仍须经现有挂载、调用验证与 Registry 审批。`/resources/.../@body.md` 是世界书节点正文，不是剧情；`/state` 是结构化状态，不能通过 `ctx.write` 代替剧情追加。
 
@@ -155,7 +155,7 @@ CodeAct 默认使用游玩视图：`/resources` 不显示、搜索或读取 disa
 
 `ctx.setAuthorMode(true)` 使用现有审批请求通道，以独立 `author-mode` 动作申请本轮 Run 的作者视图；无交互处理器默认拒绝。批准后可读取已挂载资源的 disabled 和 Metadata，修改仍需逐项审批。模式不绕过宿主 locked/hidden，不扩大挂载，不产生持久 grant。`false` 恢复游玩视图并清除读取基线，但不能抹去 Transcript 中已披露的信息。
 
-`/narrative/<节点标识>.md` 由宿主生成，采样返回的每个节点也附带 `path`。VFS 精确路径读取与目录发现复用有界 Narrative sampler，旧历史仍要求单次授权，审批等待沿用暂停预算。目录超过采样预算时明确失败，可改用小范围 `readNarrative` 发现路径。替换复用分支编辑和旧正文校验，不把旧路径重绑到替代节点。当前 `patch` 仍只支持作者模式中的 Prompt Resource。
+`/narrative/<floor>.md` 是当前绑定分支的固定楼层地址，例如 `/narrative/32.md`；由宿主生成，采样返回的每个节点也附带 `path`。修改正文后楼层路径保持不变，缺号不会重排；读取后目标改变时必须重新读取，不能沿用旧写入基线。VFS 精确路径读取与目录发现复用有界 Narrative sampler，旧历史仍要求单次授权，审批等待沿用暂停预算。目录超过采样预算时明确失败，可改用小范围 `readNarrative` 发现路径。替换复用分支编辑和旧正文校验；Narrative 正文当前不支持 `patch`，该方法仅支持 Workspace 文本与作者模式中的 Prompt Resource 正文。
 
 追加结果只展示简短已保存路径；脚本原样打印 `{ path }` 时不重复展示。后续失败或取消仍保留已完成记录。Narrative VFS 依赖现有默认上下文来源；未配置来源时明确失败，不因此绕过历史权限。
 

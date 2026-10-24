@@ -208,3 +208,15 @@ describe('Agent tool group identity and collapse', () => {
     expect(elements(closed).some(element => element.key === 'tool-0')).toBe(true)
   })
 })
+
+it('renders a tool argument draft as preparation, retaining its identity after commitment', () => {
+  const draft = { id: 'draft', runId: 'run', agentSessionId: 'session', sequence: 1, createdAt: '',
+    entry: { kind: 'tool-input', exposedName: 'codeact_json', rawInput: '{"source":', status: 'preparing' } }
+  const items = buildRenderItems([draft], { runId: 'run', status: 'running' })
+  expect(items[0]).toMatchObject({ kind: 'tool-group', tools: [{ id: 'draft', status: 'preparing', inputs: [{ label: '参数草稿', content: '{"source":' }] }] })
+  expect(buildRenderItems([draft], { runId: 'run', status: 'suspended' })[0])
+    .toMatchObject({ tools: [{ status: 'interrupted', label: 'codeact_json · 参数生成已中断，尚未执行' }] })
+  const committed = { ...draft, id: 'saved', presentationId: 'draft', entry: { kind: 'tool-invocation', invocationId: 'call', exposedName: 'codeact_json' } }
+  expect(buildRenderItems([committed], { runId: 'run', status: 'running' })[0])
+    .toMatchObject({ id: 'tool-group-draft', tools: [{ id: 'draft', status: 'running' }] })
+})

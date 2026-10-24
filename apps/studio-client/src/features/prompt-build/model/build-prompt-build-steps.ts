@@ -12,6 +12,7 @@ export type PromptBuildStep = {
 
 export function buildPromptBuildSteps(input: {
   card?: Card
+  userName?: string
   timeline?: NarrativeTimeline
   branch?: NarrativeBranch
   nodes?: NarrativeNode[]
@@ -37,7 +38,7 @@ export function buildPromptBuildSteps(input: {
       title: t('prompt.step.sourceSet'),
       rows: [
         { label: t('prompt.label.cardSnapshot'), value: card?.name ?? t('prompt.value.none') },
-        { label: t('prompt.label.userMacro'), value: card?.userName?.trim() || t('prompt.value.userFallback') },
+        { label: t('prompt.label.userMacro'), value: input.userName?.trim() || t('prompt.value.userFallback') },
         { label: t('prompt.label.preset'), value: card?.preset?.system?.trim() ? t('prompt.value.system') : t('prompt.value.none') },
         { label: t('prompt.label.branch'), value: input.branch ? shortId(input.branch.id) : t('prompt.value.none') },
         { label: t('prompt.label.narrativeChat'), value: t('prompt.value.acceptedEntries', { count: input.nodes?.length ?? 0 }) },

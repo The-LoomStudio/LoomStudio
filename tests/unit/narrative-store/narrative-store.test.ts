@@ -18,6 +18,21 @@ function createTestContext() {
 }
 
 describe('narrative store', () => {
+  it('reads the active branch head for both single and listed Timeline previews after edits', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      const story = await store.createTimeline({ actor, stateRevisionId: 'initial' })
+      const original = await store.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id,
+        nodeId: 'zz-original', expectedHeadNodeId: null, stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Original' } })
+      const edited = await store.editBranchNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id,
+        nodeId: original.node.id, expectedHeadNodeId: original.node.id, expectedBody: original.node.body,
+        body: { format: 'loom-markdown.v1', raw: 'Edited' } })
+      expect(edited.branch.headNodeId).not.toBe(original.node.id)
+      expect((await store.getTimeline(story.timeline.id))?.latestPreview).toBe('Edited')
+      expect((await store.listTimelines()).timelines[0]?.latestPreview).toBe('Edited')
+    } finally { await engine.close() }
+  })
+
   it('migrates pre-Workspace histories once without changing identities or inventing past work', async () => {
     const { engine, store, actor } = createTestContext()
     try {

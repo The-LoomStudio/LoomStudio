@@ -17,3 +17,9 @@ export function readLogReferences(record: LogRecord): { uri: string; type: Entit
   if (typeof uri === 'string' && parseResourceLink(uri)) refs.push({ uri, type: 'source' })
   return refs.filter((ref, index) => refs.findIndex(other => other.uri === ref.uri) === index)
 }
+
+
+export function logReferenceLabelKey(uri: string): string | undefined {
+  const reference = parseResourceLink(uri)
+  return reference?.kind === 'entity' ? `${reference.type}:${reference.id}` : undefined
+}

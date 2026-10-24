@@ -176,7 +176,12 @@ describe('extension prompt and model entrypoints', () => {
       { kind: 'global' },
       'example.prompt-model',
       undefined,
+      expect.objectContaining({ moduleId: 'server', instanceId: expect.any(String), parentCallId: expect.any(String), correlationId: expect.any(String) }),
     )
+    expect(invokeModel.mock.calls[0]![1]).toMatchObject({
+      packageId: 'example.prompt-model', moduleId: 'server',
+      parentCallId: buildPrompt.mock.calls[0]![4]!.parentCallId,
+    })
     expect(invokeModel.mock.calls[0]![0].signal).toBeInstanceOf(AbortSignal)
   })
 

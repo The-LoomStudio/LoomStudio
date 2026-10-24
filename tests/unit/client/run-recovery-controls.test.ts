@@ -48,6 +48,15 @@ function recoveryProps(overrides: Partial<RunRecoveryControlsProps> = {}): RunRe
 }
 
 describe('Run recovery controls', () => {
+  it('shows a recoverable provider error as failure while keeping recovery actions', () => {
+    const props = recoveryProps({ runRecovery: { target: 'agent', status: 'suspended', error: 'HTTP 404' }, abandonAgentRun: vi.fn(async () => {}) })
+    const html = renderToStaticMarkup(createElement(RunRecoveryControls, props))
+    expect(html).toContain('data-status="failed"')
+    expect(html).toContain('role="alert"')
+    expect(html).toContain('HTTP 404')
+    expect(html).toContain(props.t('runRecovery.abandon'))
+  })
+
   it('connects the narrative retry button to explicit redelivery and disables it while disconnected', () => {
     const onRetryNarrativeInput = vi.fn()
     const props = {

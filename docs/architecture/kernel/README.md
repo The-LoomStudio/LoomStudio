@@ -63,16 +63,18 @@ createKernel(options)
        标记 inactive
 ```
 
-`start()` 与 `stop()` 当前都是幂等操作。内建 RPC 在首次启动时注册；重复启动不会重复注册相同方法。
+`start()` 与 `stop()` 当前都是幂等操作。活动期间重复启动不会重复注册方法；停止会释放内建 RPC 注册和 Data Commit 订阅，之后再次启动会重新注册。
 
 ### 优雅停机与资源释放顺序
 
 服务关闭遵循“先停止接纳，再等待在途业务与清理依赖”的阶段化原则：
-1. 组合根（Studio Server）标记 `closing` 并停止接收新网络连接；
-2. Kernel 发布 `system.stopping` 事件，触发在途业务与 SSE 连接的 `AbortSignal` 取消通知；
-3. 等待在途 RPC、下载流或业务 Promise 安全完成或收敛为可恢复错误；
-4. Kernel 释放所有活动 Extension Scope；Extension 清理失败会记录错误，但 Kernel 仍在 `finally` 中收束为 inactive；
-5. 在退出进程与关闭数据库前，调度清理 Secret Store 中的未完成删除与积压凭据，最后关闭 SQLite Data Engine。
+
+1. 组合根（Studio Server）释放媒体监听，并调用 HTTP Server 的 `shutdown()`；HTTP 层拒绝新请求、停止监听，对在途请求的 `AbortController` 发出取消并关闭网络连接；
+2. HTTP 层等待已登记的请求 Promise 收敛，不用强制超时越过尚未完成的 Store 操作；
+3. 组合根释放 Script Runtime，然后调用 `kernel.stop()`；Kernel 此时发布 `system.stopping`，释放 Data Commit 订阅和所有活动 Extension Scope，并在 `finally` 中释放内建 RPC 注册、收束为 inactive；
+4. 组合根重试 Secret Store 待清理项，关闭 Observation Store，最后关闭 SQLite Data Engine。后续清理由嵌套 `finally` 保障，前序清理失败仍继续释放底层依赖。
+
+在途 HTTP 请求的取消与排空由 HTTP 层拥有，不依赖 `system.stopping` 事件。实现入口：[Server 组合根](../../../apps/studio-server/src/server.ts)、[HTTP 生命周期](../../../apps/studio-server/src/http/http-server.ts)与[Kernel 生命周期](../../../packages/kernel/src/kernel.ts)。
 
 ## 4. RPC 注册面
 

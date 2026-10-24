@@ -40,7 +40,7 @@ export const messages = {
   'search.scope.extension': '拡張機能',
   'search.keywords.model': 'API キー プロバイダー モデル LLM provider model key',
   'search.keywords.agent': 'Agent プリセット preset プロンプト prompt',
-  'search.keywords.user': 'マイリソース ペルソナ ユーザー設定 persona profile',
+  'search.keywords.user': 'マイページ リソース アバターを変更 私の名前 マイリソース ペルソナ ユーザー設定 persona profile',
   'search.keywords.play': 'プレイ キャラクター 開始 play game',
   'search.keywords.recent': '履歴 最近 物語 会話 Timeline Session history',
   'search.keywords.sessions': '履歴 ストーリー セッション timeline session history',

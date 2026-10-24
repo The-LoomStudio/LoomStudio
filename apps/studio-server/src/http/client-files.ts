@@ -20,7 +20,7 @@ const mediaTypes: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.wasm': 'application/wasm',
 }
-const apiPrefixes = ['/auth', '/rpc', '/trpc', '/health', '/assets', '/cards', '/extensions', '/extension-assets']
+const apiPrefixes = ['/auth', '/rpc', '/trpc', '/health', '/assets', '/cards', '/extensions', '/card-extensions', '/extension-assets']
 
 export async function serveClientFile(
   directory: string,

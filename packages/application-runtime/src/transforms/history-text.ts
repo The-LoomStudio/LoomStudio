@@ -341,7 +341,10 @@ function applyRule(input: {
   while ((match = input.regex.exec(input.text)) !== null) {
     found.push(match)
     if (found.length > input.maxMatches) throw new Error(`Text Transform Rule match budget exceeded: ${input.rule.id}`)
-    if (match[0].length === 0) input.regex.lastIndex += 1
+    if (match[0].length === 0) {
+      const codePoint = input.text.codePointAt(input.regex.lastIndex)
+      input.regex.lastIndex += (input.regex.unicode || input.regex.unicodeSets) && codePoint !== undefined && codePoint > 0xffff ? 2 : 1
+    }
   }
   if (!found.length) {
     return {

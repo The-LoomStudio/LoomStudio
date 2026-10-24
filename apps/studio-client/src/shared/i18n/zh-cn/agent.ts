@@ -167,6 +167,7 @@ export const messages = {
   'agent.tool.noOutput': '无输出',
   'agent.tool.failed': '失败',
   'agent.tool.interrupted': '已中断',
+  'agent.tool.preparing': '正在准备参数，尚未执行',
   'agent.tool.running': '执行中',
   'agent.tool.success': '成功',
 } as const

@@ -1,3 +1,4 @@
+import type { UserBackgroundLibrary } from '../../features/backgrounds/model/use-user-backgrounds.js'
 import { useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { ThemeSettings } from '../../features/themes/ui/theme-settings.js'
 import type { ThemeController } from '../../features/themes/model/theme-controller.js'
@@ -27,6 +28,9 @@ export function resolveNetworkSettingsPayload(
 }
 
 export function SettingsPanel(props: {
+  backgroundLibrary?: UserBackgroundLibrary
+  requestedCategory?: SettingsCategory
+  previewBackgroundId?: string
   themeController?: ThemeController
   busy: boolean
   customCss: string
@@ -43,6 +47,9 @@ export function SettingsPanel(props: {
 }) {
   const [category, setCategory] = useState<SettingsCategory>('general')
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
+  useEffect(() => {
+    if (props.requestedCategory) { setCategory(props.requestedCategory); setMobilePane('detail') }
+  }, [props.requestedCategory, props.previewBackgroundId])
   const [networkError, setNetworkError] = useState<string>()
   const [proxyMode, setProxyMode] = useState(props.networkSettings.proxyMode)
   const [proxyUrl, setProxyUrl] = useState(props.networkSettings.proxyUrl ?? '')
@@ -199,6 +206,8 @@ export function SettingsPanel(props: {
             </form>
           ) : category === 'appearance' ? (
             <BackgroundMaterialsView
+              previewBackgroundId={props.previewBackgroundId}
+              library={props.backgroundLibrary}
               t={props.t}
               backgrounds={backgrounds}
               followState={previewFollowState}

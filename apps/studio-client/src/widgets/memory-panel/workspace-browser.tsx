@@ -1,3 +1,4 @@
+import { createId } from '@loom-studio/shared'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Dialog, TextInput, SearchField, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, type MenuAction } from '@loom-studio/ui'
 import { ArrowLeft, Check, ChevronRight, Copy, Download, File, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image, MoreHorizontal, Pencil, Plus, RefreshCw, Save, Trash2, Upload } from 'lucide-react'
@@ -176,7 +177,7 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
     let operations: Operation[]
     let nextId = selectedId
     if (kind === 'file' || kind === 'directory') {
-      nextId = crypto.randomUUID()
+      nextId = createId()
       operations = [{ kind: 'create', entry: kind === 'file'
         ? { id: nextId, kind, name: name.trim(), parentId: dialog.parentId, content: { text: '' } }
         : { id: nextId, kind, name: name.trim(), parentId: dialog.parentId } }]
@@ -201,7 +202,7 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer())
       if (token !== generation.current) return
-      const id = crypto.randomUUID()
+      const id = createId()
       // Text uploads remain editable; invalid UTF-8 and other file types remain immutable binary blobs.
       const isText = file.type.startsWith('text/') || /\.(md|txt|json|ya?ml|toml|csv|tsv|log|js|ts|css|html|xml|svg)$/i.test(file.name)
       let content: string | number[] = Array.from(bytes)

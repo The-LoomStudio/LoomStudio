@@ -1,3 +1,5 @@
+import { messages as observation } from './zh-cn/observation.js'
+import { messages as userProfile } from './zh-cn/user-profile.js'
 import { messages as common } from './zh-cn/common.js'
 import { messages as sessions } from './zh-cn/sessions.js'
 import { messages as agent } from './zh-cn/agent.js'
@@ -14,6 +16,8 @@ import { messages as search } from './zh-cn/search.js'
 
 export const zhCN = {
   ...common,
+  ...observation,
+  ...userProfile,
   ...sessions,
   ...agent,
   ...resources,

@@ -126,6 +126,7 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
   validateTextResourceContributions(manifest.contributes?.textExtractors, 'Text Extractor')
   validateSettingContributions(manifest.contributes?.settings)
   validateStyleContributions(manifest)
+  validateBackgroundContributions(manifest)
   const scripts = new Set<string>()
   for (const script of manifest.contributes?.loomScripts ?? []) {
     if (!script.id || !extensionStorageTokenPattern.test(script.id) || scripts.has(script.id)) throw new Error(`Manifest Loom Script id is invalid or duplicated: ${script.id}`)
@@ -199,7 +200,10 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     if (!moduleManifest.id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(moduleManifest.id)) throw new Error('Manifest module id is invalid')
     if (moduleIds.has(moduleManifest.id)) throw new Error(`Manifest module id must be unique: ${moduleManifest.id}`)
     moduleIds.add(moduleManifest.id)
-    if (moduleManifest.runtime !== 'server' && moduleManifest.runtime !== 'client') throw new Error(`Manifest module runtime is invalid: ${moduleManifest.id}`)
+    if (moduleManifest.runtime !== 'server' && moduleManifest.runtime !== 'client' && moduleManifest.runtime !== 'client-worker') throw new Error(`Manifest module runtime is invalid: ${moduleManifest.id}`)
+    if (moduleManifest.runtime === 'client-worker' && Object.values(moduleManifest.contributes ?? {}).some(items => Array.isArray(items) && items.length)) {
+      throw new Error(`Worker modules use runtime host APIs and cannot declare DOM or server contributions: ${moduleManifest.id}`)
+    }
     if (!moduleManifest.entry) throw new Error(`Manifest module entry is required: ${moduleManifest.id}`)
     for (const event of moduleManifest.contributes?.events ?? []) {
       if (!event.name.startsWith(`${manifest.id}.`)) throw new Error(`Manifest event must use package namespace: ${event.name}`)
@@ -294,6 +298,30 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
       if (requested !== undefined && typeof requested !== 'boolean') {
         throw new Error(`Module capabilities.${capability} must be a boolean: ${moduleManifest.id}`)
       }
+    }
+  }
+}
+
+function validateBackgroundContributions(manifest: Partial<ExtensionManifest>): void {
+  const backgrounds = manifest.contributes?.backgrounds
+  if (backgrounds === undefined) return
+  if (!Array.isArray(backgrounds)) throw new Error('Manifest backgrounds must be an array')
+  if (backgrounds.length && manifest.participation === 'timeline') throw new Error('Timeline packages cannot contribute static backgrounds')
+  const ids = new Set<string>()
+  for (const background of backgrounds) {
+    if (!isRecord(background) || typeof background.id !== 'string'
+      || !extensionStorageTokenPattern.test(background.id) || ids.has(background.id)) {
+      throw new Error('Manifest background id is invalid or duplicated')
+    }
+    ids.add(background.id)
+    if (typeof background.name !== 'string' || typeof background.description !== 'string') throw new Error('Manifest background name and description are required')
+    assertOptionalManifestText(background.name, 'background name', 255)
+    assertOptionalManifestText(background.description, 'background description', 2_048)
+    const image = background.image
+    if (typeof image !== 'string' || image !== image.trim() || isAbsolute(image)
+      || /[\\:%?#\x00-\x1f]/.test(image) || !/\.(png|jpe?g|webp|gif|svg|avif)$/i.test(image)
+      || image.replace(/^\.\//, '').split('/').some(part => part === '..' || part === '.' || part === '')) {
+      throw new Error('Manifest background image must be a package-relative image file without traversal, query or hash')
     }
   }
 }

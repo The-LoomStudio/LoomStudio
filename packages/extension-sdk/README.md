@@ -94,9 +94,8 @@ Host abort 并清理旧实例，再按新目标建立实例；不修改用户的
 这不是全部历史修订的事件流。未声明 Timeline 参与的共享模块不会因故事切换而重建，目标为空。
 扩展异步处理和直接 DOM/定时器必须使用 `ctx.signal` 并在取消或 dispose 时清理。
 
-这不是已完成的所有入口隔离声明：已接受 Prompt 快照的后续消费、
-通用存储/资产写回及模块全局停用仍在实施，进度以
-[故事级采用计划](../../docs/workbench/plans/extension-story-participation-plan.md)为准。
+已接受 Prompt 的后续 Step / 恢复会继续复核原始扩展凭据；受管工作中的通用存储和资产写回已接入同一 Data Engine 的事务守卫，不能以暂停后的新代次重新授权旧结果。具体提交边界见[Timeline 扩展采用](../../docs/architecture/application/extension/timeline-participation.md)。
+模块启停仍按 Module 管理；独立的 Package 全局总开关、跨声明迁移与签名系统尚未实现，不能以所有模块关闭推断整个资源包停用。
 原生 Node.js 的定时器、网络和文件操作不是安全沙箱内的能力，平台取消不能强杀任意扩展代码。
 
 ## 开发与发行
@@ -105,7 +104,7 @@ Host abort 并清理旧实例，再按新目标建立实例；不修改用户的
 `official/extensions/` 只保留随主程序发行的轻量内容。
 开发者自行构建并在扩展中心重载，宿主不执行依赖安装、构建或生命周期脚本。
 TS、TSX/React、Vue 都可以作为源码语言，发行入口须是可加载的 JS；
-浏览器依赖及 CSS 由扩展自行打包或携带，不借用主程序的框架依赖。
+同文档 Client Module 的 `react`、`react-dom`、`react-dom/client`、`react/jsx-runtime`、`react/jsx-dev-runtime` 与 `@loom-studio/ui` 使用宿主 import map，构建时标记为 external，复用宿主实例。其他浏览器依赖及扩展自身 CSS 由扩展打包或携带；iframe 是独立文档，不继承此共享合同。详见[宿主共享前端模块](../../docs/architecture/extensions/client-renderer-host.md#宿主共享前端模块)。
 Renderer 的 `mount(root, context)` 接收 HTMLElement；扩展自行挂载并返回销毁句柄。
 
 源码分支可以忽略 dist，另行提供 Git 发行分支或 Release 成品 ZIP。

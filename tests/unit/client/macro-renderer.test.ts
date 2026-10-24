@@ -7,7 +7,7 @@ describe('renderTemplateMacros', () => {
     const context = createVariableRenderContext({
       global: { user: { name: 'Snapshot User' }, object: { name: 'not a scalar' } },
       timeline: { hp: 17 },
-      computed: { 'alice.tone': '{{user}} stays guarded' },
+      computed: { user: { name: 'Snapshot User', description: '' }, 'alice.tone': '{{user}} stays guarded' },
     })
     const template = '{{user}} / {{alice.tone}} / {{hp}} / {{object}} / {{missing}}'
     expect(renderTemplateMacros(template, { snapshot: context.snapshot, card: { userName: 'Changed' } }))
@@ -21,14 +21,16 @@ describe('renderTemplateMacros', () => {
     expect(renderTemplateMacros(text)).toBe('Hello User, welcome to Loom!')
   })
 
-  it('renders {{User}} from card userName fallback', () => {
+  it('does not use the Card author as the user name', () => {
     const text = 'Hello {{User}}!'
-    expect(renderTemplateMacros(text, { card: { userName: 'Alice' } })).toBe('Hello Alice!')
+    expect(renderTemplateMacros(text, { card: { userName: 'Alice' } })).toBe('Hello User!')
   })
 
-  it('renders {{User}} and {{user.name}} from global state priority', () => {
+  it('renders user configuration without Global or Timeline State overriding it', () => {
     const text = 'Hello {{User}} (aka {{user.name}}), role: {{user.description}}'
     const context = {
+      user: { name: 'Configured', description: 'Traveler' },
+      timeline: { user: { name: 'Timeline', description: 'Timeline description' } },
       global: {
         user: {
           name: 'shiyue',
@@ -37,7 +39,7 @@ describe('renderTemplateMacros', () => {
       },
       card: { userName: 'Fallback' },
     }
-    expect(renderTemplateMacros(text, context)).toBe('Hello shiyue (aka shiyue), role: Commander')
+    expect(renderTemplateMacros(text, context)).toBe('Hello Configured (aka Configured), role: Traveler')
   })
 
   it('renders {{char}} from card name', () => {
@@ -72,8 +74,9 @@ describe('renderTemplateMacros', () => {
   it('renders lowercase {{user}} and {{char}} regardless of casing', () => {
     const text = '秋山蓝看着刚从自己房间出来的 {{user}}。{{user}}刚整理完资料。啊，{{USER}}！我是{{char}}，也就是{{bot}}。'
     const context = {
+      user: { name: 'shiyue', description: '' },
       global: {
-        user: { name: 'shiyue' },
+        user: { name: 'legacy' },
       },
       card: { name: '爱丽丝' },
     }

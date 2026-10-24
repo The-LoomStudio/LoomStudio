@@ -1,3 +1,6 @@
+import { measureObservationSize } from '../observability/store.js'
+import { observationRequest } from '../observability/gateway.js'
+import type { ObservationRequest } from '../observability/types.js'
 import { createHash } from 'node:crypto'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { estimateRequestTokens } from '@loom-studio/ai-gateway'
@@ -49,6 +52,10 @@ import { prepareStateContent } from '../state/process-state-content.js'
 import { beginTimelineExtensionWork, assertTimelineExtensionLease } from '../extensions/timeline-participation.js'
 import { collectPromptExtensionDependencies } from '../extensions/prompt-dependencies.js'
 
+const MAX_OBSERVED_TOOLS = 128
+const MAX_OBSERVED_TOOL_EVENTS = 128
+const MAX_OBSERVED_TOOL_BYTES = 1024 * 1024
+
 const safeToolCodes = new Set(['tool.unknown', 'tool.transport_mismatch', 'tool.approval_failed', 'tool.denied', 'tool.timeout', 'tool.aborted', 'codeact.source_transformed', 'codeact.incomplete_step'])
 
 export type AgentRunProgress = {
@@ -83,7 +90,7 @@ export type ContentToolPromptRuntimeInputs = {
 }
 
 type AgentToolResolutionContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'documents' | 'providerAdapters'>
-type NativeToolLoopContext = ApplicationStateContext & Pick<ApplicationRuntimeContext, 'agentTools' | 'createId' | 'gateway' | 'runtimeLogger' | 'stateContent' | 'swipes'>
+type NativeToolLoopContext = ApplicationStateContext & Pick<ApplicationRuntimeContext, 'agentTools' | 'createId' | 'gateway' | 'runtimeLogger' | 'stateContent' | 'swipes'> & Partial<Pick<ApplicationRuntimeContext, 'observations'>>
 
 export async function compileAgentToolSet(input: {
   ctx: AgentToolResolutionContext
@@ -259,6 +266,7 @@ type NativeToolLoopInput = {
   agents: AgentStore
   session: AgentSession
   runId: string
+  buildId?: string
   model: ProviderModelSelection
   tokenMultiplier?: number
   initialMessages: ChatMessage[]
@@ -342,6 +350,9 @@ async function runToolLoop(
   let session = input.session
   let lastChangesetId = ''
   let measurementId: string | undefined
+  let toolExecutions: NonNullable<ObservationRequest['toolExecutions']> = []
+  let observedToolEventCount = 0
+  let observedToolBytes = 0
   const tools = input.compiledToolSet.tools
   const contentTools = tools.filter((tool) => tool.transport === 'content')
   const providerMessages = [...input.initialMessages]
@@ -417,35 +428,53 @@ async function runToolLoop(
       const stepMessages = [...providerMessages, ...freshContextMessages]
       checkpointMessages = [...stepMessages]
       freshContextMessages = []
-      const estimate = estimateRequestTokens({ messages: stepMessages, tools: toolSpecs }, { multiplier: input.tokenMultiplier })
       measurementId = input.ctx.createId('measurement')
-      await append([{
-        kind: 'request-measurement',
-        measurementId,
-        providerStep: step,
-        providerProfileId: input.model.providerProfileId,
-        modelId: input.model.modelId,
-        requestDigest: createHash('sha256').update(JSON.stringify({ messages: stepMessages, tools: toolSpecs })).digest('hex'),
-        scope: estimate.scope,
-        count: { baseTokens: estimate.baseTokens, estimatedTokens: estimate.estimatedTokens, basis: estimate.basis },
-        uncounted: estimate.uncounted,
-      }])
+      toolExecutions = []
+      observedToolEventCount = 0
+      observedToolBytes = 0
+      let estimate: ReturnType<typeof estimateRequestTokens> | undefined
+      const measure = () => { estimate = estimateRequestTokens({ messages: stepMessages, tools: toolSpecs }, { multiplier: input.tokenMultiplier }) }
+      if (input.ctx.observations) input.ctx.observations.capture(measure)
+      else { try { measure() } catch { /* Legacy measurement remains best effort without the workbench store. */ } }
+      input.ctx.observations?.capture(() => input.ctx.observations!.write({
+        id: measurementId!, kind: 'request', parentId: input.runId, title: `Step ${step}`, status: 'running',
+        agentSessionId: session.id, branchId: input.branchId, buildId: input.buildId, providerStep: step,
+        timelineId: input.recoveryRequest.narrativeTarget?.timelineId,
+        request: { preparedMessages: stepMessages, messages: stepMessages, tools: toolSpecs, toolChoice: toolSpecs.length ? 'auto' : undefined,
+          model: input.model, delivery: input.delivery ?? 'stream', phase: 'prepared',
+          estimate },
+      }))
+      await appendObservation(() => {
+        if (!estimate) return []
+        return [{
+          kind: 'request-measurement',
+          measurementId: measurementId!,
+          providerStep: step,
+          providerProfileId: input.model.providerProfileId,
+          modelId: input.model.modelId,
+          requestDigest: createHash('sha256').update(JSON.stringify({ messages: stepMessages, tools: toolSpecs })).digest('hex'),
+          scope: estimate.scope,
+          count: { baseTokens: estimate.baseTokens, estimatedTokens: estimate.estimatedTokens, basis: estimate.basis },
+          uncounted: estimate.uncounted,
+        }]
+      })
       if (input.requestContext?.abortSignal?.aborted)
         throw createAbortError(input.requestContext.abortSignal.reason)
       await assertPromptDependencies()
       const providerResult = await input.ctx.gateway.invokeChat({
-        request: {
+        request: observationRequest({
           messages: stepMessages,
           ...(toolSpecs.length
             ? { tools: toolSpecs, toolChoice: 'auto' as const }
             : {}),
           metadata: {
+            observationRequestId: measurementId,
             purpose: input.purpose,
             agentSessionId: session.id,
             runId: input.runId,
             providerStep: step,
           },
-        },
+        }, measurementId),
         model: input.model,
         runId: input.runId,
         sessionId: session.id,
@@ -477,12 +506,20 @@ async function runToolLoop(
 
       await assertPromptDependencies()
       progress.stage = 'response'
-      await append([{ ...providerObservation(providerResult), measurementId, providerStep: step }])
+      await appendObservation(() => [{ ...providerObservation(providerResult), measurementId, providerStep: step }])
       const { classified, contentScan, invocationPairs, providerMessage } = decodeToolResponse({
         providerResult, sessionId: session.id, classificationRules: input.classificationRules ?? [],
         byExposedName, contentTools, createInvocationId: () => input.ctx.createId('tool-invocation'),
       })
       checkpointMessages = [...stepMessages, providerMessage]
+      input.ctx.observations?.capture(() => {
+        input.ctx.observations!.patch(measurementId!, { request: { assistantContent: contentScan.text } })
+        toolExecutions = invocationPairs.slice(0, MAX_OBSERVED_TOOLS).map(pair => ({ id: pair.invocation.id,
+          name: pair.resolved?.definition.name ?? pair.invocation.toolId,
+          ...(retainToolEvidence(pair.invocation) ? { input: pair.invocation } : {}), status: 'queued', transport: pair.transport }))
+        if (invocationPairs.length > MAX_OBSERVED_TOOLS) markToolEvidencePartial()
+        recordTools()
+      })
 
       const stepEntries: AgentTranscriptEntryData[] = []
       streamedReasoning = providerResult.reasoning ?? streamedReasoning
@@ -629,6 +666,23 @@ async function runToolLoop(
           event: 'tool.started', ...logContext,
           data: { ...references, invocationId: activeTool.invocationId, toolId: activeTool.toolId, providerStep: step, transport: pair.transport, outcome: 'running' },
         })
+        input.ctx.observations?.capture(() => {
+          const execution = toolExecutions.find(item => item.id === pair.invocation.id)
+          if (execution) execution.status = 'running'
+          recordTools()
+        })
+        const observeToolEvent = (event: unknown) => input.ctx.observations?.capture(() => {
+          const execution = toolExecutions.find(item => item.id === pair.invocation.id)
+          if (!execution) return
+          if (observedToolEventCount >= MAX_OBSERVED_TOOL_EVENTS) { markToolEvidencePartial(); return }
+          observedToolEventCount += 1
+          if (!retainToolEvidence(event)) return
+          const events = (execution.events as unknown[] | undefined) ?? []
+          events.push(event)
+          execution.events = events
+          recordTools()
+        })
+        if (input.toolExecutionScope) input.toolExecutionScope.observeToolEvent = observeToolEvent
         const incompleteCodeAct = codeActToolIds.has(pair.invocation.toolId)
           && (providerResult.finishReason === 'length' || providerResult.finishReason === 'error')
         const result = 'validationError' in pair && pair.validationError ? failedResult(
@@ -647,7 +701,16 @@ async function runToolLoop(
           pair.resolved?.transport,
           input.toolExecutionScope,
           input.requestContext?.abortSignal,
+          observeToolEvent,
         ))
+        input.ctx.observations?.capture(() => {
+          const execution = toolExecutions.find(item => item.id === pair.invocation.id)
+          if (execution) Object.assign(execution, {
+            ...(retainToolEvidence(result) ? { result } : { resultOmitted: true }),
+            status: result.status, durationMs: performance.now() - activeTool!.startedAt,
+          })
+          recordTools()
+        })
         const toolOutcome = result.status
         const errorCode = result.error?.code && safeToolCodes.has(result.error.code) ? result.error.code : undefined
         toolLogger?.[toolOutcome === 'completed' || (toolOutcome === 'aborted' && errorCode !== 'tool.timeout') ? 'info' : 'warn'](`${activeTool.toolName} · ${toolOutcome}${errorCode ? ` · ${errorCode}` : ''}`, {
@@ -678,6 +741,17 @@ async function runToolLoop(
       completeStep(`${invocationPairs.length} tools processed · continuing`)
     }
   } catch (error) {
+    input.ctx.observations?.capture(() => {
+      if (!measurementId) return
+      const request = input.ctx.observations!.get(measurementId)?.request
+      const status = input.requestContext?.abortSignal?.aborted || isAbortError(error) ? 'aborted' : 'failed'
+      if (request?.phase === 'prepared' || request?.phase === 'invoking') input.ctx.observations!.patch(measurementId, { status, request: { phase: status }, diagnostic: errorMessage(error) })
+      if (activeTool) {
+        const execution = toolExecutions.find(item => item.id === activeTool!.invocationId)
+        if (execution) Object.assign(execution, { status, outcomeUnknown: true, error: errorMessage(error) })
+        recordTools()
+      }
+    })
     // Whitespace from a provider is not a valid partial assistant message.
     if (!streamedText.trim()) streamedText = ''
     const aborted =
@@ -707,6 +781,15 @@ async function runToolLoop(
           content: [],
           error: { code: aborted ? 'tool.aborted' : 'tool.interrupted', message: 'Invocation ended without a result. The Agent must issue a new invocation to retry.' },
         }))
+        input.ctx.observations?.capture(() => {
+          for (const result of results) {
+            const execution = toolExecutions.find(item => item.id === result.invocationId)
+            if (execution && !execution.result && !execution.resultOmitted) Object.assign(execution, {
+              ...(retainToolEvidence(result) ? { result } : { resultOmitted: true }), status: result.status, synthetic: true,
+            })
+          }
+          recordTools()
+        })
         await append(results.map(result => toTranscriptResult(result, input.requestContext?.abortSignal)))
         results.forEach(result => checkpointMessages.push(pendingTools.get(result.invocationId)!.render(result)))
         pendingTools.clear()
@@ -838,6 +921,35 @@ async function runToolLoop(
       data: { ...references, providerStep: progress.providerStep, outcome: 'completed', detail, durationMs: Math.round((performance.now() - stepStartedAt!) * 100) / 100 },
     })
     stepStartedAt = undefined
+  }
+
+  function retainToolEvidence(value: unknown): boolean {
+    try {
+      observedToolBytes += measureObservationSize(value, MAX_OBSERVED_TOOL_BYTES - observedToolBytes, { nodes: 4096, depth: 32 })
+      return true
+    } catch {
+      observedToolBytes = MAX_OBSERVED_TOOL_BYTES
+      markToolEvidencePartial()
+      return false
+    }
+  }
+
+  function markToolEvidencePartial() {
+    input.ctx.observations!.patch(measurementId!, { availability: 'partial', diagnostic: '工具证据达到单步采集上限；执行继续，超限条目未记录。' })
+  }
+
+  function recordTools() {
+    input.ctx.observations!.patch(measurementId!, { request: { toolExecutions } })
+  }
+
+  async function appendObservation(entries: () => AgentTranscriptEntryData[]) {
+    // Preserve the existing awaited transcript write order and session.entryCount updates.
+    // Only measurement/provider-observation persistence and their UI notification are isolated;
+    // canonical messages, tool results and recovery writes still use append directly.
+    try {
+      const values = entries()
+      if (values.length) await append(values)
+    } catch { /* Observation failure must not retry or suppress the model call. */ }
   }
 
   async function append(entries: AgentTranscriptEntryData[], firstId?: string, takeover?: NonNullable<RuntimeRequestContext['agentRun']>['continuation']) {
@@ -1011,6 +1123,7 @@ async function executeInvocation(
   expectedTransport?: CompiledToolExposure['transport'],
   scope?: ToolExecutionScope,
   externalSignal?: AbortSignal,
+  observeToolEvent?: (event: unknown) => void,
 ): Promise<ToolResult> {
   if (!expectedTransport)
     return failedResult(
@@ -1031,6 +1144,7 @@ async function executeInvocation(
   let approval
   try {
     approval = await ctx.agentTools.approve(invocation)
+    observeToolEvent?.({ kind: 'approval', decision: approval })
   } catch (error) {
     return failedResult(invocation, 'tool.approval_failed', errorMessage(error))
   }

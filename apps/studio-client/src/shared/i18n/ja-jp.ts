@@ -1,3 +1,5 @@
+import { messages as observation } from './ja-jp/observation.js'
+import { messages as userProfile } from './ja-jp/user-profile.js'
 import { messages as common } from './ja-jp/common.js'
 import { messages as sessions } from './ja-jp/sessions.js'
 import { messages as agent } from './ja-jp/agent.js'
@@ -15,6 +17,8 @@ import type { zhCN } from './zh-cn.js'
 
 export const jaJP = {
   ...common,
+  ...observation,
+  ...userProfile,
   ...sessions,
   ...agent,
   ...resources,

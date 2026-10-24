@@ -111,7 +111,7 @@ export const messages = {
   'rail.preset': '프리셋',
   'rail.model': '모델',
   'rail.agent': 'Agent 프리셋',
-  'rail.user': '내 리소스',
+  'rail.user': '마이페이지',
   'rail.play': '플레이',
   'rail.recent': '기록',
   'rail.sessions': '기록',

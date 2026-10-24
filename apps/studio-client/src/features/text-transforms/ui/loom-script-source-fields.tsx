@@ -11,6 +11,7 @@ export function LoomScriptSourceFields(props: {
 }) {
   return <section className={styles.inspectionSection}>
     <h4>{props.t('textTransform.source')}</h4>
+    <p className={styles.metaLine}>保存只更新源码；已启动的实例需单独刷新。</p>
     <input aria-label={props.t('textTransform.scriptFileName')} className={styles.inlineInput}
       disabled={props.disabled} value={props.fileName} onChange={event => props.onFileNameChange(event.target.value)} />
     <textarea aria-label={props.t('textTransform.source')} className={styles.rawJsonTextarea}

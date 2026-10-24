@@ -28,7 +28,12 @@ describe('The World native EC contract', () => {
     expect(validateWorldRoot(root)).toBe(root)
     expect(projectCurrentWorld(root)).toMatchObject({ time: undefined, weather: undefined, scene: undefined })
     expect(root).not.toHaveProperty('branch')
-    expect(root).toEqual({ entities: { world: { components: { world: {} } } } })
+    expect(root.entities.world.components).toEqual({
+      world: { currentSceneId: null },
+      worldTime: { value: { calendarId: null, year: null, month: null, day: null, hour: null, minute: null } },
+      calendar: { id: null, name: null, months: null },
+      weather: { kind: null, label: null, intensity: null },
+    })
   })
   it('uses explicit scene and place references, preserving midnight', () => {
     const current = projectCurrentWorld(example())
@@ -92,7 +97,7 @@ describe('The World native EC contract', () => {
     expect(() => validateWorldRoot(old)).toThrow('explicit upgrade')
     expect(() => upgradeLegacyWorld(old)).toThrow('worldEntityId explicitly')
     const next = upgradeLegacyWorld(old, { worldEntityId: 'legacy' })
-    expect(next).toEqual(createWorldRoot())
+    expect(next).toEqual({ entities: { world: { components: { world: {} } } } })
     expect(next.entities.world).not.toHaveProperty('branch')
     expect(old.entities.legacy.branch).toEqual(branch)
     expect(old.schemaVersion).toBe(1)

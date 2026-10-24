@@ -1,18 +1,22 @@
 import { isSharedAppearanceParameter, readSharedAppearanceParameter } from '../model/appearance-parameters.js'
 import { useAppearanceStore } from '../../../shared/studio-shell/appearance-store.js'
 import { useStudioLayoutStore } from '../../../shared/studio-shell/studio-layout-store.js'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@loom-studio/ui'
 import type { StyleParameterValue } from '@loom-studio/extension-sdk'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { ThemeController } from '../model/theme-controller.js'
 import type { ThemeEntry } from '../model/theme-catalog.js'
-import { useThemeStore } from '../model/theme-store.js'
+import { defaultThemeSelection, useThemeStore } from '../model/theme-store.js'
 import styles from './theme-settings.module.scss'
 
 export function ThemeSettings({ controller, t }: { controller: ThemeController; t: Translator }) {
-  const draft = controller.selection
-  const setDraft = (selection: typeof draft) => { void controller.apply(selection) }
+  const [draft, updateDraft] = useState(controller.selection)
+  useEffect(() => { updateDraft(controller.selection) }, [controller.selection])
+  const setDraft = (selection: typeof draft) => {
+    updateDraft(selection)
+    void controller.apply(selection)
+  }
   const [localError, setLocalError] = useState<string>()
   useAppearanceStore(state => state.explicitOverrides)
   useAppearanceStore(state => state.material)
@@ -72,6 +76,7 @@ export function ThemeSettings({ controller, t }: { controller: ThemeController; 
     {selectedTheme ? <div className={styles.entry}>
       {selectedTheme.definition.description ? <p>{selectedTheme.definition.description}</p> : null}
       {scriptControls(selectedTheme)}
+      {draft.theme !== controller.selection.theme ? <Button type="button" disabled={controller.busy} onClick={() => setDraft(draft)}>{t('settings.themeApply')}</Button> : null}
     </div> : null}
     <h4>{t('settings.themeEnhancements')}</h4>
     {!ordered.length ? <p>{t('settings.themeEnhancementsEmpty')}</p> : null}
@@ -115,7 +120,7 @@ export function ThemeSettings({ controller, t }: { controller: ThemeController; 
         </div>
       })}
     </fieldset>)}
-    <Button type="button" onClick={() => { setLocalError(undefined); controller.reset() }}>{t('settings.themeReset')}</Button>
+    <Button type="button" onClick={() => { setLocalError(undefined); updateDraft(defaultThemeSelection); controller.reset() }}>{t('settings.themeReset')}</Button>
     <p>{t('settings.themeRecoveryHint')}</p>
   </section>
 }

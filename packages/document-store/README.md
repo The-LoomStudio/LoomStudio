@@ -32,10 +32,11 @@ Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
 - `createSqliteDocumentStore(options)`：生产 SQLite 文档存储工厂；
 - `createInMemoryDocumentStore()`：测试与 Playground 沙箱专用内存工厂；
-- `createDocumentDataCommitSource(documents)`：连接 Document 变更与 Data Engine 提交事件源的适配器；
 - 核心类型：`DocumentStore`、`SqliteDocumentStore`、`DocumentRecord`、`Changeset`、`DocumentStoreError`；历史版本通过 `get(id, { version })` 返回 `DocumentRecord`。
 
 SQLite 实现通过 `{ engine }` 共享连接与提交日志，或通过 `{ filename }` 自建 Engine；外部注入的 Engine 由组合根关闭。跨 Store 写入使用 `participateTransaction(dataTx, callback)` 加入已有 Engine 事务，不再另开事务或另写提交日志，见 [`sqlite-store.ts`](./src/sqlite-store.ts)。
+
+Store 本身提供 `subscribeCommits()`，可直接作为 Data Commit Source；共享 SQLite Engine 的组合根也可直接订阅 Engine，无需额外适配工厂。
 
 `revertChangeset()` 只撤销纯 Document Changeset，并校验当前版本后产生新的版本和 Changeset；包含其他 Store operation 的提交返回 `document.changeset_not_revertible`。它不是 Narrative、State、Prompt Resource、文件或外部副作用的通用撤销器。
 

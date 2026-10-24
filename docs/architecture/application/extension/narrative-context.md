@@ -6,7 +6,7 @@
 
 服务端扩展声明 `narrative.context.provide: true`，通过 `ctx.narrativeContext.register(provider)` 注册。ID 必须使用扩展包命名空间，注册随实例卸载或激活失败自动释放。SDK 类型为 `NarrativeContextProvider` 与 `NarrativeContextProjection`。
 
-Host 为角色安装生成独立本地 Provider ID。Runtime 根据实际 Timeline 的来源 Card 筛选可用来源，预览与 Session 交接使用同一归属；不会调用其他 Card 的私有 Provider。全局来源仍可参与选择，多个可用来源同时返回投影依然报冲突。仅存在其他角色的来源时，当前角色视为没有配置来源，而不是“已配置但无人选择”。公开角色扩展安装仍在接线，此合同不代表整个角色代码权限边界已经完成。
+Host 为角色安装生成独立本地 Provider ID。Runtime 根据实际 Timeline 的来源 Card 筛选可用来源，预览与 Session 交接使用同一归属；不会调用其他 Card 的私有 Provider。全局来源仍可参与选择，多个可用来源同时返回投影依然报冲突。仅存在其他角色的来源时，当前角色视为没有配置来源，而不是“已配置但无人选择”。公开 Card 包安装、更新、卸载与模块启用已接通；安装不自动启用代码，Provider 归属过滤也不代表任意同进程代码获得了强安全隔离。
 
 `resolve({ timelineId, branchId })` 是只读操作，可被 Preview 多次调用。它返回该分支**已经采用**的结果；准备中的摘要和插件私有进度不返回。插件自行持久化并选择服务哪些分支。返回 `undefined` 表示该来源不服务这个分支，而非空正文。
 

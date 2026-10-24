@@ -29,6 +29,18 @@ describe('state definitions', () => {
     expect(result).toEqual({ characters: { alice: { name: 'Alice', gold: 3 } } })
   })
 
+  it('supports nullable Schema types without accepting invalid known values', () => {
+    const draft = { kind: 'timeline-template' as const, templateVersion: 1,
+      schema: { type: 'object', properties: { hour: { type: ['integer', 'null'], minimum: 0, maximum: 23 } } },
+      initial: { hour: null },
+    }
+    expect(() => validateStateDefinitionDraft(draft)).not.toThrow()
+    expect(() => validateStateValue({ hour: 0 }, draft.schema)).not.toThrow()
+    expect(() => validateStateValue({ hour: '0' }, draft.schema)).toThrow('Expected')
+    expect(() => validateStateValue({ hour: 24 }, draft.schema)).toThrow('maximum')
+    expect(() => validateStateDefinitionDraft({ ...draft, schema: { type: [] } })).toThrow('unsupported')
+  })
+
   it('rejects invalid paths, duplicate bindings, and schema violations', () => {
     expect(() => validateStateDefinitionDraft({
       kind: 'global', path: 'user.name', schema: { type: 'string' },

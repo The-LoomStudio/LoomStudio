@@ -218,11 +218,6 @@ export function readOpening(
   openingId?: string,
 ): { id: string; title?: string; content: string } {
   const renderContext = variables ?? createVariableRenderContext({
-    global: {
-      user: {
-        name: content.userName?.trim() || 'User',
-      },
-    },
     computed: {
       char: { name: content.name },
       bot: { name: content.name },

@@ -126,7 +126,7 @@ export function createTimelineExtensionAdoptionMethods(ctx: Context) {
       const timeline = (await requireNarratives(ctx).getTimeline(input.timelineId))!
       const installations = new Map(await readAvailableExtensionInstallations(ctx.documents, runtime.content.sourceCardId, input.timelineId))
       installations.set(installation.id, installation.content.packageId)
-      const variables = await readAgentTurnVariables(ctx, runtime.content.fallbackUserName, state.value, runtime.content.cardName)
+      const variables = await readAgentTurnVariables(ctx, state.value, runtime.content.cardName)
       const resources = sources.length
         ? await readStateInitializationResources(ctx, installations, timeline.promptResourceIds, variables) : []
       const contributions: StateContribution[] = []

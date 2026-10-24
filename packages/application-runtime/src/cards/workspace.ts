@@ -6,6 +6,7 @@ import { normalizeCardEditableFields, readCardEditableFields } from './card-fiel
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import type {
+  ApplicationRuntimeOptions,
   CardMediaRefs,
   CardSourceContent,
   RuntimeRequestContext,
@@ -130,32 +131,32 @@ export async function importCardBundle(input: {
     const resourceTx = input.promptResources.transaction(dataTx)
     return documentParticipant.participateTransaction(dataTx, async tx => {
       const cardId = input.newCardId ?? createId('card')
-      if (!/^card-[A-Za-z0-9-]+$/.test(cardId)) throw new Error('Invalid new Card ID')
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(cardId)) throw new Error('Invalid new Card ID')
       const importBundleId = createId('import-bundle')
       const textPipelineDocumentIds: string[] = []
-      for (const [index, rule] of (artifact.textTransformRules ?? []).entries()) {
+      for (const rule of artifact.textTransformRules ?? []) {
         const document = await writeDocument<TextTransformRuleContent>(tx, {
-          id: `${importBundleId}.rule.${String(index).padStart(6, '0')}`,
+          id: createId('text-transform-rule'),
           type: applicationDocumentTypes.textTransformRule,
           content: { ...structuredClone(rule), owner: { kind: 'card', cardId }, createdAt: timestamp, updatedAt: timestamp },
           expectedVersion: 'new',
         })
         textPipelineDocumentIds.push(document.id)
       }
-      for (const [index, extractor] of (artifact.textExtractors ?? []).entries()) {
+      for (const extractor of artifact.textExtractors ?? []) {
         const document = await writeDocument<TextExtractorContent>(tx, {
-          id: `${importBundleId}.extractor.${String(index).padStart(6, '0')}`,
+          id: createId('text-extractor'),
           type: applicationDocumentTypes.textExtractor,
           content: { ...structuredClone(extractor), owner: { kind: 'card', cardId }, createdAt: timestamp, updatedAt: timestamp },
           expectedVersion: 'new',
         })
         textPipelineDocumentIds.push(document.id)
       }
-      const storedResources = contextAssets.map(node => resourceTx.createResource({
+      const storedResources = contextAssets.map((node, index) => resourceTx.createResource({
         id: createId('prompt-resource'),
         resourceKind: node.category ?? 'prompt',
         label: node.label,
-        metadata: { sourceArtifactRef },
+        metadata: { ...artifact.contextAssetSettings?.[artifact.contextAssets[index]!.id], sourceArtifactRef },
         rootNode: node,
       }))
       const resourceIds = storedResources.map(resource => resource.id)
@@ -288,7 +289,7 @@ export async function importCardBundle(input: {
         expectedVersion: 'new',
       })
       const bindings = storedResources.filter(resource => resource.rootNode.kind === 'module' && (resource.rootNode.category === 'lore' || resource.rootNode.category === 'preset')).map(resource => ({
-        id: `binding.${resource.id}.${resource.rootNode.id}`,
+        id: createId('binding'),
         relationship: 'recommends' as const,
         createdAt: timestamp,
         from: { documentId: card.id, documentType: applicationDocumentTypes.cardSource },
@@ -324,14 +325,23 @@ export async function exportCardArtifact(input: {
   documents: DocumentStore
   promptResources: PromptResourceStore
   blobs?: BlobStorage
+  exportExtensionArchive?: ApplicationRuntimeOptions['exportExtensionArchive']
 }): Promise<CardBundleArtifact> {
   const card = await readDocument<CardSourceContent>(input.documents, input.cardId, applicationDocumentTypes.cardSource)
   const importBundle = await readOptionalCardImportBundle(input.documents, card)
-  const contextAssets = await Promise.all((card.content.promptResourceIds ?? []).map(async resourceId => {
+  const resources = await Promise.all((card.content.promptResourceIds ?? []).map(async resourceId => {
         const resource = await input.promptResources.getResource(resourceId)
         if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
-        return fromStoredResource(resource).rootNode
+        return fromStoredResource(resource)
       }))
+  const contextAssets = resources.map(resource => resource.rootNode)
+  const contextAssetSettings = Object.fromEntries(resources.map(resource => [resource.rootNode.id, {
+    ...(resource.macros !== undefined ? { macros: resource.macros } : {}),
+    ...(resource.macroOptions !== undefined ? { macroOptions: resource.macroOptions } : {}),
+    ...(resource.useCardLore !== undefined ? { useCardLore: resource.useCardLore } : {}),
+    ...(resource.useGlobalLore !== undefined ? { useGlobalLore: resource.useGlobalLore } : {}),
+    ...(resource.historyPolicy !== undefined ? { historyPolicy: resource.historyPolicy } : {}),
+  }]))
   const inlineTemplates = structuredClone(card.content.stateTemplates ?? [])
   const inlineTemplateIds = new Set(inlineTemplates.map(template => template.id))
   const sharedTemplates = await Promise.all((card.content.stateDefinitionIds ?? [])
@@ -364,9 +374,9 @@ export async function exportCardArtifact(input: {
   if (mounts.length > 0 && !input.blobs) throw new Error('Blob Store is required to export Loom Script attachments')
   const scriptAttachments = await Promise.all(mounts.map(async (mount): Promise<LoomScriptAttachmentArtifact> => {
     const script = await readLoomScriptRevision(input.documents, mount.content.scriptDocumentId, mount.content.pinnedDocumentVersion)
-    if (script.content.owner.kind !== 'card' || script.content.owner.cardId !== input.cardId) {
-      throw new Error(`Card Loom Script Mount references a non-owned Script: ${mount.id}`)
-    }
+    // A Card adoption exports a portable snapshot; importing it creates a new Card-owned copy.
+    // Exporting never changes the active Script's owner or uses Metadata to resolve its identity.
+    // ponytail: retaining a package contribution binding after import needs an explicit reference attachment protocol.
     const bytes = await input.blobs!.read(script.content.source.blobId)
     return {
       script: {
@@ -391,11 +401,19 @@ export async function exportCardArtifact(input: {
     .map(document => stripDocumentMetadata(document.content))
   return {
     ...buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, scriptAttachments, importBundle }),
+    contextAssetSettings,
     extensionPackages: await Promise.all((card.content.extensionPackages ?? []).map(async archive => {
       if (!input.blobs) throw new Error('Blob Store is required to export embedded extension packages')
+      const storedBytes = await input.blobs.read(archive.blobId)
+      const bytes = input.exportExtensionArchive ? await input.exportExtensionArchive({
+        archive: storedBytes,
+        packageId: archive.packageId,
+        version: archive.version,
+        installationId: extensionInstallationId(archive.packageId, { kind: 'card', cardId: input.cardId }),
+      }) : storedBytes
       return {
         packageId: archive.packageId, version: archive.version,
-        archiveBase64: Buffer.from(await input.blobs.read(archive.blobId)).toString('base64'),
+        archiveBase64: Buffer.from(bytes).toString('base64'),
       }
     })),
     ...(card.content.externalPromptResourceIds !== undefined ? {
@@ -505,23 +523,27 @@ async function cloneConflictingPromptNodes(
     cursor = page.nextCursor
   } while (cursor)
 
-  return nodes.map(node => {
-    const nodeIds = findNodes([node], () => true).map(item => item.id)
-    return nodeIds.some(id => existingNodeIds.has(id)) ? clonePromptResourceNode(node) : node
-  })
-}
-
-function clonePromptResourceNode(rootNode: PromptResourceNode): PromptResourceNode {
-  const idMap = new Map(findNodes([rootNode], () => true).map(node => [node.id, createId('prompt-node')]))
+  const idMap = new Map<string, string>()
+  for (const root of nodes) {
+    const descendants = findNodes([root], () => true)
+    if (descendants.some(node => existingNodeIds.has(node.id))) {
+      for (const node of descendants) idMap.set(node.id, createId('prompt-node'))
+    }
+  }
+  // Only implicit virtual anchors use node identity; explicit/public anchor names stay stable.
+  const anchorIds = new Set(findNodes(nodes, node => node.kind === 'virtual' && !node.capabilities?.targetAnchorId)
+    .map(node => node.id))
   const replaceId = (value: string): string => idMap.get(value) ?? value
   const clone = (node: PromptResourceNode): PromptResourceNode => ({
     ...node,
-    id: idMap.get(node.id) ?? createId('prompt-node'),
-    ...(node.orderList ? { orderList: node.orderList.map(replaceId) } : {}),
+    id: replaceId(node.id),
+    ...(node.capabilities?.targetAnchorId && anchorIds.has(node.capabilities.targetAnchorId) ? {
+      capabilities: { ...node.capabilities, targetAnchorId: replaceId(node.capabilities.targetAnchorId) },
+    } : {}),
     ...(node.orderList ? { orderList: node.orderList.map(replaceId) } : {}),
     ...(node.children ? { children: node.children.map(clone) } : {}),
   })
-  return clone(rootNode)
+  return nodes.map(clone)
 }
 
 async function readOptionalCardImportBundle(
@@ -556,31 +578,17 @@ export async function readPromptResourceInputs(input: {
     if (input.canReadResource && !input.canReadResource(mapped)) continue
     resources.push(mapped)
   }
-  return collectPromptInputsFromNodes(resources.map(resource => resource.rootNode), input.variables)
-}
-
-function collectPromptInputsFromNodes(
-  contextAssets: PromptResourceNode[],
-  variables: VariableRenderContext,
-): {
-  sourceNodes: SourceNode[]
-  contributions: PromptContribution[]
-} {
   const sourceNodes: SourceNode[] = []
   const contributions: PromptContribution[] = []
-
-  collectPromptInputs({
-    parentActivationGates: [],
-    parentEnabled: true,
-    contributions,
-    variables,
-    nodes: contextAssets,
-    parentId: null,
-    inheritedCategory: undefined,
-    inheritedSourceId: undefined,
-    sourceNodes,
-  })
-
+  for (const [index, resource] of resources.entries()) {
+    const rootIndex = sourceNodes.length
+    collectPromptInputs({
+      parentActivationGates: [], parentEnabled: true, contributions, variables: input.variables,
+      nodes: [resource.rootNode], parentId: null, inheritedCategory: undefined,
+      inheritedSourceId: undefined, sourceNodes, resource,
+    })
+    sourceNodes[rootIndex]!.orderIndex = index + 1
+  }
   return { sourceNodes, contributions }
 }
 

@@ -800,3 +800,5 @@
   cursor: pointer;
   &:focus-visible { outline: 2px solid var(--loom-color-accent); outline-offset: 2px; }
 }
+
+.userIdentity { display: flex; justify-content: flex-end; margin-bottom: 8px; color: var(--loom-color-text-muted); font-size: 13px; }

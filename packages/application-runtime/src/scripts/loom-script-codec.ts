@@ -1,5 +1,6 @@
 import type { RendererContributionDefinition, RendererInstanceScope, RendererSurface } from '@loom-studio/extension-sdk'
 import { isRecord } from '@loom-studio/shared'
+import { loomScriptRuntimeSchema } from '@loom-studio/shared/loom-scripts'
 import type {
   LoomScriptContent,
   LoomScriptContributionDefinition,
@@ -24,11 +25,16 @@ const surfaces = new Set<RendererSurface>([
 ])
 const scopes = new Set<RendererInstanceScope>(['workspace', 'timeline', 'agent-session', 'node', 'message'])
 const singleFields = new Set(['format', 'id', 'name', 'version', 'runtime'])
-const repeatableFields = new Set(['capability', 'contribution'])
+const repeatableFields = new Set(['capability', 'contribution', 'require'])
+const hostCapabilities = new Set(['state.read', 'state.write', 'state.contribute', 'state.processContent', 'ui.notify',
+  'macros.provide', 'prompt.process', 'narrative.context.provide', 'narrative.read', 'agent.tasks', 'vfs.provide',
+  'assets.read', 'assets.publish', 'ai.invoke', 'runtime.client', 'runtime.client-worker', 'runtime.server',
+  'events.subscribe:state', 'events.subscribe:narrative', 'events.subscribe:agent', 'events.subscribe:diagnostics',
+  'events.subscribe:platform-data', 'events.subscribe:documents'])
 
 export type ParsedLoomScriptMetadata = Pick<
   LoomScriptContent,
-  'formatVersion' | 'metadataId' | 'scriptVersion' | 'name' | 'runtime' | 'contributions' | 'requestedCapabilities'
+  'formatVersion' | 'metadataId' | 'scriptVersion' | 'name' | 'runtime' | 'contributions' | 'requestedCapabilities' | 'requires'
 >
 
 export function parseLoomScriptSource(source: string): ParsedLoomScriptMetadata {
@@ -60,11 +66,12 @@ export function parseLoomScriptSource(source: string): ParsedLoomScriptMetadata 
   const name = requiredSingle(values, 'name')
   const scriptVersion = requiredSingle(values, 'version')
   if (!versionPattern.test(scriptVersion)) throw new Error(`Invalid Loom Script version: ${scriptVersion}`)
-  const runtime = requiredSingle(values, 'runtime')
-  if (runtime !== 'client-sandbox') throw new Error(`Unsupported Loom Script runtime: ${runtime}`)
+  const runtime = loomScriptRuntimeSchema.parse(requiredSingle(values, 'runtime'))
   const contributionValues = values.get('contribution') ?? []
-  if (contributionValues.length === 0) throw new Error('Loom Script Metadata requires at least one @contribution')
-  const contributions = contributionValues.map((value, index) => parseContribution(value, index))
+  if (runtime === 'client-sandbox' && contributionValues.length === 0) throw new Error('Sandbox Renderer requires at least one @contribution')
+  if (runtime === 'server' && contributionValues.length) throw new Error('Server scripts cannot declare client Renderers')
+  if (runtime === 'client-worker' && contributionValues.length) throw new Error('Worker scripts cannot declare DOM Renderers')
+  const contributions = contributionValues.map((value, index) => parseContribution(value, index, runtime === 'client-sandbox'))
   const contributionIds = new Set<string>()
   for (const contribution of contributions) {
     if (contributionIds.has(contribution.renderer.id)) {
@@ -73,11 +80,19 @@ export function parseLoomScriptSource(source: string): ParsedLoomScriptMetadata 
     contributionIds.add(contribution.renderer.id)
   }
   const requestedCapabilities = values.get('capability') ?? []
-  if (requestedCapabilities.some(capability => capability !== 'state.read' && capability !== 'ui.notify')) {
+  if (requestedCapabilities.some(capability => runtime === 'client-sandbox'
+    ? capability !== 'state.read' && capability !== 'ui.notify'
+    : !hostCapabilities.has(capability) && !/^events\.subscribe:extension:[A-Za-z0-9._-]+$/.test(capability))) {
     throw new Error('Unsupported Loom Script capability')
   }
   if (new Set(requestedCapabilities).size !== requestedCapabilities.length) {
     throw new Error('Duplicate Loom Script capability')
+  }
+  if (runtime !== 'client-sandbox' && !requestedCapabilities.includes(`runtime.${runtime}`)) requestedCapabilities.push(`runtime.${runtime}`)
+  const requires = values.get('require') ?? []
+  for (const dependency of requires) {
+    const url = new URL(dependency)
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Script dependencies must use an HTTP(S) URL')
   }
 
   return {
@@ -85,7 +100,8 @@ export function parseLoomScriptSource(source: string): ParsedLoomScriptMetadata 
     metadataId,
     scriptVersion,
     name,
-    runtime: 'client-sandbox',
+    runtime,
+    ...(requires.length ? { requires } : {}),
     contributions,
     requestedCapabilities,
   }
@@ -98,7 +114,8 @@ export function serializeLoomScriptMetadata(metadata: ParsedLoomScriptMetadata):
     `// @id           ${metadata.metadataId}`,
     `// @name         ${metadata.name}`,
     `// @version      ${metadata.scriptVersion}`,
-    '// @runtime      client-sandbox',
+    `// @runtime      ${metadata.runtime}`,
+    ...(metadata.requires ?? []).map(value => `// @require      ${value}`),
     ...metadata.requestedCapabilities.map(value => `// @capability   ${value}`),
     ...metadata.contributions.map(contribution => `// @contribution ${JSON.stringify(toContributionJson(contribution))}`),
     headerEnd,
@@ -111,7 +128,7 @@ function requiredSingle(values: Map<string, string[]>, key: string): string {
   return value
 }
 
-function parseContribution(value: string, index: number): LoomScriptContributionDefinition {
+function parseContribution(value: string, index: number, requiresInputs: boolean): LoomScriptContributionDefinition {
   let parsed: unknown
   try {
     parsed = JSON.parse(value)
@@ -126,7 +143,7 @@ function parseContribution(value: string, index: number): LoomScriptContribution
   if (typeof parsed.id !== 'string' || !metadataIdPattern.test(parsed.id)) throw new Error(`Invalid Loom Script contribution id: ${index}`)
   if (typeof parsed.surface !== 'string' || !surfaces.has(parsed.surface as RendererSurface)) throw new Error(`Invalid Loom Script contribution surface: ${index}`)
   if (typeof parsed.scope !== 'string' || !scopes.has(parsed.scope as RendererInstanceScope)) throw new Error(`Invalid Loom Script contribution scope: ${index}`)
-  if (!Array.isArray(parsed.inputs) || parsed.inputs.length === 0) throw new Error(`Invalid Loom Script contribution inputs: ${index}`)
+  if (!Array.isArray(parsed.inputs) || (requiresInputs && parsed.inputs.length === 0)) throw new Error(`Invalid Loom Script contribution inputs: ${index}`)
   const inputs = parsed.inputs.map((input, inputIndex) => parseInput(input, index, inputIndex))
   if (parsed.name !== undefined && (typeof parsed.name !== 'string' || !parsed.name.trim())) throw new Error(`Invalid Loom Script contribution name: ${index}`)
   if (parsed.suggestedOrder !== undefined && (!Number.isSafeInteger(parsed.suggestedOrder))) throw new Error(`Invalid Loom Script contribution suggestedOrder: ${index}`)

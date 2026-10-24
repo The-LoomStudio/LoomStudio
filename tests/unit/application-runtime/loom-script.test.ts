@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseLoomScriptSource, serializeLoomScriptMetadata } from '../../../packages/application-runtime/src/scripts/loom-script-codec.js'
 import { snapshotLoomScriptMounts } from '../../../packages/application-runtime/src/scripts/loom-script-resolution.js'
+import { initializeLoomScriptAdoptions } from '../../../packages/application-runtime/src/runtime/loom-scripts-runtime.js'
 
 const roots: string[] = []
 
@@ -18,6 +19,90 @@ afterEach(async () => {
 })
 
 describe('Loom Script codec and store', () => {
+  it('freezes existing enabled mounts once on startup before source edits', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'legacy.loom.js', source: source() })
+      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 0 })
+      const { id, version, ...content } = mount
+      await fixture.documents.write({ id, type: 'airp.loomScriptMount', expectedVersion: version,
+        content: { ...content, enabled: true, grantedCapabilities: ['state.read'] } })
+      await initializeLoomScriptAdoptions(fixture)
+      const adopted = (await runtime.listLoomScriptMounts()).mounts[0]!
+      expect(adopted.adoptedDocumentVersion).toBe(script.version)
+      await initializeLoomScriptAdoptions(fixture)
+      expect((await runtime.listLoomScriptMounts()).mounts[0]).toEqual(adopted)
+      await runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: 'legacy.loom.js', source: hostSource('client') })
+      expect((await runtime.resolveLoomScriptRendererMounts()).mounts[0]?.script.runtime).toBe('client-sandbox')
+    } finally { await fixture.dataEngine.close() }
+  })
+
+  it.each(['client', 'client-worker', 'server'] as const)('imports %s scripts without Renderers and requires trust before adopting their saved version', async environment => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const imported = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'background.loom.js', source: hostSource(environment) })
+      expect(imported.script).toMatchObject({ runtime: environment, contributions: [], requestedCapabilities: ['state.read', `runtime.${environment}`] })
+      const saved = await runtime.updateLoomScript({
+        scriptDocumentId: imported.script.id, expectedVersion: imported.script.version,
+        fileName: 'background.loom.js', source: hostSource(environment, 2),
+      })
+      expect((await runtime.listLoomScriptMounts()).mounts).toEqual([])
+      expect((await runtime.resolveLoomScriptRendererMounts()).mounts).toEqual([])
+
+      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: imported.script.id, orderIndex: 0 })
+      expect(mount).toMatchObject({ enabled: false, grantedCapabilities: [] })
+      expect(mount.adoptedDocumentVersion).toBeUndefined()
+      const update = { mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 0 }
+      await expect(runtime.updateLoomScriptMount({ ...update, grantedCapabilities: ['state.read'] })).rejects.toThrow('Explicit trust is required')
+      expect((await runtime.listLoomScriptMounts()).mounts).toEqual([mount])
+      const enabled = await runtime.updateLoomScriptMount({ ...update, grantedCapabilities: ['state.read', `runtime.${environment}`] })
+      expect(enabled.mount.adoptedDocumentVersion).toBe(saved.script.version)
+      expect((await runtime.resolveLoomScriptRendererMounts()).mounts).toEqual([expect.objectContaining({
+        mountId: mount.id, source: hostSource(environment, 2),
+        script: expect.objectContaining({ runtime: environment, version: saved.script.version, contributions: [] }),
+      })])
+    } finally {
+      await fixture.dataEngine.close()
+    }
+  })
+
+  it('keeps the adopted source and runtime after saving and adopts the authorized replacement only on refresh', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const imported = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'background.loom.js', source: hostSource('server') })
+      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: imported.script.id, orderIndex: 0 })
+      const enabled = await runtime.updateLoomScriptMount({
+        mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 0,
+        grantedCapabilities: ['state.read', 'runtime.server'],
+      })
+      const saved = await runtime.updateLoomScript({
+        scriptDocumentId: imported.script.id, expectedVersion: imported.script.version,
+        fileName: 'background.loom.js', source: hostSource('client', 2),
+      })
+      expect((await runtime.listLoomScriptMounts()).mounts).toEqual([enabled.mount])
+      expect((await runtime.resolveLoomScriptRendererMounts()).mounts).toEqual([expect.objectContaining({
+        source: hostSource('server'), script: expect.objectContaining({ runtime: 'server', version: imported.script.version }),
+      })])
+      await expect(runtime.refreshLoomScriptMount({ mountId: mount.id, expectedVersion: enabled.mount.version }))
+        .rejects.toThrow('Explicit trust is required')
+      expect((await runtime.listLoomScriptMounts()).mounts).toEqual([enabled.mount])
+      const authorized = await runtime.updateLoomScriptMount({
+        mountId: mount.id, expectedVersion: enabled.mount.version, enabled: true, orderIndex: 0,
+        grantedCapabilities: ['state.read', 'runtime.server', 'runtime.client'],
+      })
+      const refreshed = await runtime.refreshLoomScriptMount({ mountId: mount.id, expectedVersion: authorized.mount.version })
+      expect(refreshed.mount.adoptedDocumentVersion).toBe(saved.script.version)
+      expect((await runtime.resolveLoomScriptRendererMounts()).mounts).toEqual([expect.objectContaining({
+        source: hostSource('client', 2), script: expect.objectContaining({ runtime: 'client', version: saved.script.version }),
+      })])
+    } finally {
+      await fixture.dataEngine.close()
+    }
+  })
+
   it('resolves the same retained mount after its source is restored', async () => {
     const fixture = await createFixture()
     const runtime = createApplicationRuntime(fixture)
@@ -82,7 +167,7 @@ describe('Loom Script codec and store', () => {
         expect(result.unavailableMounts).toEqual([expect.objectContaining({
           mountId: enabledMounts[0]!.id, scriptDocumentId: imported.script.id,
           enabled: true, available: false, severity: 'warning',
-          reason: mode === 'uninstall' ? 'script-missing' : 'installation-missing',
+          reason: 'installation-missing',
         })])
       }
       expect((await runtime.listLoomScriptMounts({ target: { kind: 'user' } })).mounts).toEqual(enabledMounts)
@@ -174,7 +259,7 @@ describe('Loom Script codec and store', () => {
     expect(updatedMount.mount).toMatchObject({ enabled: true, grantedCapabilities: ['state.read'] })
   })
 
-  it('rejects invalid Metadata without a partial Document and rejects differing digest for the same owner id', async () => {
+  it('rejects invalid Metadata without a partial Document and reimports duplicate Metadata as independent copies', async () => {
     const fixture = await createFixture()
     const runtime = createApplicationRuntime(fixture) as any
     await expect(runtime.importLoomScript({
@@ -184,17 +269,23 @@ describe('Loom Script codec and store', () => {
     })).rejects.toThrow('Metadata must start')
     await expect(fixture.documents.list({ type: 'airp.loomScript' })).resolves.toMatchObject({ items: [] })
 
-    await runtime.importLoomScript({ owner: { kind: 'card', cardId: 'card-1' }, fileName: 'alice.loom.js', source: source() })
-    await expect(runtime.importLoomScript({
+    const original = await runtime.importLoomScript({ owner: { kind: 'card', cardId: 'card-1' }, fileName: 'alice.loom.js', source: source() })
+    const sameBytes = await runtime.importLoomScript({ owner: { kind: 'card', cardId: 'card-1' }, fileName: 'alice.loom.js', source: source() })
+    const changedSource = source().replace('export const value = 1', 'export const value = 2')
+    const changed = await runtime.importLoomScript({
       owner: { kind: 'card', cardId: 'card-1' },
-      fileName: 'alice-other.loom.js',
-      source: source().replace('export const value = 1', 'export const value = 2'),
-    })).rejects.toThrow('Metadata id conflict for owner')
-    await expect(runtime.importLoomScript({
-      owner: { kind: 'card', cardId: 'card-2' },
       fileName: 'alice.loom.js',
-      source: source().replace('export const value = 1', 'export const value = 2'),
-    })).resolves.toBeTruthy()
+      source: changedSource,
+    })
+    expect(new Set([original.script.id, sameBytes.script.id, changed.script.id]).size).toBe(3)
+    expect((await runtime.listLoomScripts()).scripts).toHaveLength(3)
+    expect((await runtime.exportLoomScript({ scriptDocumentId: original.script.id })).artifact.source).toBe(source())
+    await runtime.updateLoomScript({
+      scriptDocumentId: sameBytes.script.id, expectedVersion: sameBytes.script.version,
+      fileName: 'alice.loom.js', source: changedSource,
+    })
+    expect((await runtime.exportLoomScript({ scriptDocumentId: sameBytes.script.id })).artifact.source).toBe(changedSource)
+    expect((await runtime.exportLoomScript({ scriptDocumentId: original.script.id })).artifact.source).toBe(source())
   })
 
   it('uses current Card Script mounts in existing Timelines and does not revive removed mounts', async () => {
@@ -239,14 +330,53 @@ describe('Loom Script codec and store', () => {
 
     const { mounts } = await runtime.resolveLoomScriptRendererMounts({ timelineId: timeline.id })
     expect(mounts).toHaveLength(1)
-    expect(mounts[0]).toMatchObject({ enabled: true, grantedCapabilities: ['state.read'], script: { version: updated.script.version } })
-    expect(mounts[0]?.source).toContain('export const value = 2')
-    await fixture.documents.delete({ id: enabled.mount.id, expectedVersion: enabled.mount.version })
+    expect(mounts[0]).toMatchObject({ enabled: true, grantedCapabilities: ['state.read'], script: { version: imported.script.version } })
+    expect(mounts[0]?.source).toContain('export const value = 1')
+    const refreshed = await runtime.refreshLoomScriptMount({ mountId: enabled.mount.id, expectedVersion: enabled.mount.version })
+    const afterRefresh = await runtime.resolveLoomScriptRendererMounts({ timelineId: timeline.id })
+    expect(afterRefresh.mounts[0]?.script.version).toBe(updated.script.version)
+    expect(afterRefresh.mounts[0]?.source).toContain('export const value = 2')
+    await fixture.documents.delete({ id: refreshed.mount.id, expectedVersion: refreshed.mount.version })
     expect((await runtime.resolveLoomScriptRendererMounts({ timelineId: timeline.id })).mounts).toEqual([])
     expect(await runtime.getStateSnapshot({ target })).toEqual(state)
     await fixture.dataEngine.close()
   })
+
+  it('keeps package contributions independent despite duplicate Metadata and saves edits under the installation owner', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const input = {
+        packageId: 'example.scripts', packageVersion: '1.0.0',
+        promptResources: [], agentTools: [], transformRules: [], textExtractors: [],
+        loomScripts: ['first', 'second'].map(id => ({ contribution: { id, source: `./${id}.loom.js` }, source: source() })),
+      }
+      const imported = await runtime.importExtensionPackageResources(input)
+      const first = (await runtime.getLoomScript({ scriptDocumentId: imported.loomScripts![0]!.scriptId })).script
+      const second = (await runtime.getLoomScript({ scriptDocumentId: imported.loomScripts![1]!.scriptId })).script
+      expect(first.id).not.toBe(second.id)
+      const editedSource = source('\r\n').replace('value = 1', 'value = 2')
+      const updated = await runtime.updateLoomScript({ scriptDocumentId: first.id, expectedVersion: first.version, fileName: first.source.fileName, source: editedSource })
+      expect(updated.script.owner).toEqual({ kind: 'extension', packageId: input.packageId, installationId: imported.installationId })
+      expect(updated.script.id).toBe(first.id)
+      expect((await runtime.exportLoomScript({ scriptDocumentId: first.id })).artifact.source).toBe(editedSource)
+      expect((await runtime.exportLoomScript({ scriptDocumentId: second.id })).artifact.source).toBe(source())
+      await runtime.importExtensionPackageResources(input)
+      expect((await runtime.exportLoomScript({ scriptDocumentId: first.id })).artifact.source).toBe(editedSource)
+      expect((await runtime.listLoomScripts({ owner: { kind: 'user' } })).scripts).toEqual([])
+    } finally {
+      await fixture.dataEngine.close()
+    }
+  })
 })
+
+function hostSource(runtime: 'client' | 'client-worker' | 'server', version = 1): string {
+  return source().split('\n')
+    .filter(line => !line.startsWith('// @contribution'))
+    .join('\n')
+    .replace('// @runtime      client-sandbox', `// @runtime      ${runtime}`)
+    .replace('export const value = 1', `export function activate(ctx) { return ${version}; }`)
+}
 
 function source(newline = '\n'): string {
   return [
@@ -273,6 +403,7 @@ async function createFixture() {
   const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-script-test-'))
   roots.push(rootDirectory)
   return {
+    now,
     dataEngine: engine,
     documents: createSqliteDocumentStore({ engine }),
     promptResources: createPromptResourceStore({ engine, createId, now }),

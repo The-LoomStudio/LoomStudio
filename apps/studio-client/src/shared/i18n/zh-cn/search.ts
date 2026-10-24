@@ -38,7 +38,7 @@ export const messages = {
   'search.scope.extension': '扩展',
   'search.keywords.model': 'API 接口 密钥 服务商 模型 provider LLM model',
   'search.keywords.agent': 'Agent 预设 preset 提示词 prompt',
-  'search.keywords.user': '我的资源 persona 用户 角色设定 人设',
+  'search.keywords.user': '我的 资源 更换头像 我的名字 我的资源 persona 用户 角色设定 人设',
   'search.keywords.play': '游玩 角色 开始 play',
   'search.keywords.recent': '历史 最近 剧情 会话 Timeline Session history recent',
   'search.keywords.sessions': '历史 剧情 会话 timeline session history',

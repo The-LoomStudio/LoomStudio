@@ -2,7 +2,7 @@
 
 > 状态：Extension Host 与 Loom Script Sandbox 已实现；2026-09-24 补充共享 iframe 基建与受控通知桥。
 
-本文记录 Studio Client 当前已经落地的 Client Extension Module、Loom Script Renderer、Surface 仲裁、实例生命周期与消息内 Render Mount。Extension Client Module 仍是受信任同源代码；不可信单文件 Renderer 使用独立 Loom Script Sandbox，详见 [`loom-script-runtime.md`](loom-script-runtime.md)。
+本文记录 Studio Client 当前已经落地的 Client Extension Module、Loom Script Renderer、Surface 仲裁、实例生命周期与消息内 Render Mount。`runtime: 'client'` 的 Extension Module 仍是受信任同源代码；`client-worker` 通过 Dedicated Worker 与能力桥执行，不直接访问 DOM，也不提供强权限沙箱。不可信单文件 Renderer 使用独立 Loom Script Sandbox，Worker 与脚本合同见 [`loom-script-runtime.md`](loom-script-runtime.md)。
 
 实现入口：
 
@@ -29,7 +29,7 @@ Client Module 必须导出 `activate(ctx)`。Manifest 中声明的 Renderer 必�
 
 带 Renderer 的启用模块继续提前激活，以便建立 Surface Contribution；只有 Command / Action 的模块保持惰性，首次执行 Action 时才加载。Manifest Declaration 始终由 Catalog 提供，不需要为了显示入口而执行扩展代码。
 
-Client Module 当前是受信任的同源 JavaScript。即使某个 Renderer 使用 sandbox iframe，模块本身仍已在 Studio 主页面执行；iframe 只隔离该 Renderer 的 frame 内容，不能把整个 Client Module 描述成不可信代码沙箱。
+`runtime: 'client'` Module 当前是受信任的同源 JavaScript。即使某个 Renderer 使用 sandbox iframe，模块本身仍已在 Studio 主页面执行；iframe 只隔离该 Renderer 的 frame 内容，不能把整个 Client Module 描述成不可信代码沙箱。
 
 ### 宿主共享前端模块
 
@@ -241,13 +241,13 @@ Workbench 解释的是 Manifest declaration、Runtime registration 和当前实�
 
 扩展源码实际使用了面板设置 / 切换、Background open / update / close、Command Handler、Composer / Workbench 双入口、dispose 清理、CSS Token 和宿主毛玻璃 escape hatch；这些浏览器内行为尚未完成本轮人工视觉和点击验收，不能由安装测试替代。
 
-测试同时暴露出当前尚未解决的边界：
+该测试扩展的历史实现不代表当前能力上限：Host 已提供 `contributes.themes/styles` 与 `ctx.styles.register`，正式外观扩展应遵循[主题与样式合同](../ui/extension-themes.md)。Client Context 已提供 Package 绑定的 `ctx.configs.list/get/upsert/subscribe`，更新使用已有 Document Version，详见[Scoped Storage](../application/extension/data-and-portable-payload.md#21-scoped-storage)；旧测试的内存设置重置不表示宿主缺少持久配置能力。
 
-- 没有正式 Host Appearance / Style Contribution；修改 Narrative 消息毛玻璃只能使用不受支持的全局 CSS escape hatch；
+当前仍保留的边界：
+
 - Background 与前景样式没有语义联动；
-- Client Context 没有 Config 读写，测试设置 reload 后重置；
 - 第三方网络图片没有权限声明、隐私提示、加载失败或离线合同；
-- Client Module 仍是受信任同源代码；
+- `runtime: 'client'` Module 仍是受信任同源代码；
 - Collection 用户排序尚未持久化；
 - Marker Anchor 尚未接入正式 Narrative Marker 数据源；Match Anchor 已由 Loom Script Runtime 接入 Text Pipeline Match。
 

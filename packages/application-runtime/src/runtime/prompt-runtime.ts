@@ -434,10 +434,10 @@ async function importPromptResourceContent(
       })
     }
     if (content.resourceKind === 'preset' && (prepared.length > 0 || textTransformRules?.length)) await requireDocumentParticipant(ctx).participateTransaction(dataTx, async documentTx => {
-      for (const [index, rule] of (textTransformRules ?? []).entries()) {
+      for (const rule of textTransformRules ?? []) {
         validateTextTransformRuleDraft({ ...rule, owner: { kind: 'preset', presetId: resource.id } })
         await writeDocument<TextTransformRuleContent>(documentTx, {
-          id: `${resource.id}.rule.${String(index).padStart(6, '0')}`,
+          id: ctx.createId('text-transform-rule'),
           type: applicationDocumentTypes.textTransformRule,
           content: {
             ...structuredClone(rule),

@@ -12,6 +12,49 @@ function createTestEngine() {
 }
 
 describe('sqlite data engine', () => {
+  it('keeps nested reads consistent while another queued transaction waits', async () => {
+    const engine = createTestEngine()
+    engine.database.exec('CREATE TABLE snapshot_value (value INTEGER); INSERT INTO snapshot_value VALUES (1)')
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const read = () => engine.read(db => db.prepare('SELECT value FROM snapshot_value').get()!.value)
+    try {
+      const snapshot = engine.readSnapshot(async () => {
+        const first = await read()
+        entered.resolve()
+        await release.promise
+        return [first, await engine.readSnapshot(read)]
+      })
+      await entered.promise
+      const writer = engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+        tx.database.exec('UPDATE snapshot_value SET value = 2')
+        tx.recordOperations([{ store: 'test', kind: 'update', entityId: 'value', entityType: 'test' }])
+      })
+      release.resolve()
+      expect(await snapshot).toEqual([1, 1])
+      await writer
+      expect(await read()).toBe(2)
+    } finally { await engine.close() }
+  })
+
+  it('rejects writes inside a snapshot and clears failed and inherited snapshot authority', async () => {
+    const engine = createTestEngine()
+    const releaseInherited = Promise.withResolvers<void>()
+    let inherited: Promise<unknown> | undefined
+    const write = () => engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+      tx.recordOperations([{ store: 'test', kind: 'create', entityId: 'value', entityType: 'test' }])
+    })
+    try {
+      await expect(engine.readSnapshot(async () => {
+        inherited = releaseInherited.promise.then(write)
+        await write()
+      })).rejects.toMatchObject({ code: 'data.read_snapshot_write' })
+      releaseInherited.resolve()
+      await inherited
+      expect(await engine.readSnapshot(() => engine.read(db => db.prepare('SELECT id FROM changesets').all()))).toHaveLength(1)
+    } finally { await engine.close() }
+  })
+
   it('does not pass a writers transaction guard to independently subscribed work', async () => {
     const engine = createTestEngine()
     let active = true

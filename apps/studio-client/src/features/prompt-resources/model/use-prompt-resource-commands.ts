@@ -172,7 +172,7 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
         changesetId: result.mutation.changesetId,
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
-      await invalidatePromptResourceState({ resources: true })
+      await invalidatePromptResourceState({ resources: true, loreMounts: true })
     }).catch(error => {
       if (!resourceId) throw error
     })
@@ -200,7 +200,7 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
         changesetId: result.mutation.changesetId,
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
-      await invalidatePromptResourceState({ resources: true })
+      await invalidatePromptResourceState({ resources: true, loreMounts: true })
     }).catch(error => {
       if (!resourceId) throw error
     })

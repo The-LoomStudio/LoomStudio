@@ -47,6 +47,24 @@
   font-size: var(--loom-font-size-2);
 }
 
+.sourceGroup {
+  margin-top: 16px;
+}
+
+.sourceHeading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: var(--loom-font-size-2);
+  font-weight: 600;
+
+  span {
+    color: var(--loom-color-text-muted);
+    font-weight: 400;
+  }
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));

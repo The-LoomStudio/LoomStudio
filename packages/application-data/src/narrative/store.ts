@@ -923,9 +923,9 @@ function readTimeline(database: DatabaseSync, id: string, includeDeleted = false
            (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
             WHERE node.timeline_id = narrative_timelines.id AND node.parent_node_id IS NULL
             ORDER BY node.created_at ASC, node.id ASC LIMIT 1) AS opening_preview,
-           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
-            WHERE node.timeline_id = narrative_timelines.id
-            ORDER BY node.created_at DESC, node.id DESC LIMIT 1) AS latest_preview,
+           (SELECT substr(node.body_raw, 1, 240) FROM narrative_branches branch
+            JOIN narrative_nodes node ON node.id = branch.head_node_id
+            WHERE branch.id = narrative_timelines.active_branch_id) AS latest_preview,
            created_from_card_id, created_from_card_version, prompt_resource_ids_json,
            active_branch_id, opening_json, created_at, updated_at, tombstoned, deleted_at
     FROM narrative_timelines WHERE id = ?
@@ -969,9 +969,9 @@ function readTimelines(
            (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
             WHERE node.timeline_id = narrative_timelines.id AND node.parent_node_id IS NULL
             ORDER BY node.created_at ASC, node.id ASC LIMIT 1) AS opening_preview,
-           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
-            WHERE node.timeline_id = narrative_timelines.id
-            ORDER BY node.created_at DESC, node.id DESC LIMIT 1) AS latest_preview,
+           (SELECT substr(node.body_raw, 1, 240) FROM narrative_branches branch
+            JOIN narrative_nodes node ON node.id = branch.head_node_id
+            WHERE branch.id = narrative_timelines.active_branch_id) AS latest_preview,
            created_from_card_id, created_from_card_version, prompt_resource_ids_json,
            active_branch_id, opening_json, created_at, updated_at, tombstoned, deleted_at
     FROM narrative_timelines

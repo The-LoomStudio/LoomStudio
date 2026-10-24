@@ -4,11 +4,11 @@
 
 ## 声明与采用
 
-`manifestVersion: 2` 的 `contributes.themes` 声明主主题，`contributes.styles` 声明可独立启停、调整顺序的增强。两者使用同一份 `ExtensionStyleContribution` 合同：`id`、`label`、包内 `css` 入口，以及可选的 `description`、`parameters`、`nativeMotion`、`moduleId` 和 `supportsCssOnly`。一个包内两类贡献的 ID 必须唯一。
+`manifestVersion: 2` 的 `contributes.themes` 声明主主题，`contributes.styles` 声明可独立启停、调整顺序的增强。两者使用同一份 `ExtensionStyleContribution` 合同：`id`、`label`、包内 `css` 入口，以及可选的 `description`、`parameters`、`nativeMotion`、`moduleId` 和 `supportsCssOnly`。一个包可以同时声明多个主题和多个增强；一个包内两类贡献的 ID 必须唯一。
 
 同时采用一个主题，可以叠加多个增强。安装、采用样式与授权运行 Client Module 是三个独立动作。纯 CSS 贡献不需要模块。若声明 `moduleId`，它必须引用本包的 Client Module；默认需要先授权代码。仅声明 `supportsCssOnly: true` 的贡献允许在模块未启用时使用 CSS 部分，此字段不能单独用于无模块贡献。
 
-完整样例见 [纸页主题包](../../../official/extensions/loom-theme-paper/manifest.json)：`paper` 是纯 CSS 主题；`smooth-motion` 是独立增强，支持纯 CSS 模式，并在授权模块后提供 JS 面板动效。样例可直接作为 Extension 包导入，JS 是无需额外构建的 ES Module。
+完整样例见 [官方主题包](../../../official/extensions/themes/manifest.json)（`official.themes`）：`paper`、`tide` 是纯 CSS 主题；`smooth-motion`、`mint`、`amber` 是三个独立增强，其中 `smooth-motion` 支持纯 CSS 模式，并在授权 `motion` 模块后提供 JS 面板动效。默认开发入口直接从 `official/extensions/` 发现此包，无需复制到用户安装目录；JS 是无需额外构建的 ES Module。官方包不能删除式卸载，可以取消采用外观或停用模块。源码修改需要服务重新发现或重启，没有文件级 HMR。
 
 ## CSS、素材与优先级
 
@@ -77,4 +77,21 @@ export function activate(ctx) {
 
 设置中的主题、增强开关与顺序即时采用，成功后提交偏好；失败保留此前的实际采用状态。代码授权独立进行。启动遮罩等待首次外观应用完成或失败后退出；主题可通过 `#loom-startup` 覆盖图标、文字和背景，撤除时机由宿主控制。宿主等待有限动画完成，每阶段最多等待 1.2 秒，避免扩展阻塞进入工作台。HTML 第一帧仍使用原生兜底。
 
-纸页样例使用包内生成的 PNG 纹理覆盖整个 Timeline 画布，消息表面透明，虚拟列表定位保持宿主所有。另有 [潮汐样例](../../../official/extensions/loom-theme-tide/manifest.json)，提供纯 CSS 主题和两个独立强调色增强，展示覆盖顺序与专属参数。
+纸页样例使用包内生成的 PNG 纹理覆盖整个 Timeline 画布，消息表面透明，虚拟列表定位保持宿主所有。同一 [官方主题包](../../../official/extensions/themes/manifest.json) 内的潮汐主题和两个独立强调色增强，展示覆盖顺序与专属参数。
+
+## 静态背景资源
+
+背景与主题独立分发。官方背景包源码 `official/extensions/backgrounds/manifest.json`（`official.backgrounds`）通过 `contributes.backgrounds` 声明 `id`、`name`、`description` 和包内图片路径 `image`，无需 Client Module。全局包被发现后即可在背景设置中选择，宿主使用包的 `displayName` 作为来源名称；发现不会自动切换背景；用户安装包卸载后对应候选不可用，官方包则不能删除式卸载。静态背景与全局外观贡献一样，仅接受全局安装包；Timeline 参与包不能声明，卡内安装也不会进入全局背景列表。
+
+`image` 必须是包内相对图片路径，可带 `./` 前缀，不能越界或使用 URL、query、hash；支持 PNG、JPEG、WebP、GIF、SVG 和 AVIF。模块仍可通过 `ctx.backgrounds.register` 动态注册背景，适用于确实需要运行代码生成或管理候选的扩展。静态图片无需为此增加模块和授权步骤。
+
+开发默认发现 `official/extensions/` 中所有现有包，主题及本地存在的背景包无需另行安装；背景目录整体被 Git 忽略。用户安装包仍在 `extensions/`，相同包 ID 出现在两个来源时报告冲突。默认首次 setup 仅处理 assistant 与 story-memory，保留用户已停用的模块状态。发行包默认仍只携带 assistant 与 story-memory，详见 [官方扩展目录](../../../official/extensions/README.md)。
+
+
+## 玩家个人背景
+
+玩家背景在外观面板导入、预览、选用和移除；支持 PNG、APNG、JPEG、GIF、WebP、AVIF，单张最大 64 MiB。“我的 → 资源”只汇总个人背景目录，点击条目跳到外观面板预览，不直接更改当前背景，也不提供导入或移除操作。
+
+图片沿用 `POST /assets`，二进制由现有 Blob Store 保存到用户数据目录，清单以 `user-backgrounds:global` 文档保存 `{ id, name, assetId }`，通过版本检查防止并发覆盖。清单不归属于具体扮演身份或 Timeline；背景引用进入已有本机外观偏好。扩展背景仍引用包内文件，不复制到个人清单。
+
+移除只删除个人清单记录；移除当前选用项时清除本机对应选择，不删除可能仍被其他资源引用的底层图片资产。个人背景不进入仓库或官方包。

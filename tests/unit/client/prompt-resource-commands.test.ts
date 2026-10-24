@@ -26,6 +26,18 @@ describe('prompt resource commands', () => {
     })
   })
 
+  it.each(['json', 'zip'] as const)('refreshes imported Lore mounts after %s import', async format => {
+    const invalidate = vi.fn(async () => undefined)
+    const result = { resource: promptResource('imported', 'preset'), mutation: { changesetId: 'import' } }
+    const commands = usePromptResourceCommands(commandInput({
+      api: { promptResources: { import: async () => result, importZip: async () => result } } as unknown as StudioApi,
+      invalidate,
+    }))
+    const file = { name: 'preset.json', text: async () => '{}', arrayBuffer: async () => new ArrayBuffer(0) } as File
+    await (format === 'json' ? commands.importPromptResource(file) : commands.importPromptResourceZip(file))
+    expect(invalidate).toHaveBeenCalledWith({ resources: true, loreMounts: true })
+  })
+
   it('invalidates remote truth before refreshing dependent documents after deletion', async () => {
     const events: string[] = []
     const commands = usePromptResourceCommands(commandInput({

@@ -38,7 +38,7 @@ export const messages = {
   'search.scope.extension': 'Extension',
   'search.keywords.model': 'API endpoint key credential provider LLM model',
   'search.keywords.agent': 'Agent preset prompt instructions',
-  'search.keywords.user': 'My resources persona user profile',
+  'search.keywords.user': 'Me Resources Change avatar My name My resources persona user profile',
   'search.keywords.play': 'play character start',
   'search.keywords.recent': 'history recent stories timelines sessions',
   'search.keywords.sessions': 'history timeline session conversation',

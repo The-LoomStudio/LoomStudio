@@ -5,16 +5,16 @@ export const officialEditNarrativeTool: ToolDefinition = {
   id: 'official/edit_narrative',
   owner: { namespace: 'official' },
   name: 'edit_narrative',
-  description: 'Edit the raw markdown content of a node in the current narrative branch without changing other branches. Use the returned nodeId for subsequent edits.',
+  description: 'Edit the raw markdown content of a node in the current narrative branch without changing other branches. Address the node by its fixed floor; the floor stays unchanged after editing.',
   input: {
     kind: 'structured',
     schema: {
       type: 'object',
       properties: {
-        nodeId: {
-          type: 'string',
-          minLength: 1,
-          description: 'The ID of the narrative node to edit.',
+        floor: {
+          type: 'integer',
+          minimum: 1,
+          description: 'The fixed floor in the current narrative branch.',
         },
         content: {
           type: 'string',
@@ -22,7 +22,7 @@ export const officialEditNarrativeTool: ToolDefinition = {
           description: 'The updated markdown text for this narrative node.',
         },
       },
-      required: ['nodeId', 'content'],
+      required: ['floor', 'content'],
       additionalProperties: false,
     } satisfies JsonObject,
   },
@@ -35,19 +35,17 @@ export const officialEditNarrativeRegistration: ToolRuntimeRegistration = {
     if (!scope?.narrative) {
       throw new Error('Narrative access is not available in this Agent turn')
     }
-    const nodeId = typeof invocation.arguments?.nodeId === 'string'
-      ? invocation.arguments.nodeId.trim()
-      : ''
+    const floor = invocation.arguments?.floor
     const content = typeof invocation.arguments?.content === 'string'
       ? invocation.arguments.content.trim()
       : ''
-    if (!nodeId) {
-      throw new Error('nodeId cannot be empty')
+    if (typeof floor !== 'number' || !Number.isSafeInteger(floor) || floor < 1) {
+      throw new Error('floor must be a positive integer')
     }
     if (!content) {
       throw new Error('Narrative content cannot be empty')
     }
-    const result = await scope.narrative.editNode({ nodeId, content })
+    const result = await scope.narrative.editNode({ floor, content })
     return {
       invocationId: invocation.id,
       toolId: invocation.toolId,
@@ -55,9 +53,8 @@ export const officialEditNarrativeRegistration: ToolRuntimeRegistration = {
       content: [{
         type: 'json',
         value: {
-          nodeId: result.nodeId,
-          timelineId: scope.narrative.timelineId,
-          branchId: scope.narrative.branchId,
+          floor: result.floor,
+          path: `/narrative/${result.floor}.md`,
         },
       }],
     }

@@ -11,6 +11,7 @@ import styles from './model-panel.module.scss'
 import { ModelBrandIcon } from './model-brand-icon.js'
 
 type ProviderAccountListProps = {
+  selectedProviderId?: string
   onUpdateTokenMultiplier?(modelProfileId: string, multiplier: number): Promise<void>
   accounts: ProviderAccount[]
   busy: boolean
@@ -50,6 +51,7 @@ export function ProviderAccountList(props: ProviderAccountListProps) {
         : props.accounts.map(account => (
             <ProviderAccountItem
               key={account.id}
+              selected={account.id === props.selectedProviderId}
               account={account}
               busy={props.busy}
               models={props.modelProfiles.filter(profile => profile.providerAccountId === account.id)}
@@ -76,6 +78,7 @@ export function ProviderAccountList(props: ProviderAccountListProps) {
 }
 
 function ProviderAccountItem(props: {
+  selected?: boolean
   onUpdateTokenMultiplier?(modelProfileId: string, multiplier: number): Promise<void>
   account: ProviderAccount
   busy: boolean
@@ -87,6 +90,10 @@ function ProviderAccountItem(props: {
   onUpdateConnection(providerAccountId: string, connection: { displayName: string; baseUrl: string; apiKey?: string }): Promise<boolean>
   t: Translator
 }) {
+  const cardRef = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (props.selected && cardRef.current) { cardRef.current.open = true; cardRef.current.scrollIntoView({ block: 'center' }); cardRef.current.focus() }
+  }, [props.selected])
   const [query, setQuery] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [pendingModelIds, setPendingModelIds] = useState<Set<string>>(() => new Set())
@@ -227,7 +234,7 @@ function ProviderAccountItem(props: {
   const hasGenericModel = props.models.some(profile => resolveModelBrand(profile.providerModelId) === null)
 
   return (
-    <details className={styles.accountCard}>
+    <details ref={cardRef} tabIndex={-1} className={styles.accountCard}>
       <summary className={styles.accountSummary}>
         <ChevronRight aria-hidden="true" />
         {fake ? (

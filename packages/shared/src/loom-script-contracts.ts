@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const loomScriptRuntimeSchema = z.enum(['client-sandbox', 'client', 'client-worker', 'server'])
+export type LoomScriptRuntime = z.infer<typeof loomScriptRuntimeSchema>
+
 export const loomScriptMountTargetSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('workspace'), workspaceId: z.string() }),
   z.strictObject({ kind: z.literal('card'), cardId: z.string() }),
@@ -20,6 +23,7 @@ export const loomScriptMountSchema = z.object({
   id: z.string(), version: z.number(), target: loomScriptMountTargetSchema,
   scriptDocumentId: z.string(), enabled: z.boolean(), orderIndex: z.number(),
   pinnedDocumentVersion: z.number().optional(), grantedCapabilities: z.array(z.string()),
+  adoptedDocumentVersion: z.number().optional(),
   origin: z.record(z.string(), z.json()), createdAt: z.string(), updatedAt: z.string(),
 })
 export type LoomScriptMount = z.infer<typeof loomScriptMountSchema>

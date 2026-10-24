@@ -699,7 +699,6 @@ async function importExtensionPackageResourcesInternal(
     return [item.contribution.id, parseLoomScriptSource(item.source)] as const
   }))
   if (scriptMetadata.size !== scripts.length) throw new Error('Duplicate Loom Script contribution')
-  if (new Set([...scriptMetadata.values()].map(metadata => metadata.metadataId)).size !== scripts.length) throw new Error('Duplicate Loom Script metadata id')
   const scriptDocumentId = (id: string) => localId(`${input.packageId}/script/${id}`)
   const scriptMountId = (presetId: string, scriptId: string) => localId(`${input.packageId}/script-mount/${presetId}/${scriptId}`)
   const storedScripts = (await listDocumentsIncludingTombstones<LoomScriptContent>(ctx.documents, applicationDocumentTypes.loomScript))
@@ -710,10 +709,6 @@ async function importExtensionPackageResourcesInternal(
     .filter(mount => owns(mount.content.origin))
   const storedScriptMountById = new Map(storedScriptMounts.map(mount => [mount.id, mount]))
   const desiredScriptMountIds = new Set<string>()
-  for (const item of scripts) {
-    if (storedScripts.some(script => !script.meta.tombstone && script.id !== scriptDocumentId(item.contribution.id)
-      && script.content.metadataId === scriptMetadata.get(item.contribution.id)!.metadataId)) throw new Error('Loom Script metadata identity conflicts with an existing script')
-  }
   const agentToolDefinitions = new Map<string, ToolDefinition>()
   for (const item of input.agentTools) {
     if (agentToolDefinitions.has(item.contribution.id)) throw new Error(`Extension Agent Tool contribution is duplicated: ${item.contribution.id}`)

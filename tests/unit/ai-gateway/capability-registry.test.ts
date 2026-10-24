@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events'
 import {
   createAiGatewayCapabilityRegistry,
   createProfiledAiGateway,
@@ -6,6 +7,41 @@ import {
 import { describe, expect, it } from 'vitest'
 
 describe('AI Gateway capability registry', () => {
+  it.each(['completed', 'failed', 'cancelled', 'external-abort', 'already-aborted', 'completion-race'] as const)(
+    'releases the external signal after a profiled run: %s', async outcome => {
+      const controller = new AbortController()
+      const registry = createAiGatewayCapabilityRegistry()
+      let finish!: () => void
+      let started!: () => void
+      const ready = new Promise<void>(resolve => { started = resolve })
+      registry.register({
+        provider: { id: 'example.lifecycle', displayName: 'Lifecycle', capabilities: [{ id: 'test', displayName: 'Test' }] },
+        handlers: { test: async () => {
+          started()
+          if (outcome === 'failed') throw new Error('provider failed')
+          if (['cancelled', 'external-abort', 'completion-race'].includes(outcome)) await new Promise<void>(resolve => { finish = resolve })
+          return 'done'
+        } },
+      }, { kind: 'platform' })
+      const gateway = createProfiledAiGateway({ registry, resolveProfile: async profileId => ({
+        profileId, providerProfileId: 'provider', providerId: 'example.lifecycle', capabilityId: 'test', accountConfig: {}, profileConfig: {},
+      }) })
+      if (outcome === 'already-aborted') controller.abort('before start')
+      for (let index = 0; index < 3; index++) {
+        const run = gateway.createRun({ profileId: 'profile', input: {}, signal: controller.signal })
+        await ready
+        if (outcome === 'cancelled') { run.cancel('stop'); finish() }
+        if (outcome === 'external-abort') { controller.abort('stop'); finish() }
+        if (outcome === 'completion-race') { finish(); controller.abort('stop') }
+        if (outcome === 'completed') await expect(run.result).resolves.toMatchObject({ output: 'done' })
+        else await expect(run.result).rejects.toThrow()
+        expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0)
+        expect(run.readEvents().events.map(event => event.type)).toEqual(['started', outcome === 'completed' || outcome === 'failed' ? outcome : 'cancelled'])
+        if (outcome !== 'completed' && outcome !== 'failed') break
+      }
+    },
+  )
+
   it('registers, invokes, and disposes a provider capability', async () => {
     const registry = createAiGatewayCapabilityRegistry()
     const handle = registry.register({

@@ -49,6 +49,11 @@ import {
 } from './storage.js'
 
 export async function loadServerModule(record: ExtensionModuleRecord, instanceId: string, options?: ExtensionHostOptions): Promise<ServerExtensionModule> {
+  if (record.load) {
+    const loaded = await record.load(instanceId)
+    if (typeof loaded.activate !== 'function') throw new Error('Server extension must export activate(ctx)')
+    return loaded
+  }
   const entry = record.moduleManifest.entry
   const directory = realpathSync(record.directory)
   const modulePath = realpathSync(resolve(directory, entry))
@@ -123,6 +128,8 @@ export function createContext(
     if (!options.canAccessState) throw new Error('Card State access validation is not available in this host')
     return options.canAccessState(target, structuredClone(record.target))
   }
+  const observationContext = new AsyncLocalStorage<import('./types.js').ExtensionObservationContext>()
+  const observationOwner = () => ({ moduleId: moduleManifest.id, instanceId: instance.instanceId, ...observationContext.getStore() })
   const timelineWork = new AsyncLocalStorage<ExtensionTimelineExecution & { lease: ExtensionTimelineLease }>()
   const initializationWork = new AsyncLocalStorage<AbortSignal>()
   const executionSignal = async (): Promise<AbortSignal> => {
@@ -176,6 +183,8 @@ export function createContext(
     if (!options.subscribeEvents) throw new Error('Extension event subscriptions are not available in this host')
     let active = true
     const registration = options.subscribeEvents(patterns, async event => {
+      const deliver = () => observationContext.run({ eventId: event.meta.eventId, eventName: event.name,
+        correlationId: event.meta.correlationId, parentCallId: event.meta.callId ?? event.meta.parentCallId }, () => handler(event))
       if (!active || !instance.scope.active) return
       if (packageManifest.participation === 'timeline' && event.name !== 'system.ready' && event.name !== 'system.stopping') {
         if (event.name !== 'state.changed') return
@@ -187,16 +196,16 @@ export function createContext(
           installationId: extensionInstallationId(packageManifest.id, record.target),
         })) return
         if (!active || !instance.scope.active) return
-        return runTimeline(payload.target, async () => { await handler(event) })
+        return runTimeline(payload.target, async () => { await deliver() })
       }
       if (record.target.kind === 'card' && event.name === 'state.changed') {
         const payload = event.payload as Partial<import('@loom-studio/extension-sdk').ExtensionStateChangeEvent>
         if (!payload?.target) return
         return canAccessState(payload.target).then(allowed => {
-          if (allowed && active && instance.scope.active) return handler(event)
+          if (allowed && active && instance.scope.active) return deliver()
         })
       }
-      return handler(event)
+      return deliver()
     }, subscriber)
     return { dispose: () => { active = false; return registration.dispose() } }
   }
@@ -271,10 +280,13 @@ export function createContext(
       },
     },
     agentTasks: {
+      subscribe: input => withTask((service, execution) => service.subscribe(taskOwner, execution.target, input, execution.signal)),
+      acknowledge: sessionId => withTask((service, execution) => service.acknowledge(taskOwner, execution.target, sessionId, execution.signal)),
       create: input => withTask((service, execution) => service.create(taskOwner, execution.target, input, execution.signal)),
-      invoke: input => withTask((service, execution) => service.invoke(taskOwner, execution.target, input, execution.signal)),
+      invoke: input => withTask((service, execution) => service.invoke(taskOwner, execution.target, input, execution.signal, observationOwner())),
       read: sessionId => withTask((service, execution) => service.read(taskOwner, execution.target, sessionId, execution.signal)),
       cancel: sessionId => withTask(async (service, execution) => { await service.cancel(taskOwner, execution.target, sessionId, execution.signal) }),
+      dispose: sessionId => withTask(async (service, execution) => { await service.dispose(taskOwner, execution.target, sessionId, execution.signal) }),
     },
     vfs: {
       register: provider => {
@@ -348,7 +360,9 @@ export function createContext(
         if (isKernelNamespace(name)) throw new Error(`Extension cannot register Kernel namespace RPC: ${name}`)
         if (isStudioReservedNamespace(name)) throw new Error(`Extension cannot register reserved Studio namespace RPC: ${name}`)
         if (!name.startsWith(`${packageManifest.id}.`)) throw new Error(`Extension RPC must use package namespace: ${name}`)
-        const wrapped: ExtensionRpcHandler = (params, context) => instance.scope.run(() => handler(params, context))
+        const wrapped: ExtensionRpcHandler = (params, context) => observationContext.run({
+          correlationId: context.correlationId, parentCallId: context.callId ?? context.parentCallId,
+        }, () => instance.scope.run(() => handler(params, context)))
         const registration = options.registerRpc(name, packageManifest.id, moduleManifest.id, wrapped, instance.instanceId, structuredClone(record.target))
         instance.scope.track(`rpc:${name}`, registration)
         instance.registeredRpcNames.add(name)
@@ -668,7 +682,10 @@ export function createContext(
         const signal = input.signal ? AbortSignal.any([input.signal, workSignal]) : workSignal
         signal.throwIfAborted()
         return instance.scope.run(async () => {
-          const result = await options.invokeModel!({ ...input, signal })
+          const result = await options.invokeModel!({ ...input, signal }, {
+            packageId: packageManifest.id, installationId: extensionInstallationId(packageManifest.id, record.target), ...observationOwner(), moduleId: moduleManifest.id,
+            timelineId: timelineWork.getStore()?.lease.timelineId,
+          })
           signal.throwIfAborted()
           await executionSignal()
           return result
@@ -750,7 +767,7 @@ export function createContext(
         return instance.scope.run(() => options.buildPrompt!({
           ...input,
           signal: input.signal ? AbortSignal.any([input.signal, workSignal]) : workSignal,
-        }, record.target, packageManifest.id, timelineWork.getStore()?.lease))
+        }, record.target, packageManifest.id, timelineWork.getStore()?.lease, observationOwner()))
       },
     },
     agentTools: {

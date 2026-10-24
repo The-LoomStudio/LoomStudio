@@ -1,4 +1,17 @@
 export const messages = {
+  "appearance.extensionBackgroundGroup": "扩展包 · {{name}}",
+  "appearance.cardBackgroundGroup": "角色包 · {{name}}",
+
+
+  "appearance.myBackgrounds": "我的背景",
+  "appearance.importBackground": "导入背景",
+  "appearance.removeNamedBackground": "移除背景“{{name}}”",
+  "appearance.backgroundLoading": "正在加载背景…",
+  "appearance.backgroundWorking": "正在保存背景…",
+  "appearance.backgroundLoadFailed": "背景尚未加载，请重试。",
+  "appearance.backgroundImageLimit": "支持 PNG、JPEG、WebP、GIF、AVIF 图片，单张不超过 64 MiB。",
+  "appearance.backgroundUploadFailed": "背景图片上传失败。",
+
   'settings.themes': "主题与样式",
   'settings.themeMain': "主主题",
   'settings.themeDefault': "原生默认主题",

@@ -31,6 +31,7 @@ Agent Transcript 是 append-only 运行事实序列。当前 Entry 包括：
 |---|---|
 | `message` | 用户或 Assistant 正文 |
 | `reasoning` | 带来源、可见性与 replay 策略的推理内容 |
+| `request-measurement` | Provider 请求前尝试记录的输入 Token 估算，含请求摘要、Provider Step、计数基准与未计入项；估算和落库均为 best-effort，不同于供应商实际 Usage |
 | `provider-observation` | Provider、Model、Call ID、Stop Reason 与 Usage |
 | `tool-invocation` | Studio Invocation ID、Tool、Transport、输入与执行状态 |
 | `tool-result` | Invocation 配对结果、内容、错误与 synthetic reason |
@@ -85,7 +86,7 @@ Agent 主动读取与 ToolResult 的生命周期由 Runtime 管理，不等于 P
 
 ## 5. 持久化与恢复边界
 
-当前每个 Provider Observation、Invocation、Result 和 terminal Run State 都会分阶段持久化，因此进程内失败不会只存在于临时 callback 中。
+Canonical message、Tool Invocation / Result、恢复检查点与 terminal Run State 分阶段执行必要提交；这些写入失败不会作为观测故障被忽略。请求 Token 估算、`request-measurement` 与 `provider-observation` 的落库及对应通知则是 best-effort：失败不重试或阻止模型调用，也不回滚已完成步骤。Transcript 因而可能缺少计量或供应商 Usage，不能据此判断请求没有发生或将缺失值当作零。
 
 Server 的 Run 事件重放使用绝对游标、单 Run 1 MiB / Runtime 总计 8 MiB 的序列化预算；游标过期时显式重新同步 Transcript 和当前流式状态。完整完成结果包含 Inspector 的 Prompt Projection / Build Trace，不等同于可丢弃的事件历史：前端收到并发布 `lastRun` 后调用 `application.agent.run.acknowledge-completion`，释放独立的待交付引用；普通大小的结果仍可留在有界事件重放中。未确认的完成结果最多保留两分钟，期间不因事件预算或终态元数据淘汰而提前丢弃。此必要交付状态可能暂时超过重放字节预算；这些预算不是整个进程的硬 heap 上限，也不是历史 Trace 的持久化合同。
 
@@ -93,7 +94,7 @@ Server 的 Run 事件重放使用绝对游标、单 Run 1 MiB / Runtime 总计 8
 
 Run 状态记录中的版本化 `recovery` 保存原请求、实际 Branch、Provider/Model 身份、用户 Entry、完整消息、工具合同和下一 Provider Step。首个运行状态与 user 同事务写入；工具组开始前记录不安全边界，完整工具组的最后结果与下一检查点同事务写入；最终 Assistant 与 completed 同事务提交。失败时已取得的 partial 文本和对应检查点也同事务保存。它不是 Provider 端 HTTP 请求或流的断点续传。
 
-`application.agent.run.resume` 在缺少内存实例时，通过 Runtime 分页读取完整工作记录，校验检查点后重建，不再用最近 100 条和一段提示词猜测原请求。原 user 和已完成工具结果保留，不重新执行已完成的工具组；原模型被停用或工具合同变化时明确失败，不换模型。下一 Step 编号与现有步数上限连续，不借恢复重置预算。
+`application.agent.run.resume` 在缺少内存实例时，通过 Runtime 分页读取完整工作记录，校验检查点后重建，不再用最近 100 条和一段提示词猜测原请求。原 user、已接受消息和已完成工具结果保留，不重新执行已完成的工具组。续跑使用该 Session 绑定的 Preset 当前模型配置，不冻结为 checkpoint 中的旧模型；当前绑定缺失或不可用时明确失败，不自动选择替代模型。Runtime 重新编译并校验工具合同，合同变化时拒绝恢复。下一 Step 编号沿用检查点，不从第一步重跑。
 
 检查点还保存 `promptExtensionLeases`：Prompt 准备及工具间接读取的故事扩展来源凭据。
 恢复前复核原始安装版本和采用代次；暂停再启用不能让旧 Prompt 重新获得资格。
@@ -105,7 +106,7 @@ Run 状态记录中的版本化 `recovery` 保存原请求、实际 Branch、Pro
 
 以下能力仍未完成：
 
-- 从历史 Transcript 自动重建未完成 Provider Replay；
+- 缺少完整检查点时，仅凭历史 Transcript 自动重建未完成 Provider Replay；
 - Permission 等待与恢复；
 - orphan Invocation / Result 自动修复；
 - Agent Session 的正式 fork、retry attempt tree 和 branch UI。
@@ -126,8 +127,8 @@ Agent Loop 分阶段提交 Transcript，Agent 正文只能由授权工具写入 
 
 在双向交互与智能体自主编排场景中，Agent 能够通过 `NarrativeSampler`（`packages/application-runtime/src/narrative/sampling.ts`）在受控范围内主动采样读取当前授权 Timeline 的历史正文：
 
-- **选择模式**：支持 `tail`（从指定 Head 向前读取最近 N 个节点）与 `range`（指定 `afterNodeId` 到 `throughNodeId` 开闭区间的节点范围）；
-- **有界预算控制**：单次采样严格限制上限（默认最大 1,000 节点、2,000,000 字符），超出预算时安全截断正文，返回 `complete: false` 与 `nextBeforeNodeId` 供后续续读；
+- **选择模式**：Agent 的 `ctx.readNarrative` 使用分支内楼层地址：`floors` 接收闭区间 `from / through`，`tail` 接收 `count` 和可选 `throughFloor`，`range` 接收 `afterFloor / throughFloor` 开闭区间。底层 Sampler 仍支持宿主使用节点 ID 指定边界，CodeAct 不接受这些节点 ID 字段；
+- **有界预算控制**：单次采样严格限制上限（默认最大 1,000 节点、2,000,000 字符），按完整节点缩减返回集合，不切碎单个节点正文。预算不足但已有节点可返回时，CodeAct 返回 `complete: false`、可选 `nextBeforeFloor` 与每个节点的 `floor / path`；若首个待选节点本身就超过字符预算，明确失败，不返回该节点的部分正文。离散缺号通过 `missingFloors` 说明；底层结果还可携带节点 ID 游标，不能将其作为 Agent 调用参数；
 - **只读非阻塞**：采样仅基于已提交的节点只读展开，不修改 Timeline 的 Branch Head，不推进 Memory 指针，也不触发任何 Narrative 追加。
 
 ## 8. 实现来源

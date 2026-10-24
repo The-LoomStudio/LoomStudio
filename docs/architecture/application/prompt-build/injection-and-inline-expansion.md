@@ -39,6 +39,12 @@ State 可以通过路径宏被读取，但不会因为存在于 Snapshot 中就�
 
 作者工作台以目录条目编辑默认值与额外候选，运行检查展示有效值、来源与候选选择。Server Extension 仍是受信代码；上述只读上下文不是任意脚本沙箱。基础解析的执行记录见 [宏动态值与来源检查 Plan](../../../archive/plans/macro-value-provider-and-inspector-plan.md)，持久选择交付见 [Context Plan 第 20 节](../../../workbench/plans/agent-context-skeleton-and-memory-projection-plan.md#20-配置宏选择持久化2026-09-24)。
 
+### 全局用户配置
+
+`{{User}}` / `{{user}}` 与 `{{user.description}}` 是内建配置宏，读取本轮 `computed.user.name` / `computed.user.description`，不从 Card 作者或 State 推断。普通 Agent、开场和宏检查使用当前全局选择；isolated 调用保留默认 `User` / 空描述，不扩大数据访问。显式 `{{global.user.*}}` / `{{timeline.user.*}}` 仍读取原 State。
+
+默认预设先在普通 Entry 展开描述，再由 `@user.context` 接收作者身份设定；两者的先后由预设树确定。用户配置生命周期、媒体与兼容边界见[用户资料](../user-profiles.md)。
+
 ### 作品选择的持久化
 
 - 作用域为 `Timeline + Preset`，同一局的不同 Session / Branch 共用，其他 Timeline 独立。DocumentStore 每组合一份 `airp.timelinePresetConfig` 文档，保存宏名到 `{ sourceId, optionId? }` 的引用，不复制候选正文，也不写入剧情 State 或作者资源。

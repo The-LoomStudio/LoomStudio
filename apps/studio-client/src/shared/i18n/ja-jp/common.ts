@@ -111,7 +111,7 @@ export const messages = {
   'rail.preset': 'プリセット',
   'rail.model': 'モデル',
   'rail.agent': 'Agent プリセット',
-  'rail.user': 'マイリソース',
+  'rail.user': 'マイページ',
   'rail.play': 'プレイ',
   'rail.recent': '履歴',
   'rail.sessions': '履歴',

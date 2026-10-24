@@ -162,7 +162,7 @@ export function validateStateValue(value: JsonValue, schema: JsonObject, path = 
   const reference = readEntityReferenceAnnotation(schema, path)
   if (reference) validateEntityReferenceValue(value, reference, path)
   const type = schema.type
-  if (typeof type === 'string' && !matchesType(value, type)) {
+  if (type !== undefined && !(Array.isArray(type) ? type : [type]).some(candidate => typeof candidate === 'string' && matchesType(value, candidate))) {
     throw new StateDefinitionError('state.schema_type', `Expected ${type} at ${path}`)
   }
   if (Array.isArray(schema.enum) && !schema.enum.some(candidate => jsonEquals(candidate, value))) {
@@ -219,7 +219,8 @@ export function toStateDefinitionEntry(document: DocumentRecord<StateDefinitionC
 
 function validateSchema(schema: JsonObject, path: string): void {
   const allowedTypes = new Set(['null', 'boolean', 'number', 'integer', 'string', 'array', 'object'])
-  if (schema.type !== undefined && (typeof schema.type !== 'string' || !allowedTypes.has(schema.type))) {
+  const types = Array.isArray(schema.type) ? schema.type : [schema.type]
+  if (schema.type !== undefined && (!types.length || types.some(type => typeof type !== 'string' || !allowedTypes.has(type)))) {
     throw new StateDefinitionError('state.schema_invalid', `Schema type is unsupported: ${path}`)
   }
   if (schema.properties !== undefined && !isJsonObject(schema.properties)) {

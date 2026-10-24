@@ -208,6 +208,68 @@ describe('State panel source isolation', () => {
     expect(applyNew).not.toHaveBeenCalled()
   })
 
+  it('refreshes a completed global save after switching scope without erasing the timeline draft', async () => {
+    const f = fixture()
+    const global = { scope: 'global' } as const
+    let globalVersion = 1
+    f.get.mockImplementation(async target => snapshot(target, target.scope === 'global' ? globalVersion : 1))
+    function selectScope(id: string) {
+      const tree = elements(f.render()).find(item => item.type === FileTree && !item.props.renderTrailing)!
+      ;(tree.props.onSelect as (node: { id: string }) => void)({ id })
+      f.render()
+    }
+    f.render()
+    await f.settle()
+    selectScope('global')
+    f.controls().edit(4)
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof f.apply>>>()
+    f.apply.mockReturnValueOnce(pending.promise)
+    f.controls().submit()
+    selectScope('timeline')
+    f.controls().edit(9)
+    globalVersion = 4
+    pending.resolve({ ...snapshot(global, 4), mutation: { changesetId: 'global-change' } })
+    await f.settle()
+    expect(f.controls().input.props.value).toBe(9)
+    expect(f.props.onStateMutated).toHaveBeenCalledOnce()
+    selectScope('global')
+    expect(f.controls().input.props.value).toBe(4)
+    f.controls().edit(5)
+    f.controls().submit()
+    expect(f.apply.mock.calls.at(-1)?.[0]).toMatchObject({ expectedRevisionId: 'rev-4' })
+    await f.settle()
+  })
+
+  it('retains a new global draft after leaving and returning during an earlier save', async () => {
+    const f = fixture()
+    const global = { scope: 'global' } as const
+    let globalVersion = 1
+    f.get.mockImplementation(async target => snapshot(target, target.scope === 'global' ? globalVersion : 1))
+    function selectScope(id: string) {
+      const tree = elements(f.render()).find(item => item.type === FileTree && !item.props.renderTrailing)!
+      ;(tree.props.onSelect as (node: { id: string }) => void)({ id })
+      f.render()
+    }
+    f.render()
+    await f.settle()
+    selectScope('global')
+    f.controls().edit(4)
+    const pending = Promise.withResolvers<Awaited<ReturnType<typeof f.apply>>>()
+    f.apply.mockReturnValueOnce(pending.promise)
+    f.controls().submit()
+    selectScope('timeline')
+    selectScope('global')
+    f.controls().edit(9)
+    globalVersion = 4
+    pending.resolve({ ...snapshot(global, 4), mutation: { changesetId: 'global-change' } })
+    await f.settle()
+    expect(f.controls().input.props.value).toBe(9)
+    expect(f.controls().save.props.disabled).toBe(false)
+    f.controls().submit()
+    expect(f.apply.mock.calls.at(-1)?.[0]).toMatchObject({ expectedRevisionId: 'rev-4', operations: [{ op: 'set', path: '/count', value: 9 }] })
+    await f.settle()
+  })
+
   it('retains a failed save and permits retry with the original revision', async () => {
     const f = fixture()
     f.render()

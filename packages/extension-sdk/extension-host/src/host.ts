@@ -7,7 +7,7 @@ import {
   type ExtensionModuleRecord,
   type ExtensionModuleSummary,
 } from './types.js'
-import { readManifest, serverModules, contributionCounts } from './manifest.js'
+import { parseExtensionManifest, readManifest, serverModules, contributionCounts } from './manifest.js'
 import { moduleKey } from './storage.js'
 import {
   createContext,
@@ -21,10 +21,31 @@ import {
   toSummary,
 } from './instance.js'
 
-export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
+export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost & Required<Pick<ExtensionHost, 'registerModule'>> {
   const records = new Map<string, ExtensionModuleRecord>()
 
   return {
+    registerModule: input => {
+      const manifest = parseExtensionManifest(structuredClone(input.manifest))
+      const moduleManifest = serverModules(manifest).find(module => module.id === input.moduleId)
+      if (!moduleManifest) throw new Error(`Server module not found: ${input.moduleId}`)
+      const target: ExtensionInstallationTarget = structuredClone(input.target ?? { kind: 'global' as const })
+      const key = installedModuleKey(manifest.id, moduleManifest.id, target)
+      const previous = records.get(key)
+      if (previous?.instance && isLiveInstance(previous.instance.state)) {
+        throw new Error(`Cannot replace active extension module: ${key}`)
+      }
+      const record: ExtensionModuleRecord = {
+        target,
+        directory: '',
+        packageManifest: manifest,
+        moduleManifest,
+        state: 'manifestValidated',
+        load: input.load,
+      }
+      records.set(key, record)
+      return toSummary(record)
+    },
     discover: async (directory, target = { kind: 'global' }) => {
       const manifest = readManifest(directory)
       const summaries: ExtensionModuleSummary[] = []

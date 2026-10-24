@@ -45,7 +45,7 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
     const uri = workspace.targetUri
     void resolveStudioTarget(input.api, uri).then(target => {
       if (!active) return
-      void publish({ ...workspace, ...target, targetUri: undefined, referenceUri: undefined }, true)
+      void publish({ ...workspace, ...target, ...(isStudioTool(target.panel) ? { tool: target.panel, toolSearch: target.search, panel: workspace.panel, search: workspace.search } : { tool: undefined, toolSearch: undefined }), targetUri: undefined, referenceUri: undefined }, true)
     }, error => {
       if (active) setTargetError({ uri, message: error instanceof Error ? error.message : String(error) })
     })
@@ -61,9 +61,14 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
       const uri: unknown = (event as CustomEvent).detail?.uri
       if (typeof uri === 'string') void openReference(uri)
     }
+    const handleObservation = (event: Event) => {
+      const id: unknown = (event as CustomEvent).detail?.id
+      if (typeof id === 'string' && id) void publish({ ...current.current, panel: 'logs', tool: undefined, toolSearch: undefined, search: new URLSearchParams({ logView: 'model', observationId: id }).toString() })
+    }
+    window.addEventListener('loom:open-observation', handleObservation)
     window.addEventListener('loom:open-reference', handle)
-    return () => window.removeEventListener('loom:open-reference', handle)
-  }, [openReference])
+    return () => { window.removeEventListener('loom:open-reference', handle); window.removeEventListener('loom:open-observation', handleObservation) }
+  }, [openReference, publish])
 
   const openPanel = useCallback((panel: StudioPanelId, target: { cardId?: string; assetId?: string } = {}) => {
     if (panel === 'sessions') return publish({ ...current.current, tool: 'recent', toolSearch: 'historyTab=timelines' })

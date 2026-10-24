@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { cp, mkdtempDisposable, readFile, stat } from 'node:fs/promises'
+import { access, cp, mkdtempDisposable, readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -133,8 +133,18 @@ try {
   const content = await rpc('official.listContent')
   assert.ok(content.packages[0].resources.every(resource => resource.available), 'Starter was not installed')
   const bundled = (await rpc('extensions.listPackages')).items
-  assert.deepEqual(bundled.map(item => item.packageId), ['official.loom-assistant'], 'Unexpected development extensions leaked into release')
-  assert.ok(bundled.every(item => !item.modules.length), 'Bundled content unexpectedly contains executable modules')
+  assert.deepEqual(bundled.map(item => item.packageId).sort(), ['official.loom-assistant', 'official.story-memory'], 'Unexpected official packages in release')
+  for (const item of bundled) {
+    assert.deepEqual(item.sourceKinds, ['repository'], `${item.packageId} was not loaded from the official directory`)
+    await assert.rejects(access(join(directory, 'extensions', item.packageId)), { code: 'ENOENT' }, `${item.packageId} was copied into user extensions`)
+  }
+  assert.deepEqual(bundled.find(item => item.packageId === 'official.loom-assistant').modules, [])
+  const storyMemory = bundled.find(item => item.packageId === 'official.story-memory')
+  assert.deepEqual(storyMemory.modules.map(module => [module.moduleId, module.runtimeKind]).sort(), [['client', 'client'], ['server', 'server']])
+  const clientModule = storyMemory.modules.find(module => module.moduleId === 'client')
+  const moduleResponse = await request(clientModule.entryUrl, { headers: { cookie } })
+  assert.equal(moduleResponse.status, 200, 'Official client module was not served from its repository source')
+  assert.equal(await moduleResponse.text(), await readFile(join(directory, 'official/extensions/story-memory/client.js'), 'utf8'))
   const officialSetup = await rpc('extensions.officialSetup')
   assert.equal(officialSetup.completed, false)
   assert.deepEqual(officialSetup.items.map(item => item.id), ['sillytavern.importer', 'official.the-world'])

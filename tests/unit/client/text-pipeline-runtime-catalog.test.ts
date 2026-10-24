@@ -37,7 +37,7 @@ describe('text pipeline runtime catalog', () => {
   it('keeps unrelated Card scripts out when the runtime resolver omits them', () => {
     const resolvedMounts = [{
       mountId: 'mount-1', enabled: true, orderIndex: 0, grantedCapabilities: [], source: '// effective',
-      script: { id: 'effective-script', version: 3, name: 'Effective', metadataId: 'effective', scriptVersion: '1.0.0', requestedCapabilities: [], contributions: [] },
+      script: { id: 'effective-script', version: 3, name: 'Effective', metadataId: 'effective', scriptVersion: '1.0.0', runtime: 'client-sandbox' as const, requestedCapabilities: [], contributions: [] },
     }]
 
     expect(listRuntimeScriptItems(resolvedMounts).map(item => item.id)).toEqual(['script:effective-script'])
@@ -47,7 +47,7 @@ describe('text pipeline runtime catalog', () => {
   it('excludes disabled mounts from the effective runtime sequence', () => {
     const mount = {
       mountId: 'mount-1', orderIndex: 0, grantedCapabilities: [], source: '// source',
-      script: { id: 'script-1', version: 1, name: 'Script', metadataId: 'script', scriptVersion: '1.0.0', requestedCapabilities: [], contributions: [] },
+      script: { id: 'script-1', version: 1, name: 'Script', metadataId: 'script', scriptVersion: '1.0.0', runtime: 'client-sandbox' as const, requestedCapabilities: [], contributions: [] },
     }
 
     expect(listRuntimeScriptItems([{ ...mount, enabled: false }])).toEqual([])

@@ -9,6 +9,23 @@ import {
 const actor = { kind: 'system' as const, id: 'prompt-resource-test' }
 
 describe('PromptResourceStore', () => {
+  it.each(['move-delete', 'replace'] as const)('preserves children moved out of a deleted folder (%s)', async mode => {
+    const { engine, store } = createStore()
+    try {
+      const tree = createSmallTree()
+      const created = await store.createResource({ actor, resourceKind: 'lore', rootNode: tree })
+      const children = tree.children![0]!.children!
+      const result = await store.mutateResource({ actor, resourceId: created.resource.id, expectedVersion: created.resource.version,
+        mutations: mode === 'replace' ? [{ kind: 'tree.replace', rootNode: { ...tree, children } }] : [
+          ...children.map((node, orderIndex) => ({ kind: 'node.move' as const, nodeId: node.id, parentId: tree.id, orderIndex })),
+          { kind: 'node.delete', nodeId: tree.children![0]!.id },
+        ],
+      })
+      expect(result.resource.rootNode.children?.map(node => [node.id, node.body])).toEqual([['entry-a', 'A'], ['entry-b', 'B']])
+      expect(engine.database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally { await engine.close() }
+  })
+
   it('preserves a v4 Setting mount through the v5 migration with valid foreign keys', () => {
     const database = new DatabaseSync(':memory:')
     try {

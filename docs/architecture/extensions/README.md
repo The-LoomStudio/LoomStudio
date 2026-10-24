@@ -30,7 +30,7 @@ Extension Package
             instanceId：一次激活及其 Scope、RPC、Event、Logger、Diagnostic 边界
 ```
 
-一个 Package 可以包含零个或多个 `server` / `client` Module。没有 Module 的纯资源 Package 合法；一个 Package 也可以同时携带声明式资源和可执行 Module。Server 与 Client 是 Module runtime，不表示“同一个插件的两半”。
+一个 Package 可以包含零个或多个 `server` / `client` / `client-worker` Module。没有 Module 的纯资源 Package 合法；一个 Package 也可以同时携带声明式资源和可执行 Module。这些值表示 Module runtime，不表示“同一个插件的两半”。`client-worker` 使用 Dedicated module Worker 与宿主能力桥，不接受 DOM 或 Server Contribution；线程隔离不等于权限沙箱，生命周期和能力差异见 [Worker 合同](loom-script-runtime.md#原生-worker-后台入口)。
 
 Module ID 只需在 Package 内唯一。内部使用结构化 `packageId`、`moduleId`；日志和 Registry owner 可显示为 `<packageId>/<moduleId>`，公开 RPC/Event 名称仍使用 Package namespace。
 
@@ -42,18 +42,18 @@ Card Package 可携带 Extension Package 实际归档。安装身份由 `package
 
 Server Extension Manager 负责：
 
-- 默认扫描仓库 `official/extensions/*`、本地 dev links 与 `installed/<package-id>/<version>`；测试扩展位于 `tests/fixtures/extensions/*`，仅通过显式开发配置加载；
+- 默认从 `<installationRoot>/official/extensions/*` 发现官方包，从 `<installationRoot>/extensions/<packageId>` 发现安装包；安装目录按 Package ID 平铺，不含版本子目录。开发链接默认读取 `<dataRoot>/config/extensions-dev-links.json`，模块状态保存在 `<dataRoot>/config/extensions-state.json`，与包代码目录分开；Server 配置可覆盖发现目录、安装根和状态目录。测试扩展位于 `tests/fixtures/extensions/*`，仅通过显式开发配置加载；
 - 按 `packageId` 建立 Catalog 并处理来源冲突；
 - 校验 Manifest v2、Module ID、runtime 与 entry 路径边界；
 - 发现 Client-only 和纯资源 Package，但只编排 Server Module；
 - 按 `packageId + moduleId` 持久化 enabled、事件与 Asset capability grant；
-- 从本地目录安全安装 Package；卸载 installed 时删除复制目录，卸载 dev-link 时只移除链接，均保留已导入资源与 Package-owned 数据；
+- 从本地目录或 ZIP 安装 Package，并提供公开 HTTPS Git / ZIP 来源的安装预览，递归检查依赖版本、来源与循环，确认后安装；卸载 installed 时删除复制目录，卸载 dev-link 时只移除链接，默认保留已导入资源与 Package-owned 数据；显式 `deleteData` 的全局数据清理范围见[本地存储边界](../data/local-storage-and-assets.md#5-extension-文件边界)；
 - 串行执行 Module enable、disable 与 reload；
 - 汇总 Package 来源、资源、Module desired state 与真实 Server runtime。
 
 新 Module 默认禁用。同一 `packageId` 来自多个目录时，整个 Package 标记 unavailable，不选择隐式赢家。一个 Server Module 的激活失败不会阻止 sibling 或 Studio Server 启动。
 
-Client Module 由 Studio Client 根据 Catalog 与 desired state 独立编排。Server Manager 不伪造 Client Instance；Client Host 在 enabled、disabled、reloaded、版本或 Entry 变化后 reconcile 当前 Module，并负责 abort、dispose 与重新加载。
+`client` 与 `client-worker` Module 由 Studio Client 根据 Catalog 与 desired state 独立编排。Server Manager 不伪造 Client Instance；Client Host 在 enabled、disabled、reloaded、版本或 Entry 变化后 reconcile 当前 Module，并负责 abort、dispose 与重新加载。
 
 ### 生命周期与异常恢复保证
 
@@ -199,13 +199,13 @@ Server Module 通过 `activate(ctx)` 获得当前实例绑定的 capability faca
 
 Host 不暴露 Kernel、SQL connection 或内部 Registry，也不保存插件业务状态。
 
-Client Module 通过 `activate(ctx)` 获得 Renderer 注册与打开、Manifest Command Handler 注册、Package-owned Record 读取、State / History 读取、Package namespace RPC、Asset / Package File URL、Logger、Identity 与 `AbortSignal`。Action Placement 由 Manifest 静态声明并由 Host 投影；Client Host 同样不暴露 Kernel、SQL、Application Store 或全局 Registry。完整合同见 [`client-renderer-host.md`](client-renderer-host.md)。
+Client Module 通过 `activate(ctx)` 获得 Renderer 注册与打开、Manifest Command Handler 注册、Package-owned Record 读取、Config 读写与订阅、Style 工厂注册、State / History 读取、Package namespace RPC、Asset / Package File URL、Logger、Identity 与 `AbortSignal`。Action Placement 由 Manifest 静态声明并由 Host 投影；Client Host 同样不暴露 Kernel、SQL、Application Store 或全局 Registry。完整合同见 [`client-renderer-host.md`](client-renderer-host.md)。
 
 `ctx.rpc.call()` 只用于调用 Extension RPC。它拒绝 `system.*`、`docs.*`、`extensions.*`、`application.*` 等 Studio 保留 namespace，插件不能借通用 RPC 绕过 Host capability。Application 领域能力通过明确的 typed capability 开放；当前包括 Scoped Storage 与 Portable Payload，不把全部 Studio RPC 默认交给插件。
 
 Server RPC 默认在当前安装目标内解析：`ctx.rpc.call(method, params)` 不会在角色安装缺失方法时自动回退全局。同名方法可以分别注册在全局与不同 Card；调用已启用的全局扩展服务使用 `ctx.rpc.call(method, params, { scope: 'global' })`。模块不能通过此选项指定另一 Card。安装目标来自 Host，不从业务 params 推断；无目标的普通 Kernel 调用和公开 introspect 仍只访问全局方法。
 
-上述安装级路由及工具执行器 ID 映射已接入 Host 内部，但公开 Card 代码安装/启用尚未开放；Event、其他 Provider 与 Client 路由仍在迁移，不能将 RPC 隔离当作完整的角色代码执行隔离。
+Card 包的安装、更新、卸载及模块启用已通过管理 API 与扩展工作台公开。安装不自动启用代码，安装范围与授权分别管理；安装级 RPC 路由和工具执行器 ID 映射也已接入 Host。具体能力仍按各自目标与归属合同校验，不能将这些能力边界描述为任意角色代码的强安全隔离。
 
 实例 Scope 的清理顺序是：停止接收新调用并 abort、等待已进入 callback、按注册反序执行 disposer、汇总清理错误。旧实例 handle 只能删除自己注册的资源，因此 reload 一个 Module 不会误删 sibling 或新实例的 RPC/Event。
 
@@ -276,14 +276,14 @@ Client Entry、iframe source 与 Package 静态资源通过 `GET /extensions/:pa
 
 ## 7. 当前明确未实现
 
-- Worker adapter 与不可信 Client JavaScript 的强隔离；
+- 不可信 Client JavaScript 的强权限隔离；现有 Dedicated Worker 只提供线程隔离；
 - 通用跨端 Event Transport 与 Client Event Subscription；
-- Client Config 写入、Host Appearance / Style Contribution 与第三方网络权限合同；
+- 第三方网络权限合同；Client Config 读写与订阅已实现，主题 / 样式贡献见 [Extension 主题与样式增强](../ui/extension-themes.md)；
 - Package Prompt Resource / Agent Tool 的跨版本升级、差异合并与迁移 UI；
 - Client HMR；当前只提供显式 reload；
 - Module dependency graph、加载顺序和通用 DI Container；
-- Archive 安装、Marketplace、签名、更新与依赖求解；
+- Marketplace、签名与自动更新检测；目录 / ZIP / Git 安装和依赖版本、来源、循环检查已实现，不包含通用包管理器式版本求解；
 - Hook Registry、durable Trigger / Job Queue；
 - 不可信 Server 代码的 Worker/进程沙箱。
 
-Server Module 当前仍是受信任本地 Node.js 代码。Host capability 不能阻止代码直接调用文件系统、网络或进程 API；真正的强隔离必须由 Worker 或独立进程提供。
+Server Module 当前仍是受信任本地 Node.js 代码。Host capability 不能阻止代码直接调用文件系统、网络或进程 API；强权限隔离还需要受限运行环境与明确的系统权限边界，创建 Worker 本身不能提供这项保证。

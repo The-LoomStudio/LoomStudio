@@ -34,7 +34,11 @@ export async function resolveStudioTarget(api: StudioApi, uri: string): Promise<
       resourceId: resource.id, assetId: nodeId,
     }
   }
-  if (reference.type === 'provider') return { panel: 'model' }
+  if (reference.type === 'provider') return { panel: 'model', search: new URLSearchParams({ providerProfileId: reference.id }).toString() }
+  if (reference.type === 'session') {
+    await api.agentSessions.get(reference.id)
+    return { panel: 'recent', search: new URLSearchParams({ historyTab: 'sessions', sessionId: reference.id, sessionView: 'summary' }).toString() }
+  }
   if (reference.type === 'run') {
     return { panel: 'logs', search: new URLSearchParams({ logRun: reference.id, logSource: 'all' }).toString() }
   }

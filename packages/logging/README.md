@@ -60,6 +60,8 @@ pnpm exec vitest run tests/unit/logging
 
 Console 默认紧凑输出；`verbose: true` 才展示完整结构化字段。`data.detail`、`durationMs`、`usage` 和 `technical` 的生产者约定见正式架构；未知字段留在原始记录，不自动铺满控制台。
 
+Studio 的模型日志由 Application Runtime 的 Observation Store 拥有，保存构建与模型请求证据，并提供有界、可选的跨重启快照。它与本包的运行日志共用 Logs Workspace 入口，但不写入 `LogRecord.data`，也不改变本包 Memory/JSONL 的保留合同。
+
 ## 正式文档
 
 - [Logging Architecture 完整日志架构](../../docs/architecture/platform/logging.md)

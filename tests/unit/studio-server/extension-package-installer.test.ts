@@ -17,6 +17,21 @@ afterEach(async () => {
 })
 
 describe('local Extension Package installer', () => {
+  it.each(['..icon.png', '../outside.png', '/outside.png'])('validates icon paths from a ZIP: %s', async icon => {
+    const root = await temporaryRoot()
+    const archive = zipSync({
+      'manifest.json': new TextEncoder().encode(JSON.stringify({
+        manifestVersion: 2, id: 'example.icon', version: '1.0.0', displayName: 'Icon', engines: { studio: '^0.1.0' }, icon,
+      })),
+      '..icon.png': new Uint8Array([137, 80, 78, 71]),
+    })
+    const installation = installExtensionPackageFromZip({ source: archive, installedDirectory: join(root, 'installed') })
+    if (icon === '..icon.png') {
+      const installed = await installation
+      expect(await readFile(join(installed.directory, icon))).toEqual(Buffer.from([137, 80, 78, 71]))
+    } else await expect(installation).rejects.toThrow()
+  })
+
   it.each(['valid', 'missing', 'escape', 'symlink'])('validates indexed Prompt Resource files: %s', async mode => {
     const root = await temporaryRoot()
     const source = await writePackage(root, 'source', 'example.prompt-files', '1.0.0')
@@ -39,6 +54,16 @@ describe('local Extension Package installer', () => {
       const installed = await installation
       expect(await readFile(join(installed.directory, 'preset/entries/0.md'), 'utf8')).toBe('Markdown body')
     } else await expect(installation).rejects.toThrow()
+  })
+
+  it('rejects a static background package whose declared image is missing before installation', async () => {
+    const root = await temporaryRoot()
+    const source = await writePackage(root, 'source', 'example.backgrounds', '1.0.0')
+    const manifest = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'))
+    manifest.contributes = { backgrounds: [{ id: 'scene', name: 'Scene', description: 'Scene', image: './missing.png' }] }
+    await writeFile(join(source, 'manifest.json'), JSON.stringify(manifest))
+    await expect(installExtensionPackageFromDirectory({ sourceDirectory: source, installedDirectory: join(root, 'installed') })).rejects.toThrow('missing.png')
+    expect(await readdir(join(root, 'installed/example.backgrounds'))).toEqual([])
   })
 
   it('installs a validated Package atomically by id and version', async () => {

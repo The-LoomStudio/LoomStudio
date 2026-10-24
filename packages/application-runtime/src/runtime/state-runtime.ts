@@ -120,7 +120,8 @@ export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
           expectedVersion: existing ? existing.version : 'new',
         })
         if (shouldCreateDefault) {
-          stateChange = applyGlobalStateDefaultInTransaction(ctx, dataTx, {
+          stateChange = await applyGlobalStateDefaultInTransaction(ctx, dataTx, documents, {
+            definitionId: input.definitionId,
             scopeId: globalSnapshot!.scope.id,
             parentRevisionId: globalSnapshot!.revision.id,
             snapshot: globalSnapshot!.revision.snapshot,

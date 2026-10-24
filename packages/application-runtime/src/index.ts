@@ -1,4 +1,9 @@
+export * from './observability/types.js'
+export { createObservationStore } from './observability/store.js'
+export { createObservedAiGateway } from './observability/gateway.js'
 export { applicationDocumentTypes } from './foundation/document-types.js'
+export { readUserProfiles, resolveCurrentUserProfile, userProfilesDocumentId } from './profiles/user-profiles.js'
+export type { UserProfile, UserProfilesConfig, UserProfilesContent, ResolvedUserProfile, CreateUserProfileInput, UpdateUserProfileInput, SelectUserProfileInput, DeleteUserProfileInput } from './profiles/user-profiles.js'
 export { parseCardExtensionAdoptions } from './cards/card.js'
 export { officialPromptResourceIds } from './prompt/prompt-resource-defaults.js'
 export * from './transforms/history-text.js'
@@ -244,3 +249,6 @@ export { defaultSessionSummaryPolicy } from './agents/session-summary.js'
 
 export { parseAgentApprovalPolicy } from './agents/approval-policy.js'
 export type { AgentApprovalPolicy, AgentApprovalMode, AgentApprovalScope } from './agents/approval-policy.js'
+
+export { readUserBackgrounds, userBackgroundsDocumentId } from './profiles/user-backgrounds.js'
+export type { UserBackground, UserBackgroundsContent, UserBackgroundsConfig, AddUserBackgroundInput, RemoveUserBackgroundInput } from './profiles/user-backgrounds.js'

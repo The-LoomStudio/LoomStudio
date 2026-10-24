@@ -1,3 +1,5 @@
+import { legacyChatProviderIds } from '../provider-settings/model/chat-provider.js'
+import { t } from '../../shared/i18n/index.js'
 import { formatEntityReference, type EntityReference } from '@loom-studio/shared'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { cardMediaUrl } from '../../shared/lib/card-media.js'
@@ -16,7 +18,7 @@ export async function loadEntityReference(api: StudioApi, reference: EntityRefer
   }
   if (type === 'session') {
     const { session } = await api.agentSessions.get(id)
-    return { title: session.title ?? 'Agent 会话', note: '此会话暂不支持直接定位；完整运行详情将由 Runs Inspector 承接。' }
+    return { title: session.title ?? 'Agent 会话', uri: formatEntityReference(reference) }
   }
   if (type === 'run') return { title: '本次运行日志', uri: formatEntityReference(reference), note: '仅查询当前可用日志，不代表完整运行快照。' }
   if (type === 'resource') {
@@ -34,7 +36,9 @@ export async function loadEntityReference(api: StudioApi, reference: EntityRefer
   for (let page = 0; page < 10; page++) {
     const result = await api.providerProfiles.list({ cursor, limit: 100 })
     const provider = result.providerProfiles.find(item => item.id === id)
-    if (provider) return { title: provider.displayName, uri: formatEntityReference(reference), note: '打开模型管理；暂不支持定位具体提供方。' }
+    if (provider) return legacyChatProviderIds.has(provider.providerExtensionId)
+      ? { title: provider.displayName, uri: formatEntityReference(reference) }
+      : { title: provider.displayName, note: t('observation.providerDirectUnavailable') }
     if (!result.nextCursor) throw new Error('提供方已不存在或无法访问。')
     cursor = result.nextCursor
   }

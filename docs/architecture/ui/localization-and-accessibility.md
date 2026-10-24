@@ -8,13 +8,17 @@ Studio 当前使用项目内 TypeScript 字典，不依赖 i18next 或 JSON loca
 Locales:
   zh-CN
   en-US
+  ja-JP
+  ko-KR
 
 Source:
   apps/studio-client/src/shared/i18n/zh-cn.ts
   apps/studio-client/src/shared/i18n/en-us.ts
+  apps/studio-client/src/shared/i18n/ja-jp.ts
+  apps/studio-client/src/shared/i18n/ko-kr.ts
 ```
 
-`zh-CN` 字典定义 `MessageKey`，`en-US` 必须覆盖相同 key。`createTranslator(locale)` 负责查找文案，缺失时回退中文，并支持 `{{name}}` 命名插值。
+`zh-CN` 字典定义 `MessageKey`，英语、日语和韩语字典必须覆盖相同 key；统一资源表通过类型约束检查。`createTranslator(locale)` 负责查找文案，缺失时回退中文，并支持 `{{name}}` 命名插值。
 
 组件通过 `Translator` 或 `t` 获取 UI 文案，不在组件内维护第二套可见字符串。
 
@@ -36,7 +40,7 @@ Source:
 
 不得通过字符串拼接组织句子。插值使用命名参数，避免翻译后词序无法调整。
 
-当前实现尚无完整复数规则、日期、数字和相对时间 formatter。出现这些需求时应先扩展统一 i18n 层，不在组件中各自格式化。
+日期、时间与数字通过 `shared/i18n/format.ts` 的 `formatDateTime`、`formatDate`、`formatTime` 和 `formatNumber` 统一格式化，由 `shared/i18n/index.ts` 导出。它们使用显式 locale 或当前文档语言，并调用平台的 Intl / locale 格式化能力。完整复数规则与相对时间 formatter 尚未实现；出现需求时应先扩展统一 i18n 层，不在组件中各自实现。
 
 ## 3. 语义与 accessible name
 
@@ -76,12 +80,14 @@ ARIA 不替代键盘行为。自定义 Tree、Menu、Toggle 和 Resize 组件必
 
 ## 6. 插件与 iframe 边界
 
-当前尚未建立插件 locale resource、Host locale 注入、iframe 动画 token 或完整无障碍验收合同。插件 UI 接入前必须单独定义：
+Extension Renderer 的 iframe 已通过版本化 `ClientThemeSnapshot` 接收公共主题 Token 白名单，其中包括颜色、排版、圆角与动画时长 / easing。首次连接传递完整快照，主题变化继续推送；作者可调用 `applyClientThemeSnapshot()` 应用到文档根。该桥不传递任意 Custom CSS 或全部内部变量，详见[Renderer 主题桥接](css-and-theming.md#7-extension-renderer-主题桥接)。
+
+插件 locale resource、Host locale 注入及完整无障碍验收合同尚未建立。后续接入仍需明确：
 
 - locale 与 fallback 的传递方式；
 - Host Frame 与插件内容之间的 accessible name 所有权；
 - 焦点进入、退出和快捷键冲突；
-- reduced-motion 与主题 token 的传播；
+- reduced-motion 偏好与插件自身动效行为的协调；已有动画 Token 传播不等于完整减少动效验收；
 - 插件不可访问时 Host 提供的退出路径。
 
 历史候选保留在 [`I18N 与无障碍旧稿`](../../archive/discussion/ui/i18n-and-accessibility-v0.md)，需要继续推进的范围由 [Plan](../../workbench/plans/README.md) 确认。

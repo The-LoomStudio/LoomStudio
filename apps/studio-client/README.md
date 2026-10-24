@@ -59,7 +59,12 @@ pnpm exec vitest run tests/unit/client
 
 ## 开发组件预览
 
+`/dev/preview/observability` 是“模型日志”的开发样例预览，固定使用样例；正式入口“日志 → 模型日志”读取后端临时观测。支持记录搜索/分类、步骤切换、消息展开与来源跳转、宏变量、工具和单步用量视图；窄屏下钻返回、列表宽度拖动均只保存在内存中。顶部可切换正常、运行中、失败、空列表和较多记录（也可用 `?scene=normal|running|failed|empty|many`），运行中为固定状态样例。所有内容与数字均为示例，不代表已有 Trace 字段或真实调用结果。
+
+模型日志展示组件位于 `src/widgets/observability-workbench/`；`observation-view.ts` 只定义 UI 输入，不是后端契约。样例与场景控制位于 `src/dev-preview/observability-fixtures.ts`、`observability-preview.tsx`。正式数据通过 `features/observability/` 和 `observations.*` 只读 RPC 按记录、步骤懒加载，样例入口继续复用同一组件。本草稿复用不含持久状态的 `WindowColumnLayout`，避免导入会初始化布局 Storage 的工作台宿主。整体 UI 方向已获用户认可，具体状态与真实业务接入继续迭代，已确认目标见[模型日志计划](../../docs/workbench/plans/prompt-run-observability-plan.md)。
+
 开发预览仅在 Vite 开发环境显式注册，认证和业务初始化前分流，不访问真实数据或持久 Storage。启动 Client 后打开 `/dev/preview/narrative-session`，体验 Timeline Session 统一交互草稿；`?scene=empty` 从空白开始，`?scene=long` 展示较多轮次。页面内可重播工具/正文流程、讨论修订、整轮 Swipe、切换候选/预设/输出模式，以及查看副 Session 和上下文投影。模拟输出为固定样例，不调用模型。
+
 
 预览注册位于 `src/dev-preview/preview-entry.tsx`，样例与模拟控制器位于 `src/dev-preview/narrative-session-preview.tsx`，可复用展示组件位于 `src/widgets/narrative-session/`。新增预览必须同时在 `main.tsx` 的开发分流和显式注册中列出路径；不得加入生产路由。旧消息 HTML 演示未恢复，回归样例保留在 `tests/fixtures/client/message-html-examples.ts`。
 
@@ -165,3 +170,5 @@ URL / History 路由导航       -> React Router
 - [Application UI Architecture](../../docs/architecture/application/ui/README.md)
 - [External Dependency Ownership](../../docs/architecture/platform/external-dependency-ownership.md)
 - [Logging Architecture](../../docs/architecture/platform/logging.md)
+
+`/dev/preview/scene-card` 运行同一份[场景背景卡脚本](../../docs/architecture/extensions/examples/scene-background-card.md)，复用 Script Runtime 和 Renderer 宿主，使用仓库官方图片与内存资源目录。支持切图、展开、停用、局部刷新、模拟缺包及下载；不调用业务 API，也不自动安装或授权脚本。

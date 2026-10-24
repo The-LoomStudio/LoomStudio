@@ -40,7 +40,7 @@ true 必须经宿主用户审批；没有审批处理器则拒绝。授权仅限
 /state/current.yaml 是当前授权 State 的完整快照；/state/data 下逐层列属性，目录内的 @value.yaml 是该属性的 YAML，数组作为整体读取。属性目录不能直接写入；修改优先用 ctx.readValue 读取最小目标的 @value.yaml，直接修改 JSON 值，避免手工重建父对象。
 /attachments 是当前预设拥有并挂载的脚本附件，读取不会执行脚本。
 只有获批的作者视图才显示 disabled 和 Metadata；locked 可发现但不可读取。路径从列表原样复用：空格、中文和方括号是合法字符，不额外转义；不要自行 URL 编码或解码。
-/narrative 下是当前授权剧情节点；路径由列表、采样 nodes[].path 或追加回执提供，不能自行构造楼层路径。修改后返回新节点路径，旧路径不会自动改指向。
+/narrative/<floor>.md 是当前绑定分支的固定楼层地址，例如 /narrative/32.md；可通过列表、采样 nodes[].path 或追加回执发现。修改后楼层路径保持不变，缺号不会重排；读取后目标改变时必须重新读取，不能沿用旧写入基线。
 不能读取宿主文件、未挂载资源、历史 Narrative 或 Session；观察到的旧路径被另一对象占用时会报错，不自动改绑。`,
   readValue: `### ctx.readValue
 用途：直接读取 State 的 JavaScript/JSON 值，不解析 YAML，不丢失数字、布尔值、数组或对象类型。
@@ -49,13 +49,13 @@ true 必须经宿主用户审批；没有审批处理器则拒绝。授权仅限
 返回：完整 JSON 值；建立与 ctx.read 相同的读后写基线。序列化后的值最多 16384 字符，超出时明确失败，不返回半个对象；请改读更小的属性。
 示例：const p = "/state/data/环境/@value.yaml"; const value = await ctx.readValue(p); value.舒适度 = 20; const saved = await ctx.write(p, value); print(saved);
 限制：示例路径仅作说明，实际路径须来自 ls/search。保持未修改的兄弟字段；readValue 读取仍受当前 State 范围、权限和版本限制。`,
-  readNarrative: `可按当前可读分支的稳定楼号选择：selection: { kind: "floors", from: 1, through: 32 }；返回节点 ID 和缺失楼号，缺号不代表连续正文。
+  readNarrative: `可按当前可读分支的稳定楼号选择：selection: { kind: "floors", from: 1, through: 32 }；返回楼层路径和缺失楼号，缺号不代表连续正文。
 ### Narrative sampling
 用途：读取当前授权 Timeline 的正文节点，使用固定分支和读取时的正文 Head。
 调用：await ctx["readNarrative"]({ selection, maxNodes?, maxCharacters?, view? })
-选择：{ kind: "tail", count, throughNodeId? } 读取某个 Head 之前最近的节点；{ kind: "range", afterNodeId?, throughNodeId? } 读取起点之后、终点以内的节点。afterNodeId 不包含，throughNodeId 包含。
-返回：包含节点 ID、正文、分支、读取 Head、实际范围和 text 的对象。view 默认为 raw；prompt 使用宿主本次选定的正则规则，nodes[].text 与 text 是加工文本，nodes[].body.raw 始终是原文。processing 记录规则版本和诊断，不展开正文宏或链接。
-complete=false 表示仅返回请求范围的尾段；把 nextBeforeNodeId 作为下一次 throughNodeId 继续读取，range 保留原 afterNodeId，tail 的 count 减去本次 nodes.length。floor 是持久楼号；position 从 1 开始，仅为本次返回窗口内的位置。正则 depth 也相对于本次窗口，不宣称分页分别加工等于整段加工。
+选择：{ kind: "tail", count, throughFloor? } 读取某个 Head 之前最近的节点；{ kind: "range", afterFloor?, throughFloor? } 读取起点之后、终点以内的节点。afterFloor 不包含，throughFloor 包含。
+返回：包含 nodes（楼层、路径、正文）、text 和 complete 的对象。view 默认为 raw；prompt 使用宿主本次选定的正则规则，nodes[].text 与 text 是加工文本，nodes[].body.raw 始终是原文。processing 记录规则版本和诊断，不展开正文宏或链接。
+complete=false 表示仅返回请求范围的尾段；把 nextBeforeFloor 作为下一次 throughFloor 继续读取，range 保留原 afterFloor；floors 保留 from 并将 through 改为 nextBeforeFloor，tail 的 count 减去本次 nodes.length。floor 是持久楼号；position 从 1 开始，仅为本次返回窗口内的位置。正则 depth 也相对于本次窗口，不宣称分页分别加工等于整段加工。
 每次最多 1000 个节点、2000000 个原文字符；CodeAct 桥接和 print 的输出限制另行生效，大段正文应缩小范围，不把字符预算当成 Token 预算。
 示例：const story = await ctx["readNarrative"]({ selection: { kind: "tail", count: 3 } }); print(story.text);
 限制：只能读取当前授权 Timeline，不能传入其他 Timeline；读取不会推进 Memory 指针、默认有效 Head 或写入 Narrative。读取依赖宿主配置的默认剧情上下文来源；narrative.context_unconfigured 表示缺少读取范围配置，不表示 Timeline 未绑定，也不表示 appendNarrative 不可用。不要重复同一失败读取；已有上下文足够时可继续完成写作，不足时明确报告缺少读取配置，不编造剧情。读取已总结的历史原文需要单次 Yes/No 授权；没有交互处理器时拒绝。批准只覆盖当前固定范围和预算，后续请求或续读需重新授权；等待用户期间暂停执行计时，取消后不返回旧正文。`,

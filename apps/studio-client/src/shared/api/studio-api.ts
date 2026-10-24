@@ -102,6 +102,15 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
   }
 
   return {
+    observations: {
+      references: (input: StudioRpcInputs['application']['observations.references']) => trpc.application['observations.references'].query(input),
+      persistence: () => trpc.application['observations.persistence'].query(),
+      setPersistence: (enabled: boolean) => trpc.application['observations.setPersistence'].mutate({ enabled }),
+      list: (input: import('../../entities/observation.js').ObservationListInput = {}) => trpc.application['observations.list'].query(input),
+      get: (id: string) => trpc.application['observations.get'].query({ id }),
+      getRequest: (id: string) => trpc.application['observations.getRequest'].query({ id }),
+      getBuild: (id: string) => trpc.application['observations.getBuild'].query({ id }),
+    },
     globalSearch: {
       search: (input: StudioRpcInputs['application']['searchResources'], signal?: AbortSignal) => trpc.application.searchResources.query(input, { signal }),
       scopes: (input: StudioRpcInputs['application']['listGlobalSearchScopes'], signal?: AbortSignal) => trpc.application.listGlobalSearchScopes.query(input, { signal }),
@@ -188,8 +197,10 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       export: (scriptDocumentId: string) => trpc.application['exportLoomScript'].query({ scriptDocumentId }),
       createMount: (input: StudioRpcInputs['application']['createLoomScriptMount']) => trpc.application.createLoomScriptMount.mutate(input),
       updateMount: (input: StudioRpcInputs['application']['updateLoomScriptMount']) => trpc.application.updateLoomScriptMount.mutate(input),
+      refreshMount: (input: StudioRpcInputs['application']['refreshLoomScriptMount']) => trpc.application.refreshLoomScriptMount.mutate(input),
       listMounts: (target?: Exclude<StudioRpcInputs['application']['listLoomScriptMounts'], void>['target']) => trpc.application.listLoomScriptMounts.query(target ? { target } : {}),
-      resolveRendererMounts: (input?: { workspaceId?: string; timelineId?: string; presetId?: string }) => trpc.application['resolveLoomScriptRendererMounts'].mutate((input ?? {})),
+      resolveRendererMounts: (input?: { workspaceId?: string; timelineId?: string; presetId?: string; cardId?: string }) => trpc.application.resolveLoomScriptRendererMounts.query(input ?? {}),
+      reconcileRuntime: (input?: StudioRpcInputs['application']['reconcileLoomScriptRuntime']) => trpc.application.reconcileLoomScriptRuntime.mutate(input ?? {}),
     },
     textTransforms: {
       previewCardOpening: (input: { cardId: string; presetId?: string; text: string }) => trpc.application['previewCardOpeningDisplay'].query(input),
@@ -217,6 +228,18 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       list: () => trpc.directories.list.query(undefined),
       scan: () => trpc.directories.scan.query(undefined),
       open: (directory: string) => trpc.directories.open.query({ directory }),
+    },
+    userBackgrounds: {
+      get: () => trpc.application.getUserBackgrounds.query(undefined),
+      add: (input: StudioRpcInputs['application']['addUserBackground']) => trpc.application.addUserBackground.mutate(input),
+      remove: (input: StudioRpcInputs['application']['removeUserBackground']) => trpc.application.removeUserBackground.mutate(input),
+    },
+    userProfiles: {
+      get: () => trpc.application.getUserProfiles.query(undefined),
+      create: (input: StudioRpcInputs['application']['createUserProfile']) => trpc.application.createUserProfile.mutate(input),
+      update: (input: StudioRpcInputs['application']['updateUserProfile']) => trpc.application.updateUserProfile.mutate(input),
+      select: (input: StudioRpcInputs['application']['selectUserProfile']) => trpc.application.selectUserProfile.mutate(input),
+      delete: (input: StudioRpcInputs['application']['deleteUserProfile']) => trpc.application.deleteUserProfile.mutate(input),
     },
     cards: {
       get: (cardId: string) => trpc.application['getCard'].query({ cardId }),

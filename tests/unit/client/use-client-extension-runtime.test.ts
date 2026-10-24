@@ -29,7 +29,7 @@ vi.mock('react', async importOriginal => ({
 }))
 
 vi.mock('../../../apps/studio-client/src/shared/studio-shell/appearance-store.js', () => ({
-  useAppearanceStore: () => vi.fn(),
+  useAppearanceStore: Object.assign(() => vi.fn(), { getState: () => ({ background: null }), setState: vi.fn() }),
 }))
 
 vi.mock('../../../apps/studio-client/src/features/extension-renderers/model/client-extension-host.js', async importOriginal => {
@@ -452,4 +452,18 @@ describe('Client Extension Runtime Effect lifecycle', () => {
     expect(hooks.setters.every(set => set.mock.calls.length === 0)).toBe(true)
     await runtime.host.dispose()
   })
+})
+
+
+it('keeps module-free background packages in the runtime catalog', async () => {
+  const { runtime, list, setup } = createHarness()
+  list.mockResolvedValue({ items: [{ ...extensionPackage, modules: [], resources: {
+    backgrounds: [{ id: 'scene', name: 'Scene', description: 'Scene', image: './scene.png' }],
+  } }] })
+  const cleanup = setup() as () => void
+  try {
+    await drainTasks()
+    expect(runtime.host.backgrounds()).toEqual([expect.objectContaining({ key: 'example.client/scene' })])
+    expect(hooks.loadModule).not.toHaveBeenCalled()
+  } finally { cleanup(); await drainTasks() }
 })

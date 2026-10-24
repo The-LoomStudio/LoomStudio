@@ -133,6 +133,8 @@ export type ToolContextItem = {
 }
 
 export type ToolExecutionScope = {
+  /** Internal best-effort evidence callback, bound to the currently executing invocation. */
+  observeToolEvent?: (event: unknown) => void
   narrativeSource?: import('../runtime/swipe-runtime.js').NarrativeExecutionSource
   assertNarrativeSource?: () => Promise<void>
   withNarrativeWrite?: <T>(work: () => T) => T
@@ -219,8 +221,8 @@ export type ToolExecutionScope = {
     timelineId: string
     branchId: string
     sample(input: Omit<NarrativeSampleRequest, 'timelineId' | 'branchId'> & { view?: 'raw' | 'prompt' }, signal?: AbortSignal, approveHistory?: ApproveNarrativeHistory, approvalControl?: import('../vfs/types.js').VfsApprovalControl): Promise<NarrativeSampleResult>
-    appendNode(input: { content: string }): Promise<{ nodeId: string }>
-    editNode(input: { nodeId: string; content: string; expectedRaw?: string }): Promise<{ nodeId: string }>
+    appendNode(input: { content: string }): Promise<{ nodeId: string; floor: number }>
+    editNode(input: ({ nodeId: string; floor?: never } | { floor: number; nodeId?: never }) & { content: string; expectedRaw?: string }): Promise<{ nodeId: string; floor: number }>
   }
 }
 
@@ -420,7 +422,11 @@ async function executeInvocation(
         sample: (input: Parameters<typeof narrative.sample>[0], readSignal?: AbortSignal, _approve?: ApproveNarrativeHistory, control?: import('../vfs/types.js').VfsApprovalControl) => narrative.sample(
           input, readSignal ?? signal,
           (action, approvalSignal) => {
-            const approve = () => approveInvocation(invocation, byId, registrations, action, approvalSignal, scope.requestHistoryApproval)
+            const approve = async () => {
+              const decision = await approveInvocation(invocation, byId, registrations, action, approvalSignal, scope.requestHistoryApproval)
+              scope.observeToolEvent?.({ kind: 'history-approval', action, decision })
+              return decision
+            }
             return control ? control.waitForUser(approve) : approve()
           },
         ),

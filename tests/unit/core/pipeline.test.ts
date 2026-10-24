@@ -1,7 +1,30 @@
+import { PipelineValidationError } from '../../../packages/core/src/pipeline/errors.js'
 import { describe, expect, it } from 'vitest'
 import { runPasses, type Fragment, type Pass } from '@loom/core'
 
 describe('pipeline', () => {
+  it('records invalid output diagnostics once with fragment identity and context diagnostics', () => {
+    const result = runPasses({ fragments: [{ id: 'f1', content: 'hello', meta: {} }], passes: [{
+      name: 'duplicate', run: (fragments, context) => {
+        context.diagnose({ severity: 'info', code: 'pass/info', message: 'reported' })
+        return [...fragments, fragments[0]!]
+      },
+    }] })
+    expect(result.status).toBe('error')
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: 'pass/info' }),
+      expect.objectContaining({ code: 'loom/duplicate-id', fragmentId: 'f1', pass: 'duplicate' }),
+    ])
+    expect(result.trace.diagnostics).toEqual(result.diagnostics)
+  })
+
+  it('still handles a validation error thrown by a pass', () => {
+    const result = runPasses({ fragments: [], passes: [{ name: 'throws', run: () => {
+      throw new PipelineValidationError('invalid', [{ code: 'custom/error', message: 'bad input' }])
+    } }] })
+    expect(result.diagnostics).toEqual([{ code: 'custom/error', message: 'bad input', severity: 'error', pass: 'throws' }])
+  })
+
   it('runs passes synchronously in declaration order', () => {
     const appendA: Pass = {
       name: 'append-a',

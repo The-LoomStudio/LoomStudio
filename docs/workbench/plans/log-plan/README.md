@@ -220,14 +220,9 @@ Ink 仍只是候选技术。确认 M0 交互范围前不增加依赖。
 
 ## 8. 专题可观测性计划
 
-以下内容仍属于 Application 专用设计，不能并入普通 Log Architecture：
+[模型日志统一计划](../../../archive/plans/prompt-run-observability-plan.md)与[技术设计](../../../archive/plans/prompt-run-observability-design.md)已于 2026-10-24 按用户确认归档。已交付 Prompt Build / Agent Run / 独立调用的采集、查询及阅读工作台，可选跨后端重启保留仍受容量和 24 小时约束。
 
-- [PromptBuild 可观测性计划](prompt-build-observability.md)；
-- [Agent Run 可观测性计划](agent-run-observability.md)。
-
-PromptBuild 生命周期摘要已经进入 `prompt.build`，但完整 Trace Envelope、Build Inspector 和内容保存策略仍未完成。
-
-Provider 生命周期摘要已经进入 `runtime.provider`；Agent Loop、canonical Transcript 与 Tool 配对持久化也已落地。完整 Run / Step / Tool / Commit Trace、跨视图引用与专业 Inspector 仍由专题计划接续，不能将 Transcript 本身继续列为缺失。
+[PromptBuild 专题](prompt-build-observability.md)和 [Agent Run 专题](agent-run-observability.md)保留历史背景及候选细节，不将其旧缺口描述作为当前待办。后续细节按具体反馈处理；专用模型证据与普通 Log 继续保持独立语义，未覆盖范围见归档结论。
 
 ## 9. 实施顺序
 
@@ -237,7 +232,7 @@ Provider 生命周期摘要已经进入 `runtime.provider`；Agent Loop、canoni
 3. 统一日志页的一键查看、范围筛选与复制诊断信息
 4. 资源 URI 展示与受控诊断助手
 5. 实时推送、Client 持久化、Notification、TUI 另行决定
-6. PromptBuild / Runs Inspector 按专题独立接续
+6. 模型日志基线已归档，后续按具体使用反馈迭代
 ```
 
 ## 10. 当前非目标

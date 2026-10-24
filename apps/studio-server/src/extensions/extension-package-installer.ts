@@ -3,11 +3,11 @@ import { parseExtensionManifest, type ExtensionManifest } from '@loom-studio/ext
 import { unzipSync, zipSync } from 'fflate'
 import { randomUUID } from 'node:crypto'
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const maxPackageFiles = 10_000
-const maxPackageBytes = 256 * 1024 * 1024
+export const maxPackageBytes = 256 * 1024 * 1024
 
 export type InstalledExtensionPackage = {
   manifest: ExtensionManifest
@@ -66,38 +66,14 @@ export async function installExtensionPackageFromZip(options: {
   installedDirectory: string
   flat?: boolean
 }): Promise<InstalledExtensionPackage> {
-  if (options.source.byteLength > maxPackageBytes) {
-    throw new Error('Extension Package exceeds the local install size limit')
-  }
+  const files = readExtensionPackageZip(options.source)
   const stagingDirectory = await mkdtemp(join(tmpdir(), 'loom-extension-'))
   try {
-    const seenEntries = new Set<string>()
-    let declaredFiles = 0
-    let declaredBytes = 0
-    const files = unzipSync(options.source, {
-      filter: entry => {
-        assertSafeZipEntryName(entry.name)
-        if (seenEntries.has(entry.name)) throw new Error(`Extension Package ZIP contains a duplicate path: ${entry.name}`)
-        seenEntries.add(entry.name)
-        declaredFiles += 1
-        declaredBytes += entry.originalSize ?? 0
-        if (declaredFiles > maxPackageFiles || declaredBytes > maxPackageBytes) {
-          throw new Error('Extension Package exceeds the local install size limit')
-        }
-        return true
-      },
-    })
-    const budget = { files: 0, bytes: 0 }
     for (const [entryName, bytes] of Object.entries(files)) {
       const path = safeZipEntryPath(stagingDirectory, entryName)
       if (entryName.endsWith('/')) {
         await mkdir(path, { recursive: true, mode: 0o700 })
         continue
-      }
-      budget.files += 1
-      budget.bytes += bytes.byteLength
-      if (budget.files > maxPackageFiles || budget.bytes > maxPackageBytes) {
-        throw new Error('Extension Package exceeds the local install size limit')
       }
       await mkdir(dirname(path), { recursive: true, mode: 0o700 })
       await writeFile(path, bytes, { mode: 0o600 })
@@ -110,6 +86,38 @@ export async function installExtensionPackageFromZip(options: {
   } finally {
     await rm(stagingDirectory, { recursive: true, force: true }).catch(() => undefined)
   }
+}
+
+export function readExtensionPackageZip(source: Uint8Array): Record<string, Uint8Array> {
+  if (source.byteLength > maxPackageBytes) {
+    throw new Error('Extension Package exceeds the local install size limit')
+  }
+  const seenEntries = new Set<string>()
+  let declaredFiles = 0
+  let declaredBytes = 0
+  const files = unzipSync(source, {
+    filter: entry => {
+      safeZipEntryPath('/loom-extension-archive', entry.name)
+      if (seenEntries.has(entry.name)) throw new Error(`Extension Package ZIP contains a duplicate path: ${entry.name}`)
+      seenEntries.add(entry.name)
+      declaredFiles += 1
+      declaredBytes += entry.originalSize ?? 0
+      if (declaredFiles > maxPackageFiles || declaredBytes > maxPackageBytes) {
+        throw new Error('Extension Package exceeds the local install size limit')
+      }
+      return true
+    },
+  })
+  const budget = { files: 0, bytes: 0 }
+  for (const [entryName, bytes] of Object.entries(files)) {
+    if (entryName.endsWith('/')) continue
+    budget.files += 1
+    budget.bytes += bytes.byteLength
+    if (budget.files > maxPackageFiles || budget.bytes > maxPackageBytes) {
+      throw new Error('Extension Package exceeds the local install size limit')
+    }
+  }
+  return files
 }
 
 async function resolveZipPackageDirectory(root: string): Promise<string> {
@@ -181,6 +189,7 @@ export async function exportExtensionPackageZip(directory: string, expected: Ext
   if (manifest.id !== expected.id || manifest.version !== expected.version) throw new Error('Extension Package changed before export')
   for (const entry of [
     ...(manifest.modules ?? []).map(module => module.entry),
+    ...(manifest.contributes?.backgrounds ?? []).map(background => background.image),
     ...(manifest.contributes?.promptResources ?? []).map(resource => resource.source),
     ...(manifest.contributes?.agentTools ?? []).map(tool => tool.source),
     ...(manifest.contributes?.transformRules ?? []).map(rule => rule.source),
@@ -239,6 +248,7 @@ async function validateInstalledPackage(directory: string, expected: ExtensionMa
   }
   for (const entry of [
     ...(copied.modules ?? []).map(moduleManifest => moduleManifest.entry),
+    ...(copied.contributes?.backgrounds ?? []).map(background => background.image),
     ...(copied.contributes?.transformRules ?? []).map(rule => rule.source),
     ...(copied.contributes?.textExtractors ?? []).map(extractor => extractor.source),
     ...(copied.contributes?.promptResources ?? []).map(resource => resource.source),
@@ -248,7 +258,7 @@ async function validateInstalledPackage(directory: string, expected: ExtensionMa
   ]) {
     const candidate = resolve(directory, entry)
     const pathFromPackage = relative(resolve(directory), candidate)
-    if (!pathFromPackage || pathFromPackage.startsWith('..') || isAbsolute(pathFromPackage)) {
+    if (!pathFromPackage || pathFromPackage === '..' || pathFromPackage.startsWith(`..${sep}`) || isAbsolute(pathFromPackage)) {
       throw new Error(`Extension Package path escapes its root: ${entry}`)
     }
     const stat = await lstat(candidate).catch((error: unknown) => {
@@ -266,7 +276,7 @@ async function validateInstalledPackage(directory: string, expected: ExtensionMa
       const candidate = resolve(dirname(source), path)
       const actual = await realpath(candidate)
       const inside = relative(resolve(directory), actual)
-      if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('Extension Package path escapes its root')
+      if (!inside || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) throw new Error('Extension Package path escapes its root')
       const info = await lstat(actual)
       if (!info.isFile() || info.size > 16 * 1024 * 1024) throw new Error('Invalid Prompt Resource file size or type')
       return readFile(actual)
@@ -294,7 +304,7 @@ function safeZipEntryPath(root: string, entryName: string): string {
   assertSafeZipEntryName(entryName)
   const candidate = resolve(root, entryName)
   const pathFromRoot = relative(resolve(root), candidate)
-  if (pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) {
+  if (pathFromRoot === '..' || pathFromRoot.startsWith(`..${sep}`) || isAbsolute(pathFromRoot)) {
     throw new Error(`Extension Package ZIP path escapes its root: ${entryName}`)
   }
   return candidate

@@ -103,6 +103,8 @@ export function collectPromptInputs(input: {
   parentEnabled: boolean
   parentId: string | null
   sourceNodes: SourceNode[]
+  resource?: { id: string; version: number }
+  sourcePath?: string
 }): void {
   for (const [index, node] of input.nodes.entries()) {
     const category = node.category ?? input.inheritedCategory
@@ -114,10 +116,14 @@ export function collectPromptInputs(input: {
     const effectiveActivation = combineActivationGates(activationGates)
     const inlineEntry = category === 'preset' && node.kind === 'entry' && !node.capabilities?.targetAnchorId
     const body = effectiveEnabled && node.kind === 'entry' && typeof node.body === 'string'
-      ? node.capabilities?.processorId ? node.body : renderVariableMacros(node.body, input.variables)
+      ? node.capabilities?.processorId ? node.body : renderVariableMacros(node.body, input.variables, { hostId: node.id, stage: 'source' })
       : undefined
     input.sourceNodes.push({
       id: node.id,
+      evidence: { resourceId: input.resource?.id, version: input.resource?.version,
+        path: `${input.sourcePath ?? ''}/${node.label}`, original: node.body,
+        ...(!effectiveEnabled ? { disabledReason: node.enabled === false ? 'author disabled' : 'ancestor disabled' } : {}),
+      },
       sourceId,
       parentId: input.parentId,
       displayName: node.label,
@@ -159,6 +165,7 @@ export function collectPromptInputs(input: {
     if (node.children) {
       collectPromptInputs({
         ...input,
+        sourcePath: `${input.sourcePath ?? ''}/${node.label}`,
         parentActivationGates: activationGates,
         parentEnabled: effectiveEnabled,
         nodes: node.children,
@@ -277,6 +284,26 @@ export function assertCardBundleArtifact(value: unknown): asserts value is CardB
     assertPromptResourceNode(node, `contextAssets[${index}]`)
     assertUniquePromptResourceNodeIds(node)
   }
+  if (value.contextAssetSettings !== undefined) {
+    if (!isObject(value.contextAssetSettings)) throw new Error('Card bundle contextAssetSettings must be an object')
+    const rootIds = new Set(value.contextAssets.map(node => (node as JsonObject).id))
+    const settingKeys = new Set(['macros', 'macroOptions', 'useCardLore', 'useGlobalLore', 'historyPolicy'])
+    for (const [rootId, settings] of Object.entries(value.contextAssetSettings)) {
+      if (!rootIds.has(rootId) || !isObject(settings) || Object.keys(settings).some(key => !settingKeys.has(key))) {
+        throw new Error(`Invalid Card context asset settings: ${rootId}`)
+      }
+      if (settings.macros !== undefined) validateBundleMacros(settings.macros)
+      if (settings.macroOptions !== undefined) normalizeMacroOptions(settings.macroOptions)
+      for (const key of ['useCardLore', 'useGlobalLore']) {
+        if (settings[key] !== undefined && typeof settings[key] !== 'boolean') {
+          throw new Error(`Invalid Card context asset ${key}: ${rootId}`)
+        }
+      }
+      if (settings.historyPolicy !== undefined && settings.historyPolicy !== 'persistent' && settings.historyPolicy !== 'ephemeral') {
+        throw new Error(`Invalid Card context asset historyPolicy: ${rootId}`)
+      }
+    }
+  }
   if (value.externalContextAssetIds !== undefined) {
     const rootIds = new Set(value.contextAssets.map(node => (node as JsonObject).id))
     if (!Array.isArray(value.externalContextAssetIds)
@@ -389,7 +416,6 @@ function assertResourceOrigin(value: unknown): void {
 function assertLoomScriptAttachments(value: unknown): void {
   if (value === undefined) return
   if (!Array.isArray(value)) throw new Error('Loom Script attachments must be an array')
-  const metadataIds = new Set<string>()
   for (const [index, attachment] of value.entries()) {
     if (!isObject(attachment) || !Number.isSafeInteger(attachment.orderIndex)) throw new Error(`Invalid Loom Script attachment: ${index}`)
     assertResourceOrigin(attachment.resourceOrigin)
@@ -401,9 +427,7 @@ function assertLoomScriptAttachments(value: unknown): void {
       || typeof attachment.script.source !== 'string') {
       throw new Error(`Invalid Loom Script attachment artifact: ${index}`)
     }
-    const metadata = parseLoomScriptSource(attachment.script.source)
-    if (metadataIds.has(metadata.metadataId)) throw new Error(`Duplicate Loom Script Metadata id in artifact: ${metadata.metadataId}`)
-    metadataIds.add(metadata.metadataId)
+    parseLoomScriptSource(attachment.script.source)
   }
 }
 

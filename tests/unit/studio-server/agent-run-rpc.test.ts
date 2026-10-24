@@ -14,12 +14,13 @@ describe('application Agent Run RPC', () => {
         return { runId: context.agentRun!.runId, entries: {}, mutation: {} }
       },
     } as unknown as ApplicationRuntime
-    const request = { requestId: 'lost-acknowledgement', agentSessionId: 'session', input: 'Only once' }
+    const request = { requestId: '7xK2mN9pQ4a', agentSessionId: 'session', input: 'Only once' }
     const [first, retry] = await Promise.all([
       handleAgentsRpc(runtime, 'application.agent.run.create', request),
       handleAgentsRpc(runtime, 'application.agent.run.create', request),
     ])
     expect(retry).toEqual(first)
+    expect(first).toMatchObject({ runId: request.requestId })
     expect(calls).toBe(1)
     await expect(handleAgentsRpc(runtime, 'application.agent.run.create', { ...request, input: 'Different' })).rejects.toThrow('different input')
     finish.resolve()
@@ -175,6 +176,38 @@ describe('application Agent Run RPC', () => {
       expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 202 }))
         .toMatchObject({ events: [{ type: 'text-delta', delta: 'tail' }], nextCursor: 203 })
     } finally { release() }
+  })
+
+  it('snapshots interleaved tool arguments and clears them after commitment and termination', async () => {
+    let emit!: NonNullable<RuntimeRequestContext['agentRun']>['onEvent']
+    const finish = Promise.withResolvers<void>()
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        emit = context.agentRun!.onEvent
+        await finish.promise
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} } as never
+      },
+    } as unknown as ApplicationRuntime
+    const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'tools', input: 'Write' }) as { runId: string }
+    const input = (toolCallId: string, delta: string) => emit({ type: 'tool-input-delta', runId, providerRunId: 'provider', providerStep: 1, toolCallId, toolName: 'codeact_json', delta })
+    const snapshot = () => handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 })
+    try {
+      // Evict the replay without finishing the current Provider step.
+      for (let i = 0; i < 140; i++) emit({ type: 'text-delta', runId, providerRunId: 'provider', providerStep: 1, delta: 'x'.repeat(8192) })
+      input('a', '{')
+      input('b', 'second')
+      const before = await snapshot()
+      input('a', '}')
+      expect(before).toMatchObject({ replayExpired: true, partialToolInputs: [{ toolCallId: 'a', delta: '{' }, { toolCallId: 'b', delta: 'second' }] })
+      expect(await snapshot()).toMatchObject({ partialToolInputs: [{ toolCallId: 'a', delta: '{}' }, { toolCallId: 'b', delta: 'second' }] })
+      emit({ type: 'transcript-appended', runId, entries: [{ id: 'saved', agentSessionId: 'tools', runId, sequence: 1, createdAt: '',
+        entry: { kind: 'tool-invocation', invocationId: 'invocation-a', providerItemId: 'a', toolId: 'codeact', exposedName: 'codeact_json', transport: 'native-function', status: 'proposed' } }] })
+      expect(await snapshot()).toMatchObject({ partialToolInputs: [] })
+      input('c', 'unfinished')
+      finish.resolve()
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect(await snapshot()).toMatchObject({ done: true, partialToolInputs: [] })
+    } finally { finish.resolve() }
   })
 
   it('expires terminal replay without losing its authoritative completed state', async () => {

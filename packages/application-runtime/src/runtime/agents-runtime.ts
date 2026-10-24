@@ -1,3 +1,5 @@
+import { observationOrigin } from '../observability/origin.js'
+import type { ObservationBuild } from '../observability/types.js'
 import { createVariableRenderContext } from '../prompt/variables.js'
 import { parseAgentApprovalPolicy } from '../agents/approval-policy.js'
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
@@ -111,6 +113,7 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'dataEngine'
   | 'documents'
   | 'gateway'
+  | 'observations'
   | 'logger'
   | 'runtimeLogger'
   | 'macroProviders'
@@ -477,6 +480,11 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       const runId = requestContext?.agentRun?.runId ?? ctx.createId('run')
       const releaseExecutor = registerAgentExecutor(runId)
       const startedAt = performance.now()
+      ctx.observations.capture(() => ctx.observations.write({
+        id: runId, kind: 'run', title: 'Agent Run', status: 'running',
+        agentSessionId: input.agentSessionId, timelineId: input.narrativeTarget?.timelineId,
+        origin: observationOrigin(requestContext),
+      }))
       const progress: AgentRunProgress = { stage: 'preparation', providerStep: 0, toolCount: 0, suspended: false }
       let swipeExecution: SwipeExecution | undefined
       const logContext = {
@@ -546,6 +554,10 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           session,
           preset,
         } = prepared
+        ctx.observations.capture(() => ctx.observations.patch(runId, {
+          title: preset.rootNode.label || 'Agent Run', timelineId: narrativePage?.timeline.id ?? session.timelineId,
+          branchId: narrativePage?.branch.id, buildId: prompt.promptBuildTrace.buildId,
+        }))
         const loop = await runNativeToolLoop({
           ctx,
           agents,
@@ -554,6 +566,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           progress,
           model,
           tokenMultiplier: prepared.tokenMultiplier,
+          buildId: prompt.promptBuildTrace.buildId,
           initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
           recoveryRequest: {
             ...input,
@@ -602,6 +615,9 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           },
         })
 
+        ctx.observations.capture(() => ctx.observations.patch(runId, {
+          status: outcome === 'cancelled' ? 'aborted' : outcome, durationMs: readDurationMs(startedAt),
+        }))
         return {
           runId,
           agentSession: (await agents.getSession(input.agentSessionId)) ?? loop.session,
@@ -626,6 +642,10 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         const aborted = requestContext?.abortSignal?.aborted || (error instanceof Error && error.name === 'AbortError')
         const outcome = progress.suspended || (aborted && requestContext?.abortSignal?.reason === 'user-pause')
           ? 'suspended' : aborted ? 'cancelled' : 'failed'
+        ctx.observations.capture(() => ctx.observations.patch(runId, {
+          status: outcome === 'cancelled' ? 'aborted' : outcome, durationMs: readDurationMs(startedAt),
+          diagnostic: failure.failureReason,
+        }))
         if (swipeExecution) {
           const execution = swipeExecution
           swipeExecution = undefined
@@ -905,6 +925,61 @@ async function prepareAgentTurn(
   invocationRunId?: string,
   summarySource?: SummaryPlan['boundary']['narrative'],
 ) {
+  const buildId = ctx.createId('build')
+  const runId = invocationRunId ?? requestContext?.agentRun?.runId ?? ctx.createId('run')
+  const observation: ObservationBuild = {}
+  const startedAt = performance.now()
+  ctx.observations.capture(() => ctx.observations.write({
+    id: buildId, kind: 'build', ...(invocationRunId ? { parentId: invocationRunId } : {}),
+    title: mode === 'preview' ? 'Prompt Preview' : 'Prompt Build', status: 'running',
+    agentSessionId: input.agentSessionId, timelineId: input.narrativeTarget?.timelineId,
+    origin: observationOrigin(requestContext),
+  }))
+  try {
+    const prepared = await prepareAgentTurnContent(ctx, input, mode, requestContext, runId, summarySource, buildId, observation)
+    ctx.observations.capture(() => {
+      for (const variable of observation.variables ?? []) {
+        const selected = prepared.macroInspection.entries.find(entry => entry.name.toLowerCase() === variable.name.toLowerCase())
+        if (selected?.selectedSourceId) variable.source = [variable.source, selected.selectedSourceId, selected.selectedOptionId].filter(Boolean).join(' · ')
+      }
+    })
+    ctx.observations.capture(() => ctx.observations.patch(buildId, {
+      availability: observation.diagnostics?.some(item => item && typeof item === 'object' && 'code' in item && String(item.code).startsWith('observation.')) ? 'partial' : 'recorded',
+      title: prepared.preset.rootNode.label || 'Prompt Build', status: 'completed',
+      timelineId: prepared.narrativePage?.timeline.id ?? prepared.session.timelineId,
+      branchId: prepared.narrativePage?.branch.id, durationMs: readDurationMs(startedAt),
+      build: { ...observation, messages: prepared.agentStepMessages },
+    }))
+    return prepared
+  } catch (error) {
+    ctx.observations.capture(() => ctx.observations.patch(buildId, {
+      status: requestContext?.abortSignal?.aborted ? 'aborted' : 'failed',
+      durationMs: readDurationMs(startedAt), availability: 'partial',
+      diagnostic: error instanceof Error ? error.message : String(error), build: observation,
+    }))
+    throw error
+  }
+}
+
+async function prepareAgentTurnContent(
+  ctx: AgentsRuntimeContext,
+  input: {
+    agentSessionId: string
+    input: string
+    resume?: boolean
+    activationFacts?: ActivationFacts
+    contextMode?: InvokeAgentTurnInput['contextMode']
+    narrativeTarget?: InvokeAgentTurnInput['narrativeTarget']
+    macroSelections?: import('@loom-studio/shared').MacroSelectionMap
+    promptAddition?: InvokeAgentTurnInput['promptAddition']
+  },
+  mode: 'preview' | 'runtime',
+  requestContext: RuntimeRequestContext | undefined,
+  runId: string,
+  summarySource: SummaryPlan['boundary']['narrative'] | undefined,
+  buildId: string,
+  observation: ObservationBuild,
+) {
   if (!ctx.agents) throw new Error('Agent Store is not configured')
   const session = await ctx.agents.getSession(input.agentSessionId)
   if (!session) throw new Error(`Agent session not found: ${input.agentSessionId}`)
@@ -1011,12 +1086,11 @@ async function prepareAgentTurn(
   if (!isExtensionResourceAvailable(preset.origin, availableInstallations)) {
     throw new Error(`Agent Preset is not available in this context: ${preset.id}`)
   }
-  const model = requestContext?.agentRun?.continuation?.recovery?.model ?? preset.model
+  // Resume keeps accepted messages and tool outcomes, but uses the current model binding.
+  const model = preset.model
   if (!model) throw new Error(`Agent Preset has no model binding: ${preset.id}`)
   if (requestContext?.agentRun?.continuation?.recovery) await assertProviderModelExists(ctx.documents, model)
   const toolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: preset.id })
-  const runId = invocationRunId ?? requestContext?.agentRun?.runId ?? ctx.createId('run')
-  const buildId = ctx.createId('build')
   const startedAt = performance.now()
   const references = {
     buildId,
@@ -1056,7 +1130,6 @@ async function prepareAgentTurn(
   const card = cardDocument?.content as CardSourceContent | undefined
   const variables = isolated ? createVariableRenderContext() : await readAgentTurnVariables(
     ctx,
-    card ? card.userName : timelineRuntimeContext?.fallbackUserName,
     timelineState?.value,
     card?.name ?? timelineRuntimeContext?.cardName,
   )
@@ -1116,6 +1189,7 @@ async function prepareAgentTurn(
     const workspace = narrativePage ? await ctx.workspaces.get(narrativePage.branch.workspaceHeadRevisionId) : undefined
     const sharedMemory = workspace?.entries.find(entry => !entry.parentId && entry.name === 'MEMORY.md')
     prompt = await composeAgentTurnPrompt({
+      observation,
       ...(summaryThroughNodeId === undefined && sharedMemory?.kind === 'file' && 'text' in sharedMemory.content
         ? { workspaceMemory: sharedMemory.content.text } : {}),
       availableExtensionInstallations: availableInstallations,

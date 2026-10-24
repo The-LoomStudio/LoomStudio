@@ -1,11 +1,10 @@
 import type { CreateLoomScriptMountInput, UpdateLoomScriptMountInput, ListLoomScriptMountsInput } from '@loom-studio/shared/loom-scripts'
-import type { DocumentTransaction } from '@loom-studio/document-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import { executeBlobDocumentMutation, executeDocumentMutation } from '../foundation/mutation.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
-import { readLoomScriptInstallation, resolveLoomScriptRendererMounts } from '../scripts/loom-script-resolution.js'
+import { readLoomScriptInstallation, readLoomScriptRevision, resolveLoomScriptRendererMounts } from '../scripts/loom-script-resolution.js'
 import { requireNarratives } from './context.js'
 import type {
   LoomScriptArtifact,
@@ -17,6 +16,21 @@ import type {
 import type { RuntimeRequestContext } from '../types.js'
 
 type LoomScriptsRuntimeContext = Pick<ApplicationRuntimeContext, 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now'>
+
+/** Freeze pre-existing enabled mounts before any runtime starts or new source is saved. */
+export async function initializeLoomScriptAdoptions(ctx: Pick<LoomScriptsRuntimeContext, 'documents' | 'now'>): Promise<void> {
+  const mounts = await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount)
+  for (const mount of mounts) {
+    if (!mount.content.enabled || mount.content.adoptedDocumentVersion !== undefined) continue
+    const script = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId, mount.content.pinnedDocumentVersion)
+    if (!script) continue
+    await ctx.documents.write({
+      id: mount.id, type: applicationDocumentTypes.loomScriptMount, expectedVersion: mount.version,
+      content: { ...mount.content, adoptedDocumentVersion: script.version, updatedAt: ctx.now() },
+      actor: { kind: 'system', id: 'loom-script' }, reason: 'application.initializeLoomScriptAdoptions',
+    })
+  }
+}
 
 export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) {
   return {
@@ -35,7 +49,6 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         { bytes: new TextEncoder().encode(input.source), mediaType: 'text/javascript' },
         async (documents, blob) => {
           if (input.owner.kind === 'extension') await readLoomScriptInstallation(documents, input.owner)
-          await assertMetadataIdentityAvailable(documents, input.owner, metadata.metadataId, blob.sha256)
           const document = await writeDocument<LoomScriptContent>(documents, {
             id: ctx.createId('loom-script'),
             type: applicationDocumentTypes.loomScript,
@@ -75,7 +88,6 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         async (documents, blob) => {
           const existing = await readDocument<LoomScriptContent>(documents, input.scriptDocumentId, applicationDocumentTypes.loomScript)
           if (existing.content.owner.kind === 'extension') await readLoomScriptInstallation(documents, existing.content.owner)
-          await assertMetadataIdentityAvailable(documents, existing.content.owner, metadata.metadataId, blob.sha256, existing.id)
           const document = await writeDocument<LoomScriptContent>(documents, {
             id: existing.id,
             type: applicationDocumentTypes.loomScript,
@@ -149,22 +161,51 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         const existing = await readDocument<LoomScriptMountContent>(documents, input.mountId, applicationDocumentTypes.loomScriptMount)
         const script = await readDocument<LoomScriptContent>(documents, existing.content.scriptDocumentId, applicationDocumentTypes.loomScript)
         if (script.content.owner.kind === 'extension' && input.pinnedDocumentVersion !== undefined) throw new Error('Installed Loom Scripts follow package updates and cannot pin an old revision')
-        const requested = new Set(script.content.requestedCapabilities)
+        const adoptedVersion = existing.content.enabled
+          ? existing.content.adoptedDocumentVersion ?? input.pinnedDocumentVersion ?? script.version
+          : input.pinnedDocumentVersion ?? script.version
+        const adopted = await readLoomScriptRevision(documents, script.id, adoptedVersion)
+        if (!adopted) throw new Error(`Loom Script revision unavailable: ${script.id}@${adoptedVersion}`)
+        // Allow grants for the saved replacement while retaining the running revision's permissions.
+        const requested = new Set([...script.content.requestedCapabilities, ...adopted.content.requestedCapabilities, ...existing.content.grantedCapabilities])
         if (new Set(input.grantedCapabilities).size !== input.grantedCapabilities.length
           || input.grantedCapabilities.some(capability => !requested.has(capability))) {
           throw new Error('Loom Script Mount grants must be unique requested capabilities')
         }
+        if (input.enabled) assertRuntimeTrust(adopted.content, input.grantedCapabilities)
         const mount = await writeDocument<LoomScriptMountContent>(documents, {
           id: existing.id,
           type: applicationDocumentTypes.loomScriptMount,
           content: {
             ...existing.content,
             enabled: input.enabled,
+            ...(input.enabled ? { adoptedDocumentVersion: adoptedVersion } : {}),
             orderIndex: input.orderIndex,
             ...(input.pinnedDocumentVersion !== undefined ? { pinnedDocumentVersion: input.pinnedDocumentVersion } : {}),
             grantedCapabilities: [...input.grantedCapabilities],
             updatedAt: ctx.now(),
           },
+          expectedVersion: input.expectedVersion,
+        })
+        return toVersioned(mount)
+      })
+      return { mount: result.value, mutation: result.mutation }
+    },
+
+    refreshLoomScriptMount: async (input: { mountId: string; expectedVersion: number }, requestContext?: RuntimeRequestContext) => {
+      const result = await executeDocumentMutation(ctx.documents, requestContext, 'application.refreshLoomScriptMount', async documents => {
+        const existing = await readDocument<LoomScriptMountContent>(documents, input.mountId, applicationDocumentTypes.loomScriptMount)
+        if (!existing.content.enabled) throw new Error('Enable the script before refreshing its running instance')
+        const script = await readDocument<LoomScriptContent>(documents, existing.content.scriptDocumentId, applicationDocumentTypes.loomScript)
+        if (script.content.owner.kind === 'extension') await readLoomScriptInstallation(documents, script.content.owner)
+        const adoptedVersion = existing.content.pinnedDocumentVersion ?? script.version
+        const adopted = await readLoomScriptRevision(documents, script.id, adoptedVersion)
+        if (!adopted) throw new Error(`Loom Script revision unavailable: ${script.id}@${adoptedVersion}`)
+        assertRuntimeTrust(adopted.content, existing.content.grantedCapabilities)
+        const mount = await writeDocument<LoomScriptMountContent>(documents, {
+          id: existing.id,
+          type: applicationDocumentTypes.loomScriptMount,
+          content: { ...existing.content, adoptedDocumentVersion: adoptedVersion, updatedAt: ctx.now() },
           expectedVersion: input.expectedVersion,
         })
         return toVersioned(mount)
@@ -182,10 +223,11 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
       }
     },
 
-    resolveLoomScriptRendererMounts: async (input?: { workspaceId?: string; timelineId?: string; presetId?: string }) => {
+    resolveLoomScriptRendererMounts: async (input?: { workspaceId?: string; timelineId?: string; presetId?: string; cardId?: string }) => {
       const timeline = input?.timelineId ? await requireNarratives(ctx).getTimeline(input.timelineId) : undefined
       if (input?.timelineId && !timeline) throw new Error(`Narrative timeline not found: ${input.timelineId}`)
-      const cardId = timeline?.createdFrom?.cardId
+      if (timeline && input?.cardId && timeline.createdFrom?.cardId !== input.cardId) throw new Error('Script context does not match the Timeline character')
+      const cardId = timeline?.createdFrom?.cardId ?? input?.cardId
       return await resolveLoomScriptRendererMounts(ctx, {
         cardId,
         currentTargets: [
@@ -199,22 +241,10 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
   }
 }
 
-async function assertMetadataIdentityAvailable(
-  documents: DocumentTransaction,
-  owner: LoomScriptOwner,
-  metadataId: string,
-  sourceDigest: string,
-  ignoredDocumentId?: string,
-): Promise<void> {
-  const scripts = await listDocuments<LoomScriptContent>(documents, applicationDocumentTypes.loomScript)
-  const conflict = scripts.find(script => script.id !== ignoredDocumentId
-    && sameOwner(script.content.owner, owner)
-    && script.content.metadataId === metadataId)
-  if (!conflict) return
-  if (conflict.content.sourceDigest !== sourceDigest) {
-    throw new Error(`Loom Script Metadata id conflict for owner: ${metadataId}`)
+function assertRuntimeTrust(script: LoomScriptContent, grants: readonly string[]): void {
+  if (script.runtime !== 'client-sandbox' && !grants.includes(`runtime.${script.runtime}`)) {
+    throw new Error(`Explicit trust is required for ${script.runtime} ${script.runtime === 'client-worker' ? 'browser worker' : 'in-process'} code`)
   }
-  throw new Error(`Loom Script Metadata id already exists for owner: ${metadataId}`)
 }
 
 function sameOwner(left: LoomScriptOwner | LoomScriptMountTarget, right: LoomScriptOwner | LoomScriptMountTarget): boolean {

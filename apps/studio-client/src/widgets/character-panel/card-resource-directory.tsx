@@ -201,7 +201,10 @@ export function CardResourceDirectory(props: {
               ? { ...entry, ...(partial.label !== undefined ? { title: partial.label } : {}), ...(partial.body !== undefined ? { content: partial.body } : {}) } : entry)
             const result = await api.cards.update({ cardId, expectedVersion, lore: { entries } })
             onCommitted(result.card.version)
-            await queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'card'] })
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'card'] }),
+              queryClient.invalidateQueries({ queryKey: ['character-browser', endpoint, cardId] }),
+            ])
             await props.onRefreshCards?.()
           }} t={t} /> : null}
     {location.item && location.folder === 'rules' && ownRules.find(item => item.id === location.item)
@@ -220,7 +223,10 @@ export function CardResourceDirectory(props: {
           onSave={async (name, value, expectedVersion, onCommitted) => {
             const result = await api.cards.update({ cardId, expectedVersion, macros: { ...current.macros, [name]: value } })
             onCommitted(result.card.version)
-            await queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'card'] })
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'card'] }),
+              queryClient.invalidateQueries({ queryKey: ['character-browser', endpoint, cardId] }),
+            ])
             await props.onRefreshCards?.()
           }} t={t} /> : null}
     {location.item && location.folder === 'state' && current && (
@@ -233,7 +239,10 @@ export function CardResourceDirectory(props: {
           const result = await api.cards.update({ cardId, expectedVersion, stateTemplates: (current.stateTemplates ?? []).map(item =>
             item.id === id ? { ...item, schema, initial, label, templateVersion } : item) })
           onCommitted(result.card.version)
-          await queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'card'] })
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'card'] }),
+            queryClient.invalidateQueries({ queryKey: ['character-browser', endpoint, cardId] }),
+          ])
           await props.onRefreshCards?.()
         } else {
           const result = await api.states.upsertDefinition({ definitionId: location.item!, expectedVersion,

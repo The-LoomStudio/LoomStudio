@@ -10,7 +10,7 @@ export type MacroRenderContext = {
   global?: JsonObject
   timeline?: JsonObject
   card?: { name?: string; userName?: string; description?: string }
-  fallbackUserName?: string
+  user?: { name: string; description: string }
 }
 
 export function renderTemplateMacros(template: string, context?: MacroRenderContext): string {
@@ -22,12 +22,7 @@ export function renderTemplateMacros(template: string, context?: MacroRenderCont
     })
   }
   const global = structuredClone(context?.global ?? {})
-  const user = global.user
-  const userObject = user && typeof user === 'object' && !Array.isArray(user) ? user : {}
-  if (typeof userObject.name !== 'string' || userObject.name.trim().length === 0) {
-    global.user = { ...userObject, name: context?.fallbackUserName?.trim() || context?.card?.userName?.trim() || 'User' }
-  }
-  const computed: JsonObject = {}
+  const computed: JsonObject = { user: { name: context?.user?.name.trim() || 'User', description: context?.user?.description ?? '' } }
   if (context?.card?.name) {
     computed.char = { name: context.card.name, ...(context.card.description !== undefined ? { description: context.card.description } : {}) }
     computed.bot = { name: context.card.name }

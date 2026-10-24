@@ -2,11 +2,11 @@
 
 > **状态**：State v1 核心运行链已实现并晋升。独立 State Artifact 资源管理与运行态软引用检查由 [State 资源与引用检查后续](../../workbench/issues/state-resource-and-reference-follow-ups.md) 跟踪，不阻塞当前合同。
 
-Loom Studio 当前的 State 只区分两个持久化 Scope：Workspace Global State 与 Narrative Timeline State。这不是整个系统所有数据的 Scope 列表。两者共享 `@loom-studio/state-store` 的 Scope / immutable Revision / Snapshot 合同；Timeline 的当前 Head 由 Narrative Branch 持有，Global Head 由 State Scope 持有。
+Loom Studio 当前的 State 只区分两个持久化 Scope：Workspace Global State 与 Narrative Timeline State。这不是整个系统所有数据的 Scope 列表。两者共享 `@loom-studio/application-data` 中 State Store 的 Scope / immutable Revision / Snapshot 合同；Timeline 的当前 Head 由 Narrative Branch 持有，Global Head 由 State Scope 持有。
 
 State 提供结构化运行数据、Schema 校验与可追溯修改，不是全部可变文本的统一容器。Application 层已经定义 Entity Type、显式 Entity、Component Definition、精确 / Entity Type 批量 Mount 与软引用；它们在创建 Timeline 时编译为普通 JSON Snapshot，不形成第二个 Entity Store，也不包含自动游戏规则调度。文本资源、宏和 Extension 私有记录的区别见 [数据能力与生命周期边界](data-capabilities-and-lifecycle.md)。
 
-变量不是第二套存储。Prompt Build 在一次构建开始时冻结 Global、可选 Timeline 与 computed 值，形成 `VariableSnapshot`。`{{User}}` 只是 `global.user.name` 的内置别名；`{{global.*}}` 与 `{{timeline.*}}` 只展开标量，不递归执行，也不承担赋值或结构化 Prompt 注入。
+变量不是第二套存储。Prompt Build 在一次构建开始时冻结 Global、可选 Timeline 与 computed 值，形成 `VariableSnapshot`。`{{User}}` / `{{user}}` 与 `{{user.description}}` 分别读取本轮 computed 中的全局用户配置名称和描述（见[用户资料](./user-profiles.md)）；`{{global.*}}` 与 `{{timeline.*}}` 只展开标量，不递归执行，也不承担赋值或结构化 Prompt 注入。
 
 Card / Preset 静态宏配置与 Extension 提供者进入同一来源候选组装；State 原值仍由 State Mutation 修改，宏检查不创建或写回 State。作者配置、当前宏预览和实际构建快照分别呈现，合同见 [注入与内联展开](prompt-build/injection-and-inline-expansion.md)。
 
@@ -18,7 +18,7 @@ Card / Preset 静态宏配置与 Extension 提供者进入同一来源候选组�
 - `narrative_nodes.state_revision_id` 保存该正文节点对应的 State Revision；
 - Card 可通过 `stateTemplates` 携带内联组件模板，或通过 `stateDefinitionIds` 引用共享 Definition；`stateEntityTypes`、`timelineStateEntities` 与 `timelineComponentMounts` 描述 EC 初始化，`timelineStateBindings` 只保留为高级原始路径与旧卡兼容入口。同 ID 时内联模板优先，修改内联模板不会写回共享 Definition。
 
-创建 Timeline 时，Card 内联 Contribution、`stateContributionIds` 显式选择的 Contribution，以及 `extensionAdoptions` 默认采用安装的已注册 Contribution 先确定性组合。声明 `participation: "timeline"` 的包必须被采用，不能仅通过 `stateContributionIds` 绕过。重名 Entity Type、Template、Entity 或最终组件路径会失败，不存在隐式覆盖顺序。组合结果物化为初始 Snapshot，并把 Entity / Component / Reference 描述、Extension 原始声明与安装来源、Package 版本、Schema 和 User 名字回退固化为 Timeline Runtime Context；随后在同一个 Data Engine transaction 中创建 Runtime Context、采用记录、State Scope、Initial Revision、Timeline、Primary Branch 与 Opening Nodes。来源、版本和采用记录不写入业务 Entity 或专用 metadata 组件。Extension 后续卸载或重载不会改写已有 Timeline。
+创建 Timeline 时，Card 内联 Contribution、`stateContributionIds` 显式选择的 Contribution，以及 `extensionAdoptions` 默认采用安装的已注册 Contribution 先确定性组合。声明 `participation: "timeline"` 的包必须被采用，不能仅通过 `stateContributionIds` 绕过。重名 Entity Type、Template、Entity 或最终组件路径会失败，不存在隐式覆盖顺序。组合结果物化为初始 Snapshot，并把 Entity / Component / Reference 描述、Extension 原始声明与安装来源、Package 版本与 Schema 固化为 Timeline Runtime Context（旧 `fallbackUserName` 字段保留，但不再参与用户宏解析）；随后在同一个 Data Engine transaction 中创建 Runtime Context、采用记录、State Scope、Initial Revision、Timeline、Primary Branch 与 Opening Nodes。来源、版本和采用记录不写入业务 Entity 或专用 metadata 组件。Extension 后续卸载或重载不会改写已有 Timeline。
 
 中途采用也保存原始声明和绑定来源。绑定的归属按声明 Mount / Binding 的 Contribution 确定，不按共享模板的作者确定；原始路径通配符及 Entity Type 批量挂载均展开到具体路径。Card 默认配置只影响新 Timeline；同一 Timeline 下所有 Branch 共用采用关系，State Head 仍各自独立。暂停或卸载保留数据，旧 checkpoint 缺失数据通过显式初始化流程补齐，不根据路径存在性推断是否采用。
 
@@ -44,7 +44,7 @@ State 面板的“来源”“初始化配置”“运行态变量”分别展�
 
 State 对象路径只读取自身属性。包括 `__proto__`、`constructor` 和 `prototype` 在内的合法 JSON 键会作为普通 own property 保存和读取，不允许路径遍历或写入落到 JavaScript 对象原型链。
 
-从当前正文 Head Fork 时使用 Branch 最新 State Head，因此保留正文后发生的纯 State 修改；从历史 Node Fork 时使用该 Node 的 State Revision。State-only Undo 不删除 Revision或直接倒退 Head，而是从被撤销 Revision 的 Parent Snapshot 创建补偿 Revision；第一版只允许撤销当前 Head。
+从当前正文 Head Fork 时使用 Branch 最新 State / Workspace Head，因此保留正文后发生的修改；从历史 Node Fork 时优先使用来源 Branch / Node 的恢复点，缺失恢复点时才使用 Node 提交时的 State / Workspace Revision。新分支同时复制路径上的恢复点，因此历史节点的最终状态与节点提交时状态可以不同。State-only Undo 不删除 Revision或直接倒退 Head，而是从被撤销 Revision 的 Parent Snapshot 创建补偿 Revision；第一版只允许撤销当前 Head。
 
 Global Definition 更新与 State 写入在提交事务内检查当前值和约束，避免并发校验基于过期定义。Global State 撤销、Definition-only 撤销以及混合默认值撤销均检查最终 Definition / Snapshot 组合；不兼容的 Schema 或只读值变更整体失败，不自动迁移其他历史。相同幂等请求并发命中时返回原 Revision 和 Changeset，不产生空提交或重复 State 通知。
 

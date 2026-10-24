@@ -2,6 +2,16 @@
 
 本分类用于收录 Loom Studio 已实现并稳定的数据基础语义，包括 Document、Revision、Changeset、持久化、Workspace 同步边界以及 Trace/Audit 数据。
 
+## 资源身份与消费者地址
+
+应用新生成的普通内部 ID 使用 11 位 base62 随机字符串，不包含资源类型前缀；实现见 `packages/shared/src/index.ts` 的 `createId`。类型由领域字段、所属表或既有实体引用协议表达。外部协议身份、固定语义键、内容哈希和安全凭据不套用该格式。
+
+ID 在存取和关联中是不透明字符串。已有长 ID 与新短 ID 使用同一套逻辑，不需要换号、重导或专用旧格式兼容层。身份生成时的冲突处理不能覆盖既有对象；Card 目录还需防止大小写不敏感文件系统将两个不同 ID 视为同一目录。
+
+Narrative 面向 Agent 的地址为 `/narrative/<floor>.md`。宿主在绑定的 Timeline、Branch 和访问范围内解析固定楼号，内部仍保留节点身份、Head 和正文基线。新执行工具的列表、读取、写入与追加回执使用楼层路径；`readNarrative` 的继续读取使用楼层边界。历史工具记录不改写，旧节点 ID 路径不作为新工具接口维护；历史节点本身无需重新生成 ID。
+
+界面和日志消费资源名称及明确的导航目标；完整 ID 放在诊断入口。当前名称属于读取时投影，与运行当时记录的来源、配置和版本事实分开。
+
 ## Lore 命名升级
 
 Prompt Resource schema v6 将设定资源分类、挂载表/列、已知锚点协议字段和历史资源修订统一为 Lore；`application.lore-documents` v1 迁移 Card 当前/历史字段与 Agent 恢复快照中的 Prompt 来源。保留所有资源身份、版本及作者正文，不更改 State 或扩展私有数据。旧版数据库迁移步骤保持原名，新运行合同只使用 Lore。
@@ -82,11 +92,14 @@ InMemory DocumentStore 的公开读写与 transaction 同样经过串行队列�
 
 Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit Source。测试或其他宿主组合如果使用非 Engine Document Store，可直接注入 Store；其 `subscribeCommits` 已满足同一订阅合同，不需要转发工厂。
 
-当前 Document Store 与 Narrative Store 已接入共享 Engine。Narrative Store 使用 `application.narrative` migration namespace，当前版本 4，拥有：
+当前 Document Store 与 Narrative Store 已接入共享 Engine。Narrative Store 使用 `application.narrative` migration namespace，当前版本 8，拥有：
 
 - `narrative_timelines`：Timeline 根、来源 Card、资源链接、active branch、可空 `opening_json` 与 tombstone；
-- `narrative_branches`：Branch head、父 Branch 与 fork 来源；
-- `narrative_nodes`：不可变的 `loom-markdown.v1` 正文、parent 关系与可选 provenance。
+- `narrative_branches`：Branch head、State / Workspace head、父 Branch 与 fork 来源；
+- `narrative_nodes`：不可变的 `loom-markdown.v1` 正文、parent、持久楼号、内容 kind、State / Workspace Revision 与可选 provenance；
+- `narrative_recovery_points`：按 Branch / Node 保存推进下一节点前的最终 State / Workspace 恢复引用。
+
+Workspace Store 使用独立的 `application.workspace@1` namespace，拥有 `workspace_revisions`，保存 Timeline 文件树的不可变版本；文本在树中持久化，二进制引用 Blob。Narrative Store 装配 Workspace Store，Branch Head 与 Workspace 新版本由领域流程在同一事务推进。Workspace 与节点提交时引用、末尾恢复点的区别见[数据生命周期](../application/data-capabilities-and-lifecycle.md#timeline-workspace-与稳定楼号)。
 
 Narrative append 在一个 Engine transaction 中同时插入 Node、更新 Branch head 与 Timeline `updated_at`；分页沿 parent 链向历史读取，不使用 SQLite offset。
 
@@ -112,11 +125,12 @@ Studio Server 已在组合根创建 Narrative Store，并注入 Application Runt
 
 后端旧 `Session / NarrativeEntry / submitTurn` 路径已经删除，不再公开旧 Session、Transcript、Run RPC，也不保留双轨或兼容读取。Studio Client 已切换到 Narrative Timeline、Agent Preset 与按需 Agent Session 合同。
 
-Agent Store 也已接入共享 Engine，使用 `application.agent` migration namespace，当前支持到版本 6，见 [Store migration 注册](../../../packages/application-data/src/agent/store.ts)。v6 只重命名引用列，保留历史与旧引用值，不猜测旧 Profile 的重绑定：
+Agent Store 也已接入共享 Engine，使用 `application.agent` migration namespace，当前支持到版本 8，见 [Store migration 注册](../../../packages/application-data/src/agent/store.ts)。v6 只重命名引用列，保留历史与旧引用值，不猜测旧 Profile 的重绑定；v7 / v8 增加 Session 摘要策略与摘要任务持久化：
 
-- `agent_sessions`：Agent Preset identity、标题、transcript entry head/count 与 tombstone；
-- `agent_transcript_entries`：不可变 canonical Transcript Entry、parent、sequence 与可选 runId；
-- `agent_tool_invocations`：Studio Invocation ID、Tool ID 与 ToolResult 的轻量配对索引，不保存参数或结果正文。
+- `agent_sessions`：Agent Preset identity、标题、transcript entry head/count、可选摘要策略与 tombstone；
+- `agent_transcript_entries`：不可变 canonical Transcript Entry、parent、sequence 与可选 runId，包含 `work-summary` 及其工作段退休边界；
+- `agent_tool_invocations`：Studio Invocation ID、Tool ID 与 ToolResult 的轻量配对索引，不保存参数或结果正文；
+- `agent_summary_tasks`：Session 所属摘要任务及状态记录。任务持久化不等于重启后能够继续原 Provider 执行。
 
 Transcript append 在同一 transaction 内分配连续 sequence、插入一条或多条 Entry，并更新 Session head/count。写入通过 `expectedEntryCount` 防止并发覆盖；分页沿 parent 链读取，不使用 offset。ToolInvocation 与 ToolResult 可以跨批提交，但重复 Invocation ID、未知 Result、Tool ID 不匹配或重复 Result 都会被拒绝。
 

@@ -31,12 +31,14 @@ export function useStudioDerivedValues(input: {
   macroPreview: { key: string; inspection?: MacroInspection }
   macroKey: string
   macroContextCard?: Card
+  user?: { name: string; description: string }
 }) {
   const hasTimeline = Boolean(input.timeline)
   const macroContext = useMemo<MacroRenderContext>(() => ({
     snapshot: input.macroPreview.key === input.macroKey ? input.macroPreview.inspection?.snapshot : undefined,
     card: hasTimeline ? undefined : input.macroContextCard,
-  }), [input.macroKey, input.macroPreview, hasTimeline, input.macroContextCard])
+    user: input.user,
+  }), [input.macroKey, input.macroPreview, hasTimeline, input.macroContextCard, input.user])
 
   const cardOpeningEntry = input.selectedCardDetails
     ? openingChoiceText(input.selectedCardDetails.opening, input.openingChoice ?? { kind: 'card', id: input.selectedCardDetails.opening.id }).trim()
@@ -64,6 +66,7 @@ export function useStudioDerivedValues(input: {
 
   const promptBuildSteps = buildPromptBuildSteps({
     card: input.selectedCardDetails,
+    userName: renderTemplateMacros('{{user}}', input.macroInspection ? { snapshot: input.macroInspection.snapshot } : macroContext),
     timeline: input.timeline,
     branch: input.branch,
     nodes: input.nodes,

@@ -27,34 +27,38 @@ export function createCardDirectoryService(options: {
 
   async function exclusive<T>(id: string, action: () => Promise<T>, recoveringDeletion = false): Promise<T> {
     assertCardId(id)
-    if (busy.has(id)) throw new Error('Card directory operation is already running')
-    busy.add(id)
+    if (busy.has(id.toLowerCase())) throw new Error('Card directory operation is already running')
+    busy.add(id.toLowerCase())
     try {
+      await assertDirectoryCase(root, metadata(id))
       if (!recoveringDeletion && await readOptional(root, `${metadata(id)}/delete.json`)) throw new Error('Card directory has an unfinished deletion; recovery is required')
       const binding = await readCardDirectoryBinding(root, id)
       if (binding) names.set(id, binding.directoryName)
+      await assertDirectoryCase(root, directory(id))
       return await action()
     } finally {
       names.delete(id)
-      busy.delete(id)
+      busy.delete(id.toLowerCase())
     }
   }
 
   async function exclusiveMany<T>(cardIds: string[], action: () => Promise<T>): Promise<T> {
     const ids = [...new Set(cardIds)].sort()
     for (const id of ids) assertCardId(id)
-    if (ids.some(id => busy.has(id))) throw new Error('Card directory operation is already running')
-    for (const id of ids) busy.add(id)
+    if (new Set(ids.map(id => id.toLowerCase())).size !== ids.length) throw new Error('Card directory identity case conflict')
+    if (ids.some(id => busy.has(id.toLowerCase()))) throw new Error('Card directory operation is already running')
+    for (const id of ids) busy.add(id.toLowerCase())
     try {
       for (const id of ids) {
         const binding = await readCardDirectoryBinding(root, id)
         if (binding) names.set(id, binding.directoryName)
+        await assertDirectoryCase(root, directory(id))
       }
       return await action()
     } finally {
       for (const id of ids) {
         names.delete(id)
-        busy.delete(id)
+        busy.delete(id.toLowerCase())
       }
     }
   }
@@ -427,12 +431,22 @@ export function parseBaseline(value: unknown, cardId: string): Baseline {
 
 export async function readCardDirectoryBinding(root: string, id: string): Promise<{ directoryName: string; artifactId: string } | undefined> {
   assertCardId(id)
+  await assertDirectoryCase(root, `.loom/card-directories/${id}`)
   const bytes = await readOptional(root, `.loom/card-directories/${id}/binding.json`)
   if (!bytes) return undefined
   const value = JSON.parse(bytes.toString('utf8'))
   if (typeof value.directoryName !== 'string' || value.directoryName.includes('/') || value.directoryName.includes('\\') || typeof value.artifactId !== 'string') throw new Error('Invalid card directory binding')
   validateBundlePath(value.directoryName)
   return value
+}
+
+async function assertDirectoryCase(root: string, path: string) {
+  const name = path.split('/').at(-1)!
+  let entries: string[]
+  try { entries = await fs.readdir(await safePath(root, dirname(path))) }
+  catch (error) { if (isMissing(error)) return; throw error }
+  if (entries.some(entry => entry !== name && entry.toLowerCase() === name.toLowerCase()))
+    throw new Error(`Card directory identity case conflict: ${path}`)
 }
 
 export async function safePath(root: string, path: string) {

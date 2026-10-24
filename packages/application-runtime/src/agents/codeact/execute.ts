@@ -27,7 +27,7 @@ export async function executeCodeAct(context: ToolExecutionContext): Promise<Too
   })
   const text = [
     ...(host.narrativeAppends.length ? [
-      `Narrative saved:\n${host.narrativeAppends.map(item => narrativePath(item.nodeId)).join('\n')}${result.error ? '\nAlready applied; do not repeat these writes.' : ''}`,
+      `Narrative saved:\n${host.narrativeAppends.map(item => narrativePath(item.floor)).join('\n')}${result.error ? '\nAlready applied; do not repeat these writes.' : ''}`,
     ] : []),
     ...(host.writes.length ? [
       `Saved changes (already applied; later errors or cancellation do not roll them back):\n${host.writes.map(item =>
@@ -36,7 +36,7 @@ export async function executeCodeAct(context: ToolExecutionContext): Promise<Too
     ...(result.error ? [`${result.error.code}: ${result.error.message}`] : []),
     ...(observations.length ? [`Read ranges:\n${observations.join('\n')}`] : []),
     ...(result.output ? [result.output.split('\n').filter(line =>
-      !host.narrativeAppends.some(item => line === JSON.stringify({ path: narrativePath(item.nodeId) }))).join('\n')].filter(Boolean) : []),
+      !host.narrativeAppends.some(item => line === JSON.stringify({ path: narrativePath(item.floor) }))).join('\n')].filter(Boolean) : []),
     ...(!host.narrativeAppends.length && !host.writes.length && !observations.length && !result.output && !result.error ? ['Completed without printed output. Use print(value) to show results.'] : []),
   ].join('\n\n')
   const truncation = '\n[Result truncated. Print smaller selections.]'

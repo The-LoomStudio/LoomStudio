@@ -1,3 +1,4 @@
+import { legacyChatProviderIds } from '../../features/provider-settings/model/chat-provider.js'
 import { useState, type FormEvent } from 'react'
 import { TextInput } from '@loom-studio/ui'
 import type {
@@ -20,6 +21,7 @@ type ProviderAccountDraft = {
 }
 
 export type ModelPanelProps = {
+  selectedProviderId?: string
   onUpdateTokenMultiplier?(modelProfileId: string, multiplier: number): Promise<void>
   busy: boolean
   providerAccountDraft: ProviderAccountDraft
@@ -44,6 +46,7 @@ export function ModelPanel(props: ModelPanelProps) {
   return (
     <aside className={styles.modelPanel} data-loom-component="model-panel">
       <section className={styles.accountsSection}>
+        {props.selectedProviderId && !props.busy && !chatProviderAccounts.some(account => account.id === props.selectedProviderId) && <p role="status">{props.t('observation.providerTargetUnavailable')}</p>}
         <div className={styles.stickyCreateSection}>
           <header className={styles.sectionHeader}>
             <h2>{props.t('provider.title')}</h2>
@@ -111,6 +114,7 @@ export function ModelPanel(props: ModelPanelProps) {
         </div>
         <div className={styles.accountsPane}>
           <ProviderAccountList
+            selectedProviderId={props.selectedProviderId}
             accounts={chatProviderAccounts}
             busy={props.busy}
             modelProfiles={props.modelProfiles}
@@ -128,15 +132,3 @@ export function ModelPanel(props: ModelPanelProps) {
   )
 }
 
-const legacyChatProviderIds = new Set([
-  'official.openai',
-  'openai',
-  'official.anthropic',
-  'anthropic',
-  'official.google',
-  'google',
-  'official.openai-compatible',
-  'openai-compatible',
-  'official.fake',
-  'fake',
-])

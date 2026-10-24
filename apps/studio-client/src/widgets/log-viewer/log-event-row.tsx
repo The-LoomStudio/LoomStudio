@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { readLogPresentation, type LogRecord } from '@loom-studio/logging'
 import { IconButton } from '@loom-studio/ui'
 import { ArrowDownLeft, ArrowUpRight, Check, ChevronRight, CircleAlert, Copy, Filter, Link } from 'lucide-react'
-import { readLogReferences } from '../../features/log-viewer/model/log-references.js'
+import type { LogReferenceLabel } from '../../features/log-viewer/model/use-log-reference-labels.js'
+import { readLogReferences, logReferenceLabelKey } from '../../features/log-viewer/model/log-references.js'
 import { logSource } from '../../features/log-viewer/model/log-presentation.js'
 import { formatNumber, formatTime, type Translator } from '../../shared/i18n/index.js'
 import styles from './log-event-row.module.scss'
 
-export function LogEventRow({ record, t, onFilterRun, onInspect }: {
+export function LogEventRow({ record, t, onFilterRun, onInspect, referenceLabels, referenceError }: {
+  referenceLabels?: Map<string, LogReferenceLabel>
+  referenceError?: boolean
   record: LogRecord
   t: Translator
   onFilterRun(runId: string): void
@@ -18,6 +21,7 @@ export function LogEventRow({ record, t, onFilterRun, onInspect }: {
   const [copyError, setCopyError] = useState(false)
   const view = readLogPresentation(record)
   const source = logSource(record)
+  const observationId = record.data?.observationRequestId ?? record.data?.measurementId ?? record.data?.runId
   const runId = typeof record.data?.runId === 'string' ? record.data.runId : undefined
   // References and complex payloads remain in the explicit raw view, not the default detail.
   const fields = Object.entries(record.data ?? {}).filter(([key, value]) =>
@@ -50,9 +54,13 @@ export function LogEventRow({ record, t, onFilterRun, onInspect }: {
     </summary>
     {expanded && <div className={styles.detail}>
       {view.detail && <p>{view.detail}</p>}
-      <div className={styles.references}>{readLogReferences(record).map(reference => <button type="button" key={reference.uri} title={reference.uri} onClick={() => window.dispatchEvent(new CustomEvent('loom:open-reference', { detail: { uri: reference.uri } }))}>
-        <Link size={12} />{t(`logs.ref.${reference.type}`)}
-      </button>)}</div>
+      <div className={styles.references}>{readLogReferences(record).map(reference => {
+        const label = referenceLabels?.get(logReferenceLabelKey(reference.uri) ?? '')
+        const unavailable = reference.type !== 'run' && (label?.state === 'deleted' || label?.state === 'unavailable')
+        return <button type="button" key={reference.uri} disabled={unavailable} title={t('observation.currentName')} onClick={() => window.dispatchEvent(new CustomEvent('loom:open-reference', { detail: { uri: reference.uri } }))}>
+          <Link size={12} />{t(`logs.ref.${reference.type}`)}{label ? ` · ${label.state === 'available' ? label.title || t('observation.unnamed') : t(label.state === 'deleted' ? 'observation.resourceDeleted' : 'observation.recordUnavailable')}` : reference.type !== 'source' && reference.type !== 'extension' ? ` · ${t(referenceError ? 'observation.readError' : 'observation.loading')}` : ''}
+        </button>
+      })}</div>
       <dl>
         <div><dt>{t('logs.level')}</dt><dd>{record.level.toUpperCase()}</dd></div>
         <div><dt>{t('logs.source')}</dt><dd>{record.service} / {record.namespace}</dd></div>
@@ -60,6 +68,7 @@ export function LogEventRow({ record, t, onFilterRun, onInspect }: {
         {fields.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{String(value)}</dd></div>)}
       </dl>
       <div className={styles.detailActions}>
+        {typeof observationId === 'string' && <button type="button" className={styles.command} onClick={() => window.dispatchEvent(new CustomEvent('loom:open-observation', { detail: { id: observationId } }))}><Link size={13} />{t('observation.title')}</button>}
         {runId && <button type="button" className={styles.command} onClick={() => onFilterRun(runId)}><Filter size={13} />{t('logs.filterRun')}</button>}
         <IconButton size="small" aria-label={copied ? t('logs.copied') : t('logs.copy')} onClick={() => void copyRecord()}>{copied ? <Check size={13} /> : <Copy size={13} />}</IconButton>
         {copied && <span role="status">{t('logs.copied')}</span>}

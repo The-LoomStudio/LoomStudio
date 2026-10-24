@@ -34,6 +34,22 @@ function entry(id: string, sequence: number, text: string): HistoryTextEntry<typ
 }
 
 describe('history text projection', () => {
+  it.each(['u', 'v'])('advances zero-width %s matches across complete Unicode code points', flags => {
+    for (const phase of ['display', 'prompt'] as const) {
+      for (const text of ['Hello', '😀 Hello']) {
+        const result = projectHistoryEntries({ source, phase, entries: [entry('message', 1, text)],
+          rules: [rule({ id: 'prefix', phases: [phase], matcher: { kind: 'regex', pattern: '^', flags },
+            effect: { kind: 'replace', replacement: 'Prefix: ' } })] })
+        expect(result.entries[0]!.text).toBe(`Prefix: ${text}`)
+        expect(result.diagnostics).toEqual([])
+      }
+      const all = projectHistoryEntries({ source, phase, entries: [entry('message', 1, '😀')],
+        rules: [rule({ id: 'empty', phases: [phase], matcher: { kind: 'regex', pattern: '(?:)', flags },
+          effect: { kind: 'replace', replacement: '|' } })] })
+      expect(all.entries[0]!.text).toBe('|😀|')
+    }
+  })
+
   it('isolates a display entry failure but keeps prompt processing strict', () => {
     const input = { source, entries: [entry('bad', 1, 'secret secret'), entry('good', 2, 'secret')],
       rules: [rule({ id: 'limited', phases: ['display', 'prompt'] })], budget: { maxMatchesPerRulePerEntry: 1 } }

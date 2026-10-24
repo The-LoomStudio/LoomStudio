@@ -10,6 +10,8 @@ import type { StudioApi } from '../../shared/api/studio-api.js'
 import { downloadBlob } from '../../shared/browser/download.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { highestLogLevel, moreSevereLogLevel } from './log-viewer-model.js'
+import { readLogReferences } from '../../features/log-viewer/model/log-references.js'
+import { useLogReferenceLabels } from '../../features/log-viewer/model/use-log-reference-labels.js'
 import { LogEventRow } from './log-event-row.js'
 import styles from './log-viewer.module.scss'
 
@@ -18,6 +20,8 @@ declare const __LOOM_STUDIO_VERSION__: string
 export function LogViewer(props: {
   active: boolean
   api: StudioApi['logs']
+  referenceApi?: StudioApi
+  referenceEndpoint?: string
   clientLogs: MemoryLogSink
   t: Translator
   extensions?: readonly { packageId: string; displayName: string }[]
@@ -105,6 +109,8 @@ export function LogViewer(props: {
     }),
     [records, query, level, technical, runId, packageId, moduleId, eventFilter, historyMode],
   )
+  const referenceLabels = useLogReferenceLabels(props.active ? props.referenceApi : undefined, props.referenceEndpoint ?? '', visibleRecords.flatMap(record => readLogReferences(record).map(ref => ref.uri)))
+  for (const extension of props.extensions ?? []) referenceLabels.labels.set(`extension:${extension.packageId}`, { title: extension.displayName, state: 'available' })
   // Identity survives polling and filtering; eviction cannot transfer an open row to another event.
   const keyedRecords = useMemo(() => visibleRecords.map(record => {
     let key = recordKeys.current.get(record)
@@ -242,7 +248,7 @@ export function LogViewer(props: {
     <div className={styles.recordsShell}>
       <div className={styles.records} ref={recordsRef} onScroll={handleScroll}>
         {!loading && !visibleRecords.length && <p className={styles.empty}>{props.t('logs.empty')}</p>}
-        {keyedRecords.map(({ key, record }) => <LogEventRow key={key} record={record} t={props.t} onInspect={pauseForInspection} onFilterRun={value => { pauseForInspection(); setRunId(value) }} />)}
+        {keyedRecords.map(({ key, record }) => <LogEventRow referenceLabels={referenceLabels.labels} referenceError={referenceLabels.isError} key={key} record={record} t={props.t} onInspect={pauseForInspection} onFilterRun={value => { pauseForInspection(); setRunId(value) }} />)}
         {historyMode && sourceReady && history.page?.hasMore && !history.capped && <button className={styles.loadMore} type="button" disabled={loading} onClick={history.loadMore}>{props.t('logs.loadMore')}</button>}
         <div ref={latestRef} />
       </div>

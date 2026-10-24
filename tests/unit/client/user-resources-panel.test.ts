@@ -65,6 +65,7 @@ describe('User resources navigation and tree model', () => {
       [presetResource, loreResource, foreignResource],
       rules,
       t,
+      [{ id: 'wallpaper-1', name: 'My scene' }],
     )
 
     // Presets group
@@ -86,6 +87,11 @@ describe('User resources navigation and tree model', () => {
     expect(ruleGroup).toBeDefined()
     expect(ruleGroup?.children).toHaveLength(1)
     expect(ruleGroup?.children?.[0].id).toBe('user:rule:rule-workspace-1')
+
+    expect(nodes.find(node => node.id === 'user:backgrounds')).toMatchObject({
+      label: '背景', meta: '1', children: [{ id: 'user:background:wallpaper-1', label: 'My scene' }],
+    })
+    expect(resourcesByNode.has('user:background:wallpaper-1')).toBe(false)
 
     // Verify lookup index by node id
     expect(resourcesByNode.get('node-preset-root')).toBe(presetResource)

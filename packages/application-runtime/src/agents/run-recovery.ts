@@ -171,7 +171,7 @@ async function readRecoveryTranscript(agents: AgentStore, agentSessionId: string
 }
 
 export async function readAgentRunState(agents: AgentStore, input: { agentSessionId: string; runId: string }): Promise<{
-  runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; entryCount: number
+  runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; entryCount: number; reason?: string
 }> {
   const { entries, entryCount } = await readRecoveryTranscript(agents, input.agentSessionId)
   const newest = [...entries].reverse()
@@ -180,7 +180,7 @@ export async function readAgentRunState(agents: AgentStore, input: { agentSessio
     throw recoveryError('superseded', 'This is no longer the latest Agent Run')
   if (activeExecutors.has(input.runId)) return { runId: input.runId, state: 'running', entryCount }
   const state = latest.entry.state
-  if (state === 'completed' || state === 'failed') return { runId: input.runId, state, entryCount }
+  if (state === 'completed' || state === 'failed') return { runId: input.runId, state, entryCount, ...(latest.entry.reason ? { reason: latest.entry.reason } : {}) }
   if (state === 'discarded' || state === 'aborted') return { runId: input.runId, state: 'cancelled', entryCount }
   const checkpoint = newest.find(item => item.runId === input.runId && item.entry.kind === 'run-state' && item.entry.recovery)?.entry
   const executor = checkpoint?.kind === 'run-state' && isRecord(checkpoint.recovery) ? checkpoint.recovery.executor : undefined
@@ -192,7 +192,7 @@ export async function readAgentRunState(agents: AgentStore, input: { agentSessio
     }
   }
   // Inspecting or abandoning stopped work does not replay tools and needs no complete resume checkpoint.
-  return { runId: input.runId, state: 'suspended', entryCount }
+  return { runId: input.runId, state: 'suspended', entryCount, ...(latest.entry.reason ? { reason: latest.entry.reason } : {}) }
 }
 
 export async function readAgentRunRecovery(

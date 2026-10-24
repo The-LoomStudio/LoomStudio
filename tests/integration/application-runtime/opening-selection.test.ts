@@ -175,8 +175,9 @@ describe('opening selection', () => {
       promptResources: createPromptResourceStore({ engine, createId, now }),
     })
     try {
+      await runtime.createUserProfile({ expectedVersion: 0, name: 'Player' })
       const created = await runtime.createCard({
-        name: 'Hero', userName: 'Player', opening: {
+        name: 'Hero', userName: 'Author', opening: {
           id: 'default', title: 'Default title', content: 'Default',
           alternatives: [{ id: 'meeting', title: 'Meeting', content: '{{char}} meets {{user}}' }, { id: 'harbor', title: 'Harbor', content: 'Harbor' }],
         },

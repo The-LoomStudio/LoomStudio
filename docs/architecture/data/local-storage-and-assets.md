@@ -13,10 +13,12 @@ data/
 │   ├── sha256/ab/cd/<full-sha256>
 │   └── staging/
 ├── extensions/
-│   ├── installed/<package-id>/<version>/
-│   ├── state.json
-│   └── dev-links.json
+│   └── <package-id>/
+│       ├── global/
+│       └── card-<card-id-sha256>/
 ├── config/
+│   ├── extensions-state.json
+│   └── extensions-dev-links.json
 └── backups/
 
 cache/
@@ -24,9 +26,16 @@ cache/
 
 logs/
 └── *.jsonl
+
+<installationRoot>/
+└── extensions/
+    ├── <package-id>/
+    └── .card-installed/<archive-sha256>/<package-id>/<version>/
 ```
 
-正式运行默认使用用户目录。根开发命令通过 [开发路径配置](../../../scripts/lib/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。旧目录存在而新目录未就绪时，启动器拒绝静默建立空库；迁移操作见 [Getting Started](../../guide/getting-started.md)。测试使用注入的临时目录。
+正式运行的 data/cache/log 默认使用用户目录。扩展代码安装根默认是发行安装根 `installationRoot` 下的 `extensions/`，与 `data/extensions/` 中按 Package / 安装目标隔离的扩展文件数据分开。Server 的 `extensionInstalledDirectory` 可覆盖代码安装根；`extensionStateDirectory` 可将状态和开发链接改放到指定目录的 `state.json` / `dev-links.json`，默认仍使用上述 data/config 路径，见 [Server 组合根](../../../apps/studio-server/src/server.ts)。
+
+根开发命令通过 [开发路径配置](../../../scripts/lib/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。旧目录存在而新目录未就绪时，启动器拒绝静默建立空库；迁移操作见 [Getting Started](../../guide/getting-started.md)。测试使用注入的临时目录。
 
 ## 2. SQLite 与 Blob 的权威边界
 
@@ -74,4 +83,10 @@ Server Extension 通过 `ctx.assets.publish/read/materialize` 使用媒体：
 - `materialize` 只把已授权 Asset 写入当前 Instance 的 cache scratch，reload / dispose 会删除 scratch，不影响正式 Asset；
 - Extension 通过 `assetId` 协作，不写 sibling Package 目录。
 
-本地 Package 安装首版只接受目录来源。Installer 拒绝 symlink、特殊文件、越界 entry、非法 ID/version 与超限 Package，先复制到 `.staging`，验证 Manifest v2 后原子 rename 到 `installed/<package-id>/<version>`。卸载接受 installed 与 dev-link：前者删除复制后的版本目录，后者只移除开发链接；两者都释放并 forget Module、删除 Package 的 enabled/grant 状态，但保留 Package-owned Documents、已导入资源与已发布 Media Assets。Archive、Marketplace、签名、在线更新、依赖求解和 Media Asset 引用安全删除尚未实现。
+本地全局 Package 安装接受目录与 ZIP 来源。目录安装拒绝 symlink、特殊文件与超限内容；ZIP 先校验路径、重复项和解压预算，再复用目录安装流程。Installer 校验 ID/version、Manifest 与声明资源，经安装根下的 `.staging` 原子 rename 到 `<installationRoot>/extensions/<package-id>`（默认路径）；同名已有来源会拒绝安装，不静默覆盖。安装时校验已安装依赖，不提供自动依赖求解。
+
+Card 内置 Extension Package 从角色归档安装到代码安装根下的 `.card-installed/<archive-sha256>/<package-id>/<version>`，不进入全局发现；安装、资源导入、模块启用与授权保持独立边界。归档文件与当前 Card 安装身份的校验见[文件化角色包](../application/card-bundle-files.md)。
+
+受管理的远程来源支持显式检查更新、预览更新或 Git 回退，再提交安装变更。更新与回退仍需调用方发起，不是后台自动更新；Marketplace、签名、自动依赖求解和 Media Asset 引用安全删除尚未实现。
+
+全局卸载接受 installed 与 dev-link：前者删除复制后的安装目录，后者只移除开发链接；两者都释放并 forget Module、删除 Package 的 enabled/grant 状态。默认保留 Package-owned Documents、扩展文件数据、已导入资源与已发布 Media Assets；显式传入 `deleteData: true` 时，删除该 Package 全局安装所属的 Config / Record、声明 Document 类型及 `data/extensions/<package-id>/global` 文件数据，不删除 Card-owned 数据或公共媒体。Card 安装按自身目标卸载，共享归档缓存保留。

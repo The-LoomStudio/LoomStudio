@@ -74,7 +74,7 @@ function validatePasses(passes: readonly Pass[]): Diagnostic[] {
 function validationError(message: string, diagnostics: readonly Diagnostic[]): PipelineValidationError {
   return new PipelineValidationError(
     message,
-    diagnostics.map((diagnostic) => ({ code: diagnostic.code, message: diagnostic.message }))
+    diagnostics
   )
 }
 
@@ -98,9 +98,8 @@ function normalizeInitialFragments<M>(fragments: readonly Fragment<M>[]): Fragme
 function toValidationDiagnostics(error: PipelineValidationError, passName: string): Diagnostic[] {
   return error.diagnostics.map((item): Diagnostic => ({
     severity: 'error',
-    code: item.code,
-    message: item.message,
     pass: passName,
+    ...item,
   }))
 }
 
@@ -195,10 +194,10 @@ export function runPasses<M = unknown>(input: {
 
       let next = [...result]
       const resultDiagnostics = validateFragments(next as readonly Fragment[], pass.name)
-      for (const diagnostic of resultDiagnostics) passDiagnostics.push(diagnostic)
       if (resultDiagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
         throw validationError(`Pass "${pass.name}" returned invalid fragments`, resultDiagnostics)
       }
+      passDiagnostics.push(...resultDiagnostics)
 
       assertOwnerNotMutated(before, next)
       next = annotateOwners(before, next, pass.name)

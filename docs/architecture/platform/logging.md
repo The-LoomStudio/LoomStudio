@@ -1,6 +1,6 @@
 # Loom Studio 运行日志架构（Operational Logging）
 
-Loom Studio 使用统一的结构化运行日志记录 Server、Client、Transport、Document Store、PromptBuild、Provider Gateway 与 Extension Host 的运行事实。本文描述当前已经由代码和测试证明的日志架构，不包含 Notification、TUI、PromptBuild 专用 Trace、Agent Run Transcript 或尚未实现的实时采集方案。
+Loom Studio 使用统一的结构化运行日志记录 Server、Client、Transport、Document Store、PromptBuild、Provider Gateway 与 Extension Host 的运行事实。本文说明运行日志及其与 Application 模型观测的边界；Agent Transcript 的持久化与恢复合同见 [Runtime 与 Session](../application/agent/runtime-and-session.md)。Notification、TUI 与尚未实现的实时采集方案不属于当前能力。
 
 当前实现对应：
 
@@ -222,7 +222,7 @@ apiKey
 | 私密正文 | 聊天、Prompt、角色正文、ToolResult、Provider payload | 禁止进入普通 Log |
 | Secret | API key、Authorization、Cookie、Token、Password | 所有可观测性出口均禁止 |
 
-资源操作优先记录稳定引用。授权 UI 可按需将结构化身份转换为 `loom-resource://entity` 引用，打开时解析名称、头像或目标页面；解析结果不写回 LogRecord、JSONL 或默认诊断报告。实体引用与已有版本/行号正文 URI 分开，不伪造快照定位。会话尚无直达入口，运行引用只打开相应日志筛选，不冒充 Runs Inspector。
+资源操作优先记录稳定引用。授权 UI 可按需将结构化身份转换为 `loom-resource://entity` 引用，打开时解析名称、头像或目标页面；解析结果不写回 LogRecord、JSONL 或默认诊断报告。实体引用与已有版本/行号正文 URI 分开，不伪造快照定位。Session 引用校验目标后打开最近记录中的会话摘要；Run 实体引用打开对应的应用日志筛选，模型观测记录通过独立的 Observation 导航打开，不能将应用日志筛选当成完整运行快照。目标解析见 [Studio Target](../../../apps/studio-client/src/shared/studio-shell/studio-target.ts)。
 
 ## 8. 分发与生命周期
 
@@ -408,7 +408,7 @@ Studio Server 暴露 `logs.list` 与 `logs.history` RPC。前者查询当前 Ser
 
 目录只读取符合本应用命名的常规文件，打开时拒绝符号链接并校验 inode/size 与记录所属文件。Reader 缓存最多 32 个十分钟查询快照，单快照最多 4,096 个 segment；cursor 绑定查询过滤条件，过期或改变条件时显式要求重新搜索。HTTP 断开经 AbortSignal 取消扫描，浏览器取消会中止请求；没有把整个 JSONL 装入内存。
 
-Studio Client 的 Logs Workspace 可以：
+Studio Client 的 Logs Workspace 分为应用日志与模型日志两个页签。下列能力属于应用日志；模型日志的独立数据边界见下节：
 
 - 手动刷新、分页补读和两秒增量轮询；页面不可见时暂停轮询；
 - 当前视图合并 Server 与本浏览器来源，也可分别查看；独立保留两端 cursor、缺口和失败信息；
@@ -420,7 +420,18 @@ Studio Client 的 Logs Workspace 可以：
 - 复制诊断信息先固定预览，选择最近故障上下文或当前筛选；包含版本、范围、缺口、摘要及白名单关联字段，不带任意 data/正文或解析出的资源名称；最多 200 条、正文约 60,000 字符；
 - 检查详情时暂停追随最新，显式返回最新后恢复；记录身份不因分页淘汰或筛选下标改变而错配。
 
-当前 Viewer 没有实时推送、跨来源统一 cursor 或原生诊断助手。当前与历史分开，按运行筛选仍受各自可用范围限制，不承诺完整历史。复制前提示旧日志和扩展消息可能有私密信息；不会自动发给 AI，原始 JSON 下载也不等于隐私安全保证。基础日志不是 Master–Detail Inspector，旧 DEV 样例已清理。
+应用日志 Viewer 没有实时推送、跨来源统一 cursor 或原生诊断助手。当前与历史分开，按运行筛选仍受各自可用范围限制，不承诺完整历史。复制前提示旧日志和扩展消息可能有私密信息；不会自动发给 AI，原始 JSON 下载也不等于隐私安全保证。应用日志沿事件流展开；模型日志使用独立的记录与步骤详情界面。
+
+### 模型观测与保留边界
+
+Application Runtime 的 Observation Store 保存 Run、PromptBuild、独立 API 调用及其 Request 子记录。构建证据包含来源、激活与放置、宏读取、转换、消息和诊断；请求证据可包含准备后的消息、工具、模型配置、输出及 Usage。它们不写入普通 `LogRecord.data`，也不由 `@loom-studio/trace-audit` 拥有。
+
+- 默认最多保留 1,000 条记录，单条 2 MiB、总计 32 MiB，生命周期最长 24 小时；更新不续期。容量不足会淘汰记录族，捕获失败或超限会报告丢失或部分证据，不能据此推断请求没有执行。
+- Server 在配置目录的 `observations/` 下提供可选快照持久化，初始关闭，可通过模型日志界面开启跨重启保留；关闭会删除快照，但不清空当前内存记录。开启后仍受相同保留预算与过期时间限制，写盘异步执行，恢复或 IO 错误通过持久化状态显式报告。
+- `observations.list/get/getRequest/getBuild` 提供列表及详情，`observations.persistence/setPersistence` 管理保留设置，`observations.references` 解析当前可见关联名称。读取会检查相关 Session、Timeline 与安装是否仍可见；当前名称是读取投影，不是历史请求证据。
+- 模型日志按记录和步骤查看构建、请求与返回，并可关联应用日志；缺失、过期和部分证据需明确展示。Snapshot 是有界诊断副本，不是 canonical Transcript、Run checkpoint、Core Replay 或完整长期审计档案。
+
+源码入口：[Observation 合同](../../../packages/application-runtime/src/observability/types.ts)、[Store](../../../packages/application-runtime/src/observability/store.ts)、[持久化](../../../packages/application-runtime/src/observability/persistence.ts)、[可见性与读取](../../../packages/application-runtime/src/runtime/observability-runtime.ts)、[RPC](../../../apps/studio-server/src/rpc/trpc/application/observability.ts)和[Logs Panel](../../../apps/studio-client/src/widgets/log-viewer/logs-panel.tsx)。验证入口：[Store 单元测试](../../../tests/unit/application-runtime/observability.test.ts)、[持久化单元测试](../../../tests/unit/application-runtime/observability-persistence.test.ts)和[读取界面单元测试](../../../tests/unit/client/observation-reading-ui.test.ts)。
 
 ## 14. I18N
 
@@ -466,8 +477,7 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 - Extension Logger 的远程采集、批处理和跨端持久化策略；Server / Client Activation Context 已提供受控 `ctx.logger`；
 - Notification 与 Sonner 协议；
 - 后端 TUI；
-- PromptBuild 专用 Trace Envelope；
-- Agent Run Transcript/Trace；
+- 从观测快照完整重放 PromptBuild 或 Agent Run；
 - Metric backend；
 - OTel exporter。
 
@@ -488,6 +498,7 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 - Extension Logger 的身份、限流、自有查询或远程采集与持久化语义；
 - `loom-resource://entity` 或其他日志资源引用的解析和导航语义；
 - 诊断报告的字段白名单、复制预算或 AI 外发授权语义。
+- Observation 记录形状、保留预算、持久化、关联可见性或模型日志导航语义。
 
 关键可执行证据：
 

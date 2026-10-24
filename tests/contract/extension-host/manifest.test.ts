@@ -2,6 +2,16 @@ import { parseExtensionManifest } from '@loom-studio/extension-host'
 import { describe, expect, it } from 'vitest'
 
 describe('extension manifest contract', () => {
+  it('accepts client-worker modules without allowing DOM or server contributions', () => {
+    const base = { manifestVersion: 2, id: 'example.worker', version: '1.0.0', displayName: 'Worker', engines: { studio: '*' } }
+    const module = { id: 'logic', runtime: 'client-worker', entry: './worker.js', capabilities: { 'state.read': true, 'ui.notify': true } }
+    expect(parseExtensionManifest({ ...base, modules: [module] }).modules?.[0]?.runtime).toBe('client-worker')
+    expect(() => parseExtensionManifest({ ...base, modules: [{ ...module, contributes: { renderers: [{ id: 'panel' }] } }] }))
+      .toThrow('cannot declare DOM or server contributions')
+    expect(() => parseExtensionManifest({ ...base, modules: [{ ...module, contributes: { rpc: [{ name: 'example.worker.call' }] } }] }))
+      .toThrow('cannot declare DOM or server contributions')
+  })
+
   it('validates required manifest fields', () => {
     expect(() => parseExtensionManifest({ manifestVersion: 2 })).toThrow('Manifest id is required')
   })

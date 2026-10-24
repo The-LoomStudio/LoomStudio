@@ -171,6 +171,9 @@ export function applyMutateResource(
     if (!sameJson(before.get(id), after.get(id))) changedIds.add(id)
   }
   if (changedIds.size === 0 && !headerChanged) throw new PromptResourceStoreError('prompt_resource.noop', 'Prompt resource mutation does not change anything')
+  // Retained children may still reference deleted parents until their updates below.
+  // SQLite checks the final graph at commit; root uniqueness remains immediate.
+  database.exec('PRAGMA defer_foreign_keys = ON')
   const timestamp = now()
   const version = row.version + 1
   database.prepare('UPDATE prompt_resources SET root_node_id = ?, label = ?, metadata_json = ?, version = ?, updated_at = ? WHERE id = ?')

@@ -1,4 +1,4 @@
-import type { ExtensionStyleContribution } from '@loom-studio/extension-sdk'
+import type { ExtensionBackgroundContribution, ExtensionStyleContribution } from '@loom-studio/extension-sdk'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type {
   ClientActionPlacement,
@@ -88,7 +88,7 @@ export type ExtensionPackageResourceOrigin = {
 export type ManagedExtensionModule = {
   packageId: string
   moduleId: string
-  runtimeKind: 'server' | 'client'
+  runtimeKind: import('@loom-studio/extension-sdk').ExtensionModuleRuntime
   entryUrl?: string
   reloadId?: string
   requestedCapabilities?: Record<string, ClientJsonValue>
@@ -130,6 +130,7 @@ export type ManagedExtensionPackage = {
   sourceKinds: string[]
   modules: ManagedExtensionModule[]
   resources?: {
+    backgrounds?: ExtensionBackgroundContribution[]
     themes?: ExtensionStyleContribution[]
     styles?: ExtensionStyleContribution[]
     transformRules?: ExtensionTextTransformRuleContribution[]
@@ -171,7 +172,7 @@ export type ExtensionPackageResourceRemovalResult = {
 }
 
 export type ManagedClientExtensionModule = ManagedExtensionModule & {
-  runtimeKind: 'client'
+  runtimeKind: 'client' | 'client-worker'
   entryUrl: string
 }
 

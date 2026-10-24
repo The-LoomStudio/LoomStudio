@@ -180,19 +180,22 @@ export async function applyApplicationStateMutation(
   }
 }
 
-export function applyGlobalStateDefaultInTransaction(
+export async function applyGlobalStateDefaultInTransaction(
   ctx: ApplicationStateContext,
   dataTx: SqliteDataTransaction,
+  documents: DocumentTransaction,
   input: {
+    definitionId: string
     scopeId: string
     parentRevisionId: string
     snapshot: JsonObject
     path: string
     value: JsonValue
   },
-): StateChangeEvent {
+): Promise<StateChangeEvent> {
   const nextSnapshot = structuredClone(input.snapshot)
   setDotPath(nextSnapshot, input.path, structuredClone(input.value))
+  await validateGlobalSnapshotAgainstDefinitions(documents, input.snapshot, nextSnapshot, input.definitionId)
   const stateTx = ctx.states.transaction(dataTx)
   const created = stateTx.createRevision({
     scopeId: input.scopeId,
@@ -475,13 +478,15 @@ async function validateGlobalSnapshotAgainstDefinitions(
   documents: DocumentTransaction,
   previous: JsonObject,
   snapshot: JsonObject,
+  initializedDefinitionId?: string,
 ): Promise<void> {
   const definitions = await listDocuments<StateDefinitionContent>(documents, applicationDocumentTypes.stateDefinition)
   for (const definition of definitions) {
     if (definition.content.kind !== 'global') continue
     const value = readDotPath(snapshot, definition.content.path.replace(/^global\./, ''))
     const previousValue = readDotPath(previous, definition.content.path.replace(/^global\./, ''))
-    if (definition.content.readOnly && JSON.stringify(value) !== JSON.stringify(previousValue)) {
+    // A definition may initialize its own read-only default; all other protections still apply.
+    if (definition.content.readOnly && definition.id !== initializedDefinitionId && JSON.stringify(value) !== JSON.stringify(previousValue)) {
       throw new ApplicationStateError('state.read_only', `Read-only State value cannot be changed: ${definition.content.path}`)
     }
     if (value.found) validateStateValue(value.value, definition.content.schema, definition.content.path)

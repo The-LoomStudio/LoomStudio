@@ -1,3 +1,4 @@
+import { UserIdentity, type UserIdentityView } from '../../shared/ui/user-identity/user-identity.js'
 import { ContentErrorBoundary } from '../../shared/ui/content-error-boundary.js'
 import { SelectionToolbar, appendQuote } from '../../shared/ui/selection-toolbar/selection-toolbar.js'
 import {
@@ -74,7 +75,7 @@ type StepToolItem = {
   inputs: Array<{ label: string; content: string }>
   resultContent?: string
   errorContent?: string
-  status?: 'success' | 'error' | 'running' | 'interrupted'
+  status?: 'success' | 'error' | 'running' | 'preparing' | 'interrupted'
 }
 
 type RenderItem =
@@ -131,7 +132,8 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
     if (pendingTools.length === 0) return
     const toolCount = pendingTools.length
     const label = toolCount === 1 ? pendingTools[0].label
-      : pendingTools.some(tool => tool.status === 'running') ? `正在执行 ${toolCount} 个操作` : pendingTools.some(tool => tool.status === 'interrupted') ? `${toolCount} 个操作（含中断）` : `已执行 ${toolCount} 个操作`
+      : pendingTools.some(tool => tool.status === 'preparing') ? `正在准备 ${toolCount} 个操作`
+        : pendingTools.some(tool => tool.status === 'running') ? `正在执行 ${toolCount} 个操作` : pendingTools.some(tool => tool.status === 'interrupted') ? `${toolCount} 个操作（含中断）` : `已执行 ${toolCount} 个操作`
     items.push({
       kind: 'tool-group',
       id: `tool-group-${pendingTools[0].id}`,
@@ -152,6 +154,15 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
     if (entry.kind === 'work-summary') {
       flushTools()
       items.push({ kind: 'summary', id: msg.id, label: '已保存交接摘要', content: String(entry.content ?? '') })
+    } else if (entry.kind === 'tool-input') {
+      const interrupted = entry.status === 'interrupted' || Boolean(msg.runId && runStates.has(msg.runId)
+        && (runStates.get(msg.runId) !== 'running' || msg.runId !== latestRunId))
+      pendingTools.push({
+        id: msg.id, iconType: 'terminal',
+        label: `${entry.exposedName ?? '工具调用'} · ${interrupted ? '参数生成已中断，尚未执行' : '正在准备参数'}`,
+        inputs: [{ label: '参数草稿', content: String(entry.rawInput ?? '') }],
+        status: interrupted ? 'interrupted' : 'preparing',
+      })
     } else if (entry.kind === 'tool-invocation') {
       const toolId = String(entry.toolId || '')
       const exposedName = String(entry.exposedName || entry.toolId || '执行工具')
@@ -196,14 +207,16 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
 
       const runState = msg.runId ? runStates.get(msg.runId) : undefined
       const interrupted = Boolean(runState && (runState !== 'running' && runState !== 'created' || msg.runId !== latestRunId))
+      const incompleteInput = entry.status === 'suspended' && pairedResult?.syntheticReason === 'interrupt'
       pendingTools.push({
-        id: msg.id,
+        id: msg.presentationId ?? msg.id,
         iconType,
-        label: pairedResult && !exposedName.startsWith('已') ? `已${exposedName}` : exposedName,
+        label: incompleteInput ? `${exposedName} · 参数生成已中断，尚未执行`
+          : pairedResult && !exposedName.startsWith('已') ? `已${exposedName}` : exposedName,
         inputs,
         resultContent,
         errorContent: errorContent || undefined,
-        status: !pairedResult ? interrupted ? 'interrupted' : 'running' : pairedResult.status === 'completed' ? 'success' : 'error',
+        status: incompleteInput ? 'interrupted' : !pairedResult ? interrupted ? 'interrupted' : 'running' : pairedResult.status === 'completed' ? 'success' : 'error',
       })
     } else if (entry.kind === 'reasoning' && typeof entry.content === 'string') {
       flushTools()
@@ -242,6 +255,7 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
 }
 
 export type AgentChatPanelProps = RunRecoveryControlsProps & {
+  userIdentity?: UserIdentityView
   active?: boolean
   onboardingHint?: ReactNode
   initialCreatePresetId?: string
@@ -310,7 +324,7 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
       return false
     })
     const base = buildRenderItems(entries, props.activeRun)
-    const sequence = new Map(entries.map(entry => [entry.id, entry.sequence]))
+    const sequence = new Map(entries.map(entry => [entry.presentationId ?? entry.id, entry.sequence]))
     const result: (RenderItem | { kind: 'summary-activity'; id: string; content: ReactNode })[] = []
     const pending = [...rows]
     const coverage = props.summaryCoverage
@@ -461,6 +475,7 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
                   message={item.message}
                   rendererHost={props.rendererHost}
                   role={item.role}
+                  userIdentity={props.userIdentity}
                   showChrome={item.showChrome}
                   isStreaming={item.isStreaming}
                   t={props.t}
@@ -627,7 +642,7 @@ export function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolea
         onClick={() => props.expansion ? props.expansion.toggle(props.id, props.defaultOpen) : setLocalOpen(prev => !prev)}
         aria-expanded={open}
       >
-        <span className={styles.toolItemIcon}>{props.status === 'running' ? <RefreshCw className={styles.toolSpinner} aria-hidden="true" /> : renderIcon()}</span>
+        <span className={styles.toolItemIcon}>{props.status === 'running' || props.status === 'preparing' ? <RefreshCw className={styles.toolSpinner} aria-hidden="true" /> : renderIcon()}</span>
         <span className={styles.toolItemLabel}>{props.label}</span>
         {open ? (
           <ChevronDown className={styles.toolItemChevron} aria-hidden="true" />
@@ -670,6 +685,8 @@ export function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolea
                 <AlertCircle aria-hidden="true" />
                 <span>{props.t ? props.t('agent.tool.interrupted') : '已中断'}</span>
               </>
+            ) : props.status === 'preparing' ? (
+              <><RefreshCw aria-hidden="true" /><span>{props.t ? props.t('agent.tool.preparing') : '正在准备参数，尚未执行'}</span></>
             ) : props.status === 'running' ? (
               <>
                 <RefreshCw aria-hidden="true" />
@@ -741,6 +758,7 @@ export function AgentToolGroupBlock(props: {
 }
 
 function AgentTranscriptEntry(props: {
+  userIdentity?: UserIdentityView
   agentSessionId?: string
   codeBlockLabels: MarkdownCodeBlockLabels
   content: string
@@ -780,6 +798,7 @@ function AgentTranscriptEntry(props: {
 
   return (
     <article aria-busy={props.displayContent === undefined && props.displayProjectionPending} className={`${styles.message} ${styles[props.role]}`}>
+      {props.role === 'user' && props.userIdentity ? <header className={styles.userIdentity}><UserIdentity {...props.userIdentity} /></header> : null}
       <div className={styles.messageSurface}>
         {props.rendererHost && props.agentSessionId ? (
           <RendererNodeMountHost

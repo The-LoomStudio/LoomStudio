@@ -85,8 +85,10 @@ export function createServerExtensionManager(options: {
   devLinksFile: string
   deleteData?(packageId: string, documentTypes: string[]): Promise<void>
   officialSetupFile?: string
+  /** Direct package sources with one-time resource/default setup; never copied into installedDirectory. */
   bundledDirectories?: string[]
   bundledEnabledModules?: Record<string, readonly string[]>
+  exportExtensionArchive?: import('@loom-studio/application-runtime').ApplicationRuntimeOptions['exportExtensionArchive']
   readCardPackage(input: { cardId: string; packageId: string; source?: 'installed' }): Promise<{ cardVersion: number; archive: { packageId: string; version: string; archiveBase64: string } }>
   listInstallations(): Promise<ListExtensionInstallationsResult>
   importPackageResources(input: {
@@ -577,14 +579,9 @@ export function createServerExtensionManager(options: {
         try {
           const manifest = parseExtensionManifest(JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8')))
           if (setup.bundled?.includes(manifest.id)) continue
-          try { await stat(join(options.installedDirectory, manifest.id)) }
-          catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-            await installExtensionPackageFromDirectory({ sourceDirectory: directory, installedDirectory: options.installedDirectory, flat: true })
-          }
           bundled.set(directory, manifest)
         } catch (error) {
-          reportDiscoveryFailure(options.diagnostics, { kind: 'installed', directory }, error)
+          reportDiscoveryFailure(options.diagnostics, { kind: 'repository', directory }, error)
         }
       }
       const result = await discoverExtensionSources(options)
@@ -625,6 +622,7 @@ export function createServerExtensionManager(options: {
             record.remote = { source: metadata.source, ...(metadata.commit ? { commit: metadata.commit } : {}), canRollback: !!metadata.previous }
             record.fileRevision = `${manifest.version}-${randomUUID()}`
           }
+          if (record.sources.some(source => source.kind === 'repository')) record.fileRevision = `${manifest.version}-${randomUUID()}`
           await options.host.discover(record.directory)
         } catch (error) {
           record.available = false
@@ -918,7 +916,7 @@ export function createServerExtensionManager(options: {
         ? previous.grantedAssetCapabilities
         : validateAssetGrants(packageId, moduleManifest, requestedGrants.assetCapabilities)
       const uiGrants = requestedGrants?.uiCapabilities ?? previous.grantedUiCapabilities ?? []
-      if (uiGrants.some(grant => grant !== 'ui.notify' || moduleManifest.runtime !== 'client' || moduleManifest.capabilities?.[grant] !== true)) {
+      if (uiGrants.some(grant => grant !== 'ui.notify' || (moduleManifest.runtime !== 'client' && moduleManifest.runtime !== 'client-worker') || moduleManifest.capabilities?.[grant] !== true)) {
         throw new Error(`Extension module ${moduleKey(packageId, moduleId)} did not request a supported UI capability`)
       }
       const desired = await options.stateStore.set(packageId, moduleId, {
@@ -1001,7 +999,11 @@ export function createServerExtensionManager(options: {
       assertInitialized(initialized)
       const record = requireAvailablePackage(catalog, input.packageId)
       if (record.manifest.version !== input.version) throw new Error('Extension package changed; review the export again')
-      const archive = await exportExtensionPackageZip(record.directory, record.manifest)
+      const source = await exportExtensionPackageZip(record.directory, record.manifest)
+      const archive = options.exportExtensionArchive ? await options.exportExtensionArchive({
+        archive: source, packageId: input.packageId, version: input.version,
+        installationId: extensionInstallationId(input.packageId, { kind: 'global' }),
+      }) : source
       return { ...input, archiveBase64: Buffer.from(archive).toString('base64') }
     }),
     updatePackageResources: input => serialize(() => importResources(input.packageId, input)),
@@ -1027,7 +1029,7 @@ export function createServerExtensionManager(options: {
       const packageDirectory = await realpath(record.directory)
       const iconPath = await realpath(resolve(packageDirectory, record.manifest.icon))
       const pathFromPackage = relative(packageDirectory, iconPath)
-      if (!pathFromPackage || pathFromPackage.startsWith('..') || isAbsolute(pathFromPackage)) {
+      if (!pathFromPackage || pathFromPackage === '..' || pathFromPackage.startsWith(`..${sep}`) || isAbsolute(pathFromPackage)) {
         throw new Error(`Extension Package icon escaped its directory: ${packageId}`)
       }
       const iconStat = await stat(iconPath)
@@ -1176,6 +1178,7 @@ function toManagedPackage(
       promptResources: record.manifest.contributes?.promptResources ?? [],
       agentTools: record.manifest.contributes?.agentTools ?? [],
       settings: record.manifest.contributes?.settings ?? [],
+      backgrounds: record.manifest.contributes?.backgrounds ?? [],
       themes: record.manifest.contributes?.themes ?? [],
       styles: record.manifest.contributes?.styles ?? [],
     },
@@ -1241,7 +1244,7 @@ function toManagedModule(
       ...(desired.updatedAt ? { updatedAt: desired.updatedAt } : {}),
     },
     contributions: moduleManifest.contributes ?? {},
-    ...(moduleManifest.runtime === 'client' ? { entryUrl: packageFileUrl(packageId, target?.kind === 'card' ? record.manifest.version : record.fileRevision ?? record.manifest.version, moduleManifest.entry, target, record.archiveDigest) } : {}),
+    ...((moduleManifest.runtime === 'client' || moduleManifest.runtime === 'client-worker') ? { entryUrl: packageFileUrl(packageId, target?.kind === 'card' ? record.manifest.version : record.fileRevision ?? record.manifest.version, moduleManifest.entry, target, record.archiveDigest) } : {}),
     ...(runtime ? { runtime: runtime } : {}),
   }
 }
@@ -1265,6 +1268,7 @@ function packageFileMediaType(filename: string): string {
     case '.otf': return 'font/otf'
     case '.wasm': return 'application/wasm'
     case '.svg': return 'image/svg+xml'
+    case '.avif': return 'image/avif'
     default: return iconMediaType(filename)
   }
 }

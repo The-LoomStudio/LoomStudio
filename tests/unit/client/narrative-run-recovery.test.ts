@@ -1,8 +1,38 @@
+import { notify } from '../../../apps/studio-client/src/shared/notifications/index.js'
 import { describe, expect, it, vi } from 'vitest'
 import { fixture, primaryFixture } from '../../support/client/narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
 describe('Narrative Run recovery', () => {
+  it.each([false, true])('surfaces a recoverable provider error including expired replay (%s)', async replayExpired => {
+    const f = fixture()
+    const notification = vi.spyOn(notify, 'providerError').mockImplementation(() => {})
+    try {
+      f.render().setAgentInput('Draft')
+      const reason = 'Provider request failed (404): retired model'
+      f.subscribeRun.mockResolvedValueOnce({
+        events: replayExpired ? [] : [{ type: 'suspended', runId: 'run', reason }],
+        reason, nextCursor: 1, done: true, state: 'suspended', replayExpired,
+      })
+      await f.render().submitAgentTurn(f.event)
+      expect(f.render().runRecovery).toMatchObject({ status: 'suspended', error: reason, target: 'agent' })
+      expect(notification).toHaveBeenCalledOnce()
+      expect(f.resumeRun).not.toHaveBeenCalled()
+    } finally { notification.mockRestore() }
+  })
+
+  it('does not notify an error for an explicit user pause', async () => {
+    const f = fixture()
+    const notification = vi.spyOn(notify, 'providerError').mockImplementation(() => {})
+    try {
+      f.render().setAgentInput('Draft')
+      f.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'suspended', runId: 'run', reason: 'user-pause' }], nextCursor: 1, done: true, state: 'suspended' })
+      await f.render().submitAgentTurn(f.event)
+      expect(f.render().runRecovery?.error).toBeUndefined()
+      expect(notification).not.toHaveBeenCalled()
+    } finally { notification.mockRestore() }
+  })
+
   it('reuses a send request ID after its acknowledgement is lost', async () => {
     const f = fixture()
     f.createRun.mockRejectedValueOnce(new Error('Response was lost'))

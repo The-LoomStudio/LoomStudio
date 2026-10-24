@@ -73,6 +73,22 @@ async function setup() {
   return { root, bundle, service, save, logs, directory: join(root, 'characters/card-1') }
 }
 
+it('rejects case-only Card identities without reading or deleting another directory', async () => {
+  const { root, service, save } = await setup()
+  await save()
+  const baselinePath = join(root, '.loom/card-directories/card-1/baseline.json')
+  const baseline = await fs.readFile(baselinePath, 'utf8')
+  await expect(service.previewCard('CARD-1')).rejects.toThrow('identity case conflict')
+  const commit = vi.fn()
+  await expect(service.deleteCard('CARD-1', commit)).rejects.toThrow('identity case conflict')
+  expect(commit).not.toHaveBeenCalled()
+  expect(await fs.readFile(baselinePath, 'utf8')).toBe(baseline)
+
+  // An unmanaged default directory must also not become a different Card's files.
+  await fs.mkdir(join(root, 'characters/AbCdEf12345'))
+  await expect(service.previewCard('aBcDeF12345')).rejects.toThrow('identity case conflict')
+})
+
 async function fileMap(root: string) {
   const files = new Map<string, Uint8Array>()
   async function walk(path: string) {

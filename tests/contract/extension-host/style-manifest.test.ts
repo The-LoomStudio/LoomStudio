@@ -58,3 +58,21 @@ describe('style manifest contract', () => {
     expect(() => parse({ ...theme, parameters: [parameter] })).toThrow()
   })
 })
+
+
+describe('static background manifest contract', () => {
+  const background = { id: 'scene', name: 'Scene', description: 'Scene background', image: './Assets/scene.png' }
+  const parseBackgrounds = (backgrounds: unknown, extra = {}) => parseExtensionManifest({ ...base, ...extra, contributes: { backgrounds } })
+  it('accepts multiple backgrounds without modules', () => {
+    expect(parseBackgrounds([background, { ...background, id: 'other', image: 'other.svg' }]).contributes?.backgrounds).toHaveLength(2)
+  })
+  it('rejects duplicate identities, malformed lists and Timeline contributions', () => {
+    expect(() => parseBackgrounds([background, background])).toThrow('duplicated')
+    expect(() => parseBackgrounds({})).toThrow('array')
+    expect(() => parseBackgrounds([background], { participation: 'timeline' })).toThrow('Timeline')
+    expect(() => parseBackgrounds([{ ...background, name: '' }])).toThrow('name')
+  })
+  it.each(['../scene.png', 'Assets/../../scene.png', '/scene.png', 'https://a/scene.png', 'scene.png?x', 'scene.png#x', '%2e%2e/scene.png', 'a\\scene.png', 'scene.html', '././scene.png'])('rejects unsafe or unsupported image %s', image => {
+    expect(() => parseBackgrounds([{ ...background, image }])).toThrow('image')
+  })
+})

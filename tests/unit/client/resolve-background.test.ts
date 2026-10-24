@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveBackground } from '../../../apps/studio-client/src/features/extension-renderers/model/resolve-background.js'
+import { migrateOfficialBackground, resolveBackground } from '../../../apps/studio-client/src/features/extension-renderers/model/resolve-background.js'
 
 const background = {
   id: 'scene', key: 'official.backgrounds/client/scene', packageId: 'official.backgrounds',
@@ -22,4 +22,14 @@ describe('background selection', () => {
     expect(resolveBackground({ id: scoped.key }, [scoped], 'b')).toBeUndefined()
     expect(resolveBackground({ id: scoped.key }, [scoped], 'a')).toBe(scoped)
   })
+})
+
+
+it('migrates the former official client-module selection only when its static replacement exists', () => {
+  const old = { id: background.key, image: '/old.png' }
+  const replacement = { ...background, key: 'official.backgrounds/scene', moduleId: undefined }
+  expect(migrateOfficialBackground(old, [])).toBe(old)
+  expect(migrateOfficialBackground(old, [background, replacement])).toBe(old)
+  expect(migrateOfficialBackground(old, [replacement])).toEqual({ id: replacement.key, image: replacement.image })
+  expect(migrateOfficialBackground(null, [replacement])).toBeNull()
 })

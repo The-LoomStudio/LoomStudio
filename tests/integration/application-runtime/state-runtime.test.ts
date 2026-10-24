@@ -18,6 +18,26 @@ function createTestRuntime(onStateChanged?: ApplicationRuntimeOptions['onStateCh
 }
 
 describe('application state runtime', () => {
+  it('rolls back a new default and its definition when an existing parent schema rejects it', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      await runtime.initialize()
+      await runtime.upsertStateDefinition({ definitionId: 'settings', definition: {
+        kind: 'global', path: 'global.settings', schema: { type: 'object', additionalProperties: false }, default: {},
+      } })
+      const before = await runtime.getStateSnapshot({ target: { scope: 'global' } })
+      const count = countChangesets(engine)
+      await expect(runtime.upsertStateDefinition({ definitionId: 'volume', definition: {
+        kind: 'global', path: 'global.settings.volume', schema: { type: 'number' }, default: 1,
+      } })).rejects.toMatchObject({ code: 'state.schema_additional_property' })
+      expect(await runtime.getStateSnapshot({ target: { scope: 'global' } })).toEqual(before)
+      await expect(runtime.getStateDefinition({ definitionId: 'volume' })).rejects.toThrow('Document not found')
+      expect(countChangesets(engine)).toBe(count)
+      await expect(runtime.applyStateMutation({ target: { scope: 'global' }, expectedRevisionId: before.snapshot.revisionId,
+        operations: [{ op: 'set', path: '/unrelated', value: true }] })).resolves.toBeDefined()
+    } finally { await engine.close() }
+  })
+
   it.each(['schema', 'readOnly'])('rejects State compensation that violates the current %s without partial commits', async restriction => {
     const { engine, runtime } = createTestRuntime()
     try {

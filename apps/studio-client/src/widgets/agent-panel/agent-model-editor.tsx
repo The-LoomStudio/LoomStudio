@@ -38,6 +38,13 @@ export function AgentModelEditor(props: {
         await props.onCreateModel(model.providerProfileId, model.modelId)
         addedToAccount = true
       }
+      const sameModel = model?.providerProfileId === current.model?.providerProfileId && model?.modelId === current.model?.modelId
+      const samePolicy = (['workspaceWrite', 'resourceWrite', 'stateWrite', 'narrativeWrite', 'historyRead', 'authorMode'] as const)
+        .every(scope => (approvalPolicy?.[scope] ?? 'ask') === (current.approvalPolicy?.[scope] ?? 'ask'))
+      if (sameModel && delivery === (current.delivery ?? 'stream') && samePolicy) {
+        if (close) setOpen(false)
+        return
+      }
       const result = await props.onSave({
         agentPresetId: props.preset.id,
         expectedVersion: current.version,

@@ -51,6 +51,20 @@ function artifact(): CardBundleArtifact {
 }
 
 describe('Card directory Apply', () => {
+  it('edits duplicate Metadata through their captured attachment slots without merging local identities', async () => {
+    const f = await fixture()
+    const original = (await f.runtime.listLoomScriptMounts({ target: { kind: 'card', cardId: f.card.id } })).mounts[0]!
+    const { script: copy } = await f.runtime.importLoomScript({ owner: { kind: 'card', cardId: f.card.id }, fileName: 'panel.loom.js', source: source() })
+    const { mount } = await f.runtime.createLoomScriptMount({ target: { kind: 'card', cardId: f.card.id }, scriptDocumentId: copy.id, orderIndex: 1 })
+    const captured = await f.sync.captureCardDirectoryState({ cardId: f.card.id })
+    const editedSource = source().replace('value = 1', 'value = 2')
+    captured.artifact.scriptAttachments![1]!.script.source = editedSource
+    await f.sync.applyCardDirectoryState({ cardId: f.card.id, ...captured })
+    expect((await f.runtime.exportLoomScript({ scriptDocumentId: original.scriptDocumentId })).artifact.source).toBe(source())
+    expect((await f.runtime.exportLoomScript({ scriptDocumentId: copy.id })).artifact.source).toBe(editedSource)
+    expect((await f.runtime.listLoomScriptMounts({ target: { kind: 'card', cardId: f.card.id } })).mounts).toEqual(expect.arrayContaining([original, mount]))
+  })
+
   it('updates private resources in place and keeps Script grants independent', async () => {
     const f = await fixture()
     const captured = await f.sync.captureCardDirectoryState({ cardId: f.card.id })

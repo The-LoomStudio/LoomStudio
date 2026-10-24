@@ -63,6 +63,8 @@ export type SqliteDataEngine = {
   readonly database: DatabaseSync
   migrate(set: SqliteMigrationSet): void
   read<T>(operation: (database: DatabaseSync) => Promise<T> | T): Promise<T>
+  /** Runs nested store reads on one SQLite snapshot; writes inside the callback are forbidden. */
+  readSnapshot<T>(operation: () => Promise<T>): Promise<T>
   withTransactionGuard<T>(guard: (tx: SqliteDataTransaction) => Promise<void>, work: () => T): T
   transact<T>(
     input: DataTransactionInput,
@@ -86,6 +88,7 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
   }
 
   const commitNotifier = createDataCommitNotifier<DataCommitFact>()
+  const activeSnapshotContext = new AsyncLocalStorage<{ active: boolean }>()
   const activeTransactionContext = new AsyncLocalStorage<SqliteDataTransaction>()
   const transactionGuards = new AsyncLocalStorage<ReadonlyArray<(tx: SqliteDataTransaction) => Promise<void>>>()
   let operationQueue = Promise.resolve()
@@ -99,6 +102,9 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
   }
 
   function assertNonReentrant(): void {
+    if (activeSnapshotContext.getStore()?.active) {
+      throw new DataEngineError('data.read_snapshot_write', 'Writes inside a read snapshot are forbidden')
+    }
     if (activeTransactionContext.getStore()) {
       throw new DataEngineError(
         'data.reentrant_transaction',
@@ -122,9 +128,30 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
     database,
     migrate: set => {
       assertOpen()
+      assertNonReentrant()
       migrateNamespace(database, set)
     },
-    read: operation => serialize(() => operation(database)),
+    read: async operation => {
+      if (activeSnapshotContext.getStore()?.active) return operation(database)
+      return serialize(() => operation(database))
+    },
+    readSnapshot: async operation => {
+      if (activeSnapshotContext.getStore()?.active) return operation()
+      return serialize(async () => {
+        const snapshot = { active: true }
+        database.exec('BEGIN')
+        try {
+          const value = await activeSnapshotContext.run(snapshot, operation)
+          database.exec('COMMIT')
+          return value
+        } catch (error) {
+          database.exec('ROLLBACK')
+          throw error
+        } finally {
+          snapshot.active = false
+        }
+      })
+    },
     withTransactionGuard: (guard, work) => transactionGuards.run(
       [...(transactionGuards.getStore() ?? []), guard], work,
     ),

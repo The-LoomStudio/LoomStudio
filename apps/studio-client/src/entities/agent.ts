@@ -32,6 +32,8 @@ export type AgentSession = {
 
 export type AgentTranscriptEntry = {
   id: string
+  /** Client-only identity retained when a streamed tool becomes a saved entry. */
+  presentationId?: string
   agentSessionId: string
   parentEntryId?: string
   sequence: number

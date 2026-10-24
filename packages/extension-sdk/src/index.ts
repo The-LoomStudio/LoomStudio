@@ -1,3 +1,6 @@
+export type * from './agent-tasks.js'
+export type * from './worker-context.js'
+import type { ExtensionAgentTaskCreate, ExtensionAgentTaskInvoke, ExtensionAgentTaskResult, ExtensionAgentTaskSnapshot, ExtensionAgentTaskProgress } from './agent-tasks.js'
 export type { ExtensionNarrativeSource, ExtensionNarrativeRead, ExtensionNarrativeSnapshot, ExtensionNarrativeActivity, ExtensionReadonlyFiles, ExtensionRecordArchive } from './narrative-work.js'
 import type { ClientStyleFactory, ExtensionStyleContribution } from './styles.js'
 export * from './styles.js'
@@ -131,7 +134,7 @@ export type EventPublishIdentity =
       target?: ExtensionInstallationTarget
     }
 
-export type ExtensionModuleRuntime = 'server' | 'client'
+export type ExtensionModuleRuntime = 'server' | 'client' | 'client-worker'
 
 export type RendererSurface =
   | 'shell.background'
@@ -321,7 +324,7 @@ export type RendererContributionDefinition = {
 
 export type RendererContributionOwner =
   | { kind: 'extension'; packageId: string; moduleId: string; target?: ExtensionInstallationTarget }
-  | { kind: 'script'; scriptDocumentId: string; documentVersion: number }
+  | { kind: 'script'; scriptDocumentId: string; documentVersion: number; mountId?: string }
 
 export type RendererContributionRef = {
   owner: RendererContributionOwner
@@ -535,11 +538,20 @@ export type ClientBackgroundDefinition = {
   source?: string
 }
 
+/** Static background supplied by a global package; image is a package-relative file path. */
+export type ExtensionBackgroundContribution = {
+  id: string
+  name: string
+  description: string
+  image: string
+}
+
 export type RegisteredClientBackground = ClientBackgroundDefinition & {
   target?: ExtensionInstallationTarget
   key: string
   packageId: string
-  moduleId: string
+  /** Absent for static package contributions, which never have a Card target. */
+  moduleId?: string
 }
 
 export type ClientExtensionActivationContext = {
@@ -718,6 +730,7 @@ export type ExtensionTextExtractorContribution = {
 }
 
 export type ExtensionPackageContributions = {
+  backgrounds?: ExtensionBackgroundContribution[]
   themes?: ExtensionStyleContribution[]
   styles?: ExtensionStyleContribution[]
   loomScripts?: Array<{ id: string; source: string }>
@@ -997,10 +1010,14 @@ export type ExtensionActivationContext = {
     subscribe(handler: (event: import('./narrative-work.js').ExtensionNarrativeActivity) => void | Promise<void>): ExtensionRegistrationHandle
   }
   agentTasks: {
-    create(input: { presetId: string; title?: string } | { presetContributionId: string; title?: string }): Promise<{ sessionId: string }>
-    invoke(input: { sessionId: string; input: string; activationFacts?: JsonObject }): Promise<{ sessionId: string; runId: string; state: string; text?: string }>
-    read(sessionId: string): Promise<{ sessionId: string; presetId: string; title?: string; state: string; lastOutput?: string }>
+    create(input: ExtensionAgentTaskCreate): Promise<{ sessionId: string }>
+    invoke(input: ExtensionAgentTaskInvoke): Promise<ExtensionAgentTaskResult>
+    read(sessionId: string): Promise<ExtensionAgentTaskSnapshot>
+    /** Cursor-based progress subscription; snapshot remains authoritative after replay expiry. */
+    subscribe(input: { sessionId: string; cursor?: number }): Promise<ExtensionAgentTaskProgress>
+    acknowledge(sessionId: string): Promise<void>
     cancel(sessionId: string): Promise<void>
+    dispose(sessionId: string): Promise<void>
   }
   vfs: { register(provider: import('./narrative-work.js').ExtensionReadonlyFiles): ExtensionRegistrationHandle }
 

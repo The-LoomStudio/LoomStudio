@@ -1,5 +1,7 @@
 # Agent Run 可观测性计划
 
+2026-10-24：本轮模型日志已获用户确认归档，决策与交付记录见[统一可观测性计划](../../../archive/plans/prompt-run-observability-plan.md)。UI 草稿整体方向、历史逐步输入证据与直接触发因果目标已获确认。本篇保留专题背景；下文旧现状和候选 Schema 不直接构成当前实施合同。
+
 > **状态**：Transcript 基础已实现 / 专业 Trace 与 Inspector 待设计
 >
 > **主题**：Agent Run / Runtime 的系统日志、Runtime Transcript、Trace、Audit、前端 Inspector 与后端 TUI 边界。

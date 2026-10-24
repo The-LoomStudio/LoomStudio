@@ -1,3 +1,4 @@
+import { UserIdentity, type UserIdentityView } from '../../shared/ui/user-identity/user-identity.js'
 import { ContentErrorBoundary } from '../../shared/ui/content-error-boundary.js'
 import { NarrativeInputSwipePicker } from '../../features/narrative-runtime/ui/narrative-input-swipe-picker.js'
 import type { NarrativeSwipeView } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
@@ -40,6 +41,7 @@ const MESSAGE_EDITOR_MIN_HEIGHT = 132
 type NarrativeNodeView = NarrativeNode
 
 type NarrativeTimelineProps = {
+  userIdentity?: UserIdentityView
   displayProjection?: DisplayProjection
   displayOnlyNodeId?: string
   anchorNodeId?: string
@@ -70,7 +72,7 @@ type NarrativeTimelineProps = {
 
 export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const resolvedUserName = renderTemplateMacros('{{user}}', props.macroContext).trim()
-  const userName = resolvedUserName && resolvedUserName !== '{{user}}' ? resolvedUserName : props.t('timeline.role.user')
+  const userName = props.userIdentity?.name ?? (resolvedUserName && resolvedUserName !== '{{user}}' ? resolvedUserName : props.t('timeline.role.user'))
   const tokenScope = props.timelineId ?? props.timeline[0]?.timelineId ?? ''
   const tokenMultiplier = useTokenDisplaySettings(state => state.multiplier)
   const nodeTokens = useTokenCounts(props.timeline.map(node => node.body.raw),
@@ -271,7 +273,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                 data-loom-role="narrative"
                 data-loom-state="draft"
               >
-                <NarrativeMessageHeader role="assistant" userName={userName} t={props.t} />
+                <NarrativeMessageHeader role="assistant" userName={userName} avatarUrl={props.userIdentity?.avatarUrl} t={props.t} />
                 <div
                   className={styles.messageSurface}
                   data-loom-slot="message-content"
@@ -342,7 +344,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                 id={`node-${encodeURIComponent(entry.id)}`}
                 key={entry.id}
               >
-                <NarrativeMessageHeader role={role} userName={userName} t={props.t} />
+                <NarrativeMessageHeader role={role} userName={userName} avatarUrl={props.userIdentity?.avatarUrl} t={props.t} />
                 <div
                   className={styles.messageSurface}
                   data-loom-slot="message-content"
@@ -508,9 +510,9 @@ function NarrativeMessageBody(props: {
   ) : content
 }
 
-function NarrativeMessageHeader(props: { role: 'user' | 'assistant'; userName: string; t: Translator }) {
+function NarrativeMessageHeader(props: { role: 'user' | 'assistant'; userName: string; avatarUrl?: string; t: Translator }) {
   return <header className={styles.messageHeader}>
-    <span>{props.role === 'user' ? props.userName : props.t('timeline.role.assistant')}</span>
+    {props.role === 'user' ? <UserIdentity name={props.userName} avatarUrl={props.avatarUrl} /> : <span>{props.t('timeline.role.assistant')}</span>}
   </header>
 }
 

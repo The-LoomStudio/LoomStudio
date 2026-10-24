@@ -16,6 +16,7 @@ type RpcCallContext = {
 type KernelRpcCaller = Pick<import('@loom-studio/kernel').Kernel, 'callRpc'>
 
 export type StudioRpcServices = {
+  scripts?: ReturnType<typeof import('../../scripts/script-service.js').createScriptService>
   batchImporter?: ReturnType<typeof import('../../extensions/import-batch.js').createExtensionBatchImporter>
   applicationRuntime: ApplicationRuntime
   convertPromptResource?: PromptResourceConverter

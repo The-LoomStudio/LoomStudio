@@ -25,7 +25,7 @@ Workspace 的开合和尺寸变化不触发聊天正文重新排版。用户可�
 - 当前活动工作面板；
 - 面板级窗口和视图操作。
 
-关闭 Dock 不改变当前聊天身份。活动工作面板由 URL 表达；仅悬停 Menu 入口可以临时预览导航，但不会写入路由或展开工作面板，移出后自动关闭。
+关闭 Dock 不改变当前聊天身份。活动工作面板由统一 `/studio` 下的 History State 表达，URL 主要承接外部入口；仅悬停 Menu 入口可以临时预览导航，但不会写入历史或展开工作面板，移出后自动关闭。
 
 Dock 导航负责切换模块，不承担领域数据本身。资源、预设、API 配置等内容由各自工作面板渲染。
 
@@ -64,14 +64,14 @@ Window 内部使用 Column Layout 表达水平并列区域。Rail、Explorer、D
 当前布局状态使用 Zustand 管理，并通过 `localStorage` 持久化。已保存的状态包括：
 
 - Dock 是否打开；
-- 每个面板的窗口尺寸与 `reference` / `immersive` 模式；
+- 每个面板各自的窗口尺寸，以及所有工作面板共享的 `reference` / `immersive` 窗口模式；
 - 工作窗口功能导航 Column 的宽度；
 - 资源工作台的目录宽度；
 - 每个工作区的展开目录、当前条目和视图模式；
 - 元信息面板是否打开；
 - 长文本编辑器的源码 / 渲染模式。
 
-当前 Panel、角色 Profile、Session 与 Branch 属于 Router 状态。资源条目选择属于工作台本地状态；显式 Asset URL 只负责初始化该选择。边界详见 [`navigation-and-routing.md`](navigation-and-routing.md)。
+当前 Panel、Timeline/Branch、明确的资源目标与查看条件由导航的 History State 持有，并按 endpoint 恢复最后工作区位置；普通目录节点的局部编辑器选择仍归工作台。资源 URI 标识目标，外部深链解析后归一化到 `/studio`，不把资源正文或未提交草稿放进导航。Session 的查看入口和工具浮层按各自导航合同处理，边界详见 [`navigation-and-routing.md`](navigation-and-routing.md)。
 
 持久化是客户端体验状态，不是领域数据。浏览器存储不可用、内容损坏或版本迁移失败时，必须安全回退到默认布局，不能阻止 Studio 启动。
 

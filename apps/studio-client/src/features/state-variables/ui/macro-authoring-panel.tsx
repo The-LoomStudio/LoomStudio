@@ -1,3 +1,4 @@
+import { createId } from '@loom-studio/shared'
 import { Bot, Braces, Boxes, Component, Plus, Trash2, BookOpen } from 'lucide-react'
 import type { MacroOption, MacroOptions } from '@loom-studio/shared'
 import { SearchField, TextInput } from '@loom-studio/ui'
@@ -168,7 +169,8 @@ export function useMacroAuthoring(sources: MacroAuthoringSource[], t: Translator
       setStore(prev => ({
         ...prev,
         baselines: { ...prev.baselines, [sourceId]: draftKey(updatedRows) },
-        sourceRows: { ...prev.sourceRows, [sourceId]: updatedRows },
+        sourceRows: { ...prev.sourceRows, [sourceId]: draftKey(prev.sourceRows[sourceId] ?? []) === draftKey(rows)
+          ? updatedRows : prev.sourceRows[sourceId]! },
         draftVersions: { ...prev.draftVersions, [sourceId]: result.version },
       }))
       setError('')
@@ -376,7 +378,7 @@ export function MacroAuthoringDetail(props: { controller: MacroAuthoringControll
     {row && !source.readonly ? <fieldset className={`${styles.macroSourceList} ${styles.macroOptionList}`} disabled={isSaving}>
       <legend>{t('macroAuthoring.options')}</legend>
       <button className={`${styles.iconButton} ${styles.macroOptionAdd}`} type="button" disabled={isSaving} title={t('macroAuthoring.addOption')} aria-label={t('macroAuthoring.addOption')}
-        onClick={() => controller.updateRow(source.id, row.id, { options: [...row.options, { id: crypto.randomUUID(), label: '', value: '' }] })}>
+        onClick={() => controller.updateRow(source.id, row.id, { options: [...row.options, { id: createId(), label: '', value: '' }] })}>
         <Plus size={14} aria-hidden="true" />
       </button>
       {row.options.map(option => <div key={option.id} className={styles.macroOption}>

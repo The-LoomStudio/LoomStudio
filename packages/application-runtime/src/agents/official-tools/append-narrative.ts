@@ -44,9 +44,8 @@ export const officialAppendNarrativeRegistration: ToolRuntimeRegistration = {
       content: [{
         type: 'json',
         value: {
-          nodeId: result.nodeId,
-          timelineId: scope.narrative.timelineId,
-          branchId: scope.narrative.branchId,
+          floor: result.floor,
+          path: `/narrative/${result.floor}.md`,
         },
       }],
     }

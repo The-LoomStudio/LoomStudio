@@ -19,3 +19,12 @@
   min-height: 140px;
   padding: 0 6px 8px;
 }
+
+.flow {
+  background: transparent;
+  .editor {
+    --loom-long-text-editor-content-min-height: 0px;
+    height: auto;
+    min-height: 0;
+  }
+}

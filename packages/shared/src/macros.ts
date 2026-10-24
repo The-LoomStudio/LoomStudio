@@ -45,6 +45,9 @@ export type VariableReadTrace = {
   requestedPath: string
   resolvedPath: string
   source: 'global' | 'timeline' | 'computed'
+  value?: JsonValue
+  hostId?: string
+  stage?: string
 }
 
 export type VariableDiagnostic = {
@@ -64,7 +67,8 @@ export type VariableRenderTrace = MacroRenderTrace
 export const macroNamePattern = /^[\p{L}\p{N}_$]+(?:\.[\p{L}\p{N}_$]+)*$/u
 
 export const builtinMacroAliases: Record<string, string> = {
-  user: 'global.user.name',
+  user: 'computed.user.name',
+  'user.description': 'computed.user.description',
   char: 'computed.char.name', Char: 'computed.char.name', CHAR: 'computed.char.name', 'char.name': 'computed.char.name', char_name: 'computed.char.name',
   'char.description': 'computed.char.description', char_description: 'computed.char.description', char_desc: 'computed.char.description',
   bot: 'computed.bot.name', Bot: 'computed.bot.name', BOT: 'computed.bot.name', 'bot.name': 'computed.bot.name',
@@ -94,16 +98,16 @@ export function createVariableRenderContext(input?: {
 }): VariableRenderContext {
   return {
     snapshot: {
-      global: structuredClone(input?.global ?? { user: { name: 'User' } }),
+      global: structuredClone(input?.global ?? {}),
       ...(input?.timeline ? { timeline: structuredClone(input.timeline) } : {}),
-      computed: structuredClone(input?.computed ?? {}),
+      computed: { user: { name: 'User', description: '' }, ...structuredClone(input?.computed ?? {}) },
       aliases: { ...builtinMacroAliases, ...(input?.aliases ?? {}) },
     },
     trace: { reads: [], diagnostics: [] },
   }
 }
 
-export function renderVariableMacros(input: string, context: VariableRenderContext): string {
+export function renderVariableMacros(input: string, context: VariableRenderContext, host?: { hostId: string; stage: string }): string {
   return input.replace(/\{\{\s*([\p{L}\p{N}_$]+(?:\.[\p{L}\p{N}_$]+)*)\s*\}\}/gu, (token, requestedPath: string) => {
     const directAlias = Object.hasOwn(context.snapshot.aliases, requestedPath)
       ? context.snapshot.aliases[requestedPath]
@@ -132,7 +136,7 @@ export function renderVariableMacros(input: string, context: VariableRenderConte
       context.trace.diagnostics.push({ severity: 'warning', code: 'variable.value_not_scalar', path: resolvedPath })
       return token
     }
-    context.trace.reads.push({ requestedPath, resolvedPath, source: resolved.source })
+    context.trace.reads.push({ requestedPath, resolvedPath, source: resolved.source, ...(host ? { ...host, value: resolved.value } : {}) })
     return resolved.value === null ? 'null' : String(resolved.value)
   })
 }

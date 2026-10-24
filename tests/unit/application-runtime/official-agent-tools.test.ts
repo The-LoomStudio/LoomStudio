@@ -219,7 +219,7 @@ describe('official Agent context tools', () => {
         sample: async () => { throw new Error('Not used') },
         appendNode: async ({ content }: { content: string }) => {
           appendedContent = content
-          return { nodeId: 'node-new-1' }
+          return { nodeId: 'node-new-1', floor: 2 }
         },
         editNode: async () => {
           throw new Error('Not used')
@@ -239,16 +239,14 @@ describe('official Agent context tools', () => {
     expect(result.content).toEqual([{
       type: 'json',
       value: {
-        nodeId: 'node-new-1',
-        timelineId: 'timeline-1',
-        branchId: 'branch-1',
+        floor: 2, path: '/narrative/2.md',
       },
     }])
   })
 
   it('edits narrative node in active timeline through edit_narrative tool', async () => {
     const registry = createOfficialAgentToolRegistry()
-    let editedNodeId = ''
+    let editedFloor = 0
     let editedContent = ''
     const narrativeScope = {
       ...scope,
@@ -259,10 +257,10 @@ describe('official Agent context tools', () => {
         appendNode: async () => {
           throw new Error('Not used')
         },
-        editNode: async ({ nodeId, content }: { nodeId: string; content: string }) => {
-          editedNodeId = nodeId
+        editNode: async ({ floor, content }: { floor?: number; content: string }) => {
+          editedFloor = floor!
           editedContent = content
-          return { nodeId }
+          return { nodeId: 'node-existing-1', floor: floor! }
         },
       },
     }
@@ -270,19 +268,17 @@ describe('official Agent context tools', () => {
     const result = await registry.execute({
       id: 'inv-edit-1',
       toolId: officialEditNarrativeTool.id,
-      arguments: { nodeId: 'node-existing-1', content: '修改后的情节' },
+      arguments: { floor: 1, content: '修改后的情节' },
       transport: 'native-function',
     }, signal, narrativeScope)
 
     expect(result.status).toBe('completed')
-    expect(editedNodeId).toBe('node-existing-1')
+    expect(editedFloor).toBe(1)
     expect(editedContent).toBe('修改后的情节')
     expect(result.content).toEqual([{
       type: 'json',
       value: {
-        nodeId: 'node-existing-1',
-        timelineId: 'timeline-1',
-        branchId: 'branch-1',
+        floor: 1, path: '/narrative/1.md',
       },
     }])
   })

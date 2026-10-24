@@ -4,6 +4,8 @@ Card 的作者文件、ZIP 包与 PNG 分发共用同一套编解码。SQLite �
 
 Card Bundle 可携带 `extensionPackages` 中的 Extension Package 归档，与扩展 Portable Payload 分开索引。导入归档不会自动激活其中代码。角色安装的 Client 文件通过带 Card ID、包版本及归档 SHA-256 的私有 URL 提供，读取时校验该 Card 当前安装归档，不以同名全局包回退。安装记录、资源导入、模块启用和授权是分开的生命周期操作。
 
+v4 的可选 `contextAssetSettings` 按 `contextAssets` 根节点 ID 保存资源宏、宏选项、两个 Lore 开关和历史策略，文件投影与 ZIP 会保留这些配置。旧 v4 未携带该字段时沿用原默认值；机器本地模型绑定和授权策略不随该字段传播。重复导入发生节点 ID 冲突时，导入集合内的隐式 virtual 锚点引用同步重写，显式公共锚名保持不变。
+
 ## 内容与容器
 
 ```text

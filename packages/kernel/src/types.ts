@@ -1,4 +1,4 @@
-import type { ExtensionStyleContribution } from '@loom-studio/extension-sdk'
+import type { ExtensionBackgroundContribution, ExtensionStyleContribution } from '@loom-studio/extension-sdk'
 import type { ExtensionTextTransformRuleContribution, ExtensionTextExtractorContribution, ExtensionPromptResourceContribution, ExtensionAgentToolContribution, ExtensionSettingContribution } from '@loom-studio/extension-sdk'
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type {
@@ -89,7 +89,7 @@ export type KernelPublicSurface = {
 export type ManagedExtensionModule = {
   packageId: string
   moduleId: string
-  runtimeKind: 'server' | 'client'
+  runtimeKind: import('@loom-studio/extension-sdk').ExtensionModuleRuntime
   entryUrl?: string
   reloadId?: string
   requestedCapabilities?: Record<string, JsonValue>
@@ -126,6 +126,7 @@ export type ManagedExtensionPackage = {
   sourceKinds: string[]
   modules: ManagedExtensionModule[]
   resources?: {
+    backgrounds?: ExtensionBackgroundContribution[]
     themes?: ExtensionStyleContribution[]
     styles?: ExtensionStyleContribution[]
     transformRules?: ExtensionTextTransformRuleContribution[]
@@ -168,7 +169,7 @@ export type ExtensionPackageResourceRemovalResult = {
 export type RemovedExtensionPackage = { packageId: string; version: string; removed: true }
 export type ImportedExtensionPackageResources = ExtensionPackageResourceImportResult
 export type RemovedExtensionPackageResources = ExtensionPackageResourceRemovalResult
-export type RemoteInstallPreview = { token: string; packages: Array<{ packageId: string; version: string; displayName: string; source?: import('@loom-studio/extension-sdk').ExtensionDownloadSource; commit?: string; replacing: boolean; modules?: Array<{ id: string; runtime: 'server' | 'client'; capabilities: import('@loom-studio/extension-sdk').ExtensionModuleManifest['capabilities'] }> }> }
+export type RemoteInstallPreview = { token: string; packages: Array<{ packageId: string; version: string; displayName: string; source?: import('@loom-studio/extension-sdk').ExtensionDownloadSource; commit?: string; replacing: boolean; modules?: Array<{ id: string; runtime: import('@loom-studio/extension-sdk').ExtensionModuleRuntime; capabilities: import('@loom-studio/extension-sdk').ExtensionModuleManifest['capabilities'] }> }> }
 export type RemoteInstallResult = { installed: Array<{ packageId: string; version: string }>; failed?: { packageId: string; message: string; stage?: string; codeCommitted?: boolean; recovery?: { recordPath: string; backupDirectory: string; historyDirectory: string } } }
 export type ExtensionManagementService = {
   previewRemoteInstall?(input: unknown): Promise<RemoteInstallPreview>

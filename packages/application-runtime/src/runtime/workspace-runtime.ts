@@ -86,7 +86,13 @@ export function createWorkspaceRuntimeMethods(ctx: Context) {
         }
       }
       const result = await ctx.dataEngine.transact(narrativeWriteContext(request, 'application.mutateTimelineWorkspace'), async tx => {
-        for (const blob of blobs) requireBlobs(ctx).participateWrite(tx, blob)
+        const committedBlobs = new Map(blobs.map(prepared =>
+          [prepared.blob.id, requireBlobs(ctx).participateWrite(tx, prepared).blob] as const))
+        for (const entry of entries) {
+          if (entry.kind !== 'file' || !('blobId' in entry.content)) continue
+          const blob = committedBlobs.get(entry.content.blobId)
+          if (blob) entry.content = { blobId: blob.id, mediaType: blob.mediaType }
+        }
         const revision = ctx.workspaces.transaction(tx).create({ timelineId: input.timelineId, parentRevisionId: baseline.id, entries })
         requireNarratives(ctx).transaction(tx).setBranchWorkspaceHead({ ...input, revisionId: revision.id })
         return revision

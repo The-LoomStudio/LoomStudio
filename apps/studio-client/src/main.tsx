@@ -1,3 +1,4 @@
+import { createId } from '@loom-studio/shared'
 import { StartupReady } from './app/startup-curtain.js'
 import { StartupFailurePage } from './app/startup-failure-page.js'
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
@@ -16,7 +17,7 @@ const root = document.getElementById('root')
 const clientLogs = createMemoryLogSink({ capacity: 1_000 })
 const rootLogger = createRootLogger({
   service: 'studio-client',
-  instanceId: `client-${globalThis.crypto.randomUUID()}`,
+  instanceId: createId('client'),
   sinks: [clientLogs, createConsoleLogSink({ filter: shouldWriteClientConsoleLog })],
 })
 const systemLogger = rootLogger.child('system')
@@ -63,7 +64,7 @@ if (!root) {
 
 async function startStudioClient(rootElement: HTMLElement): Promise<void> {
   const reactRoot = createRoot(rootElement)
-  if (import.meta.env.DEV && window.location.pathname === '/dev/preview/narrative-session') {
+  if (import.meta.env.DEV && ['/dev/preview/narrative-session', '/dev/preview/observability', '/dev/preview/scene-card'].includes(window.location.pathname)) {
     const { DevPreview } = await import('./dev-preview/preview-entry.js')
     reactRoot.render(<DevPreview pathname={window.location.pathname} />)
     return

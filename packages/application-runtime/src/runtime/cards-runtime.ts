@@ -73,7 +73,7 @@ import {
 } from './context.js'
 
 type CardsRuntimeContext = Pick<ApplicationRuntimeContext,
-  | 'agents' | 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'mediaAssets' | 'narratives'
+  | 'agents' | 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'exportExtensionArchive' | 'mediaAssets' | 'narratives'
   | 'now' | 'promptResources' | 'sourceArtifacts' | 'states' | 'withCardDeletion' | 'withCardDeletions'
 >
 
@@ -327,7 +327,7 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
     forkCard: async (input: { cardId: string; expectedVersion: number }, requestContext?: RuntimeRequestContext): Promise<ImportCardBundleResult> => {
       const original = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
       if (original.version !== input.expectedVersion) throw new Error('Card changed before creating the derived work')
-      const artifact = await exportCardArtifact({ cardId: input.cardId, documents: ctx.documents, promptResources: ctx.promptResources, blobs: ctx.blobs })
+      const artifact = await exportCardArtifact({ cardId: input.cardId, documents: ctx.documents, promptResources: ctx.promptResources, blobs: ctx.blobs, exportExtensionArchive: ctx.exportExtensionArchive })
       if ((await ctx.documents.get(input.cardId))?.version !== original.version) throw new Error('Card changed while creating the derived work')
       await assertCardMedia(ctx, artifact.card.media)
       return await importWorkspaceCardBundle({
@@ -634,6 +634,7 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
           documents: ctx.documents,
           promptResources: ctx.promptResources,
           blobs: ctx.blobs,
+          exportExtensionArchive: ctx.exportExtensionArchive,
         }),
       }
     },

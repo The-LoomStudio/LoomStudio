@@ -991,3 +991,35 @@ describe('Client Extension Host', () => {
     expect(host.diagnostics()).toEqual([expect.objectContaining({ code: 'client-extension.command_not_registered', commandId: 'missing' })])
   })
 })
+
+
+it('loads static backgrounds without executing modules and removes stale catalog entries', async () => {
+  const loadModule = vi.fn()
+  const host = createClientExtensionHost({ rendererHost: createClientRendererHost(), loadModule })
+  const pkg: ManagedClientExtensionPackage = {
+    ...extensionPackage(), packageId: 'example.backgrounds', displayName: 'Backgrounds', modules: [],
+    resources: { backgrounds: [{ id: 'scene', name: 'Scene', description: 'A scene', image: './Assets/scene one.png' }] },
+  }
+  try {
+    await host.reconcile([pkg])
+    expect(host.backgrounds()).toEqual([expect.objectContaining({
+      key: 'example.backgrounds/scene', source: 'Backgrounds',
+      image: '/extensions/example.backgrounds/1.0.0/files/Assets/scene%20one.png',
+    })])
+    expect(loadModule).not.toHaveBeenCalled()
+    expect(host.summaries()).toEqual([])
+    await host.reconcile([{ ...pkg, fileRevision: 'updated' }])
+    expect(host.backgrounds()[0].image).toContain('/updated/files/')
+    await host.reconcile([{ ...pkg, available: false }])
+    expect(host.backgrounds()).toEqual([])
+    await host.reconcile([{ ...pkg, target: { kind: 'card', cardId: 'card' } }])
+    expect(host.backgrounds()).toEqual([])
+    await host.reconcile([{ ...pkg, participation: 'timeline' }])
+    expect(host.backgrounds()).toEqual([])
+    await host.reconcile([pkg])
+    await host.reconcile([])
+    expect(host.backgrounds()).toEqual([])
+    await host.reconcile([pkg])
+  } finally { await host.dispose() }
+  expect(host.backgrounds()).toEqual([])
+})

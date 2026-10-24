@@ -20,6 +20,7 @@ import type { Translator } from '../../../shared/i18n/index.js'
 import type { ClientRendererHost, ClientRendererRegistration } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { rendererContributionKey, rendererSurfacePolicies } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { notify } from '../../../shared/notifications/index.js'
+import { createScriptTemplate } from '../../loom-scripts/model/script-template.js'
 import { useTextTransformInspection } from './use-text-transform-inspection.js'
 
 export type OwnerScope = TextRuleOwner | { kind: 'runtime' } | { kind: 'catalog' }
@@ -157,7 +158,7 @@ export function useTextTransformController(props: TextTransformProps) {
       setBusy(true)
       const [ruleResult, extractorResult, rendererResult, scriptResult, mountResult, resolvedResult] = await Promise.all([
         props.api.listRules(), props.api.listExtractors(), authoring ? props.api.listRenderers() : Promise.resolve({ renderers: [] }),
-        authoring ? (props.loomScriptsApi?.list(scriptOwner) ?? Promise.resolve({ scripts: [] })) : Promise.resolve({ scripts: [] }),
+        authoring ? (props.loomScriptsApi?.list() ?? Promise.resolve({ scripts: [] })) : Promise.resolve({ scripts: [] }),
         authoring ? (props.loomScriptsApi?.listMounts(scriptOwner) ?? Promise.resolve({ mounts: [] })) : Promise.resolve({ mounts: [] }),
         !authoring && props.loomScriptsApi ? props.loomScriptsApi.resolveRendererMounts(props.runtimeScriptContext) : Promise.resolve({ mounts: [], unavailableMounts: [] }),
       ])
@@ -190,7 +191,7 @@ export function useTextTransformController(props: TextTransformProps) {
   useEffect(() => {
     setSelectedRuntimeContextId(current => runtimeContexts.some(context => context.id === current) ? current : (runtimeContexts[0]?.id ?? ''))
   }, [runtimeContextsKey])
-  async function selectScript(id: string) {
+  async function selectScript(id: string, importedScript?: LoomScript) {
     const request = ++scriptReadRef.current
     setScriptDraft(undefined)
     setScriptSource('')
@@ -203,7 +204,7 @@ export function useTextTransformController(props: TextTransformProps) {
       setScriptDraft({ scope: catalogScope, id, version: resolved.script.version })
       return
     }
-    const script = scripts.find(item => item.id === id)
+    const script = importedScript ?? scripts.find(item => item.id === id)
     if (!script || !props.loomScriptsApi) return
     try {
       setBusy(true)
@@ -227,14 +228,35 @@ export function useTextTransformController(props: TextTransformProps) {
       const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: file.name, source })
       await props.loomScriptsApi.createMount({ target: scriptOwner, scriptDocumentId: result.script.id, orderIndex: visibleMounts.length })
       await refresh()
-      props.onRuntimeChanged?.()
-      await selectScript(result.script.id)
+      await selectScript(result.script.id, result.script)
       notify.success(props.t('notify.success.imported'))
     } catch (cause) {
       const message = readError(cause)
       setError(message)
       notify.error(message)
     } finally { setBusy(false) }
+  }
+
+  async function createScript() {
+    if (!scriptOwner || !props.loomScriptsApi) return
+    try {
+      setBusy(true)
+      const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: 'script.loom.js', source: createScriptTemplate() })
+      await props.loomScriptsApi.createMount({ target: scriptOwner, scriptDocumentId: result.script.id, orderIndex: visibleMounts.length })
+      await refresh()
+      await selectScript(result.script.id, result.script)
+      notify.success(props.t('notify.success.saved'))
+    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
+  }
+
+  async function refreshScriptMount(mount: LoomScriptMount) {
+    if (!props.loomScriptsApi) return
+    try {
+      setBusy(true)
+      await props.loomScriptsApi.refreshMount({ mountId: mount.id, expectedVersion: mount.version })
+      await refresh()
+      props.onRuntimeChanged?.()
+    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
   }
 
   async function saveScript() {
@@ -246,7 +268,6 @@ export function useTextTransformController(props: TextTransformProps) {
       const result = await props.loomScriptsApi.update({ scriptDocumentId: scriptDraft.id, expectedVersion: scriptDraft.version, fileName: scriptFileName, source: scriptSource })
       setScriptDraft(current => current === scriptDraft ? { ...current, version: result.script.version } : current)
       await refresh()
-      props.onRuntimeChanged?.()
       notify.success(props.t('notify.success.saved'))
     } catch (cause) {
       const message = readError(cause)
@@ -510,6 +531,8 @@ export function useTextTransformController(props: TextTransformProps) {
     selectExtractor,
     selectScript,
     importScript,
+    createScript,
+    refreshScriptMount,
     saveScript,
     updateScriptMount,
     updateRule,
@@ -536,6 +559,7 @@ export function useTextTransformController(props: TextTransformProps) {
     setSearchValue,
     setError,
     editingOwner,
+    canCreateScript: Boolean(scriptOwner),
   }
 }
 

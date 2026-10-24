@@ -163,7 +163,7 @@ Core Trace 可能包含完整 Fragment content 和 meta。Core 不做自动脱�
 - 控制 Trace Audit 的访问权限；
 - 避免把 Secret、Credential 或不必要的用户数据写入 Fragment。
 
-PromptBuild 当前使用自己的 compact Trace 投影，只保留 content length、有限 preview 和领域统计，详见 [`studio-integration.md`](studio-integration.md)。
+PromptBuild 使用 Application 构建记录与独立 Observation 证据，可包含源正文、正文变换及最终消息；不能将其视为已脱敏的长度统计。它们不属于 Core Trace，也不提供 Core Mutation Replay，详见 [`studio-integration.md`](studio-integration.md)。
 
 ## 8. 调试工具边界
 

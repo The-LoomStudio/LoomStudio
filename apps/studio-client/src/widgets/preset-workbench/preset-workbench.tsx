@@ -410,7 +410,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             props.onCommitNode(id, { enabled })
           }}
           onChangeRole={(id, role) => {
-            const update = { capabilities: { roleHint: role } }
+            const node = findContextAssetPath(workbenchNodes, id).at(-1)
+            const update = { capabilities: { ...node?.capabilities, roleHint: role } }
             props.onChangeNode(id, update)
             props.onCommitNode(id, update)
           }}

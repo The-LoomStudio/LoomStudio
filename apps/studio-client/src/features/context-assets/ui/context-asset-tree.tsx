@@ -19,7 +19,17 @@ type ContextAssetTreeActionsInput = {
 
 export type ContextAssetActivationTone = 'always' | 'conditional' | 'manual'
 
-function readContextAssetActivationTone(node: ContextAssetNode): ContextAssetActivationTone {
+// Both authoring nodes and historical snapshots can supply these display-only facts.
+type ContextAssetAppearance = Pick<ContextAssetNode, 'id' | 'kind' | 'category' | 'enabled'> & {
+  projection?: { lifecycle?: string }
+  capabilities?: {
+    activation?: { kind: string; keywords?: string[] }
+    lifecycle?: { lifecycle: string }
+    roleHint?: string
+  }
+}
+
+function readContextAssetActivationTone(node: ContextAssetAppearance): ContextAssetActivationTone {
   const activation = node.capabilities?.activation
   if (activation) {
     if (activation.kind === 'always') return 'always'
@@ -41,7 +51,7 @@ export type ContextAssetBadgeInfo = {
 }
 
 export function readContextAssetBadgeInfo(
-  node: ContextAssetNode | undefined,
+  node: ContextAssetAppearance | undefined,
   t: Translator,
 ): ContextAssetBadgeInfo | null {
   if (!node || node.kind === 'module' || node.kind === 'slot') return null
@@ -66,7 +76,7 @@ export function readContextAssetBadgeInfo(
   return { tone, label: t('context.activation.badgeAiSearch') }
 }
 
-export function renderContextAssetTreeIcon(node: ContextAssetNode, expanded: boolean) {
+export function renderContextAssetTreeIcon(node: ContextAssetAppearance, expanded: boolean) {
   if (node.kind === 'slot') return null
   if (node.id.endsWith(':tools')) return <Wrench aria-hidden="true" />
   if (node.id.endsWith(':model')) return <Cpu aria-hidden="true" />

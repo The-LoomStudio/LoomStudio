@@ -3,7 +3,7 @@ import type { ContextAssetNode, PromptResource } from '../../../entities/index.j
 // ponytail: Keep this classification aligned with default-preset.json until the template exposes its anchor IDs.
 export const DEFAULT_PRESET_ANCHOR_IDS = [
   '@chat.system', '@preset.system', '@chat.tools', '@runtime.skills',
-  '@lore.stable', '@narrative.before', '@memory.narrative',
+  '@user.context', '@lore.stable', '@narrative.before', '@memory.narrative',
   '@chat.narrative', '@narrative.after', '@memory.session',
   '@chat.session', '@lore.lower', '@runtime.state',
   '@memory.recalled', '@chat.session.post', '@tools.dynamic',

@@ -44,7 +44,7 @@ function sameKeys<T, U>(before: Map<string, T>, after: Map<string, U>, subject: 
 }
 
 type CardDirectoryRuntimeContext = Pick<ApplicationRuntimeContext,
-  'blobs' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources'
+  'blobs' | 'dataEngine' | 'documents' | 'exportExtensionArchive' | 'narratives' | 'now' | 'promptResources'
 >
 
 export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeContext) {
@@ -64,7 +64,6 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
     for (const mount of mounts) {
       scripts.push({ mount, script: await readDocument<LoomScriptContent>(ctx.documents, mount.content.scriptDocumentId, types.loomScript) })
     }
-    keyed(scripts, item => item.script.content.metadataId)
     const payloads = []
     for (const id of card.content.portableExtensionPayloadIds ?? []) {
       payloads.push(await readDocument<PortableExtensionPayloadContent>(ctx.documents, id, types.portableExtensionPayload))
@@ -110,9 +109,8 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
         const prompts = keyed(current.prompts, item => item.rootNodeId)
         const desiredPrompts = keyed(artifact.contextAssets, item => item.id)
         sameKeys(prompts, desiredPrompts, 'Prompt resource')
-        const attachments = keyed(artifact.scriptAttachments ?? [], item => parseLoomScriptSource(item.script.source).metadataId)
-        const scripts = keyed(current.scripts, item => item.script.content.metadataId)
-        sameKeys(scripts, attachments, 'Script')
+        const attachments = artifact.scriptAttachments ?? []
+        if (attachments.length !== current.scripts.length) throw new Error('Card directory Script identities changed; adding or removing resources is not supported')
         const payloads = keyed(current.payloads, item => item.content.artifactPayloadId)
         const desiredPayloads = keyed(artifact.extensionPayloads ?? [], item => item.id)
         sameKeys(payloads, desiredPayloads, 'Payload')
@@ -146,9 +144,11 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
           sourceChanged: boolean
           prepared: PreparedBlobStorageWrite | undefined
         }> = []
-        for (const [id, item] of scripts) {
-          const attachment = attachments.get(id)!
-          const previous = old.scriptAttachments!.find(value => parseLoomScriptSource(value.script.source).metadataId === id)!
+        // Apply replaces each captured slot's content; orderIndex controls adoption order.
+        // The slot binds to document and mount revisions, not editable Metadata identity.
+        for (const [index, item] of current.scripts.entries()) {
+          const attachment = attachments[index]!
+          const previous = old.scriptAttachments![index]!
           if (equal(previous, attachment)) continue
           const metadata = parseLoomScriptSource(attachment.script.source)
           if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.loom\.js$/.test(attachment.script.fileName)) throw new Error('Invalid Loom Script fileName')

@@ -48,7 +48,8 @@ export function rendererContributionKey(identity: RendererContributionRef): stri
       : identity.owner.packageId
     return `extension:${encodeURIComponent(ownerId)}/${encodeURIComponent(identity.owner.moduleId)}/${contributionId}`
   }
-  return `script:${encodeURIComponent(identity.owner.scriptDocumentId)}@${identity.owner.documentVersion}/${contributionId}`
+  const mount = identity.owner.mountId ? `:${encodeURIComponent(identity.owner.mountId)}` : ''
+  return `script:${encodeURIComponent(identity.owner.scriptDocumentId)}${mount}@${identity.owner.documentVersion}/${contributionId}`
 }
 
 export function rendererInstanceKey(identity: RendererInstanceIdentity): string {

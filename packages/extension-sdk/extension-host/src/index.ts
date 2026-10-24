@@ -1,3 +1,4 @@
+export type { ExtensionObservationContext } from './types.js'
 export type { ExtensionRpcHandler } from '@loom-studio/extension-sdk'
 export type {
   EventCapabilityCategory,

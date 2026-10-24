@@ -1,6 +1,19 @@
 import type { messages as zhCN } from '../zh-cn/settings.js'
 
 export const messages = {
+  "appearance.extensionBackgroundGroup": "拡張機能 · {{name}}",
+  "appearance.cardBackgroundGroup": "キャラクター · {{name}}",
+
+
+  "appearance.myBackgrounds": "自分の背景",
+  "appearance.importBackground": "背景をインポート",
+  "appearance.removeNamedBackground": "背景「{{name}}」を削除",
+  "appearance.backgroundLoading": "背景を読み込み中…",
+  "appearance.backgroundWorking": "背景を保存中…",
+  "appearance.backgroundLoadFailed": "背景を読み込めません。再試行してください。",
+  "appearance.backgroundImageLimit": "PNG、JPEG、WebP、GIF、AVIF に対応しています。1 枚 64 MiB までです。",
+  "appearance.backgroundUploadFailed": "背景のアップロードに失敗しました。",
+
   'settings.themes': "テーマとスタイル",
   'settings.themeMain': "メインテーマ",
   'settings.themeDefault': "標準テーマ",

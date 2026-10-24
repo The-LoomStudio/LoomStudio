@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createAgentStore } from '@loom-studio/application-data'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createAgentToolRegistry, type GatewayChatResult } from '@loom-studio/application-runtime'
+import { createObservationStore } from '../../../packages/application-runtime/src/observability/store.js'
+import { createObservedAiGateway } from '../../../packages/application-runtime/src/observability/gateway.js'
 import { runNativeToolLoop } from '../../../packages/application-runtime/src/agents/tool-loop.js'
 
 async function fixture(reply: () => Promise<GatewayChatResult>) {
@@ -14,8 +16,9 @@ async function fixture(reply: () => Promise<GatewayChatResult>) {
     agentPresetId: 'preset', actor: { kind: 'system', id: 'test' },
   })
   const gateway = { invokeChat: vi.fn(reply) }
+  const observations = createObservationStore()
   const input = {
-    ctx: { gateway, createId, dataEngine: engine, agentTools: createAgentToolRegistry([], []) },
+    ctx: { observations, gateway: createObservedAiGateway(gateway, observations), createId, dataEngine: engine, agentTools: createAgentToolRegistry([], []) },
     agents, session, runId: 'run',
     recoveryRequest: { agentSessionId: session.id, input: 'Hello 世界' },
     model: { providerProfileId: 'provider', modelId: 'model' },
@@ -23,15 +26,19 @@ async function fixture(reply: () => Promise<GatewayChatResult>) {
     userInput: 'Hello 世界', branchId: 'agent-only', purpose: 'agent' as const, tokenMultiplier: 0.6,
     compiledToolSet: { tools: [], trace: { sourceCount: 0, activeCount: 0, requestedOrder: [], effectiveOrder: [], activations: [], orders: [] } },
   }
-  return { engine, agents, session, input, gateway }
+  return { engine, agents, session, input, gateway, observations }
 }
 
 describe('request measurement failure boundaries', () => {
-  it('saves known usage before malformed tool arguments can fail', async () => {
-    const f = await fixture(async () => ({
+  it('saves known usage before a failed follow-up after malformed tool arguments', async () => {
+    let calls = 0
+    const f = await fixture(async () => {
+      if (++calls > 1) throw new Error('follow-up disconnected')
+      return {
       provider: 'provider', model: 'model', text: '', usage: { inputTokens: 20, outputTokens: 3, cacheReadTokens: 10, reasoningTokens: 2 },
       message: { role: 'assistant', tool_calls: [{ id: 'bad', type: 'function', function: { name: 'read', arguments: 'not json' } }] },
-    }))
+      }
+    })
     try {
       await expect(runNativeToolLoop(f.input)).rejects.toThrow()
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id })
@@ -40,9 +47,9 @@ describe('request measurement failure boundaries', () => {
       expect(measurement).toMatchObject({ count: { basis: { multiplier: 0.6 } } })
       expect(observation).toMatchObject({ measurementId: measurement.kind === 'request-measurement' && measurement.measurementId, usage: { cacheReadTokens: 10, reasoningTokens: 2 } })
       expect(entries.at(-1)?.entry).toMatchObject({ kind: 'run-state', state: 'failed' })
-    } finally { f.engine.close() }
+    } finally { f.engine.close(); f.observations.dispose() }
   })
-  it('does not call the provider when measurement persistence fails', async () => {
+  it('continues when pure measurement persistence fails', async () => {
     const f = await fixture(async () => ({ provider: 'provider', model: 'model', text: 'ok', message: { role: 'assistant', content: 'ok' } }))
     try {
       const agents = {
@@ -52,9 +59,34 @@ describe('request measurement failure boundaries', () => {
           return f.agents.appendEntries(input)
         },
       }
-      await expect(runNativeToolLoop({ ...f.input, agents })).rejects.toThrow('audit-write-failed')
-      expect(f.gateway.invokeChat).not.toHaveBeenCalled()
-    } finally { f.engine.close() }
+      await expect(runNativeToolLoop({ ...f.input, agents })).resolves.toMatchObject({ providerResult: { text: 'ok' } })
+      expect(f.gateway.invokeChat).toHaveBeenCalledOnce()
+      expect(f.observations.children('run')).toHaveLength(1)
+      expect(f.observations.list().records).toHaveLength(0)
+      expect(f.observations.get(f.observations.children('run')[0]!.id)?.request).toMatchObject({ phase: 'completed', messages: f.input.initialMessages })
+    } finally { f.engine.close(); f.observations.dispose() }
+  })
+  it('continues when provider observation persistence fails but preserves business append errors', async () => {
+    const f = await fixture(async () => ({ provider: 'provider', model: 'model', text: 'ok', message: { role: 'assistant', content: 'ok' } }))
+    try {
+      const agents = { ...f.agents, appendEntries: async (input: Parameters<typeof f.agents.appendEntries>[0]) => {
+        if (input.entries.some(entry => entry.entry.kind === 'provider-observation')) throw new Error('observation-write-failed')
+        if (input.entries.some(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant')) throw new Error('business-write-failed')
+        return f.agents.appendEntries(input)
+      } }
+      await expect(runNativeToolLoop({ ...f.input, agents })).rejects.toThrow('business-write-failed')
+      expect(f.gateway.invokeChat).toHaveBeenCalledOnce()
+      expect(f.observations.get(f.observations.children('run')[0]!.id)?.request?.phase).toBe('completed')
+    } finally { f.engine.close(); f.observations.dispose() }
+  })
+  it('keeps invoking when the bounded store rejects all evidence', async () => {
+    const f = await fixture(async () => ({ provider: 'provider', model: 'model', text: 'ok', message: { role: 'assistant', content: 'ok' } }))
+    try {
+      vi.spyOn(f.observations, 'write').mockImplementation(() => { throw new Error('capture failure') })
+      vi.spyOn(f.observations, 'patch').mockImplementation(() => { throw new Error('capture failure') })
+      await expect(runNativeToolLoop(f.input)).resolves.toMatchObject({ providerResult: { text: 'ok' } })
+      expect(f.gateway.invokeChat).toHaveBeenCalledOnce()
+    } finally { f.engine.close(); f.observations.dispose() }
   })
   it('rechecks cancellation after measurement persistence and never fabricates usage', async () => {
     const f = await fixture(async () => ({ provider: 'provider', model: 'model', text: 'ok', message: { role: 'assistant', content: 'ok' } }))
@@ -73,6 +105,31 @@ describe('request measurement failure boundaries', () => {
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id })
       expect(entries.filter(entry => entry.entry.kind === 'request-measurement')).toHaveLength(1)
       expect(entries.some(entry => entry.entry.kind === 'provider-observation')).toBe(false)
-    } finally { f.engine.close() }
+    } finally { f.engine.close(); f.observations.dispose() }
+  })
+})
+
+describe('gateway observation identity and output', () => {
+  it('deduplicates wrappers, ignores public identity metadata and records first output without changing callbacks', async () => {
+    const observations = createObservationStore()
+    const onEvent = vi.fn()
+    const gateway = createObservedAiGateway({ invokeChat: async input => {
+      input.onEvent?.({ type: 'text-delta', runId: 'provider-run', delta: 'ok' })
+      return { provider: 'test', model: 'test', text: 'ok', message: { role: 'assistant', content: 'ok' }, usage: { inputTokens: 2 } }
+    } }, observations)
+    try {
+      expect(createObservedAiGateway(gateway, observations)).toBe(gateway)
+      await gateway.invokeChat({ runId: '', sessionId: '', branchId: '', delivery: 'stream', onEvent,
+        request: { messages: [{ role: 'user', content: 'hi' }], metadata: { observationRequestId: 'forged' },
+          providerOptions: { reasoningEffort: 'high', apiKey: 'never-record-this' } },
+      })
+      expect(onEvent).toHaveBeenCalledOnce()
+      const records = observations.list({ kind: 'api' }).records
+      expect(records).toHaveLength(1)
+      expect(records[0]!.id).not.toBe('forged')
+      const captured = observations.get(records[0]!.id)!
+      expect(captured.request).toMatchObject({ phase: 'completed', firstOutputMs: expect.any(Number), usage: { inputTokens: 2 }, configuration: { reasoningEffort: 'high' } })
+      expect(JSON.stringify(captured)).not.toContain('never-record-this')
+    } finally { observations.dispose() }
   })
 })

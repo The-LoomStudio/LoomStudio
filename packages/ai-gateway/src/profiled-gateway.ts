@@ -84,9 +84,10 @@ function createProfiledRun(start: (signal: AbortSignal) => Promise<AiGatewayInvo
     reason = value
     controller.abort(value)
   }
+  const onExternalAbort = () => cancel(readAbortReason(externalSignal!))
   if (externalSignal) {
     if (externalSignal.aborted) cancel(readAbortReason(externalSignal))
-    else externalSignal.addEventListener('abort', () => cancel(readAbortReason(externalSignal)), { once: true })
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
   }
   const result = (async () => {
     events.push({ type: 'started', runId: id })
@@ -104,6 +105,8 @@ function createProfiledRun(start: (signal: AbortSignal) => Promise<AiGatewayInvo
         : { type: 'failed', runId: id, error: { name: error instanceof Error ? error.name : 'UnknownError', message: error instanceof Error ? error.message : String(error) } })
       events.close()
       throw error
+    } finally {
+      externalSignal?.removeEventListener('abort', onExternalAbort)
     }
   })()
   result.catch(() => undefined)

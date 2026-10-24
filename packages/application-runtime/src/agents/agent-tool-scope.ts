@@ -53,14 +53,18 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
   scope.vfsAttachments = () => listPresetScriptAttachments(ctx, presetId, scope.availableExtensionInstallations)
   const policy = parseAgentApprovalPolicy(input.approvalPolicy)
   const mutationHandler = requestContext?.agentRun?.onMutationApproval
-  if (mutationHandler || policy) scope.approveMutation = (preview, signal) => {
+  if (mutationHandler || policy) scope.approveMutation = async (preview, signal) => {
     signal.throwIfAborted()
-    return decideAgentApproval(policy, mutationApprovalScope(preview), mutationHandler ? () => mutationHandler(preview, signal) : undefined)
+    const decision = await decideAgentApproval(policy, mutationApprovalScope(preview), mutationHandler ? () => mutationHandler(preview, signal) : undefined)
+    scope.observeToolEvent?.({ kind: 'mutation-approval', preview, decision, mode: policy?.[mutationApprovalScope(preview)] ?? 'ask' })
+    return decision
   }
   const historyHandler = requestContext?.agentRun?.onHistoryReadApproval
-  if (historyHandler || policy) scope.requestHistoryApproval = (action, signal) => {
+  if (historyHandler || policy) scope.requestHistoryApproval = async (action, signal) => {
     signal?.throwIfAborted()
-    return decideAgentApproval(policy, 'historyRead', historyHandler ? () => historyHandler(action, signal) : undefined)
+    const decision = await decideAgentApproval(policy, 'historyRead', historyHandler ? () => historyHandler(action, signal) : undefined)
+    scope.observeToolEvent?.({ kind: 'history-approval', action, decision, mode: policy?.historyRead ?? 'ask' })
+    return decision
   }
   const allowedTimelineTarget = narrative?.page
     ? { scope: 'timeline' as const, timelineId: narrative.page.timeline.id, branchId: narrative.page.branch.id }
@@ -83,6 +87,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       },
       mutate: async (expectedRevisionId, operations) => {
         const result = await writeSource(() => workspace.mutateTimelineWorkspace({ ...allowedTimelineTarget, expectedRevisionId, operations }, requestContext))
+        scope.observeToolEvent?.({ kind: 'workspace-commit', changesetId: result.mutation.changesetId })
         return { changesetId: result.mutation.changesetId }
       },
     }
@@ -106,6 +111,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
         operations: stateInput.operations as unknown as StateMutationOperation[],
         idempotencyKey: stateInput.idempotencyKey,
       }, requestContext))
+      scope.observeToolEvent?.({ kind: 'state-commit', revisionId: result.snapshot.revisionId, changesetId: result.mutation.changesetId })
       return { revisionId: result.snapshot.revisionId }
     },
     write: async stateInput => {
@@ -117,6 +123,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
         operations: [{ op: 'set', path: stateInput.pointer, value: stateInput.value }],
         idempotencyKey: stateInput.idempotencyKey,
       }, requestContext))
+      scope.observeToolEvent?.({ kind: 'state-commit', revisionId: result.snapshot.revisionId, changesetId: result.mutation.changesetId })
       return {
         revisionId: result.snapshot.revisionId,
         changesetId: result.mutation.changesetId,
@@ -134,6 +141,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       ...promptResourceWriteContext(requestContext),
       reason: 'application.tool.updatePromptResource',
     })
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', resourceId: result.resource.id, version: result.resource.version, changesetId: result.commit.changesetId })
     return {
       id: result.resource.id,
       version: result.resource.version,
@@ -157,6 +165,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       ...promptResourceWriteContext(requestContext),
       reason: 'application.codeact.write',
     })
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', resourceId: result.resource.id, version: result.resource.version, changesetId: result.commit.changesetId })
     return { version: result.resource.version, changesetId: result.commit.changesetId }
   }
   scope.configurePromptResource = async input => {
@@ -176,6 +185,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       ...promptResourceWriteContext(requestContext),
       reason: 'application.codeact.configure',
     })
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', resourceId: result.resource.id, version: result.resource.version, changesetId: result.commit.changesetId })
     return { version: result.resource.version, changesetId: result.commit.changesetId }
   }
   scope.movePromptResource = async input => {
@@ -196,6 +206,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       ...promptResourceWriteContext(requestContext),
       reason: 'application.codeact.move',
     })
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', resourceId: result.resource.id, version: result.resource.version, changesetId: result.commit.changesetId })
     return { version: result.resource.version, changesetId: result.commit.changesetId }
   }
   scope.deletePromptResourceNode = async input => {
@@ -214,6 +225,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       ...promptResourceWriteContext(requestContext),
       reason: 'application.codeact.delete',
     })
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', resourceId: result.resource.id, version: result.resource.version, changesetId: result.commit.changesetId })
     return { version: result.resource.version, changesetId: result.commit.changesetId }
   }
   scope.createPromptResourceNode = async input => {
@@ -234,6 +246,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       ...promptResourceWriteContext(requestContext),
       reason: 'application.codeact.create',
     })
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', nodeId, version: result.resource.version, changesetId: result.commit.changesetId })
     return { nodeId, version: result.resource.version, changesetId: result.commit.changesetId }
   }
   scope.copyPromptResourceNode = async input => {
@@ -283,6 +296,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       ...promptResourceWriteContext(requestContext),
       reason: 'application.codeact.copy',
     })
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', nodeId, version: result.resource.version, changesetId: result.commit.changesetId })
     return { nodeId, nodeCount, version: result.resource.version, changesetId: result.commit.changesetId }
   }
   scope.duplicatePromptResource = async input => {
@@ -295,6 +309,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
       resourceId: input.resourceId,
       ...(input.name === undefined ? {} : { name: input.name }),
     }, requestContext)
+    scope.observeToolEvent?.({ kind: 'prompt-resource-commit', resourceId: duplicate.resource.id, version: duplicate.resource.version, changesetId: duplicate.mutation.changesetId })
     return {
       resourceId: duplicate.resource.id,
       label: duplicate.resource.rootNode.label,
@@ -338,13 +353,25 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
           },
         })
         if (input.narrativeSource) input.narrativeSource.cursorNodeId = result.node.id
-        return { nodeId: result.node.id }
+        scope.observeToolEvent?.({ kind: 'narrative-commit', nodeId: result.node.id, changesetId: result.commit.changesetId })
+        return { nodeId: result.node.id, floor: result.node.floor }
       }),
-      editNode: async ({ nodeId, content, expectedRaw }) => writeSource(async () => {
+      editNode: async ({ nodeId: requestedNodeId, floor, content, expectedRaw }) => writeSource(async () => {
         await assertSource()
         const branch = await narratives.getBranch(narrative.page.branch.id)
-        const target = await narratives.getNode(nodeId)
-        if (!branch?.headNodeId || !target || target.timelineId !== narrative.page.timeline.id) {
+        let nodeId = requestedNodeId
+        if (floor !== undefined) {
+          let cursor = branch?.headNodeId
+          while (cursor) {
+            const page = await narratives.getPage({ timelineId: narrative.page.timeline.id, branchId: narrative.page.branch.id, cursor, limit: 100 })
+            nodeId = page.nodes.find(node => node.floor === floor)?.id
+            if (nodeId) break
+            cursor = page.nextCursor
+          }
+          if (!nodeId) throw new Error(`Narrative floor ${floor} is unavailable on this path`)
+        }
+        const target = nodeId ? await narratives.getNode(nodeId) : undefined
+        if (!branch?.headNodeId || !nodeId || !target || target.timelineId !== narrative.page.timeline.id) {
           throw new Error(`Narrative node ${nodeId} is not editable from branch ${narrative.page.branch.id}`)
         }
         const expectedHeadNodeId = branch.headNodeId
@@ -363,7 +390,8 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
           },
         )
         if (input.narrativeSource) input.narrativeSource.cursorNodeId = result.value.headNodeId
-        return { nodeId: result.value.nodeId }
+        scope.observeToolEvent?.({ kind: 'narrative-commit', nodeId: result.value.nodeId, changesetId: result.commit.changesetId })
+        return { nodeId: result.value.nodeId, floor: target.floor }
       }),
     }
   }

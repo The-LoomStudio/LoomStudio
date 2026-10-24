@@ -44,6 +44,29 @@ async function createTimeline(count = 5) {
 }
 
 describe('Narrative sampling', () => {
+  it('exposes floor paths and resumes by floor without leaking internal identities', async () => {
+    const fixture = await createTimeline()
+    try {
+      const sampler = createNarrativeSampler(fixture.narratives)
+      const context = createCodeActContext({ context: [], narrative: {
+        timelineId: fixture.timeline.id, branchId: fixture.branch.id,
+        sample: input => sampler.sample({ ...input, timelineId: fixture.timeline.id, branchId: fixture.branch.id }),
+        appendNode: async () => { throw new Error('Not used') }, editNode: async () => { throw new Error('Not used') },
+      } })
+      const signal = new AbortController().signal
+      const first = await context.methods.readNarrative!([{ selection: { kind: 'range', afterFloor: 1, throughFloor: 5 }, maxNodes: 2 }], signal) as { nodes: Array<{ floor: number; path: string }>; nextBeforeFloor: number }
+      expect(first.nodes.map(node => node.path)).toEqual(['/narrative/4.md', '/narrative/5.md'])
+      expect(first.nextBeforeFloor).toBe(3)
+      expect(JSON.stringify(first)).not.toContain(fixture.timeline.id)
+      for (const node of fixture.nodes) expect(JSON.stringify(first)).not.toContain(node.id)
+      const next = await context.methods.readNarrative!([{ selection: { kind: 'range', afterFloor: 1, throughFloor: first.nextBeforeFloor }, maxNodes: 2 }], signal) as { nodes: Array<{ floor: number }> }
+      expect(next.nodes.map(node => node.floor)).toEqual([2, 3])
+      await expect(context.methods.readNarrative!([{ selection: { kind: 'tail', count: 1, throughNodeId: fixture.nodes[0]!.id } }], signal)).rejects.toMatchObject({ code: 'codeact.invalid_arguments' })
+      await expect(context.methods.read!([`/narrative/${fixture.nodes[0]!.id}.md`], signal)).rejects.toMatchObject({ code: 'vfs.not_found' })
+      expect(await context.methods.ls!(['/narrative', { format: 'json' }], signal)).toMatchObject({ entries: fixture.nodes.map(node => ({ path: `/narrative/${node.floor}.md` })) })
+    } finally { fixture.engine.close() }
+  })
+
   it('reads a tail and an exclusive-after range from a fixed branch head', async () => {
     const fixture = await createTimeline()
     const sampler = createNarrativeSampler(fixture.narratives)
@@ -236,8 +259,8 @@ describe('Narrative sampling', () => {
             timelineId: fixture.timeline.id,
             branchId: fixture.branch.id,
           }),
-          appendNode: async () => ({ nodeId: 'unused' }),
-          editNode: async () => ({ nodeId: 'unused' }),
+          appendNode: async () => ({ nodeId: 'unused', floor: 1 }),
+          editNode: async () => ({ nodeId: 'unused', floor: 1 }),
         },
       })
       const result = await context.methods.readNarrative!([

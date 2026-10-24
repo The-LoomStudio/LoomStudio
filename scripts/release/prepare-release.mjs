@@ -65,8 +65,10 @@ for (const [name, { path, pkg }] of selected) {
   }
 }
 
+// The server loads these official packages in place; themes and backgrounds remain outside the release.
+const officialExtensionDirectories = ['official/extensions/loom-assistant', 'official/extensions/story-memory']
 for (const path of [
-  'apps/studio-client/dist', 'official/starter', 'official/extensions/loom-assistant', 'official/extensions/story-memory',
+  'apps/studio-client/dist', 'official/starter', ...officialExtensionDirectories,
   'official/cards/character-status', 'public/images/default-card.png',
   'scripts/start.mjs', 'start.sh', 'start.command', 'start.bat',
 ]) {

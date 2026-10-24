@@ -55,7 +55,7 @@ Document、Prompt Resource、State、Narrative 等 Store 共享 SQLite Data Engi
 | Document | 数值版本、Document Revision、乐观并发检查与 Document Changeset revert |
 | Prompt Resource | Resource 版本、Header / Node before-after Revision 与专用 revert |
 | State | 不可变 Snapshot Revision、Parent、幂等键与 Head CAS；State Undo 生成补偿 Revision |
-| Narrative | 不可变 Node 与 Branch Head；Fork 引用既有 Node 和对应 State Revision，不是通用对象 revert |
+| Narrative | 不可变 Node 与 Branch Head；Fork 引用既有 Node，当前末尾使用 Branch 最新 State / Workspace Head，历史节点优先使用来源 Branch / Node 恢复点，缺失时才使用节点提交时引用；不是通用对象 revert |
 
 Narrative Node 持久化 `kind: 'user-input' | 'narrative'`，区分用户输入与剧情内容，独立于 Agent Transcript 的 `role` 和节点 `source`。正文输入及 Swipe 输入版本写为 `user-input`；开场白与正文追加默认写为 `narrative`。编辑复制、分支读取、采样与 Timeline 归档保留 kind，UI 不再根据邻居、Run 或 Swipe 状态推断身份。v8 迁移只按 `application.appendNarrativeInput` 提交记录和 Swipe 明确记录的输入节点回填；缺少证据的旧节点及缺少 kind 的旧归档保持默认剧情分类，不根据文本内容猜测。`narrative` 表达内容用途，不保证其作者一定是 AI。
 
@@ -79,7 +79,7 @@ Changeset 是提交事实，不是能够恢复任意领域对象的完整快照�
 
 ## 当前能力边界
 
-当前没有独立的 Timeline 文件权威模型。Agent 已有受控领域工具与 CodeAct 读写入口，不等于可以任意写宿主文件；具体能力以[工具系统](agent/tool-system.md)及各领域 API 为准。
+Timeline 文件由 Workspace Store 权威保存，版本与恢复合同见下文。Agent 通过受控领域工具与 CodeAct 入口访问这些数据；这不授予任意宿主文件访问能力，具体能力以[工具系统](agent/tool-system.md)及各领域 API 为准。
 
 Session 已能显式持久化 `work-summary` 并用它建立后续工作段，不应继续笼统描述为“没有 Summary 存储”。Session 自我整理已接通临时工具、来源校验、缓冲与安全采用；它不等于完整的 Narrative Memory 整理或后台任务跨进程恢复。已实现的交接及来源边界见[Agent Runtime](agent/runtime-and-session.md)；Session 历史仍不能直接当作 Timeline 文件。
 

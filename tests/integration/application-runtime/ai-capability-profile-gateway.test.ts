@@ -5,6 +5,7 @@ import {
 } from '@loom-studio/ai-gateway'
 import {
   createApplicationRuntime,
+  createObservationStore,
   createDocumentBackedProfiledAiGateway,
 } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
@@ -14,6 +15,23 @@ import { createMemorySecretBackend, createSecretStore } from '../../../packages/
 import { describe, expect, it, vi } from 'vitest'
 
 describe('AI Capability Profile Gateway', () => {
+  it('isolates prepared evidence from credentials and callback failure', async () => {
+    const registry = createAiGatewayCapabilityRegistry()
+    const registration = providerRegistration()
+    registration.provider.capabilities[0]!.inputFields!.push({ key: 'limit', label: 'Limit', type: 'number', defaultValue: 3 })
+    registry.register(registration, { kind: 'platform' })
+    let captured: unknown
+    await expect(registry.invokeRegistered({
+      providerId: 'example.gateway.rerank', capabilityId: 'text.rerank',
+      accountConfig: { endpoint: 'https://rerank.test' }, credential: { apiKey: 'super-secret-value' },
+      profileConfig: { model: 'rerank-v1' }, input: { query: 'loom' },
+      onPrepared: evidence => { captured = evidence; throw new Error('observer failed') },
+    })).resolves.toMatchObject({ output: { query: 'loom', authorized: true } })
+    expect(captured).toMatchObject({ input: { query: 'loom', limit: 3 }, profileConfig: { model: 'rerank-v1' } })
+    expect(JSON.stringify(captured)).not.toContain('secret-value')
+    expect(JSON.stringify(captured)).not.toContain('credential')
+  })
+
   it('persists profiles, resolves secrets only inside the gateway, and survives provider remounts', async () => {
     let nextId = 0
     const engine = createSqliteDataEngine({
@@ -40,7 +58,8 @@ describe('AI Capability Profile Gateway', () => {
       aiCapabilities: registry,
       providerAdapters: createOfficialProviderAdapterRegistry({ aiCapabilities: registry }),
     })
-    const gateway = createDocumentBackedProfiledAiGateway({ documents, registry, secrets })
+    const observations = createObservationStore()
+    const gateway = createDocumentBackedProfiledAiGateway({ documents, registry, secrets, observations })
 
     const account = await runtime.createProviderProfile({
       providerExtensionId: 'example.gateway.rerank',
@@ -76,6 +95,17 @@ describe('AI Capability Profile Gateway', () => {
         authorized: true,
       },
     })
+
+    const recorded = observations.list({ kind: 'api' }).records[0]!
+    expect(observations.get(recorded.id)).toMatchObject({ status: 'completed', request: {
+      phase: 'completed', capability: { profileId: created.profile.id, providerId: 'example.gateway.rerank', capabilityId: 'text.rerank' },
+      input: { query: 'loom' }, configuration: { model: 'rerank-v1' }, providerCallId: expect.any(String),
+    } })
+    expect(JSON.stringify(observations.get(recorded.id))).not.toContain('super-secret-value')
+    expect(JSON.stringify(observations.get(recorded.id))).not.toContain('credential')
+    const run = gateway.createRun({ profileId: created.profile.id, input: { query: 'run' } })
+    await expect(run.result).resolves.toMatchObject({ output: { query: 'run' } })
+    expect(observations.list({ kind: 'api' }).records).toHaveLength(2)
 
     registration.dispose()
     await expect(runtime.getAiCapabilityProfile({ profileId: created.profile.id }))
@@ -159,6 +189,7 @@ describe('AI Capability Profile Gateway', () => {
     }
 
     registration.dispose()
+    observations.dispose()
     engine.close()
   })
 })

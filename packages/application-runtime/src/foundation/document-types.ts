@@ -1,6 +1,8 @@
 export const applicationDocumentTypes = {
   cardSource: 'airp.cardSource',
   providerProfile: 'airp.providerProfile',
+  userProfiles: 'airp.userProfiles',
+  userBackgrounds: 'airp.userBackgrounds',
   aiCapabilityProfile: 'airp.aiCapabilityProfile',
   agentTool: 'airp.agentTool',
   stateDefinition: 'airp.stateDefinition',

@@ -1,12 +1,14 @@
 # 官方扩展目录
 
-本目录只保存由 Loom Studio 主仓库维护的官方内容。这里的文件是对应内容的开发基准，根目录 `extensions/` 中的安装副本不作为第二份源码维护。
+本目录保存并直接提供由 Loom Studio 主仓库维护的官方内容。默认开发与发行入口将 `official/extensions/` 作为 repository 来源加载，用户安装包仍保存在根目录 `extensions/`；官方包不再复制到用户安装目录。显式指定扩展来源目录或安装目录的入口沿用自定义来源，不自动加入官方目录。
 
-“官方”表示维护方，不表示随程序内置。当前发行包携带 `loom-assistant` 与 `story-memory`；`loom-theme-paper`、`loom-theme-tide` 是主仓库维护的主题示例，尚未列入发行包。实际随包内容以 `scripts/release/prepare-release.mjs` 和服务端的 `bundledDirectories` 为准。
+开发默认发现本目录中所有现有包，包括 `themes/`（`official.themes`）以及本地存在的 `backgrounds/`（`official.backgrounds`）。背景目录整体被 Git 忽略，不随 Git clone 提供。源码修改目前需要服务重新发现或重启，没有文件级 HMR。官方包不能通过扩展中心删除式卸载；模块可以停用，主题与增强可以取消采用。官方目录与用户安装目录出现相同包 ID 时会报告来源冲突，不能用安装副本覆盖官方源码。
 
-`story-memory` 提供剧情总结扩展与一个可编辑的总结 Preset，LV1/LV2 规则由任务条件选择。默认开发入口和发行入口首次启动时将它复制到根目录 `extensions/` 并导入 Preset；显式指定扩展源码目录或安装目录的入口沿用自定义来源，不自动加入内置包。模型由用户在总结 Preset 中配置。
+“官方”表示维护方，不表示全部随程序分发。当前发行包仍仅携带 `loom-assistant` 与 `story-memory`，不携带主题和背景包；实际随包内容以 `scripts/release/prepare-release.mjs` 为准。
 
-剧情总结首次随包安装时默认启用 server/client 模块，但不会授予额外事件、资源或通知权限；已有模块选择优先，之后继续使用扩展中心的持久启用状态。安装和启用不等于采用，老 Timeline 不会被自动采用，也不会因此自动触发模型。启动不会重新开启用户已关闭的模块；首次随包安装标记也会保留，已卸载的包不会在下次启动被静默重装。
+`story-memory` 提供剧情总结扩展与一个可编辑的总结 Preset，LV1/LV2 规则由任务条件选择。默认入口仅对 `loom-assistant` 与 `story-memory` 执行首次 setup，包括资源导入和剧情总结 server/client 模块的默认启用；其他官方包仅被发现，不自动授权代码或采用外观。模型由用户在总结 Preset 中配置。
+
+首次 setup 不会授予额外事件、资源或通知权限。已有模块选择优先，之后继续使用扩展中心的持久启用状态，重启不会重新开启用户已停用的模块。发现和启用不等于采用，老 Timeline 不会被自动采用，也不会因此自动触发模型。
 
 ## 独立发行的可选扩展
 

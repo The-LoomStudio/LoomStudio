@@ -22,7 +22,8 @@ export async function snapshotLoomScriptMounts(
     .filter(mount => sameTarget(mount.content.target, target))
   const unavailableMounts: UnavailableLoomScriptMount[] = []
   const snapshots = await Promise.all(mounts.map(async mount => {
-    const script = await readLoomScriptRevision(ctx, mount.content.scriptDocumentId, mount.content.pinnedDocumentVersion)
+    const script = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId,
+      mount.content.enabled ? mount.content.adoptedDocumentVersion ?? mount.content.pinnedDocumentVersion : mount.content.pinnedDocumentVersion)
     if (!script) {
       unavailableMounts.push({
         mountId: mount.id, scriptDocumentId: mount.content.scriptDocumentId, enabled: mount.content.enabled,
@@ -33,6 +34,8 @@ export async function snapshotLoomScriptMounts(
     }
     return {
       mountId: mount.id,
+      mountVersion: mount.version,
+      target: mount.content.target,
       enabled: mount.content.enabled,
       orderIndex: mount.content.orderIndex,
       scriptDocumentId: script.id,
@@ -43,7 +46,7 @@ export async function snapshotLoomScriptMounts(
       grantedCapabilities: [...mount.content.grantedCapabilities],
     }
   }))
-  return { snapshots: snapshots.filter((snapshot): snapshot is LoomScriptRuntimeMountSnapshot => snapshot !== undefined), unavailableMounts }
+  return { snapshots: snapshots.filter(snapshot => snapshot !== undefined), unavailableMounts }
 }
 
 export async function resolveLoomScriptRendererMounts(
@@ -59,7 +62,7 @@ export async function resolveLoomScriptRendererMounts(
   const unavailableMounts = batches.flatMap(batch => batch.unavailableMounts)
   const snapshots = current.sort((left, right) => left.orderIndex - right.orderIndex || left.mountId.localeCompare(right.mountId))
   const resolved = await Promise.all(snapshots.map(async snapshot => {
-    const script = await readLoomScriptRevision(ctx, snapshot.scriptDocumentId, snapshot.documentVersion)
+    const script = await readLoomScriptRevision(ctx.documents, snapshot.scriptDocumentId, snapshot.documentVersion)
     if (!script) {
       unavailableMounts.push({
         mountId: snapshot.mountId, scriptDocumentId: snapshot.scriptDocumentId, enabled: snapshot.enabled,
@@ -96,6 +99,8 @@ export async function resolveLoomScriptRendererMounts(
     return {
       mountId: snapshot.mountId,
       enabled: snapshot.enabled,
+      mountVersion: snapshot.mountVersion,
+      target: snapshot.target,
       orderIndex: snapshot.orderIndex,
       grantedCapabilities: [...snapshot.grantedCapabilities],
       script: {
@@ -104,6 +109,8 @@ export async function resolveLoomScriptRendererMounts(
         name: script.content.name,
         metadataId: script.content.metadataId,
         scriptVersion: script.content.scriptVersion,
+        runtime: script.content.runtime,
+        requires: script.content.requires,
         requestedCapabilities: [...script.content.requestedCapabilities],
         contributions,
       },
@@ -111,7 +118,7 @@ export async function resolveLoomScriptRendererMounts(
     }
   }))
   return {
-    mounts: resolved.filter((mount): mount is ResolvedLoomScriptRendererMount => mount !== undefined),
+    mounts: resolved.filter(mount => mount !== undefined),
     unavailableMounts: unavailableMounts.sort((left, right) => left.mountId.localeCompare(right.mountId)),
   }
 }
@@ -142,12 +149,14 @@ async function readOptionalLoomScriptInstallation(
   return installation.content.target
 }
 
-async function readLoomScriptRevision(
-  ctx: Pick<ApplicationRuntimeContext, 'documents'>,
+export async function readLoomScriptRevision(
+  documents: DocumentTransaction,
   scriptDocumentId: string,
   version?: number,
 ): Promise<DocumentRecord<LoomScriptContent> | undefined> {
-  const script = await ctx.documents.get(scriptDocumentId, version === undefined ? undefined : { version })
+  const current = await documents.get(scriptDocumentId)
+  if (!current) return undefined
+  const script = version === undefined || version === current.version ? current : await documents.get(scriptDocumentId, { version })
   if (!script) return undefined
   if (script.type !== applicationDocumentTypes.loomScript) throw new Error(`Unexpected document type for ${scriptDocumentId}: ${script.type}`)
   return script as DocumentRecord<LoomScriptContent>

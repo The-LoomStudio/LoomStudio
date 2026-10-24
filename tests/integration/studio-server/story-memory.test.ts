@@ -27,9 +27,11 @@ async function setup(policy: Record<string, number> = {}) {
   const reader = createExtensionNarrativeReader(runtime, narratives)
   const invoke = vi.fn(async (_input: { sessionId: string; input: string; activationFacts: unknown }) => ({ state: 'completed', text: '压缩后的事件记忆' }))
   const cancel = vi.fn(async (_sessionId: string) => undefined)
+  const acknowledge = vi.fn(async (_sessionId: string) => undefined)
+  const taskRead = vi.fn(async (_sessionId: string): Promise<any> => ({ state: 'failed' }))
   const service = createStoryMemory({ storage,
     narrative: { read: (input: Parameters<typeof reader.read>[1]) => reader.read(target, input), validate: (source: Parameters<typeof reader.validate>[1]) => reader.validate(target, source) },
-    agentTasks: { create: async () => ({ sessionId: crypto.randomUUID() }), invoke, cancel },
+    agentTasks: { create: async () => ({ sessionId: crypto.randomUUID() }), invoke, cancel, read: taskRead, acknowledge, dispose: vi.fn(async () => undefined) },
     tokens: { countText: async () => ({ estimatedTokens: 60 }) },
   })
   await service.configure(target, { value: { batchFloors: 2, bufferFloors: 2, lv2Count: 2, lv2Tokens: 12000, ...policy }, expectedVersion: null })
@@ -41,7 +43,7 @@ async function setup(policy: Record<string, number> = {}) {
   const activity = () => service.activity({ kind: 'input', ...target })
   const batches = async () => (await service.status(target)).batches
   const confirm = async (id: string) => { const batch = (await batches()).find((item: any) => item.id === id); return service.confirm(target, { id, version: batch.version }) }
-  return { engine, documents, narratives, runtime, target, storage, service, invoke, cancel, append, appendMany, activity, batches, confirm }
+  return { engine, documents, narratives, runtime, target, storage, service, invoke, cancel, acknowledge, taskRead, append, appendMany, activity, batches, confirm }
 }
 
 describe('Story Memory using Runtime Narrative and Extension Record storage', () => {
@@ -53,6 +55,7 @@ describe('Story Memory using Runtime Narrative and Extension Record storage', ()
       expect(f.invoke).not.toHaveBeenCalled()
       const first = await f.service.prepare(f.target, 1)
       expect(first.data).toMatchObject({ fromFloor: 1, throughFloor: 3, status: 'draft' })
+      expect(first.data.sessionId).toBeUndefined()
       await expect(f.service.prepare(f.target, 1)).rejects.toThrow('已有待处理批次')
       await f.confirm(first.id)
       await expect(f.service.prepare(f.target, 2)).rejects.toThrow('至少两份')
@@ -191,4 +194,31 @@ describe('Story Memory using Runtime Narrative and Extension Record storage', ()
       expect((await f.service.projection(f.target)).memory).toBeNull()
     } finally { f.engine.close() }
   })
+  it('does not acknowledge a result until draft storage succeeds and recovers it before revision', async () => {
+    const f = await setup({ bufferFloors: 0 })
+    try {
+      await f.appendMany(3)
+      const update = f.storage.records.update.bind(f.storage.records)
+      let failDraft = true
+      vi.spyOn(f.storage.records, 'update').mockImplementation(async input => {
+        if (failDraft && (input.data as { status?: string }).status === 'draft') {
+          failDraft = false
+          throw new Error('Draft storage unavailable')
+        }
+        return update(input)
+      })
+      await f.activity()
+      const failed = (await f.batches())[0]
+      expect(failed.status).toBe('failed')
+      expect(failed.sessionId).toBeTruthy()
+      expect(f.acknowledge).not.toHaveBeenCalled()
+      f.taskRead.mockResolvedValueOnce({ result: { state: 'completed', text: '恢复的摘要结果' } })
+      await f.service.revise(f.target, { id: failed.id, version: failed.version, input: '补充因果' })
+      expect(f.acknowledge).toHaveBeenCalledWith(failed.sessionId)
+      expect(f.invoke.mock.calls.at(-1)?.[0].input).toContain('恢复的摘要结果')
+      expect((await f.batches())[0]).toMatchObject({ status: 'draft', text: '压缩后的事件记忆' })
+      expect((await f.batches())[0].sessionId).toBeUndefined()
+    } finally { f.engine.close() }
+  })
+
 })

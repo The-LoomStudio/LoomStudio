@@ -1,3 +1,4 @@
+import type { ObservationBuild } from '../../../packages/application-runtime/src/observability/types.js'
 import { describe, expect, it } from 'vitest'
 import { compilePromptDataModel } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
 import type { PromptContribution, SourceNode } from '../../../packages/application-runtime/src/prompt/prompt-builder.js'
@@ -46,7 +47,17 @@ const basicSourceNodes: SourceNode[] = [
 ]
 
 describe('PromptBuildPipeline', () => {
+  it('keeps Prompt output intact when evidence exceeds its budget or rejects writes', () => {
+    const model = { sourceNodes: [{ ...node('entry', null, 0, 'entry'), body: 'x'.repeat(300_000) }], contributions: [] }
+    const observation: ObservationBuild = {}
+    expect(compilePromptDataModel(model, observation).messages).toEqual(compilePromptDataModel(model).messages)
+    expect(observation.diagnostics).toContainEqual(expect.objectContaining({ code: 'observation.budget_exceeded' }))
+    expect(observation.sources?.[0]?.original).toBeUndefined()
+    expect(compilePromptDataModel(model, Object.freeze({})).messages).toEqual(compilePromptDataModel(model).messages)
+  })
+
   it('uses only the selected skeleton and respects disabled and conditional subtrees', () => {
+    const observation: ObservationBuild = {}
     const compiled = compilePromptDataModel({
       skeletonRootId: 'root',
       currentInput: 'hello',
@@ -62,7 +73,8 @@ describe('PromptBuildPipeline', () => {
         { ...node('external', null, 1, 'entry'), body: 'Must not leak' },
       ],
       contributions: [contribution('mounted', 'external', 'Mounted once', 'slot')],
-    })
+    }, observation)
+    expect(observation.sources?.find(source => source.id === 'slot')).toMatchObject({ parentId: 'root', orderIndex: 3, nodeKind: 'virtual' })
     expect(compiled.messages.map(message => message.content)).toEqual(['Before\n\nMounted once\n\nAfter'])
   })
 

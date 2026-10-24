@@ -1,11 +1,15 @@
-import { useId, useState, type CSSProperties, type ReactNode } from 'react'
-import { Check, Eye, ImageOff, Sparkles, SunMedium, X } from 'lucide-react'
+import type { UserBackgroundLibrary } from '../../features/backgrounds/model/use-user-backgrounds.js'
+import { BackgroundImportButton } from '../../features/backgrounds/ui/background-import-button.js'
+import { useEffect, useId, useState, type CSSProperties, type ReactNode } from 'react'
+import { Check, Eye, ImageOff, Sparkles, SunMedium, Trash2, X } from 'lucide-react'
 import { Button, Dialog, IconButton, RadioGroup, SearchField, Slider } from '@loom-studio/ui'
 import type { Translator } from '../../shared/i18n/index.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import styles from './background-materials-view.module.scss'
 
 export type BackgroundOption = {
+  group: { id: string; label: string }
+  personalId?: string
   scope?: { cardId: string; ownerKey: string }
   id: string
   name: string
@@ -24,6 +28,8 @@ export type MaterialValue = {
 type AppearancePage = 'background' | 'material' | 'general'
 
 export function BackgroundMaterialsView(props: {
+  previewBackgroundId?: string
+  library?: UserBackgroundLibrary
   t: Translator
   backgrounds: readonly BackgroundOption[]
   selectedId: string | null
@@ -38,10 +44,19 @@ export function BackgroundMaterialsView(props: {
   const [query, setQuery] = useState('')
   const [previewId, setPreviewId] = useState<string | null>(null)
   const [previewMode, setPreviewMode] = useState<'image' | 'material'>('image')
+  useEffect(() => {
+    if (props.previewBackgroundId) { setPage('background'); setPreviewId(props.previewBackgroundId); setPreviewMode('image') }
+  }, [props.previewBackgroundId])
   const tabId = useId()
   const current = props.backgrounds.find(item => item.id === props.selectedId)
   const preview = props.backgrounds.find(item => item.id === previewId)
-  const visible = props.backgrounds.filter(item => `${item.name} ${item.description} ${item.source}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+  const visible = props.backgrounds.filter(item => `${item.name} ${item.description} ${item.source} ${item.group.label}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+  const groups = new Map<string, { id: string; label: string; items: BackgroundOption[] }>()
+  for (const item of visible) {
+    const group = groups.get(item.group.id)
+    if (group) group.items.push(item)
+    else groups.set(item.group.id, { ...item.group, items: [item] })
+  }
   const pages: { id: AppearancePage; label: string }[] = [
     { id: 'background', label: props.t('appearance.background') },
     { id: 'material', label: props.t('appearance.material') },
@@ -69,37 +84,46 @@ export function BackgroundMaterialsView(props: {
                     <span>{props.t('appearance.followScene')}</span>
                     <input type="checkbox" role="switch" checked={props.followState} onChange={event => props.onFollowStateChange(event.target.checked)} />
                   </label>
+                  {props.library?.error ? <p role="alert">{props.library.error}<Button onClick={props.library.refresh}>{props.t('appError.reload')}</Button></p> : null}
+                  {props.library?.loading || props.library?.busy ? <p role="status">{props.t(props.library.loading ? 'appearance.backgroundLoading' : 'appearance.backgroundWorking')}</p> : null}
                   <SearchField containerClassName={styles.search} aria-label={props.t('appearance.search')} placeholder={props.t('appearance.searchPlaceholder')}
                     clearLabel={props.t('agent.clearSearch')} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
                   <div className={styles.resourceHeader}>
                     <span>{props.t('appearance.count', { count: visible.length })}</span>
+                    {props.library ? <BackgroundImportButton t={props.t} disabled={!props.library.ready || props.library.busy} onImport={files => { void props.library!.importFiles(files) }} /> : null}
                     <Button aria-pressed={props.selectedId === null} onClick={() => props.onSelect(null)}>
                       <ImageOff aria-hidden="true" size={15} />{props.t('appearance.noManualBackground')}
                     </Button>
                   </div>
-                  <div className={styles.grid}>
-                    {visible.map(item => (
-                      <article className={styles.card} key={item.id} data-selected={props.selectedId === item.id}>
-                        <button className={styles.selectCard} aria-label={props.t('appearance.selectNamed', { name: item.name })}
-                          aria-pressed={props.selectedId === item.id} type="button" onClick={() => props.onSelect(item.id)}>
-                          <span className={styles.thumbnail}>
-                            <img alt="" src={item.image} loading="lazy" />
-                            {props.selectedId === item.id ? <span className={styles.selected}><Check aria-hidden="true" size={14} /></span> : null}
-                          </span>
-                          <span className={styles.cardText}>
-                            <strong title={item.name}>{item.name}</strong>
-                            <span title={item.description}>{item.description === item.name ? '' : item.description}</span>
-                          </span>
-                        </button>
-                        <div className={styles.cardFooter}>
-                          <small title={item.source}>{item.source}</small>
-                          <IconButton aria-label={props.t('appearance.previewNamed', { name: item.name })} onClick={() => { setPreviewId(item.id); setPreviewMode('image') }}>
-                            <Eye aria-hidden="true" size={16} />
-                          </IconButton>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                  {Array.from(groups.values()).map(group => <section className={styles.sourceGroup} key={group.id} aria-labelledby={`${tabId}-source-${encodeURIComponent(group.id)}`}>
+                    <h4 className={styles.sourceHeading} id={`${tabId}-source-${encodeURIComponent(group.id)}`}>
+                      {group.label}<span>{group.items.length}</span>
+                    </h4>
+                    <div className={styles.grid}>
+                      {group.items.map(item => (
+                        <article className={styles.card} key={item.id} data-selected={props.selectedId === item.id}>
+                          <button className={styles.selectCard} aria-label={props.t('appearance.selectNamed', { name: item.name })}
+                            aria-pressed={props.selectedId === item.id} type="button" onClick={() => props.onSelect(item.id)}>
+                            <span className={styles.thumbnail}>
+                              <img alt="" src={item.image} loading="lazy" />
+                              {props.selectedId === item.id ? <span className={styles.selected}><Check aria-hidden="true" size={14} /></span> : null}
+                            </span>
+                            <span className={styles.cardText}>
+                              <strong title={item.name}>{item.name}</strong>
+                              <span title={item.description}>{item.description === item.name ? '' : item.description}</span>
+                            </span>
+                          </button>
+                          <div className={styles.cardFooter}>
+                            <small title={item.source}>{item.source}</small>
+                            {item.personalId && props.library ? <IconButton disabled={props.library.busy} aria-label={props.t('appearance.removeNamedBackground', { name: item.name })} onClick={() => { void props.library!.remove(item.personalId!) }}><Trash2 aria-hidden="true" size={16} /></IconButton> : null}
+                            <IconButton aria-label={props.t('appearance.previewNamed', { name: item.name })} onClick={() => { setPreviewId(item.id); setPreviewMode('image') }}>
+                              <Eye aria-hidden="true" size={16} />
+                            </IconButton>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>)}
                   {visible.length === 0 ? <p className={styles.empty}>{props.t(query ? 'appearance.noMatches' : 'appearance.empty')}</p> : null}
                 </>
               ) : (

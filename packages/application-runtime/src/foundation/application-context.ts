@@ -1,3 +1,6 @@
+import { createObservationStore } from '../observability/store.js'
+import { createObservedAiGateway } from '../observability/gateway.js'
+import type { ObservationStore } from '../observability/types.js'
 import { createNarrativeActivityRegistry } from '../extensions/narrative-activity.js'
 import { createExtensionReadonlyFilesRegistry } from '../extensions/readonly-files.js'
 import type { AgentStore } from '@loom-studio/application-data'
@@ -20,7 +23,9 @@ import { createTimelineArchiveParticipantRegistry, type TimelineArchiveParticipa
 import { createNarrativeContextRegistry, type NarrativeContextRegistry } from '../narrative/context-provider.js'
 
 export type ApplicationRuntimeContext = {
+  observations: ObservationStore
   onStateChanged?: ApplicationRuntimeOptions['onStateChanged']
+  exportExtensionArchive?: ApplicationRuntimeOptions['exportExtensionArchive']
   withCardDeletion: ApplicationRuntimeOptions['withCardDeletion']
   withCardDeletions: ApplicationRuntimeOptions['withCardDeletions']
   agents?: AgentStore
@@ -62,8 +67,11 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
   const agentTools = options.agentTools ?? createAgentToolRegistry([])
   const runtimeNow = () => nowIso(options.clock)
   const runtimeCreateId = (prefix: string) => createSharedId(prefix)
+  const observations = options.observations ?? createObservationStore()
   return {
+    observations,
     onStateChanged: options.onStateChanged,
+    exportExtensionArchive: options.exportExtensionArchive,
     withCardDeletion: options.withCardDeletion,
     withCardDeletions: options.withCardDeletions,
     agents: options.agents,
@@ -73,7 +81,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     logger: options.logger,
     runtimeLogger: options.runtimeLogger,
     narratives: options.narratives,
-    narrativeActivity: createNarrativeActivityRegistry(),
+    narrativeActivity: createNarrativeActivityRegistry(options.dataEngine, options.runtimeLogger),
     extensionReadonlyFiles: createExtensionReadonlyFilesRegistry(),
     narrativeContext: options.narrativeContext ?? createNarrativeContextRegistry(),
     promptResources: options.promptResources,
@@ -95,11 +103,12 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     stateContent: options.stateContent ?? createStateContentRegistry(),
     stateContributions: options.stateContributions ?? createStateContributionRegistry(),
     timelineArchiveParticipants: createTimelineArchiveParticipantRegistry(options.timelineArchiveParticipants),
-    gateway: options.gateway ?? createDocumentBackedAiGateway({
+    gateway: createObservedAiGateway(options.gateway ?? createDocumentBackedAiGateway({
       documents: options.documents,
       secrets: options.secrets,
       providerAdapters,
-    }),
+      observations,
+    }), observations),
     now: runtimeNow,
     createId: runtimeCreateId,
   }

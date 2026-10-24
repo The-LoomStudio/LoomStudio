@@ -1,9 +1,12 @@
+import { createExtensionAgentTasks } from './extensions/extension-agent-tasks.js'
 import { createExtensionApplicationAdapter } from './extensions/extension-application-adapter.js'
 import { createCardTransferService } from './codecs/card-transfer-service.js'
 import {
   applicationDocumentTypes,
   extensionInstallationId,
   createApplicationRuntime,
+  createObservationStore,
+  createObservedAiGateway,
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
   createOfficialAgentToolRegistry,
@@ -28,6 +31,8 @@ import { createSqliteDataEngine, type SqliteDataEngine } from '@loom-studio/data
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createSqliteDocumentStore, type DocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
+import { createExtensionScriptArchiveExporter } from './extensions/extension-script-export.js'
+import { createScriptService } from './scripts/script-service.js'
 import { createKernel } from '@loom-studio/kernel'
 import { queryExtensionLogs, readLogFailure, type Logger, type LogReader, type LogHistoryReader } from '@loom-studio/logging'
 import { createNarrativeStore } from '@loom-studio/application-data'
@@ -141,17 +146,21 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   const stateContributions = createStateContributionRegistry()
   registerOfficialFakeAiProvider(aiCapabilities)
   const providerAdapters = createOfficialProviderAdapterRegistry({ aiCapabilities })
+  const observations = createObservationStore({ persistencePath: join(localPaths.configRoot, 'observations') })
   const profiledAiGateway = createDocumentBackedProfiledAiGateway({
+    observations,
     documents,
     registry: aiCapabilities,
     secrets,
   })
-  const gateway = createDocumentBackedAiGateway({
+  const baseGateway = createDocumentBackedAiGateway({
+    observations,
     documents,
     secrets,
     resolveProxyUrl: networkSettings.resolveProxyUrl,
     providerAdapters,
   })
+  const gateway = createObservedAiGateway(options.providerLogger ? withAiGatewayLogging(baseGateway, options.providerLogger) : baseGateway, observations)
   let agents
   let narratives
   let states
@@ -190,7 +199,10 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     throw new Error('Studio Server requires a shared SQLite Data Engine and Prompt Resource Store')
   }
   const agentTools = createOfficialAgentToolRegistry()
+  const exportExtensionArchive = blobs ? createExtensionScriptArchiveExporter({ documents, blobs }) : undefined
   const applicationRuntime = createApplicationRuntime({
+    observations,
+    exportExtensionArchive,
     onStateChanged: event => kernel.getEventBus().emit('state.changed', event, { publisher: { kind: 'kernel' }, source: 'application-state' }),
     withCardDeletion: (id, commit) => {
       if (!resourceDirectories) throw new Error('Card directory service is unavailable')
@@ -234,10 +246,11 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     stateContent,
     narrativeContext,
     stateContributions,
-    gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
+    gateway,
     logger: options.promptBuildLogger,
     runtimeLogger: options.runtimeLogger,
   })
+  const extensionAgentTasks = createExtensionAgentTasks({ runtime: applicationRuntime, documents })
   const extensionFileData = createExtensionFileData(localPaths.dataRoot, documents)
   const extensionHost = createExtensionHost({
     resolveFileDataDirectory: extensionFileData.directory,
@@ -252,15 +265,19 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     assetScratchRoot: localPaths.extensionCacheRoot,
     canAccessAsset: (asset, target) => canAccessExtensionAsset(documents, asset, target),
     ...createExtensionApplicationAdapter({
-      applicationRuntime, assets, documents, agents, narratives, states, promptResources,
+      applicationRuntime, assets, documents, agents, narratives, states, promptResources, extensionAgentTasks,
       getKernel: () => kernel,
       aiCapabilities, profiledAiGateway, gateway, agentTools, macroProviders, promptProcessors,
       stateContent, narrativeContext, stateContributions,
     }),
   })
+  const useOfficialExtensions = (options.runtimeMode === 'production' || options.runtimeMode === 'development')
+    && !options.extensionInstalledDirectory && !options.extensionRootDirectory
   const extensionRootDirectory = options.extensionRootDirectory
+    ?? (useOfficialExtensions ? join(installationRoot, 'official/extensions') : undefined)
   const extensionStateDirectory = resolve(options.extensionStateDirectory ?? localPaths.extensionRoot)
   const extensionManager = createServerExtensionManager({
+    exportExtensionArchive,
     host: extensionHost,
     diagnostics,
     stateStore: createExtensionStateStore({
@@ -272,10 +289,9 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     devLinksFile: options.extensionStateDirectory ? join(extensionStateDirectory, 'dev-links.json') : localPaths.extensionDevLinksFile,
     deleteData: extensionFileData.removeGlobal,
     officialSetupFile: join(localPaths.configRoot, 'official-extension-setup.json'),
-    bundledDirectories: (options.runtimeMode === 'production' || options.runtimeMode === 'development')
-      && !options.extensionInstalledDirectory && !options.extensionRootDirectory
+    bundledDirectories: useOfficialExtensions
       ? [
-        ...(options.runtimeMode === 'production' ? [join(installationRoot, 'official/extensions/loom-assistant')] : []),
+        join(installationRoot, 'official/extensions/loom-assistant'),
         join(installationRoot, 'official/extensions/story-memory'),
       ] : [],
     bundledEnabledModules: { 'official.story-memory': ['server', 'client'] },
@@ -298,6 +314,21 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     loomRunner,
   })
   const importConversions = createExtensionImportConversions(kernel)
+  const scripts = createScriptService({
+    runtime: applicationRuntime,
+    hostOptions: {
+      documents, diagnostics, logger: options.extensionLogger,
+      mode: options.runtimeMode ?? 'development',
+      assetScratchRoot: localPaths.extensionCacheRoot,
+      canAccessAsset: (asset, target) => canAccessExtensionAsset(documents, asset, target),
+      ...createExtensionApplicationAdapter({
+        applicationRuntime, assets, documents, agents, narratives, states, promptResources, extensionAgentTasks,
+        getKernel: () => kernel,
+        aiCapabilities, profiledAiGateway, gateway, agentTools, macroProviders, promptProcessors,
+        stateContent, narrativeContext, stateContributions,
+      }),
+    },
+  })
   kernel.getEventBus().registerDefinition({
     name: 'directories.media.changed', owner: { kind: 'kernel' }, version: 1,
     visibility: 'public', stability: 'experimental', summary: 'Card directory media changed',
@@ -346,6 +377,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     saveImportedCard,
   })
   const rpcServices: StudioRpcServices = {
+    scripts,
     directoryCatalog, directoryResources: resourceDirectories, directoryImporter, startupDirectoryScan,
     batchImporter: createExtensionBatchImporter({ kernel, runtime: applicationRuntime, assets, saveImportedCard }),
     convertPromptResource: importConversions.promptResource,
@@ -444,11 +476,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
             data: { cardId: failure.cardId, error: String(failure.error) },
           })
         }
+        await observations.ready()
         await directoryCatalog.scan()
         await applicationRuntime.initialize()
+        await extensionAgentTasks.recover()
         await installBuiltinStarterContent(applicationRuntime, resolve(officialContentDirectory))
         await kernel.start()
         await extensionManager.initialize()
+        await scripts.resolve({ workspaceId: 'workspace' })
         mediaWatcher = await directoryMedia.watch(() => {
           kernel.getEventBus().emit('directories.media.changed', {}, { publisher: { kind: 'kernel' }, source: 'studio-server' })
         })
@@ -481,14 +516,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       logger?.info('Studio server stopping', { event: 'server.stopping' })
       mediaWatcher?.dispose()
       mediaWatcher = undefined
-      await server.shutdown()
       try {
-        await kernel.stop()
+        await server.shutdown()
+        try { await scripts.dispose() } finally { await kernel.stop() }
       } finally {
         try {
           await secrets?.retryPendingCleanup({ actor: { kind: 'system', id: 'studio-server' }, reason: 'server.stop.secret-cleanup' })
         } finally {
-          await dataEngine?.close()
+          try { await applicationRuntime.disposeObservations() } finally { await dataEngine?.close() }
         }
       }
       logger?.info('Studio server stopped', { event: 'server.stopped' })

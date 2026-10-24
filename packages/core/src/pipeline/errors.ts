@@ -1,3 +1,5 @@
+import type { Diagnostic } from '../diagnostic/types.js'
+
 export interface SerializedError {
   readonly name: string
   readonly message: string
@@ -14,7 +16,7 @@ class LoomError extends Error {
 export class PipelineValidationError extends LoomError {
   constructor(
     message: string,
-    public readonly diagnostics: readonly { readonly code: string; readonly message: string }[]
+    public readonly diagnostics: readonly (Pick<Diagnostic, 'code' | 'message'> & Partial<Diagnostic>)[]
   ) {
     super(message)
     this.name = 'PipelineValidationError'

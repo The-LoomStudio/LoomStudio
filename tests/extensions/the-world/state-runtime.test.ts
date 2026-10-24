@@ -6,9 +6,10 @@ import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/ap
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createId, nowIso } from '@loom-studio/shared'
+import { createWorldRoot } from '../../../extensions/the-world/src/world-state.js'
 import { activate } from '../../../extensions/the-world/src/server/index.js'
 
-function setup() {
+function setup(legacy = false) {
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
   const stateContributions = createStateContributionRegistry()
   const documents = createSqliteDocumentStore({ engine })
@@ -30,7 +31,12 @@ function setup() {
       contribute(contribution: any) {
         stateContributions.register({
           target: { kind: 'global' }, packageId: 'official.the-world', packageVersion: '0.1.4',
-          moduleId: 'server', instanceId: 'test', contribution,
+          moduleId: 'server', instanceId: 'test',
+          // Legacy checkpoints accepted only the original world component mount.
+          contribution: legacy ? { ...contribution,
+            templates: contribution.templates.map((template: any) => ({ ...template, initial: {} })),
+            componentMounts: contribution.componentMounts.filter((mount: any) => mount.componentKey === 'world'),
+          } : contribution,
         })
       },
       async read(target: any) {
@@ -87,13 +93,13 @@ describe('The World handlers with real State Service', () => {
       const preview = await f.runtime.previewTimelineExtensionAdoption(input)
       expect(preview.paths).toEqual(['/theWorld/entities/world'])
       await f.runtime.adoptTimelineExtension(preview)
-      const expected = { entities: { world: { components: { world: {} } } } }
+      const expected = createWorldRoot()
       expect((await f.read({ arguments: {} }, f.context(target))).state.theWorld).toEqual(expected)
       const document = await f.documents.get(`timeline-runtime-context:${target.timelineId}`)
       expect(document?.content).toMatchObject({
         stateEntities: [{ typeId: 'official-the-world-entity', entityId: 'world' }],
-        stateComponents: [{ path: 'theWorld.entities.world.components.world', componentKey: 'world' }],
-        stateBindings: [{ path: 'theWorld.entities.world.components.world', installationId: f.installationId }],
+        stateComponents: expect.arrayContaining([expect.objectContaining({ path: 'theWorld.entities.world.components.world', componentKey: 'world' })]),
+        stateBindings: expect.arrayContaining([expect.objectContaining({ path: 'theWorld.entities.world.components.world', installationId: f.installationId })]),
       })
       const oldTarget = { ...target, branchId: fork.branch.id }
       expect((await f.runtime.getStateSnapshot({ target: oldTarget })).snapshot.value).not.toHaveProperty('theWorld')
@@ -102,6 +108,37 @@ describe('The World handlers with real State Service', () => {
       expect((await f.read({ arguments: {} }, f.context(oldTarget))).state.theWorld).toEqual(expected)
     } finally { f.engine.close() }
   })
+  it('starts with null fields, accepts the first known values, and reverts back to unknown', async () => {
+    const f = setup()
+    try {
+      const { target } = await f.timeline()
+      const before = await f.read({ arguments: {} }, f.context(target))
+      expect(before.state.theWorld).toEqual(createWorldRoot())
+      const updated = await f.write({ arguments: { expectedRevisionId: before.revisionId, patch: [
+        { op: 'replace', path: '/entities/world/components/calendar', value: {
+          id: 'story-calendar', name: '故事历', months: [{ id: '1', name: '一月', days: 30 }],
+        } },
+        { op: 'replace', path: '/entities/world/components/worldTime/value', value: {
+          calendarId: 'story-calendar', year: 1, month: 1, day: 2, hour: 0, minute: 0,
+        } },
+        { op: 'replace', path: '/entities/world/components/weather', value: { kind: 'clear', label: '晴天' } },
+      ] } }, f.context(target))
+      expect(updated.state.theWorld.entities.world.components.worldTime.value).toMatchObject({ hour: 0, minute: 0 })
+      expect(updated.state.theWorld.entities.world.components.weather.kind).toBe('clear')
+      await f.runtime.revertChangeset({ changesetId: updated.changesetId })
+      expect((await f.read({ arguments: {} }, f.context(target))).state.theWorld).toEqual(createWorldRoot())
+      const partial = await f.read({ arguments: {} }, f.context(target))
+      await f.write({ arguments: { expectedRevisionId: partial.revisionId, patch: [
+        { op: 'replace', path: '/entities/world/components/worldTime/value/hour', value: 0 },
+      ] } }, f.context(target))
+      const current = await f.read({ arguments: {} }, f.context(target))
+      expect(current.state.theWorld.entities.world.components.worldTime.value).toMatchObject({ hour: 0, year: null })
+      await expect(f.write({ arguments: { expectedRevisionId: current.revisionId, patch: [
+        { op: 'replace', path: '/entities/world/components/worldTime/value/hour', value: 24 },
+      ] } }, f.context(target))).rejects.toThrow()
+    } finally { f.engine.close() }
+  })
+
   it('denies unadopted and paused RPCs while preserving another Timeline and existing State', async () => {
     const f = setup()
     try {
@@ -167,7 +204,7 @@ describe('The World handlers with real State Service', () => {
     } finally { f.engine.close() }
   })
   it('previews v1 without writes and commits only the reviewed revision and content', async () => {
-    const f = setup()
+    const f = setup(true)
     try {
       const { target } = await f.timeline()
       const before = await f.read({ arguments: {} }, f.context(target))

@@ -40,7 +40,7 @@ export const messages = {
   'search.scope.extension': '확장 기능',
   'search.keywords.model': 'API 키 프로바이더 모델 LLM provider model key',
   'search.keywords.agent': 'Agent 프리셋 preset 프롬프트 prompt',
-  'search.keywords.user': '내 리소스 페르소나 사용자 프로필 persona profile',
+  'search.keywords.user': '마이페이지 리소스 아바타 변경 내 이름 내 리소스 페르소나 사용자 프로필 persona profile',
   'search.keywords.play': '플레이 캐릭터 시작 play game',
   'search.keywords.recent': '기록 최근 이야기 대화 Timeline Session history',
   'search.keywords.sessions': '기록 스토리 세션 timeline session history',

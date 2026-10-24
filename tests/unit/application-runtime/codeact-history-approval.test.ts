@@ -31,8 +31,8 @@ describe('CodeAct history approval bridge', () => {
           if (decision.decision !== 'allow') throw new Error('HISTORY_DENIED')
           return { timelineId: 'timeline', branchId: 'branch', nodes: [], text: 'OLD_BODY', complete: true }
         },
-        appendNode: async () => ({ nodeId: 'unused' }),
-        editNode: async () => ({ nodeId: 'unused' }),
+        appendNode: async () => ({ nodeId: 'unused', floor: 1 }),
+        editNode: async () => ({ nodeId: 'unused', floor: 1 }),
       },
     }
     const signal = new AbortController().signal
@@ -54,8 +54,8 @@ describe('CodeAct history approval bridge', () => {
           await control!.waitForUser(() => new Promise(resolve => setTimeout(resolve, 1800)))
           return { timelineId: 'timeline', branchId: 'branch', nodes: [], text: 'APPROVED', complete: true }
         },
-        appendNode: async () => ({ nodeId: 'unused' }),
-        editNode: async () => ({ nodeId: 'unused' }),
+        appendNode: async () => ({ nodeId: 'unused', floor: 1 }),
+        editNode: async () => ({ nodeId: 'unused', floor: 1 }),
       },
     })
     const result = await runCodeActSandbox({

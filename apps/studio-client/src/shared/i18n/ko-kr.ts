@@ -1,3 +1,5 @@
+import { messages as observation } from './ko-kr/observation.js'
+import { messages as userProfile } from './ko-kr/user-profile.js'
 import { messages as common } from './ko-kr/common.js'
 import { messages as sessions } from './ko-kr/sessions.js'
 import { messages as agent } from './ko-kr/agent.js'
@@ -15,6 +17,8 @@ import type { zhCN } from './zh-cn.js'
 
 export const koKR = {
   ...common,
+  ...observation,
+  ...userProfile,
   ...sessions,
   ...agent,
   ...resources,

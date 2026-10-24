@@ -1,4 +1,7 @@
+import type { AddUserBackgroundInput, RemoveUserBackgroundInput, UserBackgroundsConfig } from './profiles/user-backgrounds.js'
+import type { ObservationStore, ObservationOrigin } from './observability/types.js'
 import type { AgentApprovalPolicy } from './agents/approval-policy.js'
+import type { CreateUserProfileInput, DeleteUserProfileInput, SelectUserProfileInput, UpdateUserProfileInput, UserProfilesConfig } from './profiles/user-profiles.js'
 import type { CreateLoomScriptMountInput, UpdateLoomScriptMountInput, ListLoomScriptMountsInput, MutateLoomScriptMountResult, ListLoomScriptMountsResult } from '@loom-studio/shared/loom-scripts'
 import type { ListPresetToolMountsInput, ListPresetToolMountsResult, PresetToolMountInput, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
 export type { ListPresetToolMountsInput, ListPresetToolMountsResult, PresetToolMountInput, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
@@ -183,7 +186,15 @@ export type {
   TimelineStateBinding,
 } from '@loom-studio/shared'
 
-export type ApplicationRuntime = ReturnType<typeof import('./runtime/workspace-runtime.js').createWorkspaceRuntimeMethods> & {
+export type ApplicationRuntime = ReturnType<typeof import('./runtime/observability-runtime.js').createObservabilityRuntimeMethods> & ReturnType<typeof import('./runtime/workspace-runtime.js').createWorkspaceRuntimeMethods> & {
+  getUserBackgrounds(): Promise<{ config: UserBackgroundsConfig }>
+  addUserBackground(input: AddUserBackgroundInput, context?: RuntimeRequestContext): Promise<{ config: UserBackgroundsConfig; mutation: MutationReceipt }>
+  removeUserBackground(input: RemoveUserBackgroundInput, context?: RuntimeRequestContext): Promise<{ config: UserBackgroundsConfig; mutation: MutationReceipt }>
+  getUserProfiles(): Promise<{ config: UserProfilesConfig }>
+  createUserProfile(input: CreateUserProfileInput, context?: RuntimeRequestContext): Promise<{ config: UserProfilesConfig; mutation: MutationReceipt }>
+  updateUserProfile(input: UpdateUserProfileInput, context?: RuntimeRequestContext): Promise<{ config: UserProfilesConfig; mutation: MutationReceipt }>
+  selectUserProfile(input: SelectUserProfileInput, context?: RuntimeRequestContext): Promise<{ config: UserProfilesConfig; mutation: MutationReceipt }>
+  deleteUserProfile(input: DeleteUserProfileInput, context?: RuntimeRequestContext): Promise<{ config: UserProfilesConfig; mutation: MutationReceipt }>
   subscribeNarrativeActivity: ReturnType<typeof import('./extensions/narrative-activity.js').createNarrativeActivityRegistry>['subscribe']
   registerReadonlyFiles: ReturnType<typeof import('./extensions/readonly-files.js').createExtensionReadonlyFilesRegistry>['register']
   registerTimelineArchiveParticipant: import('./archive/timeline-archive.js').TimelineArchiveParticipantRegistry['register']
@@ -237,8 +248,9 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/workspace-r
   exportLoomScript(input: { scriptDocumentId: string }): Promise<{ artifact: LoomScriptArtifact }>
   createLoomScriptMount(input: CreateLoomScriptMountInput, context?: RuntimeRequestContext): Promise<MutateLoomScriptMountResult>
   updateLoomScriptMount(input: UpdateLoomScriptMountInput, context?: RuntimeRequestContext): Promise<MutateLoomScriptMountResult>
+  refreshLoomScriptMount(input: { mountId: string; expectedVersion: number }, context?: RuntimeRequestContext): Promise<MutateLoomScriptMountResult>
   listLoomScriptMounts(input?: ListLoomScriptMountsInput): Promise<ListLoomScriptMountsResult>
-  resolveLoomScriptRendererMounts(input?: { workspaceId?: string; timelineId?: string; presetId?: string }): Promise<{ mounts: ResolvedLoomScriptRendererMount[]; unavailableMounts: UnavailableLoomScriptMount[] }>
+  resolveLoomScriptRendererMounts(input?: { workspaceId?: string; timelineId?: string; presetId?: string; cardId?: string }): Promise<{ mounts: ResolvedLoomScriptRendererMount[]; unavailableMounts: UnavailableLoomScriptMount[] }>
   listExtensionRecords(input: { packageId: string; target?: ExtensionInstallationTarget; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
   getExtensionRecord(input: { packageId: string; target?: ExtensionInstallationTarget; recordId: string }): Promise<{ record: ExtensionRecordEntry | null }>
   listExtensionConfigs(input: { packageId: string; target?: ExtensionInstallationTarget; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }>
@@ -342,10 +354,10 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/workspace-r
   updateAgentSession(input: UpdateAgentSessionInput, context?: RuntimeRequestContext): Promise<UpdateAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   findAgentRunCheckpoint(input: { agentSessionId: string; runId: string }): Promise<AgentTranscriptEntry | null>
-  inspectAgentRunState(input: { agentSessionId: string; runId: string }): Promise<{ runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; entryCount: number }>
+  inspectAgentRunState(input: { agentSessionId: string; runId: string }): Promise<{ runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; entryCount: number; reason?: string }>
   prepareAgentRunRecovery(input: { agentSessionId: string; runId?: string }): Promise<import('./agents/run-recovery.js').AgentRunRecovery | undefined>
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
-  buildExtensionPrompt(input: import('@loom-studio/extension-sdk').ExtensionPromptBuildInput, target: import('@loom-studio/extension-sdk').ExtensionInstallationTarget, packageId: string, lease?: TimelineExtensionLease): Promise<import('@loom-studio/extension-sdk').ExtensionPromptBuildResult>
+  buildExtensionPrompt(input: import('@loom-studio/extension-sdk').ExtensionPromptBuildInput, target: import('@loom-studio/extension-sdk').ExtensionInstallationTarget, packageId: string, lease?: TimelineExtensionLease, context?: RuntimeRequestContext): Promise<import('@loom-studio/extension-sdk').ExtensionPromptBuildResult>
   inspectMacros(input: InspectMacrosInput): Promise<InspectMacrosResult>
   createNarrativeTimeline(input: CreateNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult>
   importNarrativeHistory(input: ImportNarrativeHistoryInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult>
@@ -387,6 +399,8 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/workspace-r
 }
 
 export type RuntimeRequestContext = {
+  /** Host-owned provenance; never accepted from extension or RPC payloads. */
+  observationOrigin?: Omit<ObservationOrigin, 'actor' | 'sourceRunId'>
   extensionLeases?: TimelineExtensionLease[]
   actor?: DataActorRef
   clientId?: string
@@ -946,7 +960,9 @@ export type InspectMacrosResult = {
 }
 
 export type ApplicationRuntimeOptions = {
+  observations?: ObservationStore
   onStateChanged?: (event: StateChangeEvent) => void
+  exportExtensionArchive?: (input: { archive: Uint8Array; packageId: string; version: string; installationId: string }) => Promise<Uint8Array>
   withCardDeletion?: (cardId: string, commit: () => Promise<DeleteCardResult>) => Promise<DeleteCardResult>
   withCardDeletions?: (cardIds: string[], commit: () => Promise<DeleteCardsResult>) => Promise<DeleteCardsResult>
   agents?: AgentStore
@@ -982,7 +998,7 @@ export type StateChangeEvent = {
 }
 
 export type MediaAssetLookup = {
-  get(assetId: string): Promise<{ id: string } | undefined>
+  get(assetId: string): Promise<{ id: string; mediaType?: string } | undefined>
 }
 
 export type SourceArtifactStorage = {

@@ -109,7 +109,7 @@ export const messages = {
   'rail.preset': '预设',
   'rail.model': '模型',
   'rail.agent': 'Agent 预设',
-  'rail.user': '我的资源',
+  'rail.user': '我的',
   'rail.play': '游玩',
   'rail.recent': '历史',
   'rail.sessions': '历史',

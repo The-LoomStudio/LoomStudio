@@ -3,7 +3,7 @@ import {
   createSqliteDocumentStore,
   type DocumentStore,
 } from '@loom-studio/document-store'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 const actor = { kind: 'system', id: 'document-store-contract' } as const
 const stores = [
@@ -18,6 +18,23 @@ const stores = [
 ]
 
 describe.each(stores)('$name document store contract', ({ create }) => {
+  it('does not overwrite an existing document when an automatically generated ID collides', async () => {
+    await withStore(create(), async store => {
+      await store.write({ id: '00000000000', type: 'test.card', content: { name: 'Original' }, expectedVersion: 'new' })
+      const bytesForIds = [2, 0, 1]
+      const random = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(array => {
+        const bytes = array as Uint8Array
+        bytes.fill(bytesForIds.shift() ?? 3)
+        return array
+      })
+      try {
+        await store.write({ type: 'test.card', content: { name: 'New' }, expectedVersion: 'new' })
+        expect(await store.get('00000000000')).toMatchObject({ version: 1, content: { name: 'Original' } })
+        expect(await store.get('11111111111')).toMatchObject({ version: 1, content: { name: 'New' } })
+      } finally { random.mockRestore() }
+    })
+  })
+
   it('projects live Card bindings without unrelated fields, preserving exact IDs and store order', async () => {
     await withStore(create(), async store => {
       const fixtures: Array<[string, string, { name: string; promptResourceIds?: string[]; description?: string }]> = [

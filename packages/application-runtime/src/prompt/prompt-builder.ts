@@ -1,3 +1,4 @@
+import type { ObservationBuild } from '../observability/types.js'
 import type { PromptActivation } from './prompt-activation.js'
 import type { ChatMessage, JsonObject } from '@loom-studio/shared'
 
@@ -58,9 +59,11 @@ export type EditorProjection = {
 export type CompiledPrompt = {
   messages: CompiledMessage[]
   editorProjection: EditorProjection
+  observation?: ObservationBuild
 }
 
 export type SourceNode = {
+  evidence?: { resourceId?: string; version?: number; path?: string; original?: string; disabledReason?: string }
   metadata?: JsonObject
   id: string
   sourceId: string

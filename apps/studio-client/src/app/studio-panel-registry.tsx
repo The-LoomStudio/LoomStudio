@@ -1,3 +1,4 @@
+import type { UserBackgroundLibrary } from '../features/backgrounds/model/use-user-backgrounds.js'
 import type { useExtensionCardContext } from '../features/extension-renderers/model/use-extension-card-context.js'
 import type { MemoryLogSink } from '@loom-studio/logging'
 import React, { type ReactNode } from 'react'
@@ -27,6 +28,7 @@ import {
   LazyStudioStatePanel,
   LazyTextTransformPanel,
   LazyUserResourcesPanel,
+  LazyMyProfilePanel,
 } from './studio-panel-modules.js'
 
 type StudioState = ReturnType<typeof useStudioState>
@@ -56,6 +58,7 @@ export function createStudioPanels(input: {
   onTextTransformsChanged: () => void
   uiScale: number
   setUiScale: (scale: number) => void
+  userBackgrounds: UserBackgroundLibrary
   backgrounds: readonly RegisteredClientBackground[]
 }): Record<StudioPanelId, (active: boolean, surface?: 'tool') => ReactNode> {
   const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, cardsBusy, providerBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds } = input
@@ -121,6 +124,7 @@ export function createStudioPanels(input: {
       onNavigate={target => { void navigation.openMemory(target) }} /> : null,
     model: () => (
       <LazyModelPanel
+        selectedProviderId={navigation.toolSearchParams.get('providerProfileId') ?? undefined}
         busy={providerBusy}
         providerAccountDraft={state.providerAccountDraft}
         modelProfiles={state.modelProfiles}
@@ -137,7 +141,9 @@ export function createStudioPanels(input: {
       />
     ),
     agent: resourcePanels.preset,
-    user: () => <LazyUserResourcesPanel
+    user: active => <LazyMyProfilePanel api={state.api.userProfiles} endpoint={state.endpoint} t={state.t} active={active} resources={<LazyUserResourcesPanel
+      backgroundLibrary={input.userBackgrounds}
+      onOpenBackground={id => { void navigation.openPath(`/studio/settings?category=appearance&backgroundId=${encodeURIComponent(`user-background/${id}`)}`) }}
       api={state.textTransformsApi}
       endpoint={state.endpoint}
       resources={state.promptResourceDrafts}
@@ -150,7 +156,7 @@ export function createStudioPanels(input: {
       onOpenRule={ruleId => {
         void navigation.openPath(`/studio/text-transforms?ruleId=${encodeURIComponent(ruleId)}`)
       }}
-    />,
+    />} />,
     play: active => panels.character(active),
     recent: () => (
       <LazyHistoryPanel
@@ -414,7 +420,7 @@ export function createStudioPanels(input: {
         t={state.t}
       />
     ) : null,
-    logs: active => <LazyLogViewer active={active} api={state.logsApi} clientLogs={clientLogs} extensions={clientExtensions.packages} t={state.t}
+    logs: active => <LazyLogViewer endpoint={state.endpoint} observationApi={state.api} active={active} api={state.logsApi} clientLogs={clientLogs} extensions={clientExtensions.packages} t={state.t}
       searchParams={navigation.searchParams} onSearchParamsChange={params => { void navigation.setSearchParams(params) }} />,
     extensions: (active, surface) => (
       <LazyRendererWorkspacePanel
@@ -428,6 +434,9 @@ export function createStudioPanels(input: {
         runtimeError={clientExtensions.error?.message ?? input.extensionCardContext.error}
         extensionRuntime={state.api.extensionRuntime}
         extensionApi={state.api.extensions}
+        scriptApi={state.api.loomScripts}
+        onScriptsChanged={uiState.bumpLoomScriptRefreshToken}
+        scriptsRefreshToken={uiState.loomScriptRefreshToken}
         onRefreshExtensions={async () => {
           await Promise.all([clientExtensions.refresh(), state.refreshResourceConsumers()])
         }}
@@ -476,16 +485,30 @@ export function createStudioPanels(input: {
     ),
     settings: () => (
       <LazySettingsPanel
+        backgroundLibrary={input.userBackgrounds}
+        requestedCategory={navigation.toolSearchParams.get('category') === 'appearance' ? 'appearance' : undefined}
+        previewBackgroundId={navigation.toolSearchParams.get('backgroundId') ?? undefined}
         themeController={input.themeController}
         busy={!state.startup.ready('network') || state.operationPending.settings.pendingCount > 0}
         customCss={state.customCss}
         locale={state.locale}
         networkSettings={state.networkSettings}
         backgroundCardId={state.narrativeTimeline?.createdFrom?.cardId ?? state.selectedCardId}
-        backgrounds={backgrounds.map(item => ({
-          id: item.key, name: item.name, description: item.description, image: item.image, source: item.source ?? item.packageId,
-          ...(item.target?.kind === 'card' ? { scope: { cardId: item.target.cardId, ownerKey: clientModuleKey(item.packageId, item.moduleId, item.target) } } : {}),
-        }))}
+        backgrounds={[...input.userBackgrounds.backgrounds.map(item => ({
+          id: item.key, personalId: item.id, name: item.name, description: '', image: item.image, source: state.t('appearance.myBackgrounds'),
+          group: { id: 'personal', label: state.t('appearance.myBackgrounds') },
+        })), ...backgrounds.map(item => {
+          const cardId = item.target?.kind === 'card' ? item.target.cardId : undefined
+          const packageName = clientExtensions.packages.find(pkg => pkg.packageId === item.packageId)?.displayName ?? item.packageId
+          const cardName = cardId ? state.cards.find(card => card.id === cardId)?.name
+            ?? (currentCard?.id === cardId ? currentCard.name : cardId) : undefined
+          return {
+            id: item.key, name: item.name, description: item.description, image: item.image, source: item.source ?? item.packageId,
+            group: cardId ? { id: `card/${cardId}`, label: state.t('appearance.cardBackgroundGroup', { name: cardName! }) }
+              : { id: `extension/${item.packageId}`, label: state.t('appearance.extensionBackgroundGroup', { name: packageName }) },
+            ...(item.target?.kind === 'card' ? { scope: { cardId: item.target.cardId, ownerKey: clientModuleKey(item.packageId, item.moduleId!, item.target) } } : {}),
+          }
+        })]}
         uiScale={uiScale}
         t={state.t}
         onChangeCustomCss={state.setCustomCss}

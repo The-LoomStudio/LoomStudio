@@ -1,3 +1,4 @@
+import type { ObservationBuild } from '../../../packages/application-runtime/src/observability/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { processPrompt } from '../../../packages/application-runtime/src/prompt/process-prompt.js'
 import { createPromptProcessorRegistry } from '../../../packages/application-runtime/src/prompt/prompt-processor-registry.js'
@@ -49,7 +50,8 @@ describe('authored prompt processing', () => {
     }) })
     const input = fixture()
     // Source preparation never emits disabled contributions; exercise the public boundary as well.
-    const result = await processPrompt(input, { registry, context: context() })
+    const observation: ObservationBuild = {}
+    const result = await processPrompt(input, { registry, context: context(), observation })
     expect(rendered).toEqual(['inline', 'early'])
     expect(result.projection.messages.map(message => message.content)).toEqual([
       '1:INLINE\n\n2:EARLY', '', '<%= untouched %>',
@@ -60,6 +62,13 @@ describe('authored prompt processing', () => {
     expect(result.model.sourceNodes.find(node => node.id === 'inline')?.body).toBe('1:INLINE')
     expect(result.model.contributions.find(entry => entry.id === 'early')?.content).toBe('2:EARLY')
     expect(dispose).toHaveBeenCalledOnce()
+    expect(observation.sources?.find(source => source.id === 'inline')).toMatchObject({
+      original: 'INLINE', rendered: '1:INLINE', active: true, fragmentIds: ['inline'],
+    })
+    expect(observation.sources?.find(source => source.id === 'late')).toMatchObject({ active: false, reason: 'activation: manual' })
+    expect(observation.transformations).toContainEqual(expect.objectContaining({ kind: 'processor', stage: 'prepare', entryId: 'early', active: true }))
+    expect(observation.transformations).toContainEqual(expect.objectContaining({ kind: 'processor', stage: 'render', entryId: 'inline', before: 'INLINE', after: '1:INLINE' }))
+    expect(observation.messageFragments).toEqual(result.projection.messages.map(message => message.fragmentIds))
   })
 
   it('rejects preparation patches outside the selected processor and cleans up', async () => {
@@ -68,7 +77,10 @@ describe('authored prompt processing', () => {
     registry.register({ id: 'test/ejs', create: () => ({
       prepare: () => [{ id: 'native', content: 'corrupted' }], render: entry => entry.content, dispose,
     }) })
-    await expect(processPrompt(fixture(), { registry, context: context() })).rejects.toThrow('Invalid Prompt preparation patch')
+    const observation: ObservationBuild = {}
+    await expect(processPrompt(fixture(), { registry, context: context(), observation })).rejects.toThrow('Invalid Prompt preparation patch')
+    expect(observation.sources?.length).toBeGreaterThan(0)
+    expect(observation.diagnostics).toContainEqual(expect.objectContaining({ code: 'prompt.processor_failed', stage: 'prepare' }))
     expect(dispose).toHaveBeenCalledOnce()
   })
 

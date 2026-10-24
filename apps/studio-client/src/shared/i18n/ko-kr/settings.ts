@@ -1,6 +1,19 @@
 import type { messages as zhCN } from '../zh-cn/settings.js'
 
 export const messages = {
+  "appearance.extensionBackgroundGroup": "확장 · {{name}}",
+  "appearance.cardBackgroundGroup": "캐릭터 · {{name}}",
+
+
+  "appearance.myBackgrounds": "내 배경",
+  "appearance.importBackground": "배경 가져오기",
+  "appearance.removeNamedBackground": "배경 “{{name}}” 제거",
+  "appearance.backgroundLoading": "배경 불러오는 중…",
+  "appearance.backgroundWorking": "배경 저장 중…",
+  "appearance.backgroundLoadFailed": "배경을 불러오지 못했습니다. 다시 시도하세요.",
+  "appearance.backgroundImageLimit": "PNG, JPEG, WebP, GIF, AVIF 이미지를 지원합니다. 파일당 최대 64 MiB입니다.",
+  "appearance.backgroundUploadFailed": "배경 업로드에 실패했습니다.",
+
   'settings.themes': "테마 및 스타일",
   'settings.themeMain': "기본 테마",
   'settings.themeDefault': "Studio 기본값",

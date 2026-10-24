@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { zipSync } from 'fflate'
 
 describe('card bundle artifact boundary', () => {
   it('keeps shared prompt resources when a card and its private resources are deleted', async () => {
@@ -267,7 +268,7 @@ describe('card bundle artifact boundary', () => {
     })
   })
 
-  it('rejects legacy Card Bundle schemas and round-trips current Script attachments', async () => {
+  it('rejects legacy Card Bundle schemas and round-trips duplicate Metadata as separate Script attachments', async () => {
     for (const schemaVersion of [2, 3]) {
       expect(isCardBundleArtifact({ ...createArtifact(), schemaVersion } as never)).toBe(false)
     }
@@ -277,20 +278,80 @@ describe('card bundle artifact boundary', () => {
     const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-blob`, now: () => '2026-09-11T00:00:00.000Z' })
     try {
       const artifact = createArtifact()
-      artifact.scriptAttachments = [{
-        orderIndex: 7,
-        resourceOrigin: 'external',
+      artifact.scriptAttachments = [7, 8].map(orderIndex => ({
+        orderIndex,
+        resourceOrigin: 'external' as const,
         script: { format: 'loom.script', schemaVersion: 1, fileName: 'alice.loom.js', source: loomScriptSource() },
-      }]
+      }))
       const imported = await importCardBundle({ artifact, ...fixture, blobs })
       const documents = await fixture.documents.list({ type: 'airp.loomScriptMount' })
       const mount = documents.items.find(item => (item.content as any).target?.cardId === imported.card.id)
       expect(mount?.content).toMatchObject({ enabled: false, grantedCapabilities: [], orderIndex: 7 })
+      expect(new Set(documents.items.map(item => (item.content as any).scriptDocumentId)).size).toBe(2)
 
       const exported = await exportCardArtifact({ cardId: imported.card.id, documents: fixture.documents, promptResources: fixture.promptResources, blobs })
       expect(exported.schemaVersion).toBe(4)
       expect(exported.scriptAttachments).toEqual(artifact.scriptAttachments)
     } finally {
+      await rm(rootDirectory, { recursive: true, force: true })
+    }
+  })
+
+  it.each(['user', 'extension', 'card-extension'] as const)('exports an adopted %s Script as an independent attachment without changing its source owner', async kind => {
+    const fixture = createFixture()
+    const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-card-adopted-script-'))
+    let sequence = 0
+    const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-${++sequence}`, now: () => '2026-10-22T00:00:00.000Z' })
+    const runtime = createApplicationRuntime({ ...fixture, blobs })
+    try {
+      const { card } = await runtime.createCard({ name: 'Adopting card' })
+      let scriptId: string
+      if (kind === 'user') {
+        scriptId = (await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'panel.loom.js', source: loomScriptSource() })).script.id
+      } else {
+        if (kind === 'card-extension') {
+          const archive = zipSync({
+            'manifest.json': Buffer.from(JSON.stringify({
+              manifestVersion: 2, id: 'example.scripts', version: '1.0.0', displayName: 'Scripts', engines: { studio: '^0.1.0' },
+              contributes: { loomScripts: [{ id: 'panel', source: './panel.loom.js' }] },
+            })),
+            'panel.loom.js': Buffer.from(loomScriptSource()),
+          })
+          await runtime.attachCardExtensionPackage({ cardId: card.id, expectedVersion: card.version, archive: { packageId: 'example.scripts', version: '1.0.0', archiveBase64: Buffer.from(archive).toString('base64') } })
+        }
+        const imported = await runtime.importExtensionPackageResources({
+          packageId: 'example.scripts', packageVersion: '1.0.0',
+          ...(kind === 'card-extension' ? { target: { kind: 'card' as const, cardId: card.id } } : {}),
+          promptResources: [], agentTools: [], transformRules: [], textExtractors: [],
+          loomScripts: [{ contribution: { id: 'panel', source: './panel.loom.js' }, source: loomScriptSource() }],
+        })
+        scriptId = imported.loomScripts![0]!.scriptId
+      }
+      const script = (await runtime.getLoomScript({ scriptDocumentId: scriptId })).script
+      const editedSource = `${loomScriptSource()}\n// Saved in place\n`
+      const saved = (await runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: script.source.fileName, source: editedSource })).script
+      await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'duplicate.loom.js', source: `${loomScriptSource()}\n// Unrelated same Metadata\n` })
+      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'card', cardId: card.id }, scriptDocumentId: script.id, orderIndex: 4 })
+      await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 4, grantedCapabilities: [] })
+
+      const exported = (await runtime.exportCardBundle({ cardId: card.id })).artifact
+      expect(exported.scriptAttachments).toEqual([{ orderIndex: 4, script: { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName, source: editedSource } }])
+      expect((await runtime.getLoomScript({ scriptDocumentId: script.id })).script).toEqual(saved)
+      const copy = (await runtime.importCardBundle({ artifact: exported })).card
+      const copies = (await runtime.listLoomScripts({ owner: { kind: 'card', cardId: copy.id } })).scripts
+      expect(copies).toHaveLength(1)
+      expect(copies[0]!.id).not.toBe(script.id)
+      expect((await runtime.listLoomScriptMounts({ target: { kind: 'card', cardId: copy.id } })).mounts).toEqual([
+        expect.objectContaining({ scriptDocumentId: copies[0]!.id, enabled: false, grantedCapabilities: [], orderIndex: 4 }),
+      ])
+      expect((await runtime.exportCardBundle({ cardId: copy.id })).artifact.scriptAttachments).toEqual(exported.scriptAttachments)
+      expect((await runtime.getLoomScript({ scriptDocumentId: script.id })).script.owner).toEqual(script.owner)
+      if (kind === 'card-extension') {
+        expect(exported.extensionPackages).toHaveLength(1)
+        expect((await runtime.exportCardBundle({ cardId: copy.id })).artifact.extensionPackages).toEqual(exported.extensionPackages)
+      }
+    } finally {
+      await fixture.engine.close()
       await rm(rootDirectory, { recursive: true, force: true })
     }
   })

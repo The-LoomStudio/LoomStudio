@@ -31,6 +31,7 @@ type Dependencies = {
   applicationRuntime: ReturnType<typeof createApplicationRuntime>
   assets?: AssetStore
   documents: DocumentStore
+  extensionAgentTasks?: ReturnType<typeof createExtensionAgentTasks>
   agents?: ReturnType<typeof createAgentStore>
   narratives?: ReturnType<typeof createNarrativeStore>
   states?: ReturnType<typeof createStateStore>
@@ -88,7 +89,7 @@ type ApplicationAdapter = Pick<Parameters<typeof createExtensionHost>[0],
 export function createExtensionApplicationAdapter({
   applicationRuntime, assets, documents, agents, narratives, states, promptResources, getKernel,
   aiCapabilities, profiledAiGateway, gateway, agentTools, macroProviders, promptProcessors,
-  stateContent, narrativeContext, stateContributions,
+  stateContent, narrativeContext, stateContributions, extensionAgentTasks,
 }: Dependencies): ApplicationAdapter {
   const recordArchiveOwners = new Set<string>()
   const narrativeReader = narratives ? createExtensionNarrativeReader(applicationRuntime, narratives) : undefined
@@ -135,7 +136,7 @@ export function createExtensionApplicationAdapter({
     validateExtensionNarrative: narrativeReader?.validate,
     subscribeNarrativeActivity: applicationRuntime.subscribeNarrativeActivity,
     registerReadonlyFiles: applicationRuntime.registerReadonlyFiles,
-    extensionAgentTasks: createExtensionAgentTasks({ runtime: applicationRuntime, documents }),
+    extensionAgentTasks: extensionAgentTasks ?? createExtensionAgentTasks({ runtime: applicationRuntime, documents }),
     assets: assets
       ? {
           publish: async input => {
@@ -220,7 +221,7 @@ export function createExtensionApplicationAdapter({
     },
     aiCapabilities,
     aiGateway: profiledAiGateway,
-    invokeModel: async input => {
+    invokeModel: async (input, owner) => {
       if (typeof input.model?.providerProfileId !== 'string' || !input.model.providerProfileId.trim()
         || typeof input.model.modelId !== 'string' || !input.model.modelId.trim())
         throw new Error('Explicit provider profile and model are required')
@@ -232,6 +233,7 @@ export function createExtensionApplicationAdapter({
           ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
         },
         runId: createId('extension-model-run'),
+        ...(owner ? { context: { actor: { kind: 'extension' as const, id: owner.packageId }, observationOrigin: owner } } : {}),
         sessionId: 'extension-direct',
         branchId: 'extension-direct',
         ...(input.signal ? { abortSignal: input.signal } : {}),
@@ -251,8 +253,8 @@ export function createExtensionApplicationAdapter({
         ...(result.raw ? { raw: result.raw } : {}),
       }
     },
-    buildPrompt: async (input, target, packageId, lease) => await applicationRuntime.buildExtensionPrompt(
-      input, target, packageId, lease,
+    buildPrompt: async (input, target, packageId, lease, observation) => await applicationRuntime.buildExtensionPrompt(
+      input, target, packageId, lease, { observationOrigin: observation },
     ),
     registerMacroProvider: (provider, owner) => macroProviders.register({
       ...provider,

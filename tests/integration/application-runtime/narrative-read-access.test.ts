@@ -172,7 +172,7 @@ describe('host-owned Narrative read ranges', () => {
         context: [],
         narrative: {
           ...f.scope, sample: f.reader.sample,
-          appendNode: async () => ({ nodeId: 'unused' }), editNode: async () => ({ nodeId: 'unused' }),
+          appendNode: async () => ({ nodeId: 'unused', floor: 1 }), editNode: async () => ({ nodeId: 'unused', floor: 1 }),
         },
       }
       const makeTools = (approve?: ToolApprovalHandler) => createAgentToolRegistry([tool], [{
@@ -222,7 +222,7 @@ describe('host-owned Narrative read ranges', () => {
       const source = `
 const active = await ctx.readNarrative({ selection: { kind: "tail", count: 10000 } });
 print(active.text);
-const old = await ctx.readNarrative({ selection: { kind: "tail", count: 1, throughNodeId: ${JSON.stringify(f.nodes[4]!.id)} } });
+const old = await ctx.readNarrative({ selection: { kind: "tail", count: 1, throughFloor: 5 } });
 print("OLD=" + old.text);
 `
       let step = 0
@@ -270,7 +270,7 @@ print("OLD=" + old.text);
       expect(JSON.stringify(allowed)).not.toContain('FLOOR_32')
       expect(JSON.stringify(allowed)).toContain('OLD=FLOOR_5')
       expect(actions).toHaveLength(2)
-      expect(actions[0]?.selection).toEqual({ kind: 'tail', count: 1, throughNodeId: f.nodes[4]!.id })
+      expect(actions[0]?.selection).toMatchObject({ kind: 'tail', count: 1, throughFloor: 5 })
       const prefix = (messages: ChatMessage[]) => messages.find(message => message.role === 'developer')?.content
       expect(prefix(requests[0]!)).toBe(prefix(requests[2]!))
       expect(prefix(requests[0]!)).toContain('FLOOR_40')

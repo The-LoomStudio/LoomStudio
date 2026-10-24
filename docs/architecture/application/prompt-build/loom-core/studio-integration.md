@@ -57,14 +57,14 @@ DFS 编译器返回 `CompiledPrompt`，包含 `messages` 与 `editorProjection`�
 
 ## 6. PromptBuild Trace 压缩
 
-当前 `PromptBuildTrace` 沿用 `version: 'core-compact-1'`，但由 Agent Composer 构造最小摘要：
+当前 `PromptBuildTrace` 沿用 `version: 'core-compact-1'`，由 Agent Composer 构造 Application 构建记录：
 
 - 编译成功后的 `status: 'ok'` 与 Build / Run / Agent Session 关联字段；
 - 输入贡献数、输出消息数；
-- 空 `diagnostics` 与空 `executions`；
+- 构建诊断 `diagnostics`，以及已采用作者正文处理器实际执行的 prepare / render 记录 `executions`；未使用处理器时 `executions` 为空；
 - 单独附加的变量读取记录。
 
-这些不是对真实 Core Trace 的压缩。编译抛错时也不会从该路径生成完整失败 Pass Trace。Client 可以展示这份 JSON，但不能据此获得逐 Pass 因果链、Mutation 或 Replay 能力。专业可观测性仍见 [PromptBuild 计划](../../../../workbench/plans/log-plan/prompt-build-observability.md)。
+这些不是对真实 Core Trace 的压缩，也不提供 Core Mutation 或 Replay。Application 另通过 Observation Store 记录来源、激活与排序、正文变换、变量读取和最终消息证据；构建失败时保留已取得的部分证据与失败原因，部分可用不等于完整重放。热 / 冷 Resume 复用已接受消息与处理快照，不会为补齐记录而重跑处理器。当前保留与查询合同见[模型观测](../../../platform/logging.md#模型观测与保留边界)，后续演进见 [PromptBuild 计划](../../../../workbench/plans/log-plan/prompt-build-observability.md)。
 
 ## 7. Loom Runner
 

@@ -1,3 +1,4 @@
+import { useUserBackgrounds } from '../features/backgrounds/model/use-user-backgrounds.js'
 import { SessionSummaryActivity, type SummaryControl, type SummaryRow, type SummaryCoverage } from '../widgets/memory-panel/session-summary-activity.js'
 import { useExtensionCardContext } from '../features/extension-renderers/model/use-extension-card-context.js'
 import { StartupReady } from './startup-curtain.js'
@@ -34,7 +35,8 @@ import { OfficialExtensionSetup } from '../features/extension-renderers/ui/remot
 import { resolveBackground } from '../features/extension-renderers/model/resolve-background.js'
 import { listClientActions } from '../features/extension-renderers/model/client-actions.js'
 import { ClientActionIcon } from '../features/extension-renderers/ui/client-action-icon.js'
-import { createLoomScriptRendererRuntime, type LoomScriptInputProjection, type LoomScriptRendererContribution } from '../features/loom-scripts/runtime/index.js'
+import { type LoomScriptInputProjection, type LoomScriptRendererContribution } from '../features/loom-scripts/runtime/index.js'
+import { useScriptRuntime } from '../features/loom-scripts/model/use-script-runtime.js'
 import type { ClientRendererScope } from '../shared/extension-renderer-runtime/client-renderer-host.js'
 
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
@@ -79,6 +81,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const narrativeInputRef = useRef<HTMLTextAreaElement>(null)
   const appearance = useAppearanceStore()
   const state = useStudioState(props.transportLogger)
+  const userBackgrounds = useUserBackgrounds(state.api.userBackgrounds, state.endpoint, state.t)
   const [onboardingComplete, setOnboardingComplete] = useState(readOnboardingComplete)
   const [summaryCoverage, setSummaryCoverage] = useState<{ sessionId: string; coverage?: SummaryCoverage }>()
   const [summaryRows, setSummaryRows] = useState<{ sessionId: string; rows: SummaryRow[] }>()
@@ -124,7 +127,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const appearanceBackground = resolveBackground(
     appearance.scopedBackground && appearance.scopedBackground.cardId === appearanceCardId
       ? appearance.scopedBackground : appearance.background,
-    clientExtensions.host.backgrounds(),
+    [...clientExtensions.host.backgrounds(), ...userBackgrounds.backgrounds],
     appearanceCardId,
   )
   useEffect(() => {
@@ -416,42 +419,27 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     })
   }, [rendererHost, narrativeNavigating, state.agentChatSession?.id, state.narrativeTimeline?.id, state.narrativeTimeline?.createdFrom?.cardId, state.branch?.id, state.branch?.timelineId, state.selectedCardId])
 
-  useEffect(() => {
-    let disposed = false
-    const runtime = createLoomScriptRendererRuntime({
-      rendererHost,
-      resolveInputs: (scope, contribution) => resolveLoomScriptInputs({
-        api: state.api,
-        scope,
-        contribution,
-        narrative: state.narrativeTimeline && state.branch ? {
-          timelineId: state.narrativeTimeline.id,
-          branchId: state.branch.id,
-          consumerAgentSessionId: state.narrativeAgentSession?.id ?? state.agentChatSession?.id,
-        } : undefined,
-        agentSessionId: state.agentChatSession?.id,
-      }),
-      stateRead: async target => (await state.statesApi.get(target)).snapshot.value,
-      notify: notifications.show,
-    })
-    void state.api.loomScripts.resolveRendererMounts({
-      workspaceId: 'workspace',
-      ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
-      ...(activePresetId ? { presetId: activePresetId } : {}),
-    }).then(result => {
-      if (disposed) return
-      runtime.reconcile(result.mounts)
-      for (const mount of result.unavailableMounts) {
-        if (mount.enabled) notify.warning(mount.message, { id: `loom-script-unavailable:${mount.mountId}` })
-      }
-    }).catch(error => {
-      if (!disposed) notify.error(error instanceof Error ? error.message : String(error))
-    })
-    return () => {
-      disposed = true
-      runtime.dispose()
-    }
-  }, [activePresetId, uiState.loomScriptRefreshToken, rendererHost, notifications, state.agentChatSession?.id, state.api, state.branch?.id, state.narrativeTimeline?.id, state.statesApi])
+  useScriptRuntime({
+    api: state.api,
+    rendererHost,
+    listBackgrounds: clientExtensions.host.backgrounds,
+    logger: props.extensionLogger,
+    presetId: activePresetId,
+    refreshToken: uiState.loomScriptRefreshToken,
+    resolveInputs: (scope, contribution) => resolveLoomScriptInputs({
+      api: state.api,
+      scope,
+      contribution,
+      narrative: state.narrativeTimeline && state.branch ? {
+        timelineId: state.narrativeTimeline.id,
+        branchId: state.branch.id,
+        consumerAgentSessionId: state.narrativeAgentSession?.id ?? state.agentChatSession?.id,
+      } : undefined,
+      agentSessionId: state.agentChatSession?.id,
+    }),
+    stateRead: async target => (await state.statesApi.get(target)).snapshot.value,
+    notify: notifications.show,
+  })
 
   useEffect(() => {
     if (navigation.route.targetUri !== undefined) return
@@ -474,7 +462,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     globalSearchQuery: globalSearch.query,
     searchMatch: !globalSearch.query.trim() ? undefined : searchMatch?.query === globalSearch.query ? searchMatch
       : navigation.route.resourceId && navigation.route.assetId ? { resourceId: navigation.route.resourceId, nodeId: navigation.route.assetId, query: globalSearch.query, requestId: 0 } : undefined })
-  const panels = createStudioPanels({ state, extensionCardContext, uiState, navigation, rendererHost, clientExtensions, themeController, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentPresetBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, openAgentSession, onTextTransformsChanged, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds() })
+  const panels = createStudioPanels({ state, extensionCardContext, uiState, navigation, rendererHost, clientExtensions, themeController, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentPresetBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, openAgentSession, onTextTransformsChanged, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds(), userBackgrounds })
 
   const studio = (
     <StudioPage
@@ -503,6 +491,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       agentSessionsCount={state.agentChatSessions?.length}
       isPrimarySession={Boolean(state.agentChatSession && state.narrativeAgentSession?.id === state.agentChatSession.id)}
       agentPanel={<ContentErrorBoundary resetKey={state.agentChatSession?.id} fallback={error => <p role="alert">{error.message}</p>}><AgentChatPanel
+        userIdentity={state.userIdentity}
         onboardingHint={assistantGuide ? <aside className={onboardingStyles.guide} role="status"><p>{onboardingCopy[state.locale].guide}</p><Button onClick={() => setAssistantGuide(false)}>{onboardingCopy[state.locale].dismiss}</Button></aside> : null}
         initialCreatePresetId={assistantGuide ? assistantPresetId : undefined}
         active={uiState.agentPanelOpen}
@@ -629,6 +618,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
             containerRef={narrativeSelectionRef} inputRef={narrativeInputRef} t={state.t}
             onQuote={text => state.setInput(appendQuote(state.input, text))} />
           <ContentErrorBoundary resetKey={state.branch?.id} fallback={error => <p role="alert">{error.message}</p>}><NarrativeTimeline
+            userIdentity={state.userIdentity}
             displayProjection={narrativeDisplay}
             displayOnlyNodeId={state.displayOnlyNarrativeNodeId}
             key={JSON.stringify(['narrative-timeline', state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}

@@ -1,3 +1,4 @@
+import { readUserProfiles, resolveCurrentUserProfile } from '../profiles/user-profiles.js'
 import { workspaceBinaryLimit } from './workspace-runtime.js'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { JsonObject } from '@loom-studio/shared'
@@ -85,7 +86,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
       const content = normalizeCardContent(card.content)
       const revision = await ctx.states.getRevision(branch.stateHeadRevisionId)
       if (!revision) throw new Error('Narrative State revision not found')
-      const variables = await readAgentTurnVariables(ctx, content.userName, revision.snapshot, content.name)
+      const variables = await readAgentTurnVariables(ctx, revision.snapshot, content.name)
       const selected = input.openingContent === undefined ? readOpening(content, variables, input.openingId) : undefined
       const openingContent = input.openingContent ?? selected!.content
       requestContext?.abortSignal?.throwIfAborted()
@@ -114,7 +115,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
       }
     },
 
-    exportTimelineArchive: async (input: { timelineId: string }): Promise<{ archive: TimelineArchive }> => {
+    exportTimelineArchive: async (input: { timelineId: string }): Promise<{ archive: TimelineArchive }> => ctx.dataEngine.readSnapshot(async () => {
       const narratives = requireNarratives(ctx)
       const timeline = await narratives.getTimeline(input.timelineId)
       if (!timeline) throw new Error(`Narrative timeline not found: ${input.timelineId}`)
@@ -131,6 +132,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         if (!ctx.blobs) throw new Error('Blob Storage is required to export Workspace files')
         return { id, mediaType, base64: Buffer.from(await ctx.blobs.read(id)).toString('base64') }
       }))
+      // Export participants must only read: their store reads share this snapshot and writes fail fast.
       const participants = await ctx.timelineArchiveParticipants.exportParticipants({
         timelineId: timeline.id,
         branchIds: branches.map(branch => branch.id),
@@ -158,7 +160,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
           presetId: record.content.presetId, macroSelections: record.content.macroSelections,
         })),
       } }
-    },
+    }),
 
     importTimelineArchive: async (input: { source: string }) => {
       const archive = parseTimelineArchive(input.source)
@@ -494,7 +496,7 @@ async function createTimelineFromCard(
   const baseState = materializeStateContribution(composeStateContributions(`initial:${card.id}`, [
     baseContribution, ...contributionSources.map(source => source.contribution),
   ])).snapshot
-  const variables = await readAgentTurnVariables(ctx, cardContent.userName, baseState, cardContent.name)
+  const variables = await readAgentTurnVariables(ctx, baseState, cardContent.name)
   const selectedOpening = input.openingContent === undefined ? readOpening(cardContent, variables, input.openingId) : undefined
   const initialOpening = input.openingContent !== undefined ? renderVariableMacros(input.openingContent, variables) : selectedOpening!.content
   const initializationInstallations = new Map(await readAvailableExtensionInstallations(ctx.documents, card.id, null))
@@ -650,24 +652,18 @@ export async function readStateInitializationResources(
 }
 
 export async function readAgentTurnVariables(
-  ctx: Pick<ApplicationRuntimeContext, 'now' | 'states'>,
-  fallbackUserName: string | undefined,
+  ctx: Pick<ApplicationRuntimeContext, 'now' | 'states' | 'documents'>,
   timeline?: JsonObject,
   characterName?: string,
 ): Promise<VariableRenderContext> {
   const globalSnapshot = await ctx.states.getGlobalSnapshot()
   const global = structuredClone(globalSnapshot?.revision.snapshot ?? {}) as JsonObject
-  const fallbackUser = fallbackUserName?.trim() || 'User'
-  const user = global.user as JsonObject | undefined
-  if (!user || typeof user !== 'object' || Array.isArray(user)) {
-    global.user = { name: fallbackUser }
-  } else if (typeof user.name !== 'string' || user.name.trim().length === 0) {
-    user.name = fallbackUser
-  }
+  const user = resolveCurrentUserProfile(await readUserProfiles(ctx.documents))
   return createVariableRenderContext({
     global,
     ...(timeline ? { timeline } : {}),
     computed: {
+      user: { name: user.name, description: user.description },
       global: {
         time: { now: ctx.now() },
       },

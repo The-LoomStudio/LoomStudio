@@ -32,9 +32,9 @@ const diffTheme = EditorView.theme({
   },
 })
 
-export function ReadOnlyDiff(props: { before: string; after: string; t: Translator }) {
+export function ReadOnlyDiff(props: { before: string; after: string; t: Translator; flow?: boolean; defaultExpanded?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null)
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(props.defaultExpanded ?? false)
   const label = props.t('agent.diffPreview')
   const unchangedPhrase = props.t('agent.diffUnchanged', { count: '$' })
 
@@ -58,13 +58,17 @@ export function ReadOnlyDiff(props: { before: string; after: string; t: Translat
           }),
           loomEditorTheme,
           diffTheme,
+          ...(props.flow ? [EditorView.lineWrapping, EditorView.theme({
+            '&': { height: 'auto', minHeight: '0' },
+            '.cm-scroller': { overflow: 'visible', minHeight: '0' },
+          })] : []),
         ],
       }),
     })
     return () => view.destroy()
-  }, [props.before, props.after, expanded, label, unchangedPhrase])
+  }, [props.before, props.after, expanded, label, unchangedPhrase, props.flow])
 
-  return <section className={styles.diff} aria-label={label} data-loom-component="read-only-diff">
+  return <section className={`${styles.diff} ${props.flow ? styles.flow : ''}`} aria-label={label} data-loom-component="read-only-diff">
     <header className={styles.toolbar}>
       <span>{label}</span>
       <Button size="small" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>

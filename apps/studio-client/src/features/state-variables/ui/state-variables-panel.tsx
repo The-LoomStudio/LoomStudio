@@ -57,6 +57,7 @@ export function StateVariablesPanel(props: Props) {
   const editContextKey = currentSnapshot
     ? `${targetKey}:${scope}:${currentSnapshot.revisionId}`
     : `${targetKey}:${scope}:loading`
+  const preservedDraftContextRef = useRef<string | undefined>(undefined)
   const editContextRef = useRef(editContextKey)
   editContextRef.current = editContextKey
   const treeNodes = useMemo(
@@ -81,8 +82,11 @@ export function StateVariablesPanel(props: Props) {
     saveRequestRef.current = undefined
     setSaving(false)
     setDraftContextKey(editContextKey)
-    setEditedProperties({})
-    setArrayDrafts({})
+    if (preservedDraftContextRef.current !== editContextKey) {
+      setEditedProperties({})
+      setArrayDrafts({})
+    }
+    preservedDraftContextRef.current = undefined
   }, [source, editContextKey])
 
   useEffect(() => {
@@ -92,7 +96,7 @@ export function StateVariablesPanel(props: Props) {
     }
   }, [source, scope, treeNodes])
 
-  async function refresh() {
+  async function refresh(preserveContextKey?: string) {
     const requestId = ++requestIdRef.current
     const target = props.timelineTarget
     try {
@@ -101,6 +105,12 @@ export function StateVariablesPanel(props: Props) {
         target ? props.api.get(target) : Promise.resolve(undefined),
       ])
       if (!mountedRef.current || requestId !== requestIdRef.current || sourceRef.current !== source) return
+      // A scope round trip can create a new draft while the previous save is pending.
+      // Rebase that draft only if the user is still editing the same context.
+      if (preserveContextKey && editContextRef.current === preserveContextKey) {
+        const refreshed = scope === 'global' ? globalResult.snapshot : timelineResult?.snapshot
+        if (refreshed) preservedDraftContextRef.current = `${targetKey}:${scope}:${refreshed.revisionId}`
+      }
       setGlobalSnapshot(globalResult.snapshot)
       setTimelineSnapshot(timelineResult?.snapshot)
       setSnapshotSource(source)
@@ -146,11 +156,13 @@ export function StateVariablesPanel(props: Props) {
         changes[path] = value
       }
       await props.api.apply(createBatchSetStatePropertiesInput(snapshot.target, snapshot.revisionId, changes))
-      if (!mountedRef.current || sourceRef.current !== source || saveRequestRef.current !== request || editContextRef.current !== saveContextKey) return
-      setEditedProperties({})
-      setArrayDrafts({})
-      notify.success(`${props.t('stateVariables.savedProperties')} ${Object.keys(changes).length}`)
-      await refresh()
+      if (!mountedRef.current || sourceRef.current !== source) return
+      if (saveRequestRef.current === request && editContextRef.current === saveContextKey) {
+        setEditedProperties({})
+        setArrayDrafts({})
+        notify.success(`${props.t('stateVariables.savedProperties')} ${Object.keys(changes).length}`)
+      }
+      await refresh(saveRequestRef.current !== request && editContextRef.current === saveContextKey ? saveContextKey : undefined)
       if (mountedRef.current && sourceRef.current === source) void props.onStateMutated?.()
     } catch (cause) {
       const message = readError(cause)

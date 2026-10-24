@@ -4,9 +4,9 @@
 
 `@loom-studio/application-data` 是 Loom Studio 统一的领域存储核心包。在架构简化演进中，它将原本分散的 `agent-store`、`narrative-store`、`state-store` 与 `prompt-resource-store` 深度整合为一个高内聚的持久化模块。
 
-## 业务使命与四大领域存储
+## 业务使命与五类领域存储
 
-本包负责将 AIRP（AI Role-Play）四项核心业务实体的生命周期、状态迁移与快照安全持久化到共享的 SQLite 存储中：
+本包负责将 AIRP（AI Role-Play）核心业务实体的生命周期、状态迁移与快照持久化到共享的 SQLite 存储中：
 
 1. **Agent 存储 (`src/agent/`)**：
    - 管理独立 Agent 运行会话（`AgentSession`）与 Append-only 的 canonical Transcript（`AgentTranscriptEntry`），不以 Provider wire message 为持久化模型；
@@ -21,6 +21,9 @@
    - 持久化树形层级的提示词资源（Preset、Lore、Logic、Runtime 节点）；
    - 管理独立的 Lore Mount Registry 与 Agent Preset Tool Mount，以及资源 Header/Node 的版本修订；嵌套资源树是消费投影，不是整份 Document 权威存储。Agent Preset 复用 `resourceKind: preset`，不是独立 Profile 存储实体。
    - Lore Mount 同时支持全局来源与预设消费来源，保留失效引用身份及 nullable 解析结果；预设的 `useCardLore` / `textUses` 存在 Resource metadata，不增加预设包所有权或独立运行作用域。
+5. **Workspace 存储 (`src/workspace/`)**：
+   - 保存 Timeline 共享文件树的不可变版本，文本保存在树中，二进制引用 Blob；初始化包含 `MEMORY.md`。
+   - 使用独立 `application.workspace` namespace；Narrative Store 负责装配，Branch / Node 的 Workspace 引用与恢复点归 Narrative 管理。新版本与 Branch 引用由领域流程显式组合到同一事务，不是任意宿主目录同步。
 
 ---
 
@@ -39,7 +42,7 @@
 
 ## 公共入口
 
-Package 主入口为 [`src/index.ts`](./src/index.ts)，统一重导出四大领域模块：
+Package 主入口为 [`src/index.ts`](./src/index.ts)，重导出五类领域存储及相关查询：
 
 ```ts
 import {
@@ -47,6 +50,7 @@ import {
   createNarrativeStore,
   createStateStore,
   createPromptResourceStore,
+  createWorkspaceStore,
 } from '@loom-studio/application-data'
 ```
 
@@ -54,6 +58,7 @@ import {
 - [`src/narrative/`](./src/narrative/)：导出 `createNarrativeStore` 及时间线/分支类型（沿 parent 链游标读取，为 Narrative Sampling 提供底层支撑）；
 - [`src/state/`](./src/state/)：导出 `createStateStore` 及状态变更类型（State Delta 支持合法空键重放与合并保真）；
 - [`src/prompt-resource/`](./src/prompt-resource/)：导出 `createPromptResourceStore` 及资源树操作类型；
+- [`src/workspace/`](./src/workspace/)：导出 `createWorkspaceStore`、文件树条目与不可变版本类型；
 
 内部 [`src/json.ts`](./src/json.ts) 提供数据持久化 JSON 保真断言，显式拒绝 `NaN`、`Infinity` 等非有限数字，保护合法空键、`null`、`0` 与 `false`；它不是 package public export。
 
@@ -62,7 +67,7 @@ import {
 - [`NarrativeStore.appendInput()`](./src/narrative/store.ts) 以固定 `nodeId`、`expectedHeadNodeId` 和正文提交用户输入。同一输入重试返回原节点与原 Changeset；正文、原 parent 或归属不一致返回 `narrative.input_conflict`，不生成第二条正文。调用方在成功落库后另行投递 Agent Session；本 Store 不启动 Agent，也不把两次调用合成一个事务。
 - [`PromptResourceStore.mutateResource()`](./src/prompt-resource/mutations.ts) 必须携带资源级 `expectedVersion`；不匹配返回 `prompt_resource.conflict`，没有自动合并或改用最新版本重试。一次 mutations 列表在同一事务内提交，Header/Node 修订与提交事实一起生效。
 - Agent Session 创建时固定 `agentPresetId`，`updateSession()` 拒绝改绑；换预设须创建另一 Session。固定身份不冻结预设内容，也不代表 Store 管理客户端的主写作选择。
-- 四个 Store 仅执行各自注册的连续版本 migration；数据库 namespace 高于当前支持版本时由 Engine 拒绝，不尝试降级或兼容读取。版本注册以各 `store.ts` 为准。
+- 各 Store 仅执行各自注册的连续版本 migration；数据库 namespace 高于当前支持版本时由 Engine 拒绝，不尝试降级或兼容读取。版本注册以各 `store.ts` 为准。
 
 ### 统一游标分页与数据保真底线
 
@@ -78,7 +83,7 @@ import {
 # 编译 TypeScript 产物
 pnpm --filter @loom-studio/application-data build
 
-# 运行四大领域存储的单元测试套件
+# 运行 Agent、Narrative、State 与 Prompt Resource 存储测试
 pnpm exec vitest run tests/unit/agent-store tests/unit/narrative-store tests/unit/state-store tests/unit/prompt-resource-store
 ```
 

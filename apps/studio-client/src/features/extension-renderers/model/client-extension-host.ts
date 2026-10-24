@@ -28,6 +28,7 @@ import type {
 import type { ManagedClientExtensionModule, ManagedClientExtensionPackage } from '../../../entities/index.js'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
+import { createClientWorkerModule, type ClientWorkerHandle } from '../../../shared/worker-runtime/client-worker-module.js'
 import type { RendererSessionHost } from './renderer-session.js'
 import { rendererContributionKey } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { clientCommandKey, clientModuleKey as moduleKey, matchesClientActionCondition } from './client-actions.js'
@@ -40,6 +41,7 @@ type ClientExtensionDiagnostic = {
   target?: ExtensionInstallationTarget
   code:
     | 'client-extension.activation_failed'
+    | 'client-extension.execution_failed'
     | 'client-extension.disposal_failed'
     | 'client-extension.renderer_not_registered'
     | 'client-extension.command_not_registered'
@@ -127,6 +129,7 @@ export type ClientExtensionDataApi = {
 }
 
 type ActiveClientModule = {
+  runtimeKind: ManagedClientExtensionModule['runtimeKind']
   key: string
   entryUrl: string
   packageVersion: string
@@ -175,10 +178,10 @@ export function createClientExtensionHost(options: {
   const summaries = new Map<string, ClientExtensionModuleSummary>()
   const diagnostics: ClientExtensionDiagnostic[] = []
   const backgrounds = new Map<string, RegisteredClientBackground>()
+  const staticBackgroundKeys = new Set<string>()
   const configSubscriptions = new Map<number, ClientConfigSubscription>()
   const stateSubscriptions = new Set<() => Promise<void>>()
   const listeners = new Set<() => void>()
-  const loadModule = options.loadModule ?? importClientModule
   const logger = options.logger ?? consoleClientExtensionLogger
   const data = options.data ?? unavailableClientExtensionDataApi
   const appearance = options.appearance
@@ -311,6 +314,7 @@ export function createClientExtensionHost(options: {
       ...(extensionPackage.target?.kind === 'card' ? { installationId: extensionInstallationId(extensionPackage.packageId, extensionPackage.target) } : {}) }
     logger.info('Client extension activation started', { extension, event: 'extension.activation.started' })
     const record: ActiveClientModule = {
+      runtimeKind: module.runtimeKind,
       key,
       entryUrl: module.entryUrl,
       packageVersion: extensionPackage.version,
@@ -329,7 +333,9 @@ export function createClientExtensionHost(options: {
 
     try {
       if (!isPackageAvailable(extensionPackage)) throw new Error('Client module is not active in this context')
-      const loaded = await loadModule(module.entryUrl, instanceId)
+      const loaded: LoadedClientModule = options.loadModule ? await options.loadModule(module.entryUrl, instanceId)
+        : module.runtimeKind === 'client-worker' ? createClientWorkerModule({ entryUrl: module.entryUrl })
+          : await importClientModule(module.entryUrl, instanceId)
       record.abortController.signal.throwIfAborted()
       if (!isPackageAvailable(extensionPackage)) throw new Error('Client module context changed while loading')
       const extensionModule = loaded.activate ? loaded as ClientExtensionModule : loaded.default
@@ -355,6 +361,18 @@ export function createClientExtensionHost(options: {
       const returnedHandle = await extensionModule.activate(context)
       if (returnedHandle) record.handles.push(returnedHandle)
       record.abortController.signal.throwIfAborted()
+      if (module.runtimeKind === 'client-worker' && returnedHandle && 'failure' in returnedHandle) {
+        void (returnedHandle as ClientWorkerHandle).failure.then(error => serialize(async () => {
+          // A failure from an old instance must not overwrite a replacement or explicit stop.
+          if (active.get(key) !== record || record.abortController.signal.aborted) return
+          await stop(record)
+          diagnostics.push({ code: 'client-extension.execution_failed', target: extensionPackage.target,
+            packageId: extensionPackage.packageId, moduleId: module.moduleId, message: error.message })
+          summaries.set(key, { packageId: extensionPackage.packageId, moduleId: module.moduleId,
+            target: extensionPackage.target, state: 'degraded', error: error.message })
+          emit()
+        }))
+      }
       for (const declared of module.contributions.renderers ?? []) {
         if (record.registeredRendererIds.has(declared.id)) continue
         diagnostics.push({
@@ -455,14 +473,14 @@ export function createClientExtensionHost(options: {
       for (const extensionPackage of packages) {
         if (extensionPackage.target?.kind === 'card' && extensionPackage.target.cardId !== options.rendererHost.scopeSnapshot().cardId) continue
         for (const module of extensionPackage.modules) {
-          if (module.runtimeKind === 'client' && module.entryUrl) {
+          if ((module.runtimeKind === 'client' || module.runtimeKind === 'client-worker') && module.entryUrl) {
             candidates.set(moduleKey(extensionPackage.packageId, module.moduleId, extensionPackage.target), { extensionPackage, module })
           }
         }
       }
       for (const [key, record] of active) {
         const next = candidates.get(key)
-        if (!next?.module.desired.enabled || reload.has(key) || next.module.entryUrl !== record.entryUrl
+        if (!next?.module.desired.enabled || reload.has(key) || next.module.entryUrl !== record.entryUrl || next.module.runtimeKind !== record.runtimeKind
           || next.extensionPackage.version !== record.packageVersion || next.module.reloadId !== record.reloadId
           || permissionFingerprint(next.module) !== record.permissions
           || !isPackageAvailable(next.extensionPackage)
@@ -470,6 +488,19 @@ export function createClientExtensionHost(options: {
       }
       return serialize(async () => {
         if (revision !== lifecycleRevision) return
+        for (const key of staticBackgroundKeys) backgrounds.delete(key)
+        staticBackgroundKeys.clear()
+        for (const pkg of packages) {
+          if (!pkg.available || pkg.target?.kind === 'card' || pkg.participation === 'timeline') continue
+          for (const background of pkg.resources?.backgrounds ?? []) {
+            const key = `${pkg.packageId}/${background.id}`
+            backgrounds.set(key, {
+              ...background, key, packageId: pkg.packageId, source: pkg.displayName,
+              image: extensionFileUrl(pkg.packageId, pkg.fileRevision ?? pkg.version, background.image.replace(/^\.\//, '')),
+            })
+            staticBackgroundKeys.add(key)
+          }
+        }
         const desired = new Map<string, { extensionPackage: ManagedClientExtensionPackage; module: ManagedClientExtensionModule }>()
         catalog.clear()
         for (const { extensionPackage, module } of candidates.values()) {
@@ -579,6 +610,8 @@ export function createClientExtensionHost(options: {
       return serialize(async () => {
         for (const record of [...active.values()].reverse()) await stop(record)
         catalog.clear()
+        backgrounds.clear()
+        staticBackgroundKeys.clear()
         emit()
       })
     },
@@ -914,7 +947,7 @@ function createActivationContext(input: {
         const cardId = installationTarget.kind === 'card' ? installationTarget.cardId : value.target?.kind === 'card' ? value.target.cardId : undefined
         if (cardId) {
           if (!input.appearance?.scoped) throw new Error('Scoped background host is unavailable')
-          const ownerKey = installationTarget.kind === 'card' ? input.record.key : moduleKey(value.packageId, value.moduleId, value.target)
+          const ownerKey = installationTarget.kind === 'card' ? input.record.key : moduleKey(value.packageId, value.moduleId!, value.target)
           input.appearance.scoped.set({ id: value.key, image: value.image, cardId, ownerKey })
         } else {
           input.appearance?.setBackground({ id: value.key, image: value.image })

@@ -1,3 +1,4 @@
+import type { ObservationBuild } from '../observability/types.js'
 import { evaluatePromptActivation, type ActivationFacts } from './prompt-activation.js'
 import type {
   CompiledMessage,
@@ -9,6 +10,7 @@ import type {
 } from './prompt-builder.js'
 
 export type PromptBuildTrace = {
+  observation?: ObservationBuild
   version: 'core-compact-1'
   status: 'ok' | 'error'
   buildId?: string
@@ -38,27 +40,28 @@ export type PromptDataModel = {
   activationFacts?: ActivationFacts
 }
 
-export function compilePromptDataModel(input: PromptDataModel): CompiledPrompt {
+export function compilePromptDataModel(input: PromptDataModel, observation?: ObservationBuild): CompiledPrompt {
   if (input.contributions.some(entry => entry.capabilities.processorId))
     throw new Error('Authored Prompt processors require the asynchronous build path')
-  return emitPromptBlocks(planPromptBlocks(input))
+  return emitObservedPromptBlocks(planPromptBlocks(input, observation), input, observation)
 }
 
 /** Planning is synchronous; async language processors run over these ordered fragments. */
-export function planPromptBlocks(input: PromptDataModel): PromptFragment[][] {
+export function planPromptBlocks(input: PromptDataModel, observation?: ObservationBuild): PromptFragment[][] {
   const { contributions, sourceNodes, activationFacts } = input
+  recordPromptSources(input, observation)
+  const recordActivation = (id: string, result: { active: boolean; reason: string }) => captureBuildEvidence(() => {
+    const source = observation?.sources?.find(source => source.id === id)
+    if (source) Object.assign(source, result)
+  })
   const disabledNodeIds = new Set(sourceNodes.filter(node => node.enabled === false).map(node => node.id))
   
   const activeContributions = contributions.filter(c => {
-    if (disabledNodeIds.has(c.sourceRef.sourceNodeId)) return false
-    if (c.capabilities.activation) {
-      return evaluatePromptActivation({
-        activation: c.capabilities.activation,
-        currentInput: input.currentInput,
-        facts: activationFacts ?? {},
-      }).active
-    }
-    return true
+    const result = disabledNodeIds.has(c.sourceRef.sourceNodeId)
+      ? { active: false, reason: 'author or ancestor disabled' }
+      : evaluatePromptActivation({ activation: c.capabilities.activation, currentInput: input.currentInput, facts: activationFacts ?? {} })
+    recordActivation(c.sourceRef.sourceNodeId, result)
+    return result.active
   })
   
   const childrenByParent = new Map<string | null, SourceNode[]>()
@@ -77,13 +80,13 @@ export function planPromptBlocks(input: PromptDataModel): PromptFragment[][] {
     if (!root) throw new Error(`Prompt skeleton root not found: ${input.skeletonRootId}`)
     childrenByParent.set(null, [root])
   }
-  const isActiveNode = (node: SourceNode) => node.enabled !== false && (
-    !node.capabilities?.activation || evaluatePromptActivation({
-      activation: node.capabilities.activation,
-      currentInput: input.currentInput,
-      facts: activationFacts ?? {},
-    }).active
-  )
+  const isActiveNode = (node: SourceNode) => {
+    const result = node.enabled === false
+      ? { active: false, reason: node.evidence?.disabledReason ?? 'author or ancestor disabled' }
+      : evaluatePromptActivation({ activation: node.capabilities?.activation, currentInput: input.currentInput, facts: activationFacts ?? {} })
+    recordActivation(node.id, result)
+    return result.active
+  }
   const skeletonNodes: SourceNode[] = []
   function collectSkeleton(parentId: string | null) {
     for (const node of childrenByParent.get(parentId) ?? []) {
@@ -268,4 +271,128 @@ export function emitPromptBlocks(blocks: PromptFragment[][]): CompiledPrompt {
       promptRows: [],
     },
   }
+}
+
+// Observation has its own small budget before any snapshot copy; it never throws
+// through the Prompt execution path. Store limits apply independently afterwards.
+const evidenceBudgets = new WeakMap<ObservationBuild, { remaining: number; items: number }>()
+export function captureBuildEvidence(work: () => void): void {
+  try { work() } catch { /* best-effort observation must not change Prompt behavior */ }
+}
+export function appendBuildEvidence<K extends 'sources' | 'variables' | 'transformations' | 'diagnostics'>(
+  observation: ObservationBuild | undefined, key: K, value: NonNullable<ObservationBuild[K]>[number],
+): void {
+  if (!observation) return
+  captureBuildEvidence(() => {
+    const budget = evidenceBudgets.get(observation) ?? { remaining: 512_000, items: 8_000 }
+    evidenceBudgets.set(observation, budget)
+    const measure = (item: unknown): void => {
+      if (--budget.items < 0) throw new Error('observation item budget')
+      if (typeof item === 'string') budget.remaining -= item.length * 2
+      else if (item && typeof item === 'object') {
+        for (const key in item) if (Object.hasOwn(item, key)) {
+          budget.remaining -= key.length * 2
+          measure((item as Record<string, unknown>)[key])
+        }
+      }
+      if (budget.remaining < 0) throw new Error('observation content budget')
+    }
+    try { measure(value) } catch {
+      if (!observation.diagnostics?.some(item => (item as { code?: string })?.code === 'observation.budget_exceeded'))
+        (observation.diagnostics ??= []).push({ code: 'observation.budget_exceeded', message: 'Build evidence is partial: capture budget exceeded.' })
+      return
+    }
+    const values: unknown[] = observation[key] ??= []
+    values.push(structuredClone(value))
+  })
+}
+export function recordPromptSources(model: PromptDataModel, observation?: ObservationBuild): void {
+  if (!observation) return
+  captureBuildEvidence(() => {
+    if (observation.sources) return
+    observation.sources = []
+    const targetsBySource = new Map<string, Set<string>>()
+    for (const contribution of model.contributions) {
+      const target = contribution.capabilities.targetAnchorId
+      if (!target) continue
+      const targets = targetsBySource.get(contribution.sourceRef.sourceNodeId) ?? new Set<string>()
+      if (targets.size < 128) targets.add(target)
+      targetsBySource.set(contribution.sourceRef.sourceNodeId, targets)
+    }
+    const targetAnchorIds = (id: string, target?: string): string[] | undefined => {
+      const targets = new Set(target ? [target] : [])
+      for (const value of targetsBySource.get(id) ?? []) if (targets.size < 128) targets.add(value)
+      return targets.size ? [...targets] : undefined
+    }
+    const activationEvidence = (capabilities: SourceNode['capabilities'] | PromptContribution['capabilities']) => {
+      const lifecycle = capabilities && 'lifecycle' in capabilities ? capabilities.lifecycle : undefined
+      return {
+        activationKind: capabilities?.activation?.kind ?? 'always',
+        lifecycle: lifecycle && typeof lifecycle === 'object' && 'lifecycle' in lifecycle && typeof lifecycle.lifecycle === 'string'
+          ? lifecycle.lifecycle : undefined,
+      }
+    }
+    for (const node of model.sourceNodes) appendBuildEvidence(observation, 'sources', {
+      id: node.id, title: node.displayName, path: node.evidence?.path,
+      nodeKind: node.kind, parentId: node.parentId ?? undefined, orderIndex: node.orderIndex,
+      ...activationEvidence(node.capabilities),
+      ...(node.kind === 'virtual'
+        ? { anchorIds: [...new Set([node.id, node.capabilities?.targetAnchorId].filter((id): id is string => Boolean(id)))] }
+        : { targetAnchorIds: targetAnchorIds(node.id, node.capabilities?.targetAnchorId) }),
+      resourceId: node.evidence?.resourceId, version: node.evidence?.version,
+      active: false, reason: node.evidence?.disabledReason ?? (node.enabled === false ? 'author disabled' : 'not evaluated in selected skeleton'),
+    })
+    const known = new Set(model.sourceNodes.map(node => node.id))
+    for (const contribution of model.contributions) if (!known.has(contribution.sourceRef.sourceNodeId)) {
+      known.add(contribution.sourceRef.sourceNodeId)
+      appendBuildEvidence(observation, 'sources', { id: contribution.sourceRef.sourceNodeId, title: contribution.sourceRef.sourceNodeId,
+        targetAnchorIds: targetAnchorIds(contribution.sourceRef.sourceNodeId),
+        ...activationEvidence(contribution.capabilities),
+        active: false, reason: 'not evaluated' })
+    }
+  })
+}
+export function emitObservedPromptBlocks(blocks: PromptFragment[][], model: PromptDataModel, observation?: ObservationBuild): CompiledPrompt {
+  const projection = emitPromptBlocks(blocks)
+  captureBuildEvidence(() => {
+    if (!observation) return
+    const nodes = new Map(model.sourceNodes.map(node => [node.id, node]))
+    for (const [blockIndex, block] of blocks.entries()) for (const [fragmentIndex, fragment] of block.entries()) {
+      if (fragment.messages ? fragment.messages.length === 0 : !fragment.content.trim()) continue
+      const source = observation.sources?.find(source => source.id === fragment.source.sourceNodeId)
+      if (!source) continue
+      const original = nodes.get(fragment.source.sourceNodeId)?.evidence?.original ?? nodes.get(fragment.source.sourceNodeId)?.body ?? model.contributions.find(item => item.id === fragment.id)?.content
+      appendBuildEvidence(observation, 'transformations', {
+        kind: 'emission', hostId: source.id, fragmentId: fragment.id,
+        sourceNodeId: source.id, targetAnchorId: fragment.targetAnchorId,
+        original, rendered: fragment.content,
+        ...(fragment.messages ? { messages: fragment.messages } : {}),
+        placement: { blockIndex, fragmentIndex, role: fragment.role, targetAnchorId: fragment.targetAnchorId, localDepth: fragment.localDepth },
+      })
+      const evidence = observation.transformations?.at(-1) as { kind?: string; fragmentId?: string; original?: string; rendered?: string; placement?: unknown } | undefined
+      if (evidence?.kind === 'emission' && evidence.fragmentId === fragment.id) {
+        source.original = evidence.original; source.rendered = evidence.rendered; source.placement = evidence.placement
+      }
+      if ((source.fragmentIds?.length ?? 0) < 128) source.fragmentIds = [...(source.fragmentIds ?? []), fragment.id]
+      else appendBuildEvidence(observation, 'diagnostics', { code: 'observation.fragment_limit', hostId: source.id })
+    }
+    for (const source of observation.sources ?? []) {
+      if (source.active && !source.fragmentIds?.length) source.reason += '; no emitted fragment (empty content, unavailable anchor, or excluded subtree)'
+    }
+    observation.messages = projection.messages
+    observation.messageFragments = projection.messages.slice(0, 1000).map(message => message.fragmentIds)
+    if (projection.messages.length > 1000) appendBuildEvidence(observation, 'diagnostics', { code: 'observation.message_fragment_limit' })
+    projection.observation = observation
+  })
+  return projection
+}
+
+export function recordMacroReads(observation: ObservationBuild, trace: import('@loom-studio/shared').VariableRenderTrace): void {
+  captureBuildEvidence(() => {
+    for (const read of trace.reads) appendBuildEvidence(observation, 'variables', {
+      name: read.requestedPath, path: read.resolvedPath, source: read.source,
+      value: read.value, hostId: read.hostId, stage: read.stage,
+    })
+    for (const diagnostic of trace.diagnostics) appendBuildEvidence(observation, 'diagnostics', diagnostic)
+  })
 }

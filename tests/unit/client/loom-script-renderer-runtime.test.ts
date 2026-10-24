@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mountLoomSandboxRenderer } from '../../../apps/studio-client/src/features/loom-scripts/runtime/sandbox-renderer-protocol.js'
 import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 import type { ClientRendererContext } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
@@ -12,6 +12,7 @@ vi.mock('../../../apps/studio-client/src/features/loom-scripts/runtime/sandbox-r
   mountLoomSandboxRenderer: vi.fn(() => ({ update: vi.fn(), dispose: vi.fn() })),
 }))
 beforeEach(() => vi.clearAllMocks())
+afterEach(() => vi.unstubAllGlobals())
 
 const contribution: LoomScriptRendererContribution = {
   kind: 'renderer',
@@ -19,23 +20,89 @@ const contribution: LoomScriptRendererContribution = {
   inputs: [{ kind: 'match', ruleId: 'status-rule' }, { kind: 'artifact', artifactType: 'status' }],
 }
 
-function sandboxFixture(resolveInputs: Parameters<typeof createLoomScriptRendererRuntime>[0]['resolveInputs']) {
+function sandboxFixture(resolveInputs: Parameters<typeof createLoomScriptRendererRuntime>[0]['resolveInputs'], requires?: string[]) {
   const rendererHost = createClientRendererHost()
   const runtime = createLoomScriptRendererRuntime({ rendererHost, resolveInputs, stateRead: vi.fn() })
-  runtime.reconcile([{
-    mountId: 'mount', enabled: true, orderIndex: 0, grantedCapabilities: [], source: 'export const renderers = {}',
-    script: { id: 'script', version: 1, requestedCapabilities: [], contributions: [contribution] },
-  }])
+  const definition = {
+    mountId: 'mount', mountVersion: 1, enabled: true, orderIndex: 0, grantedCapabilities: [], source: 'export const renderers = {}',
+    script: { id: 'script', version: 1, requestedCapabilities: [], contributions: [contribution], requires },
+  }
+  runtime.reconcile([definition])
   const registration = rendererHost.list('narrative.timeline.tail')[0]!
   const context = { scope: { kind: 'timeline', key: 'timeline' } } as ClientRendererContext
   return {
     rendererHost,
+    definition,
     mount: () => registration.sandboxMount!({} as HTMLElement, context),
     runtime,
   }
 }
 
 describe('Loom Script Renderer Runtime', () => {
+  it('prepares ordered classic prerequisites once per adoption and sends their source only to the sandbox', async () => {
+    const first = Promise.withResolvers<Response>()
+    const fetchMock = vi.fn((url: string) => url.endsWith('first.js') ? first.promise : Promise.resolve(new Response('const second = first + 1')))
+    vi.stubGlobal('fetch', fetchMock)
+    const f = sandboxFixture(() => ({ matches: [], artifacts: [] }), ['https://example.test/first.js', 'https://example.test/second.js'])
+    try {
+      f.mount()
+      f.mount()
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+      expect(mountLoomSandboxRenderer).not.toHaveBeenCalled()
+      first.resolve(new Response('const first = 1'))
+      await vi.waitFor(() => expect(mountLoomSandboxRenderer).toHaveBeenCalledTimes(2))
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(f.definition.script.requires)
+      expect(vi.mocked(mountLoomSandboxRenderer).mock.calls[0]![2].source).toBe('const first = 1\n;\nconst second = first + 1\n;\nexport const renderers = {}')
+      f.runtime.reconcile([{ ...f.definition, source: 'saved source', script: { ...f.definition.script, version: 2, requires: ['https://example.test/new.js'] } }])
+      f.mount()
+      await vi.waitFor(() => expect(mountLoomSandboxRenderer).toHaveBeenCalledTimes(3))
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(mountLoomSandboxRenderer).mock.calls[2]![2].source).toContain('const first = 1')
+    } finally { f.runtime.dispose() }
+  })
+
+  it.each(['unload', 'refresh'] as const)('cancels pending prerequisites on %s and ignores late results', async action => {
+    const response = Promise.withResolvers<Response>()
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => response.promise)
+    vi.stubGlobal('fetch', fetchMock)
+    const f = sandboxFixture(() => ({ matches: [], artifacts: [] }), ['https://example.test/slow.js'])
+    try {
+      f.mount()
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+      const signal = fetchMock.mock.calls[0]![1]!.signal!
+      if (action === 'unload') f.runtime.reconcile([])
+      else f.runtime.reconcile([{ ...f.definition, mountVersion: 2, source: 'refreshed', script: { ...f.definition.script, requires: [] } }])
+      expect(signal.aborted).toBe(true)
+      response.resolve(new Response('late prerequisite'))
+      await response.promise
+      if (action === 'refresh') {
+        const registration = f.rendererHost.list('narrative.timeline.tail')[0]!
+        registration.sandboxMount!({} as HTMLElement, { scope: { kind: 'timeline', key: 'timeline' } } as ClientRendererContext)
+        await vi.waitFor(() => expect(mountLoomSandboxRenderer).toHaveBeenCalledOnce())
+        expect(vi.mocked(mountLoomSandboxRenderer).mock.calls[0]![2].source).toBe('refreshed')
+      } else {
+        await Promise.resolve()
+        await Promise.resolve()
+        expect(mountLoomSandboxRenderer).not.toHaveBeenCalled()
+      }
+      expect(f.rendererHost.diagnostics()).toEqual([])
+    } finally { f.runtime.dispose() }
+  })
+
+  it('reports a failed prerequisite without creating a sandbox or downloading later prerequisites', async () => {
+    const fetchMock = vi.fn(async () => new Response('missing', { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const f = sandboxFixture(() => ({ matches: [], artifacts: [] }), ['https://example.test/missing.js', 'https://example.test/later.js'])
+    try {
+      f.mount()
+      await vi.waitFor(() => expect(f.rendererHost.diagnostics()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'renderer.sandbox_failed', message: 'Loom Script dependency failed: https://example.test/missing.js (404)' }),
+      ])))
+      expect(fetchMock).toHaveBeenCalledOnce()
+      expect(mountLoomSandboxRenderer).not.toHaveBeenCalled()
+    } finally { f.runtime.dispose() }
+  })
+
   it('revokes a renderer Timeline State call as soon as the host returns to preview', async () => {
     const f = sandboxFixture(() => ({ matches: [], artifacts: [] }))
     f.rendererHost.setScopeSnapshot({ workspace: 'workspace', timelineId: 'timeline', branchId: 'main' })
@@ -110,7 +177,7 @@ describe('Loom Script Renderer Runtime', () => {
     f.runtime.dispose()
   })
 
-  it('registers only enabled mounts and replaces pinned versions without key collisions', () => {
+  it('keeps saved versions until refresh and isolates adoption mounts without key collisions', () => {
     const rendererHost = createClientRendererHost()
     rendererHost.register({
       owner: { kind: 'extension', packageId: 'script-doc', moduleId: '1' },
@@ -119,17 +186,20 @@ describe('Loom Script Renderer Runtime', () => {
     })
     const runtime = createLoomScriptRendererRuntime({ rendererHost, resolveInputs: () => ({ matches: [], artifacts: [] }), stateRead: vi.fn() })
     const mount = {
-      mountId: 'mount-1', enabled: true, orderIndex: 0, grantedCapabilities: [], source: 'export const renderers = {}',
+      mountId: 'mount-1', mountVersion: 1, enabled: true, orderIndex: 0, grantedCapabilities: [], source: 'export const renderers = {}',
       script: { id: 'script-doc', version: 1, requestedCapabilities: [], contributions: [contribution] },
     }
     runtime.reconcile([mount])
     expect(rendererHost.list('narrative.timeline.tail').map(item => item.owner)).toEqual([
       { kind: 'extension', packageId: 'script-doc', moduleId: '1' },
-      { kind: 'script', scriptDocumentId: 'script-doc', documentVersion: 1 },
+      { kind: 'script', scriptDocumentId: 'script-doc', documentVersion: 1, mountId: 'mount-1' },
     ])
     runtime.reconcile([{ ...mount, script: { ...mount.script, version: 2 } }])
-    expect(rendererHost.list('narrative.timeline.tail').map(item => item.owner)).toContainEqual({ kind: 'script', scriptDocumentId: 'script-doc', documentVersion: 2 })
-    expect(rendererHost.list('narrative.timeline.tail').map(item => item.owner)).not.toContainEqual({ kind: 'script', scriptDocumentId: 'script-doc', documentVersion: 1 })
+    expect(rendererHost.list('narrative.timeline.tail').map(item => item.owner)).toContainEqual({ kind: 'script', scriptDocumentId: 'script-doc', documentVersion: 1, mountId: 'mount-1' })
+    runtime.reconcile([{ ...mount, mountVersion: 2, script: { ...mount.script, version: 2 } }, { ...mount, mountId: 'mount-2' }])
+    expect(rendererHost.list('narrative.timeline.tail')).toHaveLength(3)
+    expect(rendererHost.list('narrative.timeline.tail').map(item => item.owner)).toContainEqual({ kind: 'script', scriptDocumentId: 'script-doc', documentVersion: 2, mountId: 'mount-1' })
+    expect(rendererHost.list('narrative.timeline.tail').map(item => item.owner)).not.toContainEqual({ kind: 'script', scriptDocumentId: 'script-doc', documentVersion: 1, mountId: 'mount-1' })
     runtime.reconcile([{ ...mount, enabled: false }])
     expect(rendererHost.list('narrative.timeline.tail')).toHaveLength(1)
   })

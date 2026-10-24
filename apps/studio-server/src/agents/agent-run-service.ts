@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { createId } from '@loom-studio/shared'
 import type { ApplicationRuntime, AgentRunEvent, AgentRunTask, RuntimeRequestContext, InvokeAgentTurnInput, VfsMutationDecision } from '@loom-studio/application-runtime'
 
 type AgentRun = {
@@ -14,6 +15,7 @@ type AgentRun = {
   nextCursor: number
   partialText: string
   partialReasoning: string
+  partialToolInputs: Extract<AgentRunEvent, { type: 'tool-input-delta' }>[]
   sessionId: string
   pendingCompletion?: Extract<AgentRunEvent, { type: 'completed' }>
   replayTimer?: ReturnType<typeof setTimeout>
@@ -34,6 +36,7 @@ type AgentRun = {
 }
 
 type AgentRunSubscription = {
+  reason?: string
   events: AgentRunEvent[]
   nextCursor: number
   done: boolean
@@ -41,6 +44,7 @@ type AgentRunSubscription = {
   replayExpired?: boolean
   partialText?: string
   partialReasoning?: string
+  partialToolInputs?: Extract<AgentRunEvent, { type: 'tool-input-delta' }>[]
   pendingApprovals?: AgentRunEvent[]
 }
 
@@ -110,7 +114,7 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
       let runId: string | undefined
       if (request.requestId !== undefined) {
         if (!/^[a-zA-Z0-9-]{1,128}$/.test(request.requestId)) throw new Error('Invalid Agent send request ID')
-        runId = `agent-run-${request.requestId}`
+        runId = request.requestId
         const digest = sendRequestDigest(request)
         const existing = runs.get(runId)
         if (existing) {
@@ -153,11 +157,11 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
             if (state.state === 'running' || state.state === 'created') {
               const inspected = await runtime.inspectAgentRunState({ agentSessionId: sessionId, runId })
               if (inspected.state === 'running') throw new Error('Agent Run is executing in another process; reconnect to its owner')
-              return { events: [], nextCursor: cursor, done: true, state: inspected.state, replayExpired: true, partialText: '', pendingApprovals: [] }
+              return { events: [], nextCursor: cursor, done: true, state: inspected.state, ...(inspected.reason ? { reason: inspected.reason } : {}), replayExpired: true, partialText: '', pendingApprovals: [] }
             }
             const terminal = state.state === 'completed' ? 'completed' : state.state === 'suspended' ? 'suspended'
               : state.state === 'aborted' || state.state === 'discarded' ? 'cancelled' : 'failed'
-            return { events: [], nextCursor: cursor, done: true, state: terminal, replayExpired: true, partialText: '', pendingApprovals: [] }
+            return { events: [], nextCursor: cursor, done: true, state: terminal, ...(state.reason ? { reason: state.reason } : {}), replayExpired: true, partialText: '', pendingApprovals: [] }
           }
           pageCursor = page.nextCursor
         } while (pageCursor)
@@ -173,11 +177,13 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         nextCursor: run.nextCursor,
         done: run.state !== 'running',
         state: run.state,
+        ...(run.reason ? { reason: run.reason } : {}),
         pendingApprovals: [...run.mutationApprovals.values()].map(pending => pending.event),
         ...(replayExpired ? {
           replayExpired: true,
           partialText: run.partialText,
           partialReasoning: run.partialReasoning,
+          partialToolInputs: run.partialToolInputs.map(input => ({ ...input })),
         } : {}),
       }
     },
@@ -281,9 +287,9 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
     },
     state(runId: string, agentSessionId?: string) {
       const run = getRunStore(runtime).get(runId)
-      if (run) return { runId: run.id, state: run.state }
+      if (run) return { runId: run.id, state: run.state, ...(run.reason ? { reason: run.reason } : {}) }
       if (!agentSessionId) throw new Error(`Agent run not found: ${runId}`)
-      return runtime.inspectAgentRunState({ agentSessionId, runId }).then(({ state }) => ({ runId, state }))
+      return runtime.inspectAgentRunState({ agentSessionId, runId }).then(({ state, reason }) => ({ runId, state, ...(reason ? { reason } : {}) }))
     },
   }
 }
@@ -298,14 +304,14 @@ function startAgentRun(
 ): AgentRun {
   if ([...getRunStore(runtime).values()].some(run => run.state === 'running' && run.sessionId === request.agentSessionId))
     throw Object.assign(new Error('Agent Session already has an executing Run'), { code: 'agent.session_busy' })
-  const id = !continuation && !sourceRunId && request.requestId ? `agent-run-${request.requestId}` : `agent-run-${crypto.randomUUID()}`
+  const id = !continuation && !sourceRunId && request.requestId ? request.requestId : createId('run', id => getRunStore(runtime).has(id))
   const controller = new AbortController()
   const timestamp = new Date().toISOString()
   const run: AgentRun = {
     id, createdAt: timestamp, updatedAt: timestamp, controller, request, sourceRunId, sessionId: request.agentSessionId,
     ...(continuation ? { checkpoint: continuation } : {}),
     events: [], eventSizes: [], eventBytes: 0, firstCursor: 0, nextCursor: 0, partialText: '', partialReasoning: '',
-    state: 'running', promise: Promise.resolve(), mutationApprovals: new Map(),
+    partialToolInputs: [], state: 'running', promise: Promise.resolve(), mutationApprovals: new Map(),
     ...(request.requestId ? { sendRequestDigest: continuation?.recovery?.sendRequestDigest ?? source?.sendRequestDigest ?? sendRequestDigest(request) } : {}),
   }
   const transferCheckpoint = () => {
@@ -320,10 +326,20 @@ function startAgentRun(
     if (event.type === 'suspended' || event.type === 'cancelled') run.reason = event.reason
     if (event.type === 'text-delta') run.partialText += event.delta
     if (event.type === 'reasoning-delta') run.partialReasoning += event.delta
+    if (event.type === 'tool-input-delta') {
+      const existing = run.partialToolInputs.find(input => input.providerRunId === event.providerRunId && input.toolCallId === event.toolCallId)
+      if (existing) {
+        existing.delta += event.delta
+        if (event.toolName !== undefined) existing.toolName = event.toolName
+      } else run.partialToolInputs.push({ ...event })
+    }
     if (event.type === 'transcript-appended' && event.entries.some(entry => entry.entry.kind === 'reasoning' && entry.entry.source === 'provider-native')) run.partialReasoning = ''
     if (event.type === 'transcript-appended' && event.entries.some(entry =>
       entry.entry.kind === 'message' && entry.entry.role === 'assistant' || entry.entry.kind === 'tool-invocation',
-    )) run.partialText = ''
+    )) {
+      run.partialText = ''
+      run.partialToolInputs = []
+    }
     if (event.type === 'transcript-appended' && event.entries.some(entry =>
       entry.entry.kind === 'run-state' && entry.entry.state === 'running',
     )) transferCheckpoint()
@@ -343,7 +359,7 @@ function startAgentRun(
       onHistoryReadApproval: (action, signal) => new Promise((resolve, reject) => {
         const approvalSignal = signal ?? controller.signal
         approvalSignal.throwIfAborted()
-        const requestId = `history-read-approval-${crypto.randomUUID()}`
+        const requestId = createId('history-read-approval', id => run.mutationApprovals.has(id))
         const event: AgentRunEvent = { type: 'history-read-approval-requested', runId: id, requestId, action }
         const abort = () => {
           run.mutationApprovals.delete(requestId)
@@ -365,7 +381,7 @@ function startAgentRun(
       }),
       onMutationApproval: (preview, signal) => new Promise((resolve, reject) => {
         signal.throwIfAborted()
-        const requestId = `mutation-approval-${crypto.randomUUID()}`
+        const requestId = createId('mutation-approval', id => run.mutationApprovals.has(id))
         const event: AgentRunEvent = { type: 'mutation-approval-requested', runId: id, requestId, preview }
         const abort = () => {
           run.mutationApprovals.delete(requestId)
@@ -400,7 +416,7 @@ function startAgentRun(
     const suspended = controller.signal.reason === 'user-pause' || Boolean(run.checkpoint && run.checkpoint !== continuation)
     run.state = suspended ? 'suspended' : controller.signal.aborted ? 'cancelled' : 'failed'
     if (source?.checkpoint && source.continuationRunId === run.id) source.continuationRunId = undefined
-    const reason = error instanceof Error ? error.message : String(error)
+    const reason = controller.signal.reason === 'user-pause' ? 'user-pause' : error instanceof Error ? error.message : String(error)
     emit(suspended
       ? { type: 'suspended', runId: id, reason }
       : controller.signal.aborted
@@ -411,6 +427,7 @@ function startAgentRun(
     run.promise = undefined
     run.partialText = ''
     run.partialReasoning = ''
+    run.partialToolInputs = []
     const retainedColdCheckpoint = !source && continuation !== undefined && run.checkpoint === continuation
     if (run.state !== 'suspended' && !retainedColdCheckpoint || !run.checkpoint && source?.checkpoint) {
       run.request = undefined

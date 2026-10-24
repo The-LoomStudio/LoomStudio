@@ -80,7 +80,7 @@ describe('The World through the real Studio Server tool bridge', () => {
         const current = await rpc<{ snapshot: { value: unknown } }>('application.getStateSnapshot', { target })
         expect(current.snapshot.value).toMatchObject({ theWorld: { entities: { world: { components: { weather: { kind: 'rain' } } } } } })
         const other = await rpc<typeof current>('application.getStateSnapshot', { target: { ...target, timelineId: b.timeline.id, branchId: b.branch.id } })
-        expect(other.snapshot.value).not.toHaveProperty('theWorld.entities.world.components.weather')
+        expect(other.snapshot.value).toHaveProperty('theWorld.entities.world.components.weather.kind', null)
         const config = await rpc<{ version: number; entries: Array<{ installationId: string }> }>('application.getTimelineExtensionParticipation', { timelineId: a.timeline.id })
         await rpc('application.updateTimelineExtensionParticipation', {
           timelineId: a.timeline.id, installationId: config.entries[0]!.installationId, expectedVersion: config.version, enabled: false,

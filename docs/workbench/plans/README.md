@@ -10,6 +10,8 @@
 
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
+| [工具参数生成反馈与恢复](./tool-input-streaming-plan.md) | 第一批已实现 / 待人工验收 | 临时工具条目、正式记录接替、过期游标恢复 |
+| [扩展任务生命周期与剧情通知](./extension-task-lifecycle-plan.md) | 已实现 / 定向验证通过 | 临时任务结果领取与重启清理、进度游标和结构化结果、提交后剧情失效通知 |
 | [新叙事扩展选择与当前故事面板](./new-story-extension-selection-plan.md) | 已实现 / 待人工体验验收 | 新故事一次选择、事务内采用和初始化，统一控件与当前角色上下文 |
 | [Agent 通用触发与主写作常驻配置](./agent-trigger-and-standing-resource-bindings-plan.md) | 方向已确认 / 待收束实施合同 | 通用 Session 投递、后端主写作与首次初始化、常驻引用和扩展来源可用性；绑定冲突与迁移待决定 |
 | [Timeline 基础设施实施](./timeline-foundation-implementation-plan.md) | 文件/恢复/楼号基础已实现 / 定向验证通过 | Workspace、共同恢复、稳定楼号；Session 总结接续，剧情扩展问题延期 |
@@ -17,12 +19,13 @@
 | [Timeline 工作空间与 VFS 组织](./timeline-workspace-and-vfs-organization-plan.md) | 文件与恢复基础已实现 | Timeline 共享 MEMORY 与 Session 自有摘要分开；工作材料、路径及树版本合同待收束 |
 | [Timeline 稳定楼号基建](../../archive/plans/narrative-memory-and-refresh-policy-plan.md#10-稳定楼号总结计数与旧原文清理2026-10-20-补充确认) | 已实现 / 定向验证通过 | 与 Workspace 同层；持久位置编号、缺号/分支/Swipe 语义及受控楼号引用，不依赖官方记忆扩展 |
 | [Timeline 运行数据共同恢复合同](./timeline-runtime-recovery-contract-plan.md) | 基础恢复已接线 / Session 接续待实施 | 正文、State、Workspace 一致恢复；历史时点、执行来源及记忆/脚本准备边界，不重开已确认 Swipe 规则 |
-| [Loom Script 单文件分发与运行](./loom-script-distribution-and-runtime-plan.md) | 核心方向已确认 / 未授权业务实施 | 通用脚本、多运行环境、局部刷新、角色与全局生命周期、外部依赖；存储及恢复与 Timeline 工作区协同 |
+| [Loom Script 单文件分发与运行](./loom-script-distribution-and-runtime-plan.md) | 实施中 / 现有宿主链路已接通 | 管理、授权、局部刷新、重复导入与包内导出已实现；原生 Worker 已实现并通过浏览器功能诊断，Workspace 文件执行尚未接通 |
 | [Settings → Lore 全量命名切换](./settings-to-lore-plan.md) | 源码已实施 / 文件数据迁移待停服 | 全量领域改名、官方扩展同步；数据库已升级，文件型测试卡副本已验证；State 不变 |
 | [审查归档后续](../issues/audit-follow-ups.md) | Deferred / Backlog | 远端 CI、旧计划接续及精简后的用户 UI 验收/独立测试维护；完整修复账目已移出活跃目录 |
 | [扩展模块补全](./extension-module-completion-plan.md) | 待调研 / 未实施 | 远程安装与独立官方扩展发行接续；来源、构建脚本与权限合同待决定 |
 | [扩展的故事级采用与运行隔离](./extension-story-participation-plan.md) | 首版实现完成 / 待人工验收 | Prompt/恢复凭据、通用事务守卫、间接资源过滤与来源诊断已接通；Package 总开关与跨声明迁移未纳入首版 |
 | [The World 世界状态与 AI 接入](./the-world-state-and-agent-plan.md) | 首版实现完成 / 待人工与发行验收 | 原生 EC、可信工具、Client 与来源诊断已接通，确定性 Provider/真实 Server 工具链通过；外部模型、公网安装与人工界面尚未验收 |
+| [The World 空值初始化](./the-world-null-initialization-plan.md) | 已实施 / 待新故事验收 | 新故事 null 字段结构、首次输入填值与未知状态显示；变量系统投影另议 |
 | [`st-migration-and-mvu-state-repair-plan.md`](./st-migration-and-mvu-state-repair-plan.md) | 已实施 / 待人工验收 | ST 转换与宿主导入通路、迁移诊断及 MVU 扁平绑定与旧历史兼容 |
 | [`agent-preset-resources-and-usage-plan.md`](./agent-preset-resources-and-usage-plan.md) | 阶段实施完成 / 待人工验收 | 使用配置与空引用、固定 Session、主接收方与临时编辑；官方助手资源实验通过，未做真实模型或浏览器验收 |
 | [`ui/README.md`](./ui/README.md) | UI 计划子索引 | Shell 动画、资源 Diff 与 Provider 展示等实施及延期入口 |
@@ -46,6 +49,8 @@
 ---
 
 ## 历史已归档计划
+
+2026-10-24：[模型日志：Prompt Build 与 Agent Run](../../archive/plans/prompt-run-observability-plan.md)及[技术设计](../../archive/plans/prompt-run-observability-design.md)按用户确认归档；本轮基线已可用，剩余 UI 细节随反馈迭代，实际验证范围与未覆盖项保留在归档结论。
 
 2026-10-21：[剧情记忆与统一刷新策略](../../archive/plans/narrative-memory-and-refresh-policy-plan.md)按用户确认归档；总结保存已由用户实测，后续质量与交互随游玩反馈迭代。旧原文清理与完整长程验收边界保留在归档结论。
 

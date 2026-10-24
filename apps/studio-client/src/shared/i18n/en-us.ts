@@ -1,3 +1,5 @@
+import { messages as observation } from './en-us/observation.js'
+import { messages as userProfile } from './en-us/user-profile.js'
 import { messages as common } from './en-us/common.js'
 import { messages as sessions } from './en-us/sessions.js'
 import { messages as agent } from './en-us/agent.js'
@@ -15,6 +17,8 @@ import type { zhCN } from './zh-cn.js'
 
 export const enUS = {
   ...common,
+  ...observation,
+  ...userProfile,
   ...sessions,
   ...agent,
   ...resources,

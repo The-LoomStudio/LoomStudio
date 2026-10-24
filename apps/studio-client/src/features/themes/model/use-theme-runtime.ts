@@ -8,6 +8,7 @@ import { useAppearanceStore } from '../../../shared/studio-shell/appearance-stor
 import { useStudioLayoutStore } from '../../../shared/studio-shell/studio-layout-store.js'
 import { createThemeRuntime, themeSignature } from './theme-runtime.js'
 import { styleRegistry } from './style-registry.js'
+import { migrateOfficialThemes } from './official-theme-migration.js'
 import { defaultThemeSelection, useThemeStore, type ThemeOverrides, type ThemeSelection } from './theme-store.js'
 
 export function useThemeRuntime(input: {
@@ -70,7 +71,9 @@ export function useThemeRuntime(input: {
 
   useEffect(() => {
     if (!input.ready || !runtime.current) return
-    const { selection, overrides } = useThemeStore.getState()
+    const saved = useThemeStore.getState()
+    const { selection, overrides } = migrateOfficialThemes(saved.selection, saved.overrides, entries)
+    if (selection !== saved.selection || overrides !== saved.overrides) saved.commit(selection, overrides)
     const available = (key: string) => {
       const entry = entries.find(item => item.key === key)
       return entry?.available && (!entry.definition.moduleId || selection.cssOnly.includes(key) || entry.module?.desired.enabled)

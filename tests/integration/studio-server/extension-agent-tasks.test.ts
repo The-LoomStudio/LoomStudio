@@ -28,7 +28,7 @@ describe('extension Agent task ownership', () => {
         .toMatchObject({ timelineId: timeline.id, agentPresetId: agentPreset.id, summaryPolicy: { enabled: false } })
       const restarted = createExtensionAgentTasks({ runtime, documents })
       await expect(restarted.read(owner, target, created.sessionId)).resolves.toEqual(created)
-      for (const operation of ['read', 'cancel'] as const) {
+      for (const operation of ['read', 'cancel', 'dispose'] as const) {
         await expect(restarted[operation]({ ...owner, installationId: 'other' }, target, created.sessionId)).rejects.toThrow('does not belong')
         await expect(restarted[operation](owner, { ...target, branchId: 'other' }, created.sessionId)).rejects.toThrow('does not belong')
       }
@@ -37,8 +37,9 @@ describe('extension Agent task ownership', () => {
       await documents.write({ id: 'extension-agent-task:forged', type: 'application.extension-agent-task',
         content: { ...owner, ...target, sessionId: 'forged', presetId: agentPreset.id }, meta: { ownerExtensionId: owner.packageId } })
       await expect(tasks.read(owner, target, 'forged')).rejects.toThrow('does not belong')
-      await runtime.deleteAgentSession({ agentSessionId: created.sessionId })
-      await expect(tasks.read(owner, target, created.sessionId)).rejects.toThrow('not found')
+      await tasks.dispose(owner, target, created.sessionId)
+      await expect(runtime.getAgentSession({ agentSessionId: created.sessionId })).rejects.toThrow('not found')
+      await expect(tasks.read(owner, target, created.sessionId)).rejects.toThrow('does not belong')
     } finally { engine.close() }
   })
   it('runs an independent task through the model and cancels its active run without appending Narrative', async () => {
@@ -81,7 +82,7 @@ describe('extension Agent task ownership', () => {
       await expect(tasks.read(owner, target, sessionId)).resolves.toMatchObject({ state: 'completed', lastOutput: 'Task output' })
       const controller = new AbortController()
       const pending = tasks.invoke(owner, target, { sessionId, input: 'Wait for cancellation.' }, controller.signal)
-      const rejected = expect(pending).rejects.toThrow()
+      const rejected = expect(pending).resolves.toMatchObject({ state: 'cancelled' })
       await providerStarted.promise
       controller.abort(new Error('Extension stopped'))
       await rejected
@@ -93,6 +94,8 @@ describe('extension Agent task ownership', () => {
       const recoveries = transcript.entries.flatMap(item => item.entry.kind === 'run-state' && item.entry.recovery ? [item.entry.recovery] : [])
       expect(recoveries.length).toBeGreaterThan(0)
       expect(recoveries.every(checkpoint => (checkpoint.request as { contextMode?: string }).contextMode === 'isolated')).toBe(true)
+      await tasks.dispose(owner, target, sessionId)
+      await expect(runtime.getAgentSession({ agentSessionId: sessionId })).rejects.toThrow('not found')
       expect(calls).toBe(2)
       expect(await narratives.listNodes(timeline.id)).toEqual(before)
     } finally { engine.close() }
@@ -154,7 +157,7 @@ describe('extension Agent task ownership', () => {
       const tasks = createExtensionAgentTasks({ runtime, documents })
       const created = await tasks.create(owner, target, { presetContributionId: contributionId })
       expect(created.presetId).toBe(presetId)
-      await expect(tasks.invoke(owner, target, { sessionId: created.sessionId, input: 'Not adopted.' })).rejects.toThrow('not available')
+      await expect(tasks.invoke(owner, target, { sessionId: created.sessionId, input: 'Not adopted.' })).resolves.toMatchObject({ state: 'failed', error: { message: expect.stringContaining('not available') } })
       await runtime.adoptTimelineExtension(await runtime.previewTimelineExtensionAdoption({ ...target, installationId: owner.installationId }))
       await expect(tasks.create({ ...owner, packageId: 'other' }, target, { presetContributionId: contributionId })).rejects.toThrow('exactly one owned')
       await expect(tasks.create({ ...owner, installationId: 'other' }, target, { presetContributionId: contributionId })).rejects.toThrow('exactly one owned')
@@ -177,6 +180,75 @@ describe('extension Agent task ownership', () => {
       expect(resolveStory).not.toHaveBeenCalled()
       await expect(runtime.previewAgentTurn({ agentSessionId: created.sessionId, input: 'Ordinary foreground.' })).rejects.toThrow('Story context must not be read by a task')
       expect(resolveStory).toHaveBeenCalledOnce()
+    } finally { engine.close() }
+  })
+
+  it('retains temporary results until acknowledgement, recovers orphans, and exposes cursor progress', async () => {
+    const clock = { createId: (prefix: string) => `${prefix}-${crypto.randomUUID()}`, now: () => new Date().toISOString() }
+    const engine = createSqliteDataEngine({ filename: ':memory:', ...clock })
+    try {
+      const documents = createSqliteDocumentStore({ engine })
+      const started = Promise.withResolvers<void>()
+      const finish = Promise.withResolvers<void>()
+      const runtime = createApplicationRuntime({ dataEngine: engine, documents,
+        agents: createAgentStore({ engine, ...clock }), narratives: createNarrativeStore({ engine, ...clock }),
+        promptResources: createPromptResourceStore({ engine, ...clock }),
+        gateway: { invokeChat: async ({ onEvent }) => {
+          onEvent?.({ type: 'text-delta', runId: 'provider', delta: 'Durable output' })
+          started.resolve()
+          await finish.promise
+          return { provider: 'test', model: 'test-model', text: 'Durable output', message: { role: 'assistant', content: 'Durable output' } }
+        } },
+      })
+      const { providerProfile } = await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test-model'] })
+      const { agentPreset } = await runtime.createAgentPreset({ name: 'Temporary', model: { providerProfileId: providerProfile.id, modelId: 'test-model' } })
+      const { card } = await runtime.createCard({ name: 'Tasks' })
+      const { timeline, branch } = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const owner = { packageId: 'test.tasks', installationId: 'test-install' }
+      const target = { timelineId: timeline.id, branchId: branch.id }
+      const tasks = createExtensionAgentTasks({ runtime, documents })
+      const { sessionId } = await tasks.create(owner, target, { presetId: agentPreset.id, lifecycle: 'temporary' })
+      await expect(tasks.acknowledge(owner, target, sessionId)).rejects.toThrow('no durable result')
+      const pending = tasks.invoke(owner, target, { sessionId, input: 'Summarize' })
+      await started.promise
+      const progress = await tasks.subscribe(owner, target, { sessionId })
+      expect(progress.snapshot.state).toBe('running')
+      expect(progress.events).toContainEqual({ type: 'text-delta', delta: 'Durable output' })
+      await expect(tasks.subscribe({ ...owner, installationId: 'foreign' }, target, { sessionId })).rejects.toThrow('does not belong')
+      finish.resolve()
+      const result = await pending
+      expect(result).toMatchObject({ state: 'completed', text: 'Durable output' })
+      expect((await tasks.subscribe(owner, target, { sessionId, cursor: progress.nextCursor })).snapshot.result).toEqual(result)
+      await expect(runtime.getAgentSession({ agentSessionId: sessionId })).resolves.toBeDefined()
+      await expect(tasks.invoke(owner, target, { sessionId, input: 'Again' })).rejects.toThrow('only be invoked once')
+      // Simulate loss of the extension acknowledgement, then startup recovery.
+      // Also cover a crash after transcript completion but before saving the task receipt.
+      const receipt = (await documents.get(`extension-agent-task:${sessionId}`))!
+      const { result: _result, ...unfinishedReceipt } = receipt.content as Record<string, import('@loom-studio/shared').JsonValue>
+      await documents.write({ id: receipt.id, type: receipt.type, expectedVersion: receipt.version, content: unfinishedReceipt })
+      const coldRuntime = createApplicationRuntime({ dataEngine: engine, documents,
+        agents: createAgentStore({ engine, ...clock }), narratives: createNarrativeStore({ engine, ...clock }),
+        promptResources: createPromptResourceStore({ engine, ...clock }) })
+      const restarted = createExtensionAgentTasks({ runtime: coldRuntime, documents })
+      const victim = await tasks.create(owner, target, { presetId: agentPreset.id })
+      await documents.write({ id: 'forged-task', type: 'application.extension-agent-task',
+        content: { ...owner, ...target, presetId: agentPreset.id, sessionId: victim.sessionId, lifecycle: 'temporary' },
+        meta: { ownerExtensionId: owner.packageId } })
+      await restarted.recover()
+      await expect(runtime.getAgentSession({ agentSessionId: victim.sessionId })).resolves.toBeDefined()
+      await expect(runtime.getAgentSession({ agentSessionId: sessionId })).rejects.toThrow('not found')
+      expect((await restarted.read(owner, target, sessionId)).result).toEqual(result)
+      expect(await restarted.subscribe(owner, target, { sessionId })).toMatchObject({ done: true, replayExpired: true, snapshot: { result } })
+      await expect(restarted.acknowledge({ ...owner, packageId: 'foreign' }, target, sessionId)).rejects.toThrow('does not belong')
+      await restarted.acknowledge(owner, target, sessionId)
+      await restarted.acknowledge(owner, target, sessionId)
+      await expect(restarted.read(owner, target, sessionId)).rejects.toThrow('does not belong')
+      // A crash before invocation does not leave an idle Session behind.
+      const orphan = await tasks.create(owner, target, { presetId: agentPreset.id, lifecycle: 'temporary' })
+      await restarted.recover()
+      expect((await restarted.read(owner, target, orphan.sessionId)).result?.state).toBe('interrupted')
+      await expect(runtime.getAgentSession({ agentSessionId: orphan.sessionId })).rejects.toThrow('not found')
+      await restarted.acknowledge(owner, target, orphan.sessionId)
     } finally { engine.close() }
   })
 

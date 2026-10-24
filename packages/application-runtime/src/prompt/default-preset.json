@@ -62,6 +62,16 @@
         ]
       },
       {
+        "id": "default.user.block",
+        "kind": "message",
+        "label": "用户设定",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.user.description", "kind": "entry", "label": "用户固定描述", "body": "{{user.description}}" },
+          { "id": "default.user.context", "kind": "virtual", "label": "故事中的用户设定", "capabilities": { "targetAnchorId": "@user.context" } }
+        ]
+      },
+      {
         "id": "default.stable.block",
         "kind": "message",
         "label": "常驻上下文",

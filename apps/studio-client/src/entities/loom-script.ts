@@ -16,7 +16,8 @@ export type LoomScript = {
   metadataId: string
   scriptVersion: string
   name: string
-  runtime: 'client-sandbox'
+  runtime: import('@loom-studio/shared/loom-scripts').LoomScriptRuntime
+  requires?: string[]
   contributions: LoomScriptRendererContribution[]
   requestedCapabilities: string[]
   source: { blobId: string; mediaType: 'text/javascript'; fileName: string }
@@ -27,10 +28,12 @@ export type LoomScript = {
 
 export type ResolvedLoomScriptRendererMount = {
   mountId: string
+  mountVersion?: number
+  target?: import('@loom-studio/shared/loom-scripts').LoomScriptMountTarget
   enabled: boolean
   orderIndex: number
   grantedCapabilities: string[]
-  script: Pick<LoomScript, 'id' | 'version' | 'name' | 'metadataId' | 'scriptVersion' | 'requestedCapabilities' | 'contributions'>
+  script: Pick<LoomScript, 'id' | 'version' | 'name' | 'metadataId' | 'scriptVersion' | 'requestedCapabilities' | 'contributions' | 'runtime' | 'requires'>
   source: string
 }
 

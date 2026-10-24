@@ -10,7 +10,7 @@ export const codeActMethodNames = ['setAuthorMode', 'ls', 'search', 'read', 'rea
 export function createCodeActContext(scope: ToolExecutionScope | undefined, operationPrefix = 'codeact') {
   const observations: VfsReadObservation[] = []
   const writes: Array<{ path: string; modified: boolean; changesetId?: string }> = []
-  const narrativeAppends: Array<{ nodeId: string; timelineId: string; branchId: string }> = []
+  const narrativeAppends: Array<{ nodeId: string; floor: number; timelineId: string; branchId: string }> = []
   let operationSequence = 0
   const state = scope?.state
   const filesystem = scope?.resourceVfs ?? createResourceVfs({
@@ -21,16 +21,16 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
         snapshot: async (path: string, signal: AbortSignal, control?: VfsApprovalControl) => {
           const root = { path: '/narrative', kind: 'directory' as const }
           if (path === '/') return [root]
-          const match = /^\/narrative\/([^/]+)\.md$/.exec(path)
+          const match = /^\/narrative\/([1-9][0-9]*)\.md$/.exec(path)
           if (path !== '/narrative' && !match) return [root]
-          const nodeId = match ? decodeURIComponent(match[1]!) : undefined
+          const floor = match ? Number(match[1]) : undefined
           const sample = await scope.narrative!.sample({
-            selection: { kind: 'tail', count: nodeId ? 1 : 1000, ...(nodeId ? { throughNodeId: nodeId } : {}) },
+            selection: floor === undefined ? { kind: 'tail', count: 1000 } : { kind: 'floors', from: floor, through: floor },
             view: 'raw',
           }, signal, undefined, control)
           if (!sample.complete) throw codeActError('vfs.narrative_range_too_large', 'Use ctx.readNarrative with a smaller range to discover node paths.')
-          return [root, ...sample.nodes.filter(node => !nodeId || node.id === nodeId).map(node => ({
-            path: narrativePath(node.id), kind: 'file' as const, content: node.body.raw,
+          return [root, ...sample.nodes.filter(node => floor === undefined || node.floor === floor).map(node => ({
+            path: narrativePath(node.floor), kind: 'file' as const, content: node.body.raw,
             binding: {
               kind: 'narrative' as const, nodeId: node.id, timelineId: scope.narrative!.timelineId,
               branchId: scope.narrative!.branchId, raw: node.body.raw,
@@ -130,7 +130,7 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
       throw codeActError('codeact.invalid_arguments', 'Narrative selection must be an object.')
     }
     const selector = selection as Record<string, unknown>
-    const keys = selector.kind === 'floors' ? ['kind', 'from', 'through', 'throughNodeId'] : selector.kind === 'tail' ? ['kind', 'count', 'throughNodeId'] : ['kind', 'afterNodeId', 'throughNodeId']
+    const keys = selector.kind === 'floors' ? ['kind', 'from', 'through'] : selector.kind === 'tail' ? ['kind', 'count', 'throughFloor'] : ['kind', 'afterFloor', 'throughFloor']
     if (Object.keys(selector).some(key => !keys.includes(key))) {
       throw codeActError('codeact.invalid_arguments', 'Unsupported Narrative selection field.')
     }
@@ -140,7 +140,14 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
       ...(request.maxCharacters === undefined ? {} : { maxCharacters: request.maxCharacters as number }),
       ...(request.view === undefined ? {} : { view: request.view }),
     }, signal, undefined, control)
-    return { ...result, nodes: result.nodes.map(node => ({ ...node, path: narrativePath(node.id) })) }
+    return {
+      nodes: result.nodes.map(node => ({ path: narrativePath(node.floor), floor: node.floor, kind: node.kind,
+        position: node.position, body: node.body, text: node.text, createdAt: node.createdAt })),
+      text: result.text, complete: result.complete,
+      ...(result.nextBeforeFloor === undefined ? {} : { nextBeforeFloor: result.nextBeforeFloor }),
+      ...(result.missingFloors ? { missingFloors: result.missingFloors } : {}),
+      ...(result.processing ? { processing: result.processing } : {}),
+    }
   }
   methods.appendNarrative = async (args, signal) => {
     signal.throwIfAborted()
@@ -154,17 +161,18 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
     const result = await scope.narrative.appendNode({ content: request.content.trim() })
     const receipt = {
       nodeId: result.nodeId,
+      floor: result.floor,
       timelineId: scope.narrative.timelineId,
       branchId: scope.narrative.branchId,
     }
     narrativeAppends.push(receipt)
-    return { path: narrativePath(result.nodeId) }
+    return { path: narrativePath(result.floor) }
   }
   return { methods, observations, writes, narrativeAppends }
 }
 
-export function narrativePath(nodeId: string): string {
-  return `/narrative/${encodeURIComponent(nodeId)}.md`
+export function narrativePath(floor: number): string {
+  return `/narrative/${floor}.md`
 }
 
 function codeActError(code: string, message: string): Error & { code: string } {

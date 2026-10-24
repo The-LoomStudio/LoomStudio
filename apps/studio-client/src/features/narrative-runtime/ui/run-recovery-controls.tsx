@@ -17,13 +17,14 @@ export type RunRecoveryControlsProps = {
 export function RunRecoveryControls(props: RunRecoveryControlsProps) {
   const recovery = props.runRecovery
   if (!recovery) return null
+  const displayStatus = recovery.status === 'suspended' && recovery.error ? 'failed' : recovery.status
   const disconnected = recovery.status === 'disconnected'
   const reconnectLabel = props.t(disconnected ? 'runRecovery.reconnect' : 'runRecovery.refresh')
 
   return (
-    <div className={styles.controls} data-status={recovery.status} aria-busy={props.runRecoveryBusy}>
-      <div className={styles.message} role="status">
-        <span>{props.t(`runRecovery.${recovery.status}`)}</span>
+    <div className={styles.controls} data-status={displayStatus} aria-busy={props.runRecoveryBusy}>
+      <div className={styles.message} role={recovery.error ? 'alert' : 'status'}>
+        <span>{props.t(`runRecovery.${displayStatus}`)}</span>
         {recovery.error ? <span>{recovery.error}</span> : null}
         {recovery.refreshFailed ? <span>{props.t('runRecovery.refreshFailed')}</span> : null}
       </div>

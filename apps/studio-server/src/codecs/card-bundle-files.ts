@@ -20,6 +20,7 @@ export type CardFilesIndex = {
   metadata: Pick<CardBundleArtifact, 'schemaVersion' | 'artifactId' | 'derivedFrom' | 'displayName' | 'description' | 'metadata'>
   card: string
   contextAssets: string[]
+  contextAssetSettings?: CardBundleArtifact['contextAssetSettings']
   externalContextAssetIds?: string[]
   state?: string
   stateTemplates?: string[]
@@ -100,6 +101,7 @@ export function projectCardFiles(artifact: CardBundleArtifact, files: Record<str
     },
     card: json('card.json', card),
     contextAssets,
+    ...(artifact.contextAssetSettings !== undefined ? { contextAssetSettings: artifact.contextAssetSettings } : {}),
     ...(artifact.externalContextAssetIds !== undefined ? { externalContextAssetIds: [...artifact.externalContextAssetIds] } : {}),
   }
   if (artifact.state !== undefined) {
@@ -182,6 +184,7 @@ export function restoreCardFiles(index: CardFilesIndex, files: Map<string, Uint8
     ...index.metadata,
     card,
     contextAssets: list<FileNode>(index.contextAssets).map(value => node(value)),
+    ...(index.contextAssetSettings !== undefined ? { contextAssetSettings: index.contextAssetSettings } : {}),
     ...(index.externalContextAssetIds !== undefined ? { externalContextAssetIds: index.externalContextAssetIds } : {}),
   }
   if (index.state !== undefined) {

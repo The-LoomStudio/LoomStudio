@@ -1,4 +1,5 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createId } from '@loom-studio/shared'
+import { createHash } from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import { basename, dirname, resolve, join } from 'node:path'
 import { loadCardBundleFiles, type CardBundleFilesInput } from '../codecs/card-bundle-zip.js'
@@ -21,6 +22,21 @@ export function createCardDirectoryImporter(options: {
 }) {
   const root = resolve(options.dataRoot)
   const importing = new Set<string>()
+  async function reserveIdentity(): Promise<string> {
+    const parent = await safePath(root, '.loom/card-directories')
+    await fs.mkdir(parent, { recursive: true })
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const id = createId()
+      if (await options.cardExists(id)) continue
+      try {
+        await fs.mkdir(join(parent, id))
+        return id
+      } catch (error) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+      }
+    }
+    throw new Error('Unable to allocate a unique Card directory identity')
+  }
   async function finish(id: string) {
     await options.saveImportedCard(id)
     await fs.rm(await safePath(root, `.loom/card-directories/${id}/import.json`))
@@ -31,8 +47,7 @@ export function createCardDirectoryImporter(options: {
       if (dirname(selected) !== join(root, 'characters') || await fs.realpath(selected) !== selected) throw new Error('Import requires a real directory directly inside characters')
       if (importing.has(selected)) throw new Error('This directory is already being imported')
       importing.add(selected)
-      const id = `card-${randomUUID()}`
-      const metadata = `.loom/card-directories/${id}`
+      let id: string | undefined
       try {
         if (await options.isRegistered(selected)) throw new Error('This directory is already registered')
         const { bundle, files } = await loadCardBundleFiles(async path => {
@@ -41,6 +56,8 @@ export function createCardDirectoryImporter(options: {
           return bytes
         })
         if (directoryFilesToken(files) !== token) throw new Error('Directory changed since validation; refresh and import again')
+        id = await reserveIdentity()
+        const metadata = `.loom/card-directories/${id}`
         await replace(root, `${metadata}/import.json`, Buffer.from(JSON.stringify({ cardId: id })))
         await replace(root, `${metadata}/binding.json`, Buffer.from(JSON.stringify({ directoryName: basename(selected), artifactId: bundle.artifact.artifactId })))
         await replace(root, `${metadata}/baseline.json`, Buffer.from(JSON.stringify({ version: 1, cardId: id, files: fileHashes(files) })))
@@ -48,8 +65,8 @@ export function createCardDirectoryImporter(options: {
         await finish(id)
         return { cardId: id }
       } catch (error) {
-        if (await options.cardExists(id)) throw new Error(`Card imported as ${id}; directory finalization requires recovery. Do not import again. ${error instanceof Error ? error.message : String(error)}`, { cause: error })
-        await fs.rm(await safePath(root, metadata), { recursive: true, force: true })
+        if (id && await options.cardExists(id)) throw new Error(`Card imported as ${id}; directory finalization requires recovery. Do not import again. ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+        if (id) await fs.rm(await safePath(root, `.loom/card-directories/${id}`), { recursive: true, force: true })
         throw error
       } finally { importing.delete(selected) }
     },

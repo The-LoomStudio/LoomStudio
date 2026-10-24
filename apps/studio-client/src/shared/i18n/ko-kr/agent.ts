@@ -169,6 +169,7 @@ export const messages = {
   'agent.tool.noOutput': '출력 없음',
   'agent.tool.failed': '실패',
   'agent.tool.interrupted': '중단됨',
+  'agent.tool.preparing': '인수 준비 중 · 아직 실행되지 않음',
   'agent.tool.running': '실행 중',
   'agent.tool.success': '성공',
 } satisfies Record<keyof typeof zhCN, string>

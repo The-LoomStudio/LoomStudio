@@ -2,7 +2,7 @@ import type { AgentSession, AgentTranscriptEntry, InvokeAgentTurnResult } from '
 import type { AgentMutationApproval, StudioApi } from '../../../shared/api/studio-api.js'
 
 export type AgentRunStatus = 'running' | 'suspended' | 'completed' | 'cancelled' | 'failed'
-export type ActiveAgentRun = { runId: string; status: AgentRunStatus; approval?: AgentMutationApproval }
+export type ActiveAgentRun = { runId: string; status: AgentRunStatus; error?: string; approval?: AgentMutationApproval }
 export type RunRecovery = {
   target: 'narrative' | 'agent'
   status: 'disconnected' | 'failed' | 'cancelled' | 'refresh-failed' | 'suspended'
@@ -62,7 +62,7 @@ export async function resolveSessionRun(api: StudioApi, sessionId: string, entri
   // Transcript records may describe an interrupted process or a still-running live task.
   const state = await api.agentSessions.runState(inspected.runId, sessionId)
   return state.state === 'running' || state.state === 'suspended'
-    ? { runId: state.runId, status: state.state } : undefined
+    ? { runId: state.runId, status: state.state, error: state.state === 'suspended' && state.reason !== 'user-pause' ? state.reason : undefined } : undefined
 }
 
 export async function loadTranscript(api: StudioApi, agentSessionId: string, selectedCandidates = false) {
@@ -121,7 +121,7 @@ export async function runAgentTurn(
           entry.runId === runId && (entry.entry.kind === 'tool-invocation' || entry.entry.kind === 'reasoning'
             || entry.entry.kind === 'message' && entry.entry.role === 'assistant')))
       updateMessages(current => {
-        const committed = transcript.entries.filter(entry => entry.runId === runId)
+        const committed = retainToolPresentation(current, transcript.entries.filter(entry => entry.runId === runId))
         const committedIds = new Set(committed.map(entry => entry.id))
         const placeholder = current.find(entry => entry.id === streamingId)
         const entries = [
@@ -138,7 +138,9 @@ export async function runAgentTurn(
           ...placeholder, sequence: (entries.at(-1)?.sequence ?? 0) + 1,
           entry: { kind: 'message', role: 'assistant', content: committedDuringRead ? '' : snapshot.partialText ?? '' },
         })
-        return entries
+        return !committedDuringRead && !snapshot.done
+          ? (snapshot.partialToolInputs ?? []).reduce((current, input) => appendToolInput(current, input, run), entries)
+          : entries
       })
       updateRun({ runId, status: batch.state })
     }
@@ -146,6 +148,12 @@ export async function runAgentTurn(
     run.cursor = batch.nextCursor
     const pendingApprovals = batch.pendingApprovals
     for (const event of [...batch.events, ...(pendingApprovals ?? [])]) {
+      if (event.type === 'tool-input-delta') {
+        updateMessages(entries => appendToolInput(entries, event, run))
+      }
+      if (event.type === 'completed' || event.type === 'failed' || event.type === 'cancelled' || event.type === 'suspended') {
+        updateMessages(entries => interruptToolInputs(entries, runId))
+      }
       if (event.type === 'transcript-appended' && Array.isArray(event.entries)) {
         const appended = event.entries
         updateMessages(current => mergeAgentRunEntries(current, appended, run))
@@ -214,7 +222,9 @@ export async function runAgentTurn(
       }
       if (event.type === 'suspended') {
         run.status = 'suspended'
-        updateRun({ runId, status: 'suspended' })
+        const error = event.reason && event.reason !== 'user-pause' ? event.reason : undefined
+        updateRun({ runId, status: 'suspended', error })
+        if (error) throw new Error(error)
         return undefined
       }
     }
@@ -223,14 +233,51 @@ export async function runAgentTurn(
       updateRun({ runId, status: batch.state })
     }
     if (batch.done) {
+      updateMessages(entries => interruptToolInputs(entries, runId))
       run.status = batch.state
-      updateRun({ runId, status: batch.state })
+      const error = batch.reason && batch.reason !== 'user-pause' ? batch.reason : undefined
+      updateRun({ runId, status: batch.state, error })
+      if (error && (batch.state === 'suspended' || batch.state === 'failed')) throw new Error(error)
       if (batch.state === 'cancelled' || batch.state === 'suspended') return undefined
       if (replayExpired && batch.state === 'completed') return undefined
       throw new Error(`Agent run ended without a completed result: ${runId}`)
     }
     await new Promise(resolve => setTimeout(resolve, 100))
   }
+}
+
+type ToolInput = Extract<Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>['events'][number], { type: 'tool-input-delta' }>
+
+function appendToolInput(entries: AgentTranscriptEntry[], input: ToolInput, run: Pick<ObservedRun, 'runId' | 'sessionId'>): AgentTranscriptEntry[] {
+  const id = `streaming-tool-${JSON.stringify([run.runId, input.providerRunId, input.toolCallId])}`
+  const existing = entries.find(entry => entry.id === id)
+  if (existing) return entries.map(entry => entry.id === id ? {
+    ...entry, entry: { ...entry.entry, rawInput: `${entry.entry.rawInput ?? ''}${input.delta}`,
+      exposedName: input.toolName ?? entry.entry.exposedName },
+  } : entry)
+  return [...entries, {
+    id, agentSessionId: run.sessionId, runId: run.runId,
+    sequence: (entries.at(-1)?.sequence ?? 0) + 1, createdAt: new Date().toISOString(),
+    entry: { kind: 'tool-input', providerItemId: input.toolCallId, exposedName: input.toolName,
+      rawInput: input.delta, status: 'preparing' },
+  }]
+}
+
+function interruptToolInputs(entries: AgentTranscriptEntry[], runId: string): AgentTranscriptEntry[] {
+  return entries.map(entry => entry.runId === runId && entry.entry.kind === 'tool-input'
+    ? { ...entry, entry: { ...entry.entry, status: 'interrupted' } } : entry)
+}
+
+export function retainToolPresentation(current: AgentTranscriptEntry[], incoming: AgentTranscriptEntry[]): AgentTranscriptEntry[] {
+  const byId = new Map(current.map(entry => [entry.id, entry]))
+  const drafts = current.filter(entry => entry.entry.kind === 'tool-input')
+  return incoming.map(entry => {
+    const previous = byId.get(entry.id)
+    const draft = entry.entry.kind === 'tool-invocation' ? drafts.find(item => item.runId === entry.runId
+      && item.entry.providerItemId === (entry.entry.providerItemId ?? entry.entry.invocationId)) : undefined
+    const presentationId = draft?.id ?? previous?.presentationId
+    return presentationId ? { ...entry, presentationId } : entry
+  })
 }
 
 export function mergeAgentRunEntries(
@@ -244,11 +291,14 @@ export function mergeAgentRunEntries(
     || entry.entry.kind === 'tool-invocation')
   const reasoningRuns = new Set(appended.filter(entry => entry.entry.kind === 'reasoning' && entry.entry.source === 'provider-native').map(entry => entry.runId))
   const placeholder = current.find(entry => entry.id === run.streamingId)
+  const committedRuns = new Set(appended.filter(entry => entry.entry.kind === 'tool-invocation'
+    || entry.entry.kind === 'message' && entry.entry.role === 'assistant').map(entry => entry.runId))
   const entries = [
     ...current.filter(entry => entry.id !== run.streamingId && !receivedIds.has(entry.id)
+      && !(entry.entry.kind === 'tool-input' && committedRuns.has(entry.runId))
       && !(entry.id.startsWith('streaming-reasoning-') && reasoningRuns.has(entry.runId))
       && (!hasUser || entry.id !== run.optimisticEntryId)),
-    ...appended,
+    ...retainToolPresentation(current, appended),
   ].sort((a, b) => a.sequence - b.sequence)
   if (placeholder) {
     entries.push({
