@@ -1,13 +1,14 @@
-import { useEffect, useReducer } from 'react'
+import type { NarrativeSessionStep, NarrativeSessionExecution } from '../features/narrative-runtime/model/narrative-execution-view.js'
+import { StreamingSessionPreview, previewRates, type PreviewRate } from './streaming-session-preview.js'
+import { HtmlHeightPreview } from './html-height-preview.js'
+import { useEffect, useMemo, useReducer, useState } from 'react'
 import { StartupReady } from '../app/startup-curtain.js'
-import { NarrativeSession, type NarrativeSessionCandidate, type NarrativeSessionExecution, type NarrativeSessionRound, type NarrativeSessionStep } from '../widgets/narrative-session/narrative-session.js'
+import { NarrativeSession, type NarrativeSessionCandidate,  type NarrativeSessionRound } from './narrative-session/narrative-session.js'
+import { alternate, original, revised } from './narrative-session-samples.js'
 import '../styles/global.css'
 
 const presets = ['诺姆 · 叙事写作', '诺姆 · 克制叙事', '诺姆 · 对话优先'] as const
 const firstInput = '我拿起了剑，冲向那个人。'
-const original = '你踏进积水，剑锋划开一道细亮的雨线。\n\n那人侧身退了半步，披风擦过钟楼斑驳的石墙。银色徽章在领口一闪——渡鸦的翅膀下，刻着与你剑柄上一模一样的缺口。\n\n“等一下。”他的手终于从披风下伸出来，掌心向你摊开，“你这把剑，是从哪里来的？”\n\n楼顶的钟声停了。你听见他呼吸里的迟疑。'
-const alternate = '雨水顺着剑脊滑落。你没有给他退进阴影的机会，第一步便封住了钟楼旁狭窄的出口。\n\n他抬手格挡，袖口却露出一道尚未愈合的伤。你认得那个位置——三天前，在城门口替你挡下弩箭的人，也伤在那里。\n\n“现在才认出来？”他压低声音，目光越过你的肩膀，“先别回头。追你的不止我一个。”'
-const revised = '你踏进积水，剑锋划开一道细亮的雨线。\n\n那人本已抬起手，目光却突然停在你的剑柄上。渡鸦翅膀下的缺口映入眼底，他的动作随之僵住，没有再后退。\n\n“这把剑……”他声音很轻，像是不敢确认一个早已放弃的答案。雨水沿着他的指节往下滴，他却连擦去的念头也忘了。\n\n你的剑尖停在他胸前。他看着剑，没有看你。'
 
 type Job = { roundId: string; candidateId: string; executionId: string; frames: NarrativeSessionStep[][]; frame: number; revisedText?: string }
 type Demo = { rounds: NarrativeSessionRound[]; preset: string; writingMode: 'declaration' | 'short'; job?: Job; paused: boolean; epoch: number }
@@ -17,31 +18,63 @@ type Action =
   | { type: 'select'; roundId: string; index: number }
   | { type: 'preset'; value: string }
   | { type: 'mode'; value: Demo['writingMode'] }
-  | { type: 'pause' | 'tick' | 'reset' | 'replay' }
+  | { type: 'tick'; step?: number }
+  | { type: 'pause' | 'reset' | 'replay' | 'advance' }
 
 function step(id: string, kind: NarrativeSessionStep['kind'], title: string, content: string, state: NarrativeSessionStep['state'] = 'completed'): NarrativeSessionStep {
   return { id, kind, title, content, state }
 }
 
+function narrativeParts(text: string): [string, string] {
+  const paragraphs = text.split('\n\n')
+  const middle = Math.ceil(paragraphs.length / 2)
+  return [paragraphs.slice(0, middle).join('\n\n'), paragraphs.slice(middle).join('\n\n')]
+}
+
+function streamedFrames(before: NarrativeSessionStep[], output: NarrativeSessionStep): NarrativeSessionStep[][] {
+  const frames: NarrativeSessionStep[][] = []
+  for (let length = 12; length < output.content.length; length += 12) frames.push([...before, { ...output, content: output.content.slice(0, length), state: 'running' }])
+  frames.push([...before, { ...output, state: 'running' }])
+  return frames
+}
+
 function writingFrames(text: string, mode: Demo['writingMode']): NarrativeSessionStep[][] {
-  if (mode === 'short') return [
-    [step('thought', 'thinking', '正在组织对话', '样例思考摘要：保持这一刻的紧张感，让对方先开口。', 'running')],
-    [step('body', 'narrative', '正文', text.slice(0, 30), 'running')],
-    [step('body', 'narrative', '正文', text, 'completed')],
-  ]
-  const thought = step('thought', 'thinking', '整理场景', '样例思考摘要：接续雨夜对峙，保留用户的主动行动。先核对渡鸦徽章和剑的关联，再让人物作出回应。')
+  if (mode === 'short') {
+    const thought = step('thought', 'thinking', '正在组织对话', '样例思考摘要：保持这一刻的紧张感，让对方先开口。')
+    const body = step('body', 'narrative', '正文', text)
+    return [
+      [{ ...thought, content: '样例思考摘要：保持这一刻的紧张感。', state: 'running' }],
+      [{ ...thought, state: 'running' }],
+      ...streamedFrames([thought], body),
+      [thought, body],
+    ]
+  }
+  const thought = step('thought', 'thinking', '整理场景', '样例思考摘要：用户已经拔剑冲向对方，接下来要承接这个动作，先写出逼近与接招，不能越过这一步直接让两人开始闲谈。\n\n渡鸦徽章和剑柄的缺口是同一条线索，需要先读取角色资料确认。人物可以认出佩剑，但这一轮不必解释完整来历，让迟疑和动作把线索留在场景里。\n\n正文先推进钟楼前的对峙，再根据场景变量接续人物反应。保留用户下一步选择的空间，不替用户决定是否放下剑或进入钟楼。')
+  thought.content = Array.from({ length: 4 }, (_, index) => `第 ${index + 1} 次场景核对：\n${thought.content}`).join('\n\n')
   const read = step('read', 'tool', '读取角色资料', '/lore/渡鸦卫队.md\n已读取：徽章、钟楼与失踪的佩剑。')
   const declare = step('declare', 'tool', '声明下一条输出为正文', 'declare_narrative()\n下一条 Assistant 正文属于本轮剧情；输出后继续执行。')
-  const body = step('body', 'narrative', '正文', text)
+  const [first, second] = narrativeParts(text)
+  const body = step('body', 'narrative', '正文', first)
   const update = step('state', 'tool', '更新场景变量', '/state/scene/tension: 2 → 3\n/state/characters/raven/recognizesSword: true')
+  const nextThought = step('next-thought', 'thinking', '接续人物反应', '样例思考摘要：正文已经出现，但本次执行还没有结束。读取刚才更新的状态，让人物先开口；不要替用户选择接下来的行动。')
+  const nextDeclare = step('next-declare', 'tool', '声明接下来的正文', 'declare_narrative()\n接续同一次执行中的第二段剧情。')
+  const nextBody = step('body-2', 'narrative', '正文', second)
+  const save = step('save', 'tool', '保存待揭示的线索', '/workspace/线索.md\n已记录：对方认出了这把佩剑，身份尚未揭示。')
+  const question: NarrativeSessionStep = { ...step('question', 'reply', '询问创作方向', '接下来要让他解释这把剑的来历，还是先保留悬念，等你继续行动？'), presentation: 'question' }
+  read.content = JSON.stringify({ path: '/lore/渡鸦卫队.md', questions: Array.from({ length: 16 }, (_, index) => `核对线索 ${index + 1}：徽章、佩剑和人物行动的关联。`) }, null, 2)
+  const firstWork = [thought, read, declare]
+  const secondWork = [...firstWork, body, update, nextThought, nextDeclare]
   return [
-    [{ ...thought, state: 'running' }],
-    [thought, { ...read, state: 'running' }],
+    ...streamedFrames([], thought),
+    ...streamedFrames([thought], read),
     [thought, read, { ...declare, state: 'running' }],
-    [thought, read, declare, { ...body, content: text.slice(0, 32), state: 'running' }],
-    [thought, read, declare, { ...body, content: text.slice(0, Math.floor(text.length * .58)), state: 'running' }],
-    [thought, read, declare, body, { ...update, state: 'running' }],
-    [thought, read, declare, body, update, step('reply', 'reply', '执行结束', '正文已写入，场景变量已更新。')],
+    ...streamedFrames(firstWork, body),
+    [...firstWork, body, { ...update, state: 'running' }],
+    ...streamedFrames([...firstWork, body, update], nextThought),
+    [...firstWork, body, update, nextThought, { ...nextDeclare, state: 'running' }],
+    ...streamedFrames(secondWork, nextBody),
+    [...secondWork, nextBody, { ...save, state: 'running' }],
+    [...secondWork, nextBody, save, question],
   ]
 }
 
@@ -65,14 +98,23 @@ function makeCandidate(id: string, preset: string, text: string, mode: Demo['wri
 function initial(scene: string): Demo {
   const state: Demo = { rounds: [], preset: presets[0], writingMode: 'declaration', paused: false, epoch: 0 }
   if (scene === 'empty') return state
-  const count = scene === 'long' ? 6 : 1
+  const count = scene === 'long' ? 6 : scene === 'communication' ? 2 : 1
   for (let index = 0; index < count; index++) {
     const number = index + 1
     const input = index === 0 ? firstInput : index === 1 ? '我压低剑尖，问他为什么一直跟着我。' : `我看向钟楼更深处，继续追问第 ${number} 个线索。`
     const id = `round-${number}`
-    state.rounds.push({ id, number, input, selected: 0, candidates: [makeCandidate(`${id}-candidate-1`, state.preset, bodyFor(number, 0, input), state.writingMode, true)] })
+    const candidate = makeCandidate(`${id}-candidate-1`, state.preset, scene === 'communication' && index === 0 ? revised : bodyFor(number, 0, input), state.writingMode, true)
+    if (scene === 'communication') {
+      candidate.discussions = [{
+        id: `${candidate.id}-discussion-1`, preset: state.preset, state: 'completed',
+        input: index === 0 ? '别让他直接后退。改成他认出了我的剑，因此迟疑了一瞬。' : '先保留悬念，不要现在解释他和这把剑的关系。',
+        steps: index === 0 ? discussionFrames(true).at(-1)! : [step('reply', 'reply', '讨论回复', '可以。他会先确认你的身份，这一轮不解释佩剑的来历，把选择留给你。')],
+      }]
+      if (index === 0) candidate.revision = 2
+    }
+    state.rounds.push({ id, number, input, selected: 0, candidates: [candidate] })
   }
-  return state
+  return scene === 'streaming' ? reducer(initial('empty'), { type: 'send', content: firstInput, mode: 'roleplay' }) : state
 }
 
 function mapCandidate(state: Demo, roundId: string, candidateId: string, update: (candidate: NarrativeSessionCandidate) => NarrativeSessionCandidate): Demo {
@@ -85,14 +127,16 @@ function reducer(state: Demo, action: Action): Demo {
     let next = { ...state, rounds: state.rounds.map(round => ({ ...round, candidates: round.candidates.map(candidate => candidate.image === 'waiting' ? { ...candidate, image: 'ready' as const } : candidate) })) }
     const job = state.job
     if (!job || state.paused) return next
-    const frame = job.frame + 1
+    const frame = Math.min(job.frames.length, job.frame + (action.step ?? 1))
     const complete = frame === job.frames.length
     const steps = job.frames[complete ? frame - 1 : frame]!
     next = mapCandidate(next, job.roundId, job.candidateId, candidate => {
       const apply = (execution: NarrativeSessionExecution): NarrativeSessionExecution => execution.id !== job.executionId ? execution : { ...execution, steps, state: complete ? 'completed' : 'running' }
       let updated = { ...candidate, execution: apply(candidate.execution), discussions: candidate.discussions.map(apply) }
       if (complete && job.revisedText) {
-        updated = { ...updated, revision: candidate.revision + 1, execution: { ...updated.execution, steps: updated.execution.steps.map(item => item.kind === 'narrative' ? { ...item, content: job.revisedText! } : item) } }
+        const parts = narrativeParts(job.revisedText)
+        const segmented = updated.execution.steps.some(item => item.id === 'body-2')
+        updated = { ...updated, revision: candidate.revision + 1, execution: { ...updated.execution, steps: updated.execution.steps.map(item => item.kind === 'narrative' ? { ...item, content: segmented ? parts[item.id === 'body-2' ? 1 : 0] : job.revisedText! } : item) } }
       }
       return complete && (!candidate.discussions.length || job.revisedText) ? { ...updated, image: 'waiting' } : updated
     })
@@ -100,6 +144,11 @@ function reducer(state: Demo, action: Action): Demo {
   }
   if (action.type === 'reset') return { ...initial('empty'), epoch: state.epoch + 1 }
   if (action.type === 'replay') return reducer({ ...initial('empty'), epoch: state.epoch + 1 }, { type: 'send', content: firstInput, mode: 'roleplay' })
+  if (action.type === 'advance') {
+    if (!state.job || !state.paused) return state
+    const next = reducer({ ...state, paused: false }, { type: 'tick' })
+    return next.job ? reducer(next, { type: 'pause' }) : next
+  }
   if (action.type === 'pause') {
     if (!state.job) return state
     const job = state.job
@@ -142,16 +191,26 @@ function reducer(state: Demo, action: Action): Demo {
 }
 
 export function NarrativeSessionPreview() {
+  return new URLSearchParams(window.location.search).get('scene') === 'html'
+    ? <HtmlHeightPreview /> : <WritingPreview />
+}
+
+function WritingPreview() {
   const [state, dispatch] = useReducer(reducer, new URLSearchParams(window.location.search).get('scene') ?? '', initial)
+  const [rate, setRate] = useState<PreviewRate>('steady')
+  const secondaryFrames = useMemo(() => writingFrames(original, state.writingMode), [state.writingMode])
   const hasPendingImage = state.rounds.some(round => round.candidates.some(candidate => candidate.image === 'waiting'))
   useEffect(() => {
     if ((!state.job || state.paused) && !hasPendingImage) return
-    const timer = window.setTimeout(() => dispatch({ type: 'tick' }), state.job && !state.paused ? 1050 : 1500)
+    const timer = window.setTimeout(() => dispatch({ type: 'tick', step: previewRates[rate].step }), state.job && !state.paused ? (state.job.frame > 0 && state.job.frame % 80 < previewRates[rate].step ? 650 : previewRates[rate].delay) : 1500)
     return () => window.clearTimeout(timer)
-  }, [state.job, state.paused, hasPendingImage])
-  return <><NarrativeSession key={state.epoch} rounds={state.rounds} preset={state.preset} presets={presets} writingMode={state.writingMode} busy={!!state.job} paused={state.paused}
+  }, [state.job, state.paused, hasPendingImage, rate])
+  return <><NarrativeSession key={state.epoch} rounds={state.rounds}
+    previewControls={<select aria-label="模拟输出速度" value={rate} onChange={event => setRate(event.target.value as PreviewRate)}><option value="slow">慢速输出</option><option value="steady">均匀输出</option><option value="burst">突发输出</option></select>}
+    secondaryPanel={<StreamingSessionPreview frames={secondaryFrames} rate={rate} />}
+    preset={state.preset} presets={presets} writingMode={state.writingMode} busy={!!state.job} paused={state.paused}
     onPresetChange={value => dispatch({ type: 'preset', value })} onWritingModeChange={value => dispatch({ type: 'mode', value })}
     onSend={(content, mode) => dispatch({ type: 'send', content, mode })} onRetry={roundId => dispatch({ type: 'retry', roundId })}
     onSelectCandidate={(roundId, index) => dispatch({ type: 'select', roundId, index })} onPause={() => dispatch({ type: 'pause' })}
-    onReplay={() => dispatch({ type: 'replay' })} onReset={() => dispatch({ type: 'reset' })} /><StartupReady /></>
+    onReplay={() => dispatch({ type: 'replay' })} onReset={() => dispatch({ type: 'reset' })} onAdvance={() => dispatch({ type: 'advance' })} /><StartupReady /></>
 }

@@ -60,7 +60,7 @@ export function createClientScriptRuntime(options: ClientScriptRuntimeOptions) {
         if (!mount.enabled || (mount.script.runtime !== 'client' && mount.script.runtime !== 'client-worker')) continue
         const entryUrl = `loom-script:${mount.mountId}`
         desired.add(entryUrl)
-        const fingerprint = JSON.stringify([mount.script.id, mount.mountVersion ?? 0, mount.grantedCapabilities, override ?? null])
+        const fingerprint = JSON.stringify([mount.script.id, mount.mountVersion ?? 0, [...mount.grantedCapabilities].sort(), override ?? null])
         let entry = sources.get(entryUrl)
         if (entry?.fingerprint !== fingerprint) {
           entry?.controller.abort()
@@ -80,7 +80,7 @@ export function createClientScriptRuntime(options: ClientScriptRuntimeOptions) {
             reloadId: fingerprint,
             requestedUiCapabilities: running.script.requestedCapabilities.includes('ui.notify') ? ['ui.notify'] : [],
             desired: { enabled: true, grants: { ui: running.grantedCapabilities.includes('ui.notify') ? ['ui.notify'] : [] } },
-            contributions: { renderers: running.script.contributions.map(item => ({ ...item.renderer })) },
+            contributions: { renderers: running.script.contributions.filter(item => item.kind === 'renderer').map(item => ({ ...item.renderer })) },
           }],
         })
       }
@@ -127,6 +127,7 @@ function scriptContext(context: ClientExtensionActivationContext, mount: Resolve
   }
   return {
     ...context,
+    scriptSettings: Object.freeze(structuredClone(mount.settings ?? {})),
     timeline: { get target() {
       context.signal.throwIfAborted()
       const scope = rendererHost.scopeSnapshot()

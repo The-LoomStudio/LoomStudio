@@ -202,7 +202,7 @@ describe('Native Function Tool Loop', () => {
       const batch = await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 })
       expect(batch).toMatchObject({
         done: true, state: 'completed', replayExpired: true,
-        events: [{ type: 'completed', result }],
+        events: [{ type: 'completed', result: JSON.parse(JSON.stringify(result)) }],
       })
       expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
         .toEqual(batch)
@@ -262,8 +262,8 @@ describe('Native Function Tool Loop', () => {
         const changeset = fixture.engine.database.prepare('SELECT reason FROM changesets WHERE id = ?').get(page.nodes[0]!.source!.changesetId!)
         expect(changeset).toEqual({ reason: 'application.tool.appendNarrative' })
       } else {
-        expect(JSON.stringify(requests[1])).toContain(scenario === 'conflict' ? 'head conflict' : 'test storage failure')
-        if (scenario === 'conflict') expect(toolResult).toMatchObject({ error: { code: 'narrative.head_conflict' } })
+        expect(JSON.stringify(requests[1])).toContain(scenario === 'conflict' ? 'The Narrative head changed after this task started' : 'test storage failure')
+        if (scenario === 'conflict') expect(toolResult).toMatchObject({ error: { code: 'narrative.swipe_source_changed' } })
       }
       expect(result.mutation.scope).toBe('agent-session-transcript')
     } finally { await fixture.close() }
@@ -324,7 +324,7 @@ describe('Native Function Tool Loop', () => {
       expect(edited.nodes[0]!.id).not.toBe(nodeId)
       if (interveningEdit) {
         expect(injected).toBe(true)
-        expect(result).toMatchObject({ error: { code: 'narrative.head_conflict' } })
+        expect(result).toMatchObject({ error: { code: 'narrative.swipe_source_changed' } })
       } else if (scenario === 'outside') {
         expect(JSON.stringify(result)).toContain('floor 2 is unavailable')
       } else expect(result).toMatchObject({ content: [{ type: 'json', value: { floor: 1, path: '/narrative/1.md' } }] })
@@ -676,10 +676,13 @@ describe('Native Function Tool Loop', () => {
       expect.objectContaining({ role: 'tool', tool_call_id: 'provider-native-call' }),
       { role: 'system', content: '[Fresh Context: Weather]\nFresh weather context.' },
     ]))
+    const contentInvocation = entries.find(entry => entry.kind === 'tool-invocation' && entry.transport === 'content')
+    if (contentInvocation?.kind !== 'tool-invocation') throw new Error('Missing content tool invocation')
+    expect(entries).toContainEqual(expect.objectContaining({ kind: 'tool-result', invocationId: contentInvocation.invocationId }))
     expect(requests[2]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         role: 'user',
-        content: expect.stringContaining('<loom_tool_result invocation_id="tool-invocation-'),
+        content: expect.stringContaining(`<loom_tool_result invocation_id="${contentInvocation.invocationId}"`),
       }),
     ]))
     expect(requests[2]?.messages).not.toEqual(expect.arrayContaining([
@@ -1037,8 +1040,11 @@ describe('Native Function Tool Loop', () => {
       })
     ).entries.map((entry) => entry.entry)
 
+    const contentInvocation = entries.find(entry => entry.kind === 'tool-invocation' && entry.transport === 'content')
+    if (contentInvocation?.kind !== 'tool-invocation') throw new Error('Missing content tool invocation')
+    expect(entries).toContainEqual(expect.objectContaining({ kind: 'tool-result', invocationId: contentInvocation.invocationId }))
     expect(requests[0]?.tools).toBeUndefined()
-    expect(turn.projection.messages.some((msg: any) => msg.fragmentIds.includes('runtime.agent-tools.contribution.0'))).toBe(true)
+    expect(turn.projection.messages.some(msg => msg.fragmentIds.includes('runtime.agent-tools.contribution.0'))).toBe(true)
     expect(requests[0]?.messages).toEqual(
       expect.arrayContaining([expect.objectContaining({
         role: 'system',
@@ -1054,7 +1060,7 @@ describe('Native Function Tool Loop', () => {
         expect.objectContaining({
           role: 'user',
           content: expect.stringContaining(
-            '<loom_tool_result invocation_id="tool-invocation-',
+            `<loom_tool_result invocation_id="${contentInvocation.invocationId}"`,
           ),
         }),
       ]),

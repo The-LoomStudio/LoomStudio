@@ -33,6 +33,11 @@ export function inspectSessionRunStatus(entries: AgentTranscriptEntry[]): { runI
     if (lastRunState.entry.state === 'suspended' || lastRunState.entry.state === 'running') {
       return { runId: lastRunState.runId, status: lastRunState.entry.state }
     }
+    // Provider failures can retain a continuation checkpoint; the server decides
+    // whether that persisted checkpoint is still resumable.
+    if (lastRunState.entry.state === 'failed' && lastRunState.entry.recovery) {
+      return { runId: lastRunState.runId, status: 'suspended' }
+    }
     if (lastRunState.entry.state === 'completed' || lastRunState.entry.state === 'failed' || lastRunState.entry.state === 'aborted' || lastRunState.entry.state === 'discarded') {
       return { status: 'idle' }
     }
@@ -121,9 +126,10 @@ export async function runAgentTurn(
           entry.runId === runId && (entry.entry.kind === 'tool-invocation' || entry.entry.kind === 'reasoning'
             || entry.entry.kind === 'message' && entry.entry.role === 'assistant')))
       updateMessages(current => {
-        const committed = retainToolPresentation(current, transcript.entries.filter(entry => entry.runId === runId))
+        const committed = retainRunPresentation(current, transcript.entries.filter(entry => entry.runId === runId))
         const committedIds = new Set(committed.map(entry => entry.id))
-        const placeholder = current.find(entry => entry.id === streamingId)
+        const placeholder = current.find(entry => entry.id === streamingId) ?? (snapshot.partialText && !committedDuringRead
+          ? { id: streamingId, runId, agentSessionId: run.sessionId, sequence: 0, createdAt: new Date().toISOString(), entry: { kind: 'message', role: 'assistant' as const, content: '' } } : undefined)
         const entries = [
           ...current.filter(entry => entry.runId !== runId && entry.id !== streamingId
             && entry.id !== run.optimisticEntryId && !committedIds.has(entry.id)),
@@ -136,10 +142,11 @@ export async function runAgentTurn(
         })
         if (placeholder) entries.push({
           ...placeholder, sequence: (entries.at(-1)?.sequence ?? 0) + 1,
-          entry: { kind: 'message', role: 'assistant', content: committedDuringRead ? '' : snapshot.partialText ?? '' },
+          entry: { kind: 'message', role: 'assistant', content: committedDuringRead ? '' : snapshot.partialText ?? '', state: 'partial' },
         })
         return !committedDuringRead && !snapshot.done
-          ? (snapshot.partialToolInputs ?? []).reduce((current, input) => appendToolInput(current, input, run), entries)
+          ? (snapshot.partialToolInputs ?? []).reduce((current, input) => appendToolInput(current, input, run),
+            snapshot.partialText || snapshot.partialToolInputs?.length ? settleReasoning(entries, runId) : entries)
           : entries
       })
       updateRun({ runId, status: batch.state })
@@ -149,7 +156,7 @@ export async function runAgentTurn(
     const pendingApprovals = batch.pendingApprovals
     for (const event of [...batch.events, ...(pendingApprovals ?? [])]) {
       if (event.type === 'tool-input-delta') {
-        updateMessages(entries => appendToolInput(entries, event, run))
+        updateMessages(entries => appendToolInput(settleReasoning(entries, runId), event, run))
       }
       if (event.type === 'completed' || event.type === 'failed' || event.type === 'cancelled' || event.type === 'suspended') {
         updateMessages(entries => interruptToolInputs(entries, runId))
@@ -163,16 +170,29 @@ export async function runAgentTurn(
         updateMessages(entries => {
           const existing = entries.find(entry => entry.id === id)
           if (existing) return entries.map(entry => entry.id === id
-            ? { ...entry, entry: { ...entry.entry, content: `${entry.entry.content ?? ''}${event.delta}` } } : entry)
-          return [...entries, { id, agentSessionId: run.sessionId, runId,
-            sequence: (entries.at(-1)?.sequence ?? 0) + 1, createdAt: new Date().toISOString(),
-            entry: { kind: 'reasoning', content: event.delta, source: 'provider-native', visibility: 'collapsed', replay: 'omit' } }]
+            ? { ...entry, entry: { ...entry.entry, content: `${entry.entry.content ?? ''}${event.delta}`, state: 'partial' } } : entry)
+          const placeholder = entries.find(entry => entry.id === streamingId && !entry.entry.content)
+          const before = entries.filter(entry => entry !== placeholder)
+          const sequence = (before.at(-1)?.sequence ?? 0) + 1
+          return [...before, { id, presentationId: `${id}:${event.providerRunId}`, agentSessionId: run.sessionId, runId,
+            sequence, createdAt: new Date().toISOString(),
+            entry: { kind: 'reasoning', content: event.delta, source: 'provider-native', visibility: 'collapsed', replay: 'omit' } },
+            ...(placeholder ? [{ ...placeholder, sequence: sequence + 1 }] : [])]
         })
       }
       if (event.type === 'text-delta' && typeof event.delta === 'string' && streamingId) {
-        updateMessages(entries => entries.map(entry => entry.id === streamingId
-          ? { ...entry, entry: { ...entry.entry, content: `${entry.entry.content ?? ''}${event.delta}` } }
-          : entry))
+        updateMessages(current => {
+          const entries = settleReasoning(current, runId)
+          const placeholder = entries.find(entry => entry.id === streamingId)
+          const entry: AgentTranscriptEntry = {
+            id: streamingId, runId, agentSessionId: run.sessionId,
+            sequence: placeholder?.sequence ?? (entries.at(-1)?.sequence ?? 0) + 1,
+            createdAt: placeholder?.createdAt ?? new Date().toISOString(),
+            presentationId: placeholder?.presentationId ?? `${streamingId}:${event.providerRunId}`,
+            entry: { kind: 'message', role: 'assistant', state: 'partial', content: `${placeholder?.entry.content ?? ''}${event.delta}` },
+          }
+          return placeholder ? entries.map(item => item.id === streamingId ? entry : item) : [...entries, entry]
+        })
       }
       if (event.type === 'mutation-approval-requested'
         && typeof event.requestId === 'string'
@@ -263,19 +283,29 @@ function appendToolInput(entries: AgentTranscriptEntry[], input: ToolInput, run:
   }]
 }
 
+function settleReasoning(entries: AgentTranscriptEntry[], runId: string): AgentTranscriptEntry[] {
+  return entries.map(entry => entry.runId === runId && entry.id.startsWith('streaming-reasoning-')
+    ? { ...entry, entry: { ...entry.entry, state: 'completed' } } : entry)
+}
+
 function interruptToolInputs(entries: AgentTranscriptEntry[], runId: string): AgentTranscriptEntry[] {
   return entries.map(entry => entry.runId === runId && entry.entry.kind === 'tool-input'
     ? { ...entry, entry: { ...entry.entry, status: 'interrupted' } } : entry)
 }
 
-export function retainToolPresentation(current: AgentTranscriptEntry[], incoming: AgentTranscriptEntry[]): AgentTranscriptEntry[] {
+export function retainRunPresentation(current: AgentTranscriptEntry[], incoming: AgentTranscriptEntry[]): AgentTranscriptEntry[] {
   const byId = new Map(current.map(entry => [entry.id, entry]))
   const drafts = current.filter(entry => entry.entry.kind === 'tool-input')
   return incoming.map(entry => {
     const previous = byId.get(entry.id)
     const draft = entry.entry.kind === 'tool-invocation' ? drafts.find(item => item.runId === entry.runId
       && item.entry.providerItemId === (entry.entry.providerItemId ?? entry.entry.invocationId)) : undefined
-    const presentationId = draft?.id ?? previous?.presentationId
+    const live = entry.entry.kind === 'reasoning' && entry.entry.source === 'provider-native'
+      ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming-reasoning-') && item.entry.content === entry.entry.content)
+      : entry.entry.kind === 'message' && entry.entry.role === 'assistant'
+        ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming') && item.entry.kind === 'message' && Boolean(item.entry.content) && item.entry.content === entry.entry.content)
+        : undefined
+    const presentationId = previous?.presentationId ?? draft?.id ?? live?.presentationId ?? live?.id
     return presentationId ? { ...entry, presentationId } : entry
   })
 }
@@ -298,13 +328,14 @@ export function mergeAgentRunEntries(
       && !(entry.entry.kind === 'tool-input' && committedRuns.has(entry.runId))
       && !(entry.id.startsWith('streaming-reasoning-') && reasoningRuns.has(entry.runId))
       && (!hasUser || entry.id !== run.optimisticEntryId)),
-    ...retainToolPresentation(current, appended),
+    ...retainRunPresentation(current, appended),
   ].sort((a, b) => a.sequence - b.sequence)
   if (placeholder) {
     entries.push({
       ...placeholder,
       sequence: (entries.at(-1)?.sequence ?? 0) + 1,
-      entry: committedStep ? { kind: 'message', role: 'assistant', content: '' } : placeholder.entry,
+      entry: committedStep ? { kind: 'message', role: 'assistant', content: '', state: 'partial' } : placeholder.entry,
+      presentationId: committedStep ? undefined : placeholder.presentationId,
     })
   }
   return entries

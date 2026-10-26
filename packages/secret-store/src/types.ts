@@ -1,4 +1,5 @@
-import type { DataActorRef, DataCommitFact } from '@loom-studio/data-engine'
+import type { DataTransactionInput } from '@loom-studio/data-engine'
+import type { DataCommitFact } from '@loom-studio/data-engine'
 
 export type SecretRef = `secret:${string}`
 
@@ -21,13 +22,7 @@ export type SecretMetadata = {
   updatedAt: string
 }
 
-export type SecretWriteContext = {
-  actor: DataActorRef
-  reason?: string
-  correlationId?: string
-  callId?: string
-  parentCallId?: string
-}
+export type SecretWriteContext = DataTransactionInput
 
 export type SecretUseContext = {
   caller: string

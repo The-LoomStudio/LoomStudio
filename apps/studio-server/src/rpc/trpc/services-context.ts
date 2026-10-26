@@ -16,6 +16,11 @@ type RpcCallContext = {
 type KernelRpcCaller = Pick<import('@loom-studio/kernel').Kernel, 'callRpc'>
 
 export type StudioRpcServices = {
+  dashboard?: {
+    statistics: import('@loom-studio/application-data').StatisticsStore
+    storage: ReturnType<typeof import('../../statistics/storage-snapshot.js').createStorageSnapshot>
+    database: () => ReturnType<typeof import('@loom-studio/data-engine').readSqliteSpaceUsage>
+  }
   scripts?: ReturnType<typeof import('../../scripts/script-service.js').createScriptService>
   batchImporter?: ReturnType<typeof import('../../extensions/import-batch.js').createExtensionBatchImporter>
   applicationRuntime: ApplicationRuntime

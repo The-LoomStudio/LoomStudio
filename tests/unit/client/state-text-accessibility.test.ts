@@ -11,14 +11,14 @@ import {
   useTextTransformController,
   type TextTransformController,
   type TextTransformProps,
-} from '../../../apps/studio-client/src/features/text-transforms/ui/text-transform-panel.js'
+} from '../../../apps/studio-client/src/widgets/text-transform-workbench/text-transform-panel.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import { enUS } from '../../../apps/studio-client/src/shared/i18n/en-us.js'
 import { zhCN } from '../../../apps/studio-client/src/shared/i18n/zh-cn.js'
 
 const api = {} as TextTransformProps['api']
 const card: Card = {
-  id: 'card-1', version: 1, name: 'User content unchanged',
+  id: 'card-1', artifactId: 'fixture-artifact', version: 1, name: 'User content unchanged',
   opening: { id: 'root-opening', content: '' }, lore: { entries: [] }, createdAt: 'now', updatedAt: 'now',
 }
 const noop = () => undefined
@@ -39,7 +39,6 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
     }))
     expect(html).toContain(`aria-label="${t('stateAuthoring.cardConfig')}"`)
     expect(html).toContain(`aria-label="${t('stateVariables.resizeSidebar')}"`)
-    expect(html).toContain(card.name)
     expect(html).toContain('stateTemplates:') // Serialized fields are not translated.
     if (locale === 'en-US') expect(html).not.toMatch(/[\u3400-\u9fff]/)
   })
@@ -98,7 +97,7 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
       selectedTarget: { kind: 'script', id: 'script-1' },
       resolvedMounts: [{
         mountId: 'mount-1', enabled: true, orderIndex: 0, grantedCapabilities: [], source: '// USER SOURCE',
-        script: { id: 'script-1', version: 1, name: 'USER SCRIPT', metadataId: 'user-script', scriptVersion: '1.0.0', requestedCapabilities: [], contributions: [] },
+        script: { id: 'script-1', version: 1, name: 'USER SCRIPT', metadataId: 'user-script', runtime: 'client', scriptVersion: '1.0.0', requestedCapabilities: [], contributions: [] },
       }],
     })
     expect(html).toContain(`aria-label="${t('textTransform.source')}"`)

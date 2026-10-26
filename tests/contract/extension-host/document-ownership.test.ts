@@ -1,6 +1,6 @@
 import type { JsonValue } from '@loom-studio/shared'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore, createSqliteDocumentStore, type DocumentStore } from '@loom-studio/document-store'
+import { createInMemoryDocumentStore, type DocumentStore } from '@loom-studio/document-store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createContext, createExtensionScope } from '../../../packages/extension-sdk/extension-host/src/instance.js'
 import type { ExtensionModuleRecord } from '../../../packages/extension-sdk/extension-host/src/types.js'
@@ -98,25 +98,23 @@ export function activate(ctx) {
   })
 })
 
-describe.each(['memory', 'sqlite'] as const)('atomic document ownership (%s)', backend => {
+describe('atomic document ownership (SQLite)', () => {
   let documents: DocumentStore
   let close: () => Promise<void>
   const scopes: ReturnType<typeof createExtensionScope>[] = []
 
   beforeEach(() => {
-    if (backend === 'sqlite') {
-      const store = createSqliteDocumentStore({ filename: ':memory:' })
-      documents = store
-      close = () => store.close()
-    } else {
-      documents = createInMemoryDocumentStore()
-      close = async () => undefined
-    }
+    const store = createInMemoryDocumentStore()
+    documents = store
+    close = () => store.close()
   })
 
   afterEach(async () => {
-    await Promise.all(scopes.splice(0).map(scope => scope.dispose()))
-    await close()
+    try {
+      await Promise.all(scopes.splice(0).map(scope => scope.dispose()))
+    } finally {
+      await close()
+    }
   })
 
   function context(packageId: string) {

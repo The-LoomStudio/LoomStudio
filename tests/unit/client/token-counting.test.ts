@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collectTokenEntries, aggregateTokenCounts } from '../../../apps/studio-client/src/features/context-assets/model/resource-token-counts.js'
+import { collectTokenEntries, aggregateTokenCounts } from '../../../apps/studio-client/src/features/prompt-resources/model/resource-token-counts.js'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/context-asset.js'
 import { estimateRequestTokens } from '@loom-studio/ai-gateway'
 import { countText } from '@loom-studio/tokenizer'

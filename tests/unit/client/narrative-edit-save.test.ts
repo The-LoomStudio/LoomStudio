@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { isValidElement, type ComponentProps, type ReactElement } from 'react'
+import { createElement, isValidElement, type ComponentProps, type ReactElement } from 'react'
+import { NarrativeCommunication } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-communication.js'
 import { NarrativeTimeline } from '../../../apps/studio-client/src/widgets/narrative-timeline/narrative-timeline.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
@@ -42,13 +43,16 @@ vi.mock('../../../apps/studio-client/node_modules/@tanstack/react-virtual/dist/e
 beforeEach(() => {
   hooks.cursor = 0
   hooks.values = []
-  liveCounter.useTokenCounts.mockReset().mockReturnValue({ counts: [9, 3], pending: false })
+  liveCounter.useTokenCounts.mockReset().mockReturnValue({ counts: [9, 3], currentCounts: [9, 3], pending: false })
 })
 type Element = ReactElement<Record<string, unknown>>
 function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements)
   if (!isValidElement<Record<string, unknown>>(value)) return []
-  return [value, ...Object.values(value.props).flatMap(elements)]
+  const renderNarrative = value.props.renderNarrative as ((step: unknown) => unknown) | undefined
+  const execution = value.props.execution as { steps: { kind: string }[] } | undefined
+  return [value, ...Object.values(value.props).flatMap(elements),
+    ...(renderNarrative && execution ? execution.steps.filter(step => step.kind === 'narrative').flatMap(step => elements(renderNarrative(step))) : [])]
 }
 
 describe('Narrative正文保存', () => {
@@ -56,7 +60,7 @@ describe('Narrative正文保存', () => {
     const start = vi.fn()
     const t = createTranslator('zh-CN')
     const props: ComponentProps<typeof NarrativeTimeline> = {
-      busy: false, composerHeight: 120, emptyTimelineText: '', hasOlder: false,
+      busy: false, emptyTimelineText: '', hasOlder: false,
       getNodeLink: () => '', onEditNode: vi.fn(), onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t, timeline: [], onStartStory: start,
       openingDraft: { content: '', isPlaceholder: true },
@@ -76,11 +80,11 @@ describe('Narrative正文保存', () => {
   it('automatically supplies node raw text and updated drafts to live counting without a refresh button', () => {
     const t = createTranslator('en-US')
     const props: ComponentProps<typeof NarrativeTimeline> = {
-      busy: false, composerHeight: 0, emptyTimelineText: '', hasOlder: true,
+      busy: false, emptyTimelineText: '', hasOlder: true,
       getNodeLink: () => '', onEditNode: vi.fn(), onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t, timelineId: 'timeline',
       timeline: [{
-        id: 'node', timelineId: 'timeline',
+        id: 'node', timelineId: 'timeline', kind: 'narrative', floor: 1,
         body: { format: 'loom-markdown.v1', raw: '**Original** {{macro}}' }, createdAt: '2026-09-23T00:00:00Z',
       }],
     }
@@ -90,7 +94,7 @@ describe('Narrative正文保存', () => {
     expect(elements(render().find(element => element.props.createdAt)?.props.metadata).find(element => 'textTokens' in element.props)?.props.textTokens)
       .toBe(6)
     props.timeline = [{ ...props.timeline[0], body: { format: 'loom-markdown.v1', raw: 'Changed' } }, {
-      id: 'older', timelineId: 'timeline', body: { format: 'loom-markdown.v1', raw: 'Older' }, createdAt: '2026-09-22T00:00:00Z',
+      id: 'older', timelineId: 'timeline', kind: 'narrative', floor: 2, body: { format: 'loom-markdown.v1', raw: 'Older' }, createdAt: '2026-09-22T00:00:00Z',
     }]
     render()
     expect(liveCounter.useTokenCounts).toHaveBeenLastCalledWith(['Changed', 'Older'], JSON.stringify(['timeline', 'node', 'older']))
@@ -104,17 +108,59 @@ describe('Narrative正文保存', () => {
     render()
     expect(liveCounter.useTokenCounts).toHaveBeenLastCalledWith(['Changed', 'Older'], JSON.stringify(['other-timeline', 'node', 'older']))
   })
+  it.each([false, true])('keeps an independent icon toggle in the message footer, including empty communication (%s)', hasReply => {
+    let mode = 'roleplay'
+    const swipe = createElement('button', { 'aria-label': 'Swipe candidates' }, '1 / 1')
+    const props: ComponentProps<typeof NarrativeTimeline> = {
+      busy: false, emptyTimelineText: '', hasOlder: false,
+      getNodeLink: () => '', onEditNode: vi.fn(), onForkNode: vi.fn(), onLoadOlder: vi.fn(),
+      onNodeAnchorChange: vi.fn(), t: createTranslator('zh-CN'), timelineId: 'timeline',
+      timeline: [{ id: 'node', entryId: 'story', kind: 'narrative', floor: 1, timelineId: 'timeline',
+        body: { format: 'loom-markdown.v1', raw: 'Story' }, createdAt: '2026-10-24T10:20:00Z' }],
+      workEntries: [
+        { id: 'story', roundId: 'round', agentSessionId: 'timeline', sequence: 1, runId: 'run', createdAt: '',
+          entry: { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Story' } },
+        { id: 'reply', roundId: 'round', agentSessionId: 'timeline', sequence: 2, runId: 'run', createdAt: '',
+          entry: { kind: 'message', role: 'assistant', content: 'Done' } },
+      ],
+      swipeControls: { nodeId: 'node', content: swipe },
+      onDiscuss: () => { mode = 'discussion' },
+    }
+    if (!hasReply) props.workEntries!.pop()
+    const render = () => { hooks.cursor = 0; return elements(NarrativeTimeline(props)) }
+    const tree = render()
+    const footer = tree.find(element => element.props.createdAt && element.props.actions)!
+    expect(elements(footer.props.trailing)).toContain(swipe)
+    expect(elements(footer.props.trailing).some(element => element.props['aria-controls'] === 'communication-round:node')).toBe(true)
+    expect(tree.filter(element => element === swipe)).toHaveLength(1)
+    const toggle = () => render().find(element => element.props['aria-controls'] === 'communication-round:node')!
+    expect(toggle().props['aria-expanded']).toBe(false)
+    expect(isValidElement(toggle().props.children)).toBe(true)
+    expect(tree.some(element => element.props.children === '正文与过程' || element.props.children === '只看正文')).toBe(false)
+    ;(toggle().props.onClick as () => void)()
+    expect(toggle().props['aria-expanded']).toBe(true)
+    expect(mode).toBe('roleplay')
+    const communication = render().find(element => element.type === NarrativeCommunication)!
+    expect(communication).toBeDefined()
+    ;(communication.props.onReply as () => void)()
+    expect(mode).toBe('discussion')
+    expect(toggle().props['aria-expanded']).toBe(true)
+    ;(toggle().props.onClick as () => void)()
+    expect(toggle().props['aria-expanded']).toBe(false)
+    expect(mode).toBe('discussion')
+  })
+
   it.each([true, false])('waits for persistence and retains failed text (success: %s)', async success => {
     let resolve!: () => void
     let reject!: (error: Error) => void
     const save = vi.fn(() => new Promise<void>((accept, fail) => { resolve = accept; reject = fail }))
     const t = createTranslator('en-US')
     const props: ComponentProps<typeof NarrativeTimeline> = {
-      busy: false, composerHeight: 0, emptyTimelineText: '', hasOlder: false,
+      busy: false, emptyTimelineText: '', hasOlder: false,
       getNodeLink: () => '', onEditNode: save, onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t, timelineId: 'timeline',
       timeline: [{
-        id: 'node', timelineId: 'timeline',
+        id: 'node', timelineId: 'timeline', kind: 'narrative', floor: 1,
         body: { format: 'loom-markdown.v1', raw: 'Original' }, createdAt: '2026-09-23T00:00:00Z',
       }],
     }
@@ -139,7 +185,7 @@ describe('Narrative正文保存', () => {
     if (success) expect(tree.some(element => element.props.sourceOnly)).toBe(false)
     else {
       expect(tree.find(element => element.props.sourceOnly)?.props).toMatchObject({ value: '  User draft\n', disabled: false })
-      expect(tree.find(element => element.props.role === 'alert')?.props.children).toBe('Version conflict')
+      expect(tree.some(element => element.props.role === 'alert' && element.props.children === 'Version conflict')).toBe(true)
     }
   })
 })

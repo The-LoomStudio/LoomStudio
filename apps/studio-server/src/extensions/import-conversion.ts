@@ -1,4 +1,4 @@
-import { isCardBundleArtifact, isPromptResourceArtifact, normalizeCardBundleArtifact } from '@loom-studio/application-runtime'
+import { isCardBundleArtifact, isPromptResourceArtifact, normalizeCardBundleArtifact } from '@loom-studio/application-runtime/artifacts'
 import type { PromptResourceArtifact, RuntimeRequestContext } from '@loom-studio/application-runtime'
 import type { Kernel } from '@loom-studio/kernel'
 import type { JsonValue } from '@loom-studio/shared'

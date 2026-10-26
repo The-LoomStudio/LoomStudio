@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest'
+import { expect, it, vi, onTestFinished } from 'vitest'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type { ExtensionHostOptions } from '@loom-studio/extension-host'
@@ -26,9 +26,11 @@ it('cancels obsolete preparations before module evaluation and continues the new
       runtime: 'server', requestedCapabilities: ['runtime.server'], contributions: [] },
     source: code(`v${version}`),
   })
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const runtime = createServerScriptRuntime({
     hostOptions: {
-      documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(),
+      documents, diagnostics: createInMemoryDiagnosticsRegistry(),
       callRpc: async () => null, registerRpc: () => { throw new Error('Not used') },
     },
     prepareSource: async (input, signal) => {
@@ -58,15 +60,17 @@ it('cancels obsolete preparations before module evaluation and continues the new
   }
 })
 
-it('runs authorized ESM through the host, preserves saved instances, and cleans up refresh, failure and removal', async () => {
+it('runs authorized ESM through the host, preserves saved instances, and cleans up remount, failure and removal', async () => {
   const macros = new Map<string, ExtensionMacroProvider>()
   const subscribers = new Set<unknown>()
   const disposals: string[] = []
   const readState = vi.fn<NonNullable<ExtensionHostOptions['readState']>>(async target => ({
     target, scopeId: 'global', revisionId: 'r1', value: { day: 3 }, createdAt: 'now',
   }))
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const runtime = createServerScriptRuntime({ hostOptions: {
-    documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(), readState,
+    documents, diagnostics: createInMemoryDiagnosticsRegistry(), readState,
     callRpc: async () => null,
     registerRpc: () => { throw new Error('Not used') },
     subscribeEvents: (_patterns, handler) => {
@@ -111,21 +115,20 @@ it('runs authorized ESM through the host, preserves saved instances, and cleans 
     expect(unchanged.runningDocumentVersion).toBe(1)
     expect(readState).toHaveBeenCalledTimes(1)
 
-    const refreshed = await runtime.refresh(run.mountId)
+    const refreshed = (await runtime.reconcile([{ ...saved, mountVersion: 2 }]))[0]!
     expect(refreshed?.instanceId).not.toBe(started.instanceId)
     expect(refreshed?.runningDocumentVersion).toBe(2)
     expect(disposals).toEqual(['event', 'macro'])
     expect(subscribers.size).toBe(1)
     expect(await macros.get('script.doc1.day')!.resolve({} as never)).toBe('2:3')
 
-    await runtime.reconcile([{ ...saved, source: source(3, true) }])
-    const failed = await runtime.refresh(run.mountId)
+    const failed = (await runtime.reconcile([{ ...saved, mountVersion: 3, source: source(3, true) }]))[0]!
     expect(failed?.state).toBe('failed')
     expect(failed?.diagnostics.some(item => item.message === 'activation exploded')).toBe(true)
     expect(subscribers.size).toBe(0)
     expect(macros.size).toBe(0)
 
-    await runtime.reconcile([{ ...saved, mountVersion: 2 }])
+    await runtime.reconcile([{ ...saved, mountVersion: 4 }])
     expect(runtime.list()[0]?.state).toBe('active')
     expect(subscribers.size).toBe(1)
     await runtime.reconcile([])
@@ -135,4 +138,27 @@ it('runs authorized ESM through the host, preserves saved instances, and cleans 
   } finally {
     await runtime.dispose()
   }
+})
+
+it('passes a frozen configuration snapshot to real ESM and adopts it only with a runtime revision', async () => {
+  const marker = '__loom_script_settings_test__'
+  const snapshots: unknown[] = []
+  Object.defineProperty(globalThis, marker, { value: snapshots, configurable: true })
+  const documents = createInMemoryDocumentStore()
+  const runtime = createServerScriptRuntime({ hostOptions: {
+    documents, diagnostics: createInMemoryDiagnosticsRegistry(),
+    callRpc: async () => null, registerRpc: () => { throw new Error('Not used') },
+  } })
+  const run: ServerScriptRun = {
+    mountId: 'settings', mountVersion: 1, grantedCapabilities: ['runtime.server'], settings: { caption: '旁白' },
+    script: { id: 'settings', version: 1, metadataId: 'settings', name: 'Settings', scriptVersion: '1.0.0', runtime: 'server', requestedCapabilities: ['runtime.server'], contributions: [] },
+    source: `export function activate(ctx) { globalThis[${JSON.stringify(marker)}].push([ctx.scriptSettings.caption, Object.isFrozen(ctx.scriptSettings)]); }`,
+  }
+  try {
+    await runtime.reconcile([run])
+    await runtime.reconcile([{ ...run, settings: { caption: '记录员' } }])
+    expect(snapshots).toEqual([['旁白', true]])
+    await runtime.reconcile([{ ...run, mountVersion: 2, settings: { caption: '记录员' } }])
+    expect(snapshots).toEqual([['旁白', true], ['记录员', true]])
+  } finally { await runtime.dispose(); await documents.close(); Reflect.deleteProperty(globalThis, marker) }
 })

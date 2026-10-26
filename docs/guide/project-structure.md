@@ -15,7 +15,7 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
 
 > **核心原则：内层不依赖外层。**
 > `packages/` 内层包 **绝对不可** import `apps/` 或外部特定实现。
-> 不能把依赖图简化成“所有 Package 最终都调用 Core”。Application Runtime 编排领域 Store / Gateway；Kernel 提供平台原语；Core 是独立编译能力。实际允许边界见[架构规则](architecture-rules.md)和[依赖图](../workbench/reference/dependency-graph.md)。
+> Application Runtime 编排领域 Store / Gateway，Kernel 提供平台原语；提示词编译直接由 Application 实现。实际允许边界见[架构规则](architecture-rules.md)和[依赖图](../workbench/reference/dependency-graph.md)。
 
 ---
 
@@ -77,9 +77,6 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
 
 这些包大多是独立于运行环境的（Node / Browser 均可或有明确边界）。
 
-- 📦 [`packages/core/`](../../packages/core/README.md) (`@loom/core`)
-  - 同步、确定的 Fragment / Pass / Pipeline / Trace 执行层。它是只服务 Studio 的 private workspace package，并保留明确的跨 package API 边界。
-  - 正式架构说明：[`architecture/application/prompt-build/loom-core/`](../architecture/application/prompt-build/loom-core/)。
 - 📦 [`packages/application-runtime/`](../../packages/application-runtime/README.md) (AIRP Layer)
   - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent / State / PromptResource 持久化由 `@loom-studio/application-data` 承担。
 - 📦 [`packages/application-data/`](../../packages/application-data/README.md)
@@ -93,22 +90,14 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
 - 📦 [`packages/secret-store/`](../../packages/secret-store/README.md)
   - 平台通用 Secret metadata、受控使用边界与凭证后端接口；SQLite 不保存 Secret 明文，真实系统凭证后端由 Server 组合根注入。
 - 📦 [`packages/document-store/`](../../packages/document-store/README.md)
-  - 保存适合版本化编辑的 Document、Revision 与 Changeset，支持乐观锁与回滚，提供 SQLite 与 In-Memory 双实现。
-- 📦 [`packages/blob-store/`](../../packages/blob-store/README.md)
-  - 基于 SHA-256 的不可变二进制字节存储，负责暂存、去重、两阶段原子 finalize 与受控流式读写，不包含业务 Asset 语义。
+  - 保存适合版本化编辑的 Document、Revision 与 Changeset，支持乐观锁与回滚，文件和内存实例共用 SQLite 实现。
 - 📦 [`packages/asset-store/`](../../packages/asset-store/README.md)
-  - 在共享 SQLite 中保存 Source Artifact 与 Media Asset metadata，并通过稳定 ID 关联 Blob 存储。
+  - 在共享 SQLite 中保存 Source Artifact 与 Media Asset metadata，并通过稳定 ID 关联同包 blobs 模块；Blob 仍独立承担内容寻址文件存储职责。
 - 📦 [`packages/ai-gateway/`](../../packages/ai-gateway/README.md)
   - 统一的多模型厂商调度网关（基于 Vercel AI SDK），支持流式执行、工具调用、能力画像映射与离线测试 Fake Provider。
-- 📦 [`packages/transport/`](../../packages/transport/README.md)
-  - 定义了系统内事件通知格式；请求/响应由服务端 tRPC Router 与官方 Adapter 接管。
-- 📦 [`packages/client-bridge/`](../../packages/client-bridge/README.md)
-  - 供前端使用的 typed RPC 调用桥，连接到后端的 Transport 以进行远程调用，并在 401 时自动触发会话刷新。
 - 📦 [`packages/logging/`](../../packages/logging/README.md)
   - Server/Client 共用的结构化运行日志底座，提供 Root/Child Logger、Memory/Console Sink 与查询类型；Node JSONL 旋转持久化通过 `@loom-studio/logging/node` 子入口提供。
   - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
-- 📦 [`packages/loom-runner/`](../../packages/loom-runner/README.md)
-  - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、注入 PassFactory、对接 Diagnostics 和 Trace Audit。
 - 📦 [`packages/loom-ui/`](../../packages/loom-ui/README.md) (`@loom-studio/ui`)
   - 领域无关的原子级 UI 设计系统组件库（Button、TextInput、Field、Radix 菜单原语等）与 SVG 图标集。
 - 📦 [`packages/extension-sdk/`](../../packages/extension-sdk/README.md)
@@ -117,10 +106,10 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
   - 物理嵌套但具有独立 Workspace identity 的 Server Extension Host，负责插件模块加载、授权与生命周期管理。
 - 📦 [`packages/shared/`](../../packages/shared/README.md)
   - 通用的环境同构工具函数、类型定义 (`JsonValue`, `createId`, 时间处理)、变量宏渲染引擎与 LoreMount 契约。
-- 📦 [`packages/diagnostics/`](../../packages/diagnostics/README.md) & [`packages/trace-audit/`](../../packages/trace-audit/README.md)
-  - 分别提供系统级非阻塞错误/告警收集注册表与编译器运行轨迹/安全审计只增不减存储。
+- 📦 [`packages/diagnostics/`](../../packages/diagnostics/README.md)
+  - 系统级非阻塞错误/告警收集注册表；模型构建与调用证据由 Application Observation 拥有。
 
-当前只有 `packages/loom-runner` 和 `packages/application-runtime` 可以直接依赖 `@loom/core`。前者提供平台 adapter；后者保留声明依赖，但当前第一方 PromptBuild 使用本包 DFS 编译器，未调用 Core public API。Kernel、Document Store、Extension Host、Client 与 Extension 不得直接依赖 Core。
+Client 的动态 RPC adapter 与 session-fetch 位于 `apps/studio-client/src/shared/api/`；事件 envelope 由 Extension SDK 提供。Core / Runner / TraceAudit 原型已退役。
 
 ## 🧩 扩展内容
 

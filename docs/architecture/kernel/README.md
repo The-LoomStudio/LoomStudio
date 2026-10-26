@@ -11,7 +11,7 @@ Studio Kernel 是 Loom Studio 的业务无感知协调层。它组装平台服�
 
 Kernel 当前负责：
 
-- 组装 Document Store、Extension Host、Diagnostics、Trace Audit 和 Loom Runner；
+- 组装 Document Store、Extension Host 和 Diagnostics；
 - 订阅领域无关的 Data Commit Source，并投影平台数据事件；
 - 注册、发现和调用 Kernel RPC 与 Extension RPC；
 - 保留 Kernel RPC 命名空间；
@@ -27,7 +27,6 @@ Kernel 明确不负责：
 - 承载前端状态或页面交互；
 - 将 HTTP、WebSocket、SSE 等具体传输方式写入 Kernel contract。
 
-`loom.run` 会拒绝 `messages`、`model`、`temperature`、`tools`、`chatId`、`sessionId`、`provider` 等业务字段，防止 Application 语义下沉到 Kernel。
 
 ## 2. 组成与依赖
 
@@ -40,8 +39,6 @@ Studio Server
        -> Data Commit Source
        -> Extension Host
        -> Diagnostics Registry
-       -> Trace Audit Store
-       -> Loom Runner
        -> Event Bus
 ```
 
@@ -94,9 +91,6 @@ events.*
 docs.*
 extensions.*
 diagnostics.*
-loom.*
-trace.*
-audit.*
 ```
 
 重复方法名会被拒绝。
@@ -116,9 +110,6 @@ Extension handler 获得的 context 由 Kernel 注入真实 `packageId`、`modul
 | `docs.*` | Document 查询、写入、删除、Changeset 查询与反向 Changeset |
 | `extensions.*` | Package Catalog、Module 启停/reload 与诊断查询 |
 | `diagnostics.*` | 平台诊断读取 |
-| `loom.*` | 经 Loom Runner 执行领域无关 Fragment pipeline |
-| `trace.*` | Loom Trace 事实查询 |
-| `audit.*` | Audit 事实查询 |
 
 具体方法和参数应以 Kernel public surface 与 `system.introspect` 的运行时结果为准，不在架构文档中复制第二份完整 RPC schema。
 

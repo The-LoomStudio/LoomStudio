@@ -29,13 +29,16 @@ describe('Client Script Runtime', () => {
       return { dispose() { events.push(`stop:${source}`) } }
     } }))
     const runtime = createClientScriptRuntime({ rendererHost, data: {} as ClientExtensionDataApi, loadSource })
-    const first = mount()
+    const first = { ...mount(), settings: { caption: '原名' } }
     const other = { ...mount(), mountId: 'mount-b', target: { kind: 'user' as const }, source: 'other' }
     try {
       await runtime.reconcile([first, other])
-      const saved = { ...first, source: 'version 2', script: { ...first.script, version: 2 } }
+      expect(contexts[0]!.scriptSettings).toEqual({ caption: '原名' })
+      expect(Object.isFrozen(contexts[0]!.scriptSettings)).toBe(true)
+      const saved = { ...first, settings: { caption: '新名' }, source: 'version 2', script: { ...first.script, version: 2 } }
       await runtime.reconcile([saved, other])
       expect(loadSource).toHaveBeenCalledTimes(2)
+      expect(contexts[0]!.scriptSettings).toEqual({ caption: '原名' })
       rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'card-a', timelineId: 'story-b', branchId: 'main' })
       await runtime.reconcile([saved, other])
       expect(loadSource).toHaveBeenCalledTimes(2)
@@ -43,6 +46,7 @@ describe('Client Script Runtime', () => {
       expect(() => contexts[0]!.configs.subscribe({}, () => {})).toThrow('requires an installed Extension')
       await runtime.reconcile([{ ...saved, mountVersion: 2 }, other])
       expect(events).toEqual(['start:version 1', 'start:other', 'stop:version 1', 'start:version 2'])
+      expect(contexts.at(-1)!.scriptSettings).toEqual({ caption: '新名' })
       expect(contexts[0]!.signal.aborted).toBe(true)
       await runtime.reconcile([other])
       expect(events.at(-1)).toBe('stop:version 2')
@@ -82,7 +86,7 @@ describe('Client Script Runtime', () => {
     let context!: ClientExtensionActivationContext
     vi.mocked(createClientWorkerModule).mockReturnValue({ activate(value) { context = value } })
     const runtime = createClientScriptRuntime({ rendererHost, data: {} as ClientExtensionDataApi, loadSource })
-    const first = mount('client-worker')
+    const first = { ...mount('client-worker'), settings: { count: 7 } }
     first.script.requires = ['https://example.test/dependency.js']
     try {
       await runtime.reconcile([{ ...first, grantedCapabilities: ['runtime.client'] }])
@@ -92,6 +96,7 @@ describe('Client Script Runtime', () => {
       await runtime.reconcile([{ ...first, mountVersion: 2 }])
       expect(createClientWorkerModule).toHaveBeenCalledExactlyOnceWith({ source: 'const prerequisite = 1\n;\nversion 1' })
       expect(loadSource).not.toHaveBeenCalled()
+      expect(context.scriptSettings).toEqual({ count: 7 })
       expect(() => context.state.get({ scope: 'global' })).toThrow('state.read')
       expect(() => context.configs.subscribe({}, () => {})).toThrow('requires an installed Extension')
     } finally { await runtime.dispose(); vi.unstubAllGlobals() }

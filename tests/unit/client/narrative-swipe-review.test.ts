@@ -9,7 +9,7 @@ import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/in
 
 const view = (): NarrativeSwipeView => ({
   id: 'group', timelineId: 'timeline', branchId: 'branch', revision: 4,
-  inputNodeId: 'input', sourceAgentSessionId: 'session', selectedCandidateId: 'a',
+  inputNodeId: 'input', sourceAgentSessionId: 'timeline', selectedCandidateId: 'a',
   active: false, suspended: false, canSelect: true, canGenerate: true,
   candidates: [{ id: 'a', nodeId: 'a-node', preview: 'A', status: 'completed' }],
 })
@@ -42,7 +42,7 @@ describe('Swipe production recovery review regressions', () => {
       if (!withA) { swipe.candidates = []; swipe.selectedCandidateId = undefined }
       swipe.candidates.push({ id: 'b', preview: '', status: 'failed' })
       const markup = renderToStaticMarkup(createElement(NarrativeSwipePicker, {
-        swipe, busy: false, primarySessionId: 'session', onSelect: vi.fn(), onGenerate: vi.fn(), t: createTranslator('en-US'),
+        swipe, busy: false, primarySessionId: 'timeline', onSelect: vi.fn(), onGenerate: vi.fn(), t: createTranslator('en-US'),
       }))
       expect(markup).toContain('Retry from start')
     }
@@ -55,13 +55,13 @@ describe('Swipe production recovery review regressions', () => {
     f.subscribeRun.mockReturnValueOnce(pending.promise)
     const running = f.render().generateSwipe('swipe')
     await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledOnce())
-    const inputNode = { id: 'input', timelineId: 'timeline', stateRevisionId: 'baseline',
+    const inputNode = { id: 'input', kind: 'user-input' as const, floor: 1, workspaceRevisionId: 'workspace', timelineId: 'timeline', stateRevisionId: 'baseline',
       body: { format: 'loom-markdown.v1' as const, raw: 'Original input' }, createdAt: '' }
     f.getPage.mockResolvedValue({ ...f.result.narrative, nodes: [inputNode] })
     hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'branch' }])
     await vi.waitFor(() => expect(f.render().nodes.map(node => node.id)).toEqual(['input']))
     expect(f.render().swipeBusy).toBe(true)
-    pending.resolve({ events: [{ type: 'completed', runId: 'run', result: f.result }], nextCursor: 1, done: true, state: 'completed' })
+    pending.resolve({ events: [{ type: 'completed', runId: 'run', result: f.rootResult }], nextCursor: 1, done: true, state: 'completed' })
     await running
     dispose?.()
   })
@@ -74,7 +74,7 @@ describe('Swipe production recovery review regressions', () => {
     await f.render().generateSwipe('swipe')
     expect(f.render().swipe?.suspended).toBe(true)
     getSwipes.mockResolvedValue({ swipe: view() })
-    hooks.onCommit?.([{ entityType: 'agent.session', entityId: 'session' }])
+    hooks.onCommit?.([{ entityType: 'agent.session', entityId: 'timeline' }])
     await vi.waitFor(() => expect(f.render().swipe?.suspended).toBe(false))
     expect(f.render().swipeBusy).toBe(false)
     dispose?.()
@@ -83,16 +83,18 @@ describe('Swipe production recovery review regressions', () => {
   it('resumes and observes the writing session instead of the independently viewed session', async () => {
     const f = await primaryFixture()
     const other = { ...f.result.agentSession, id: 'other' }
+    const readTranscript = f.getTranscript.getMockImplementation()!
     f.getTranscript.mockImplementation(async input => input.agentSessionId === other.id
       ? { session: other, entries: [] }
-      : { session: f.result.agentSession, entries: [f.result.entries.user, f.result.entries.assistant] })
+      : readTranscript(input))
     await f.render().activateAgentSession(other)
     const { dispose } = await connect(f)
     f.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 1, done: true, state: 'suspended' })
     await f.render().generateSwipe('swipe')
-    await f.render().resumeAgentRun()
-    expect(f.resumeRun).toHaveBeenCalledWith({ runId: 'run', agentSessionId: 'session' })
-    expect(f.subscribeRun.mock.calls.at(-1)).toEqual(['continued', 0, 'session'])
+    await f.loadRoot()
+    await f.render().resumeRootRun()
+    expect(f.resumeRun).toHaveBeenCalledWith({ runId: 'run', agentSessionId: 'timeline' })
+    expect(f.subscribeRun.mock.calls.at(-1)).toEqual(['continued', 0, 'timeline'])
     expect(f.render().agentSession?.id).toBe('other')
     expect(f.render().agentMessages).toEqual([])
     dispose?.()

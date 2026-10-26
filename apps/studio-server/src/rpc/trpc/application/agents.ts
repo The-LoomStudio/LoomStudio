@@ -7,7 +7,6 @@ import type {
 import type { JsonValue } from '@loom-studio/shared'
 import { listPresetToolMountsInputSchema, replacePresetToolMountsInputSchema } from '@loom-studio/shared/tool-mounts'
 import { getAgentRunService } from '../../../agents/agent-run-service.js'
-import { agentTranscriptEntryDto } from './agent-transcript-dto.js'
 import {
   isRecord,
   readBoolean,
@@ -82,6 +81,7 @@ export const agentsProcedures = {
       agentPresetId: readOptionalString(params, 'agentPresetId'),
       timelineId: readOptionalString(params, 'timelineId'),
       standalone: readOptionalBoolean(params, 'standalone'),
+      includeTimelines: readOptionalBoolean(params, 'includeTimelines'),
       cursor: readOptionalString(params, 'cursor'),
       limit: readOptionalNumber(params, 'limit'),
     }
@@ -91,10 +91,7 @@ export const agentsProcedures = {
       agentSessionId: readString(params, 'agentSessionId'),
     }
   })).query(({ ctx, input }) => ctx.runtime.getAgentSession(input)),
-  'getAgentTranscriptPage': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['getAgentTranscriptPage']>[0] => ({ agentSessionId: readString(params, 'agentSessionId'), cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit'), selectedCandidates: readOptionalBoolean(params, 'selectedCandidates') }))).query(async ({ ctx, input }) => {
-    const result = await ctx.runtime.getAgentTranscriptPage(input)
-    return { ...result, entries: result.entries.map(agentTranscriptEntryDto) }
-  }),
+  'getAgentTranscriptPage': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['getAgentTranscriptPage']>[0] => ({ agentSessionId: readString(params, 'agentSessionId'), cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit'), selectedCandidates: readOptionalBoolean(params, 'selectedCandidates') }))).query(({ ctx, input }) => ctx.runtime.getAgentTranscriptPage(input)),
   'deleteAgentSession': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['deleteAgentSession']>[0] => {
     return {
       agentSessionId: readString(params, 'agentSessionId'),
@@ -106,12 +103,8 @@ export const agentsProcedures = {
   'getAgentSessionMemory': procedure.input(jsonInput((params: JsonValue | undefined) => ({ agentSessionId: readString(params, 'agentSessionId'), branchId: readOptionalString(params, 'branchId') }))).query(({ ctx, input }) => ctx.runtime.getAgentSessionMemory(input)),
   'listAgentSessionSummaryTasks': procedure.input(jsonInput((params: JsonValue | undefined) => ({ agentSessionId: readString(params, 'agentSessionId') }))).query(({ ctx, input }) => ctx.runtime.listAgentSessionSummaryTasks(input)),
   'getAgentSessionSummaryStatus': procedure.input(jsonInput((params: JsonValue | undefined) => ({ agentSessionId: readString(params, 'agentSessionId') }))).query(({ ctx, input }) => ctx.runtime.getAgentSessionSummaryStatus(input)),
-  'completeAgentSessionHandoff': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['completeAgentSessionHandoff']>[0] => ({ agentSessionId: readString(params, 'agentSessionId'), expectedEntryCount: readNumber(params, 'expectedEntryCount'), summary: readString(params, 'summary'), branchId: readOptionalString(params, 'branchId') }))).mutation(async ({ ctx, input }) => {
-    const result = await ctx.runtime.completeAgentSessionHandoff(input, ctx.request)
-    return { ...result, entries: result.entries.map(agentTranscriptEntryDto) }
-  }),
+  'completeAgentSessionHandoff': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['completeAgentSessionHandoff']>[0] => ({ agentSessionId: readString(params, 'agentSessionId'), expectedEntryCount: readNumber(params, 'expectedEntryCount'), summary: readString(params, 'summary'), branchId: readOptionalString(params, 'branchId') }))).mutation(({ ctx, input }) => ctx.runtime.completeAgentSessionHandoff(input, ctx.request)),
   'updateAgentSession': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['updateAgentSession']>[0] => {
-    if (isRecord(params) && 'agentPresetId' in params) throw new Error('Agent Session preset binding is immutable')
     const summaryPolicy = readOptionalObject(params, 'summaryPolicy')
     return {
       ...(summaryPolicy ? { summaryPolicy: {
@@ -121,6 +114,8 @@ export const agentsProcedures = {
       } } : {}),
       agentSessionId: readString(params, 'agentSessionId'),
       title: readOptionalString(params, 'title'),
+      ...(isRecord(params) && params.agentPresetId !== undefined ? { agentPresetId: readString(params, 'agentPresetId') } : {}),
+      ...(isRecord(params) && params.narrativeMode !== undefined ? { narrativeMode: readNarrativeMode(params.narrativeMode) } : {}),
       ...(isRecord(params) && params.timelineId !== undefined
         ? { timelineId: readNullableString(params, 'timelineId') }
         : {}),
@@ -260,13 +255,20 @@ function readOptionalMacroTimelineTarget(params: JsonValue | undefined): { timel
 }
 
 function readAgentTurnInput(params: JsonValue | undefined): InvokeAgentTurnInput {
+  const retry = readOptionalObject(params, 'retry')
   return {
     requestId: readOptionalString(params, 'requestId'),
     agentSessionId: readString(params, 'agentSessionId'),
     input: readString(params, 'input'),
+    ...(retry ? { retry: { entryId: readString(retry, 'entryId') } } : {}),
     activationFacts: readOptionalObject(params, 'activationFacts'),
     narrativeTarget: readOptionalNarrativeTarget(params),
     macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
     promptAddition: readOptionalObject(params, 'promptAddition') as InvokeAgentTurnInput['promptAddition'],
   }
+}
+
+function readNarrativeMode(value: unknown): 'declared' | 'automatic' {
+  if (value !== 'declared' && value !== 'automatic') throw new Error('Invalid Narrative mode')
+  return value
 }

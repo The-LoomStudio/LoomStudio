@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createAgentStore } from '@loom-studio/application-data'
+import { createAgentStore, createStateStore, createNarrativeSwipeStore } from '@loom-studio/application-data'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createAgentToolRegistry, type GatewayChatResult } from '@loom-studio/application-runtime'
+import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createAgentToolRegistry, createStateContentRegistry, type GatewayChatResult } from '@loom-studio/application-runtime'
 import { createObservationStore } from '../../../packages/application-runtime/src/observability/store.js'
 import { createObservedAiGateway } from '../../../packages/application-runtime/src/observability/gateway.js'
 import { runNativeToolLoop } from '../../../packages/application-runtime/src/agents/tool-loop.js'
@@ -17,8 +18,8 @@ async function fixture(reply: () => Promise<GatewayChatResult>) {
   })
   const gateway = { invokeChat: vi.fn(reply) }
   const observations = createObservationStore()
-  const input = {
-    ctx: { observations, gateway: createObservedAiGateway(gateway, observations), createId, dataEngine: engine, agentTools: createAgentToolRegistry([], []) },
+  const input: Parameters<typeof runNativeToolLoop>[0] = {
+    ctx: { swipes: createNarrativeSwipeStore({ engine, createId, now }), stateContent: createStateContentRegistry(), documents: createSqliteDocumentStore({ engine }), states: createStateStore({ engine }), observations, gateway: createObservedAiGateway(gateway, observations), createId, dataEngine: engine, agentTools: createAgentToolRegistry([], []) },
     agents, session, runId: 'run',
     recoveryRequest: { agentSessionId: session.id, input: 'Hello 世界' },
     model: { providerProfileId: 'provider', modelId: 'model' },

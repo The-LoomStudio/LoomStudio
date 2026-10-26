@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { FormEvent } from 'react'
 import { useAsyncOperations } from '../../../apps/studio-client/src/shared/hooks/use-async-operations.js'
 import { useCards } from '../../../apps/studio-client/src/features/cards/model/use-cards.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
@@ -68,11 +67,10 @@ describe('Card operation failure propagation', () => {
     expect(current.cards).toEqual([expect.objectContaining({ id: card.id, version: card.version })])
     expect(current.selectedCardId).toBe(card.id)
     expect(current.selectedCardDetails).toEqual(card)
-    expect(current.cardDraft.name).toBe(card.name)
     if (operation === 'import') expect(fetch).toHaveBeenCalledOnce()
     else expect(fork).toHaveBeenCalledExactlyOnceWith({ cardId: 'original', expectedVersion: 1 })
     list.mockResolvedValue({ cards: [{ ...card, version: 4 }] })
-    await current.updateCard({ preventDefault() {} } as FormEvent)
+    await current.updateCardProfile({ cardId: card.id, expectedVersion: card.version, name: card.name, userName: '', description: '' })
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ cardId: card.id, expectedVersion: 3 }))
   })
 
@@ -91,38 +89,6 @@ describe('Card operation failure propagation', () => {
     )
     expect(render().cards.map(item => item.id)).toContain('imported')
   })
-  it.each(['a', 'b'] as const)('invalidates a pending selection only when its card %s was deleted', async deletedId => {
-    const card = (id: string): Card => ({
-      id, name: id, version: 1, artifactId: 'fixture-artifact', preset: {}, opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
-      createdAt: '2026-09-23', updatedAt: '2026-09-23',
-    })
-    let resolve!: (value: { card: Card }) => void
-    const api = {
-      cards: {
-        list: vi.fn().mockResolvedValueOnce({ cards: [card('a'), card('b')] })
-          .mockResolvedValue({ cards: [card(deletedId === 'a' ? 'b' : 'a')] }),
-        get: () => new Promise<{ card: Card }>(accept => { resolve = accept }),
-        deleteMany: async () => ({ deleted: true, cardIds: [deletedId], mutation: { changesetId: 'delete' } }),
-      },
-    } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit: vi.fn(), t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
-    await render().refreshCards()
-    const pending = render().selectCard('a')
-    await render().deleteCards([deletedId])
-    resolve({ card: card('a') })
-    await pending
-    const current = render()
-    expect(current.selectedCardId).toBe(deletedId === 'a' ? 'b' : 'a')
-    if (deletedId === 'a') expect(current.selectedCardDetails?.id).not.toBe('a')
-    else expect(current.selectedCardDetails?.id).toBe('a')
-  })
-
   it.each(['create', 'import', 'fork'] as const)('does not replace a later selection when %s finishes', async operation => {
     const card = (id: string): Card => ({
       id, name: id, version: 1, artifactId: 'fixture-artifact', preset: {}, opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
@@ -154,15 +120,12 @@ describe('Card operation failure propagation', () => {
       ? render().createCard()
       : operation === 'fork' ? render().forkCard('original', 1)
       : render().importCards([new File(['image'], 'card.png', { type: 'image/png' })])
-    await render().selectCard('other')
-    render().setCardDraft({ name: 'Other draft', userName: '', description: '' })
+    render().setSelectedCardId('other')
     release()
     await pending
     const current = render()
     expect(current.cards.some(card => card.id === 'created')).toBe(true)
     expect(current.selectedCardId).toBe('other')
-    expect(current.selectedCardDetails?.id).toBe('other')
-    expect(current.cardDraft.name).toBe('Other draft')
   })
 
   it.each([
@@ -228,19 +191,16 @@ describe('Card operation failure propagation', () => {
       })
     }
     await render().refreshCards()
-    await render().selectCard('a')
+    render().setSelectedCardId('a')
     const pending = operation === 'media'
       ? render().updateCardMedia('a', 'avatar', new File(['image'], 'a.png', { type: 'image/png' }))
       : render().replaceCardPromptResources('a', ['resource'])
-    await render().selectCard('b')
-    render().setCardDraft({ name: 'B draft', userName: '', description: '' })
+    render().setSelectedCardId('b')
     resolve({ card: { ...cards[0]!, version: 2, media: { avatarAssetId: 'asset' }, promptResourceIds: ['resource'] }, mutation: { changesetId: 'commit' } })
     await expect(pending).rejects.toBe(failure)
     const current = render()
     expect(current.cards.find(item => item.id === 'a')?.version).toBe(2)
     expect(current.selectedCardId).toBe('b')
-    expect(current.selectedCardDetails?.id).toBe('b')
-    expect(current.cardDraft.name).toBe('B draft')
     if (operation === 'media') expect(update).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1 }))
   })
 
@@ -302,10 +262,10 @@ describe('Card operation failure propagation', () => {
         })
       }
       await render().refreshCards()
-      await render().selectCard('same-id')
+      render().setSelectedCardId('same-id')
       const old = render()
       const pending = operation === 'create' ? old.createCard()
-        : operation === 'update' ? old.updateCard({ preventDefault() {} } as FormEvent)
+        : operation === 'update' ? old.updateCardProfile({ cardId: 'same-id', expectedVersion: 1, name: 'Saved', userName: '', description: '' })
           : operation === 'delete' ? old.deleteCards(['same-id'], { includePromptResources: true })
             : old.updateCardMacros({ cardId: 'same-id', expectedVersion: 1, macros: { char: 'old' } })
       api = {
@@ -317,10 +277,8 @@ describe('Card operation failure propagation', () => {
       const switched = render()
       expect(switched.selectedCardId).toBeUndefined()
       expect(switched.selectedCardDetails).toBeUndefined()
-      expect(switched.cardDraft).toEqual({ name: '', userName: '', description: '' })
       await switched.refreshCards()
-      await render().selectCard('same-id')
-      render().setCardDraft({ name: 'New draft', userName: '', description: '' })
+      render().setSelectedCardId('same-id')
       resolveWrite({
         card: card('Late old API'), deleted: true, cardIds: ['same-id'],
         mutation: { changesetId: 'old-source-commit' },
@@ -329,8 +287,7 @@ describe('Card operation failure propagation', () => {
       const current = render()
       expect(current.cards[0]?.name).toBe('New API')
       expect(current.selectedCardId).toBe('same-id')
-      expect(current.selectedCardDetails?.name).toBe('New API')
-      expect(current.cardDraft.name).toBe('New draft')
+      expect(current.selectedCard?.name).toBe('New API')
       expect(recordEdit).not.toHaveBeenCalled()
       expect(onCardsDeleted).not.toHaveBeenCalled()
     },
@@ -365,40 +322,6 @@ describe('Card operation failure propagation', () => {
     expect(render().cards[0]?.name).toBe('New API')
   })
 
-  it.each(['new-selection', 'direct-selection', 'api-switch'] as const)(
-    'does not publish a late card selection after %s',
-    async change => {
-      const card = (id: string): Card => ({
-        id, name: id, version: 1, artifactId: 'fixture-artifact', preset: {}, opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
-        createdAt: '2026-09-23', updatedAt: '2026-09-23',
-      })
-      let resolveOld!: (value: { card: Card }) => void
-      const oldResult = new Promise<{ card: Card }>(resolve => { resolveOld = resolve })
-      const get = vi.fn(async (id: string) => id === 'old' ? oldResult : { card: card(id) })
-      let api = { cards: { get } } as unknown as StudioApi
-      const render = () => {
-        hooks.cursor = 0
-        return useCards({
-          api, initialCardName: '', recordEdit: vi.fn(), t: createTranslator('en-US'),
-          runAction: action => action(),
-        })
-      }
-      const pending = render().selectCard('old')
-      if (change === 'new-selection') await render().selectCard('new')
-      else if (change === 'direct-selection') render().setSelectedCardId('new')
-      else {
-        api = { cards: { get: vi.fn() } } as unknown as StudioApi
-        render()
-      }
-      resolveOld({ card: card('old') })
-      await pending
-      const current = render()
-      expect(current.selectedCardId).toBe(change === 'api-switch' ? undefined : 'new')
-      expect(current.selectedCardDetails?.id).not.toBe('old')
-      expect(current.cardDraft.name).not.toBe('old')
-    },
-  )
-
   it.each(['deleted', 'other'] as const)('keeps a committed deletion after refresh failure with %s selected', async selectedId => {
     const failure = new Error('List refresh failed')
     const cards: Card[] = ['deleted', 'other'].map(id => ({
@@ -424,12 +347,11 @@ describe('Card operation failure propagation', () => {
       })
     }
     await render().refreshCards()
-    await render().selectCard(selectedId)
+    render().setSelectedCardId(selectedId)
     await expect(render().deleteCards(['deleted'])).rejects.toBe(failure)
     const current = render()
     expect(current.cards.map(card => card.id)).toEqual(['other'])
     expect(current.selectedCardId).toBe(selectedId === 'deleted' ? undefined : 'other')
-    expect(current.selectedCardDetails?.id).toBe(selectedId === 'deleted' ? undefined : 'other')
     expect(recordEdit).toHaveBeenCalledWith(expect.objectContaining({ changesetId: 'delete-commit' }))
     expect(deleteMany).toHaveBeenCalledTimes(1)
   })
@@ -459,7 +381,6 @@ describe('Card operation failure propagation', () => {
     expect(current.selectedCardDetails).toEqual(card)
     expect(current.selectedCard).toMatchObject({ id: card.id, version: 1, name: card.name })
     expect(current.cards[0]).not.toHaveProperty('opening')
-    expect(current.cardDraft.name).toBe(card.name)
     expect(recordEdit).toHaveBeenCalledWith(expect.objectContaining({ changesetId: 'create-commit' }))
     expect(create).toHaveBeenCalledTimes(1)
   })
@@ -499,14 +420,13 @@ describe('Card operation failure propagation', () => {
       })
     }
     let cards = render()
-    await cards.selectCard('card')
-    cards.setCardDraft({ name: 'Unsaved name', userName: 'User', description: 'Draft body' })
+    cards.setSelectedCardId('card')
     cards = render()
     const closeEditor = vi.fn()
     const reportLocalError = vi.fn()
     const file = new File(['image'], 'card.png', { type: 'image/png' })
     const pending = operation === 'save'
-      ? cards.updateCard({ preventDefault() {} } as FormEvent)
+      ? cards.updateCardProfile({ cardId: 'card', expectedVersion: 1, name: 'Unsaved name', userName: 'User', description: 'Draft body' })
       : operation === 'upload'
         ? cards.updateCardMedia('card', 'avatar', file)
         : cards.importCards([file])
@@ -514,7 +434,6 @@ describe('Card operation failure propagation', () => {
     expect(closeEditor).not.toHaveBeenCalled()
     expect(reportLocalError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining(failure.message) }))
     expect(recordEdit).not.toHaveBeenCalled()
-    expect(render().cardDraft).toEqual({ name: 'Unsaved name', userName: 'User', description: 'Draft body' })
     expect(hooks.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
       scope: 'cards', type: 'finish', error: expect.stringContaining(failure.message),
     }))

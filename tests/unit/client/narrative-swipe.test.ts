@@ -1,10 +1,11 @@
+import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { describe, expect, it, vi } from 'vitest'
 import { hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
 import type { NarrativeSwipeView } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 
 const view = (changes: Partial<NarrativeSwipeView> = {}): NarrativeSwipeView => ({
   id: 'group', timelineId: 'timeline', branchId: 'branch', revision: 4,
-  inputNodeId: 'original-input', sourceAgentSessionId: 'session',
+  inputNodeId: 'original-input', sourceAgentSessionId: 'timeline',
   selectedCandidateId: 'a', active: false, suspended: false, canSelect: true, canGenerate: true,
   candidates: [{ id: 'a', nodeId: 'a-node', preview: 'A', status: 'completed' },
     { id: 'b', nodeId: 'b-node', preview: 'B', status: 'completed' }], ...changes,
@@ -13,7 +14,7 @@ const view = (changes: Partial<NarrativeSwipeView> = {}): NarrativeSwipeView => 
 async function swipeFixture(swipe = view()) {
   const f = await primaryFixture()
   const getSwipes = vi.fn(async () => ({ swipe }))
-  const selectSwipe = vi.fn(async () => ({ page: f.result.narrative, swipe: { ...swipe, selectedCandidateId: 'b', revision: 5 } }))
+  const selectSwipe = vi.fn<StudioApi['narratives']['selectSwipe']>(async () => ({ page: f.result.narrative, swipe: { ...swipe, selectedCandidateId: 'b', revision: 5 } }))
   f.input.api.narratives.getSwipes = getSwipes
   f.input.api.narratives.selectSwipe = selectSwipe
   f.render()
@@ -37,7 +38,7 @@ describe('Narrative Swipe wiring', () => {
   })
   it('retains A for display while the authoritative nodes have returned to the input baseline', async () => {
     const f = await swipeFixture()
-    const node = (id: string, raw: string) => ({ id, timelineId: 'timeline', stateRevisionId: 'state',
+    const node = (id: string, raw: string) => ({ id, kind: id === 'original-input' ? 'user-input' as const : 'narrative' as const, floor: id === 'original-input' ? 1 : 2, timelineId: 'timeline', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw }, createdAt: 'now' })
     const originalInput = node('original-input', 'User input')
     const a = { ...node('a-node', 'Candidate A'), parentNodeId: originalInput.id }
@@ -49,11 +50,14 @@ describe('Narrative Swipe wiring', () => {
     f.subscribeRun.mockImplementationOnce(() => wait.promise)
     const pending = f.render().generateSwipe('swipe')
     await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledOnce())
+    hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'branch' }])
+    await vi.waitFor(() => expect(f.render().nodes.map(item => item.id)).toEqual(['original-input']))
     expect(f.render().nodes.map(item => item.id)).toEqual(['original-input'])
     expect(f.render().displayNodes.map(item => item.id)).toEqual(['original-input', 'a-node'])
     expect(f.render().displayOnlyNodeId).toBe('a-node')
-    wait.resolve({ events: [{ type: 'completed', runId: 'run', result: f.result }], nextCursor: 1, done: true, state: 'completed' })
+    wait.resolve({ events: [{ type: 'completed', runId: 'run', result: f.rootResult }], nextCursor: 1, done: true, state: 'completed' })
     await pending
+    await f.loadRoot()
     expect(f.render().displayOnlyNodeId).toBeUndefined()
     expect(f.appendInput).not.toHaveBeenCalled()
     f.dispose?.()
@@ -74,15 +78,16 @@ describe('Narrative Swipe wiring', () => {
   it.each(['swipe', 'regenerate', 'retry'] as const)('creates %s on the original input without appending or clearing the draft', async mode => {
     const f = await swipeFixture()
     await f.render().generateSwipe(mode)
+    await f.loadRoot()
     expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({
-      agentSessionId: 'session', input: '', narrativeTarget: {
+      agentSessionId: 'timeline', input: '', narrativeTarget: {
         timelineId: 'timeline', branchId: 'branch', inputNodeId: 'original-input',
         swipe: { groupId: 'group', mode, expectedRevision: 4 },
       },
     }))
     expect(f.appendInput).not.toHaveBeenCalled()
     expect(f.render().composerInput).toBe('  Draft\n')
-    expect(f.getPage).toHaveBeenCalledTimes(2)
+    expect(f.getPage).toHaveBeenCalledExactlyOnceWith({ timelineId: 'timeline', branchId: 'branch', limit: 100 })
     expect(f.subscribeRun).toHaveBeenCalledOnce()
     expect(f.getSwipes.mock.calls.length).toBeGreaterThan(1)
     expect(f.reportFailure).not.toHaveBeenCalled()

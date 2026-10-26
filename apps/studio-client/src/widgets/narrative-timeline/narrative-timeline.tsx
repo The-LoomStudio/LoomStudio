@@ -1,9 +1,15 @@
+import { readConversationPosition } from '../../shared/ui/conversation-viewport/conversation-position.js'
+import { NarrativeExecutionFlow } from '../../features/narrative-runtime/ui/narrative-execution-flow.js'
+import { projectTimelineRounds, type TimelineSessionRound, type TimelineSessionCommunication } from '../../features/narrative-runtime/model/timeline-execution-projection.js'
+import type { AgentTranscriptEntry } from '../../entities/index.js'
+import type { ActiveAgentRun } from '../../features/narrative-runtime/model/agent-run-observer.js'
+import { NarrativeCommunication, useCommunicationExpansion } from '../../features/narrative-runtime/ui/narrative-communication.js'
 import { UserIdentity, type UserIdentityView } from '../../shared/ui/user-identity/user-identity.js'
 import { ContentErrorBoundary } from '../../shared/ui/content-error-boundary.js'
 import { NarrativeInputSwipePicker } from '../../features/narrative-runtime/ui/narrative-input-swipe-picker.js'
 import type { NarrativeSwipeView } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
 import { ConversationMarkdown as StaticMarkdown } from '../../shared/ui/conversation-markdown/conversation-markdown.js'
-import { Check, Copy, GitBranch, Link, Pencil, Play, RefreshCw, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, GitBranch, Link, MessageCircle, Pencil, Play, RefreshCw, Trash2, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useConversationViewport } from '../../shared/ui/conversation-viewport/use-conversation-viewport.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -17,7 +23,7 @@ import {
 } from './narrative-timeline-navigator.js'
 import type { NarrativeTimelineMarker } from './narrative-timeline-navigator-model.js'
 import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-editor.js'
-import { LoadingText } from '@loom-studio/ui'
+import { Button, LoadingText } from '@loom-studio/ui'
 import { ConversationMessageAction, ConversationMessageChrome, formatConversationTimestamp } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import styles from './narrative-timeline.module.scss'
 import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
@@ -26,7 +32,7 @@ import { renderTemplateMacros, type MacroRenderContext } from '../../features/st
 import { useNarrativeAnchorNavigation } from './use-narrative-anchor-navigation.js'
 import { useAppearanceStore } from '../../shared/studio-shell/appearance-store.js'
 import { displayText, type DisplayProjection, type OpeningDisplayProjection } from '../../features/message-content/model/use-display-projection.js'
-import { TextTokenSummary, TokenSummary } from '../../features/context-assets/ui/resource-token-summary.js'
+import { TextTokenSummary, TokenSummary } from '../../features/prompt-resources/ui/resource-token-summary.js'
 import { useTokenCounts } from '../../shared/tokenizer/use-token-counts.js'
 import { useTokenDisplaySettings } from '../../shared/tokenizer/settings.js'
 import { applyTokenMultiplier } from '@loom-studio/tokenizer/contracts'
@@ -41,13 +47,18 @@ const MESSAGE_EDITOR_MIN_HEIGHT = 132
 type NarrativeNodeView = NarrativeNode
 
 type NarrativeTimelineProps = {
+  workEntries?: AgentTranscriptEntry[]
+  activeRun?: ActiveAgentRun
+  presetName?: string
+  inputMode?: 'roleplay' | 'discussion'
+  onDiscuss?(): void
+  onRetryDiscussionInput?(entryId: string, content: string): Promise<boolean>
+  onContinueRun?(): Promise<boolean>
   userIdentity?: UserIdentityView
   displayProjection?: DisplayProjection
   displayOnlyNodeId?: string
   anchorNodeId?: string
   busy: boolean
-  composerExpanded?: boolean
-  composerHeight: number
   emptyTimelineText: string
   openingDraft?: { content: string; isPlaceholder: boolean }
   openingControls?: ReactNode
@@ -67,10 +78,17 @@ type NarrativeTimelineProps = {
   t: Translator
   timeline: NarrativeNodeView[]
   timelineId?: string
+  scrollRestorationScope?: string
+  narrativeMode?: 'declared' | 'automatic'
   overscan?: number
 }
 
 export function NarrativeTimeline(props: NarrativeTimelineProps) {
+  const restoredPosition = useMemo(() => props.anchorNodeId || !props.scrollRestorationScope ? undefined
+    : readConversationPosition({ view: 'timeline', scope: props.scrollRestorationScope }), [props.anchorNodeId, props.scrollRestorationScope])
+  const rounds = useMemo(() => projectTimelineRounds(props.workEntries ?? [], props.timeline, props.presetName ?? '尚未选择预设', props.activeRun, props.narrativeMode), [props.workEntries, props.timeline, props.presetName, props.activeRun, props.narrativeMode])
+  const communicationKeys = useMemo(() => rounds.flatMap(round => round.communications.filter(group => group.execution.steps.length > 0 || group.discussions.length > 0).map(group => `${round.candidateId ?? round.id}:${group.id}`)), [rounds])
+  const [expandedCommunication, setExpandedCommunication] = useCommunicationExpansion(props.inputMode ?? 'roleplay', communicationKeys)
   const resolvedUserName = renderTemplateMacros('{{user}}', props.macroContext).trim()
   const userName = props.userIdentity?.name ?? (resolvedUserName && resolvedUserName !== '{{user}}' ? resolvedUserName : props.t('timeline.role.user'))
   const tokenScope = props.timelineId ?? props.timeline[0]?.timelineId ?? ''
@@ -90,16 +108,14 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const pendingAnchorScrollRef = useRef<{ timelineId?: string; nodeId: string } | undefined>(undefined)
   const messageSurfaceRefs = useRef(new Map<string, HTMLDivElement>())
   const {
-    scrollRef: timelineRef, listRef, headerRef, scrollMargin, virtualizer,
-    followsBottomRef: followsComposerRef, motionActiveRef: composerMotionActiveRef,
+    scrollRef: timelineRef, contentRef, listRef, headerRef, scrollMargin, virtualizer, smooth,
     onScroll: updateViewportFollow,
   } = useConversationViewport({
-    items: props.timeline,
+    items: rounds,
+    restoration: props.scrollRestorationScope ? { view: 'timeline', scope: props.scrollRestorationScope, anchorId: activeEntryId } : undefined,
     scopeId: props.timelineId,
-    pinnedId: editingId,
+    pinnedId: rounds.find(round => round.nodes.some(node => node.id === editingId))?.id,
     followInitially: !props.anchorNodeId,
-    composerHeight: props.composerHeight,
-    composerExpanded: props.composerExpanded,
     overscan: props.overscan ?? (Number.isInteger(storedOverscan) && storedOverscan >= 0 && storedOverscan <= 50 ? storedOverscan : 5),
   })
   const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((node, index) => ({
@@ -111,18 +127,19 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const navigatorMarkers: NarrativeTimelineMarker[] = []
   const anchorStatus = useNarrativeAnchorNavigation({
     timelineId: props.timelineId,
-    nodeId: props.anchorNodeId,
+    nodeId: props.anchorNodeId ?? (restoredPosition?.following === false ? restoredPosition.anchorId : undefined),
     nodes: props.timeline,
     hasOlder: props.hasOlder,
     busy: props.busy,
     onLoadOlder: props.onLoadOlder,
     onLocate: nodeId => {
-      followsComposerRef.current = false
+      if (!props.anchorNodeId) return
+      smooth.pause()
       if (activeEntryFrameRef.current) cancelAnimationFrame(activeEntryFrameRef.current)
       activeEntryFrameRef.current = undefined
       setActiveEntryId(nodeId)
       pendingAnchorScrollRef.current = { timelineId: props.timelineId, nodeId }
-      const index = props.timeline.findIndex(entry => entry.id === nodeId)
+      const index = rounds.findIndex(round => round.nodes.some(node => node.id === nodeId))
       virtualizer.scrollToIndex(index, { align: 'center' })
       const surface = messageSurfaceRefs.current.get(nodeId)
       if (surface) {
@@ -208,7 +225,6 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
 
   function scheduleActiveEntryUpdate() {
     if (props.anchorNodeId && anchorStatus !== 'located') return
-    if (composerMotionActiveRef.current) return
     updateViewportFollow()
     if (activeEntryFrameRef.current) return
     activeEntryFrameRef.current = requestAnimationFrame(() => {
@@ -220,8 +236,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
       let nearestEntryId = props.timeline[0]?.id
       let nearestDistance = Number.POSITIVE_INFINITY
 
-      for (const item of virtualizer.getVirtualItems()) {
-        const entry = props.timeline[item.index]
+      for (const item of virtualizer.getVirtualItems()) for (const entry of rounds[item.index].nodes) {
         const surface = messageSurfaceRefs.current.get(entry.id)
         if (!surface) continue
         const bounds = surface.getBoundingClientRect()
@@ -236,11 +251,176 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }
 
   function navigateToEntry(entryId: string) {
-    followsComposerRef.current = false
+    smooth.pause()
     setActiveEntryId(entryId)
     props.onNodeAnchorChange(entryId)
-    const index = props.timeline.findIndex(entry => entry.id === entryId)
+    const index = rounds.findIndex(round => round.nodes.some(node => node.id === entryId))
     if (index >= 0) virtualizer.scrollToIndex(index, { align: 'center' })
+  }
+
+  function pauseFollowing() {
+    smooth.pause()
+  }
+
+  function returnToLatest() {
+    smooth.resume()
+  }
+
+  function renderCommunicationToggle(key: string, round: number) {
+    const label = round ? `查看第 ${round} 轮创作沟通` : '查看创作准备沟通'
+    return <button className={styles.communicationToggle} type="button" aria-label={label} title={label}
+      aria-expanded={expandedCommunication[key] ?? false} aria-controls={`communication-${key}`} onClick={() => {
+        pauseFollowing()
+        setExpandedCommunication(value => ({ ...value, [key]: !value[key] }))
+      }}><MessageCircle aria-hidden="true" /></button>
+  }
+
+  function communicationKey(round: TimelineSessionRound, communication: TimelineSessionCommunication) {
+    return `${round.candidateId ?? round.id}:${communication.id}`
+  }
+
+  function renderCommunication(round: TimelineSessionRound, communication: TimelineSessionCommunication, latest: boolean) {
+    const key = communicationKey(round, communication)
+    if (!expandedCommunication[key]) return null
+    const selected = latest ? props.inputSwipe?.swipe.candidates.findIndex(candidate => candidate.id === props.inputSwipe?.swipe.selectedCandidateId) : undefined
+    return <div className={styles.communication} id={`communication-${key}`}>
+      <NarrativeCommunication followWork key={key} candidate={communication} round={round.number} selected={selected !== undefined && selected >= 0 ? selected : undefined}
+        activeRunId={props.activeRun?.runId} actionsDisabled={props.busy || props.activeRun?.status === 'running'}
+        onRetryInput={props.onRetryDiscussionInput} onContinue={props.onContinueRun}
+        onInspect={pauseFollowing} onReply={latest ? props.onDiscuss : undefined} onReturnCurrent={latest ? undefined : returnToLatest} />
+    </div>
+  }
+
+  function renderRoundNode(entry: NarrativeNodeView, round: TimelineSessionRound, latest: boolean) {
+    const communication = round.communications.find(group => group.anchorNodeId === entry.id)!
+    return renderNode(entry, renderCommunicationToggle(communicationKey(round, communication), round.number), renderCommunication(round, communication, latest))
+  }
+
+  function renderNode(entry: NarrativeNodeView, communication?: ReactNode, communicationContent?: ReactNode): ReactNode {
+    const index = props.timeline.findIndex(node => node.id === entry.id)
+    const role = readNarrativeNodeRole(props.timeline, index)
+    return (
+      <ContentErrorBoundary key={entry.id} resetKey={entry.body.raw} fallback={<pre role="alert">{entry.body.raw}</pre>}>
+      <Suspense fallback={<div aria-busy="true" className={styles.messagePending} />}>
+      <article
+      inert={entry.id === props.displayOnlyNodeId || undefined}
+      aria-busy={entry.id === props.displayOnlyNodeId || undefined}
+      className={`${styles.message} ${styles[role]}`}
+      data-loom-component="chat-message"
+      data-loom-role="narrative"
+      data-loom-motion={messageMotion?.id === entry.id ? messageMotion.direction : undefined}
+      data-loom-state={editingId === entry.id ? 'editing' : 'settled'}
+      data-loom-latest={index === props.timeline.length - 1 ? 'true' : undefined}
+      id={`node-${encodeURIComponent(entry.id)}`}
+      key={entry.id}
+    >
+      <NarrativeMessageHeader role={role} userName={userName} avatarUrl={props.userIdentity?.avatarUrl} t={props.t} />
+      <div
+        className={styles.messageSurface}
+        data-loom-slot="message-content"
+        ref={element => {
+          if (element) {
+            messageSurfaceRefs.current.set(entry.id, element)
+            const pending = pendingAnchorScrollRef.current
+            if (pending?.timelineId === props.timelineId && pending?.nodeId === entry.id && props.anchorNodeId === entry.id) {
+              element.scrollIntoView({ block: 'center' })
+              pendingAnchorScrollRef.current = undefined
+            }
+          }
+          else messageSurfaceRefs.current.delete(entry.id)
+        }}
+      >
+        {entry.id === props.displayOnlyNodeId ? (
+          <StaticMarkdown value={entry.body.raw} role={role} codeBlockLabels={messageCodeBlockLabels(props.t)} />
+        ) : editingId === entry.id ? (
+          <LongTextEditor
+            autoFocus
+            clearLabel={props.t('longTextEditor.clear')}
+            clearedLabel={props.t('longTextEditor.cleared')}
+            compact
+            copiedLabel={props.t('longTextEditor.copied')}
+            copyFailedLabel={props.t('longTextEditor.copyFailed')}
+            copyLabel={props.t('longTextEditor.copy')}
+            label={props.t(editingInputSwipe ? 'swipe.editInput' : 'timeline.editLocal')}
+            headerExtra={<TextTokenSummary text={draft} scope={`${tokenScope}:${entry.id}`} t={props.t} />}
+            disabled={saving}
+            minHeight={editorMinHeight || undefined}
+            mode="source"
+            restoreInitialLabel={props.t('longTextEditor.restoreInitial')}
+            showLineNumbers={false}
+            sourceOnly
+            spellCheck={false}
+            undoEditLabel={props.t('longTextEditor.undoEdit')}
+            undoLabel={props.t('longTextEditor.undoClear')}
+            value={draft}
+            onCancel={cancelEdit}
+            onChange={value => { if (!savingRef.current) setDraft(value) }}
+            onCommit={value => { if (!savingRef.current) setDraft(value) }}
+            onSubmit={saveValue}
+          />
+        ) : (
+          <NarrativeMessageBody
+            displayProjection={props.displayProjection}
+            entry={entry}
+            macroContext={props.macroContext}
+            rendererHost={props.rendererHost}
+            role={role}
+            t={props.t}
+            timelineId={props.timelineId}
+          />
+        )}
+      </div>
+      <ConversationMessageChrome
+        createdAt={entry.createdAt}
+        index={index}
+        trailing={<>
+          {communication}
+          {entry.id === props.inputSwipe?.swipe.inputNodeId && editingId !== entry.id
+            ? <NarrativeInputSwipePicker swipe={props.inputSwipe.swipe} disabled={props.inputSwipe.disabled || saving}
+                onEdit={() => beginEdit(entry, true)} onSelect={props.inputSwipe.onSelect} t={props.t} />
+            : props.swipeControls?.nodeId === entry.id ? props.swipeControls.content
+            : !entry.parentNodeId ? props.openingControls : undefined}
+        </>}
+        metadata={editingId !== entry.id
+          ? <span> · <TokenSummary t={props.t} multiplier={tokenMultiplier} pending={nodeTokens.currentCounts[index] === undefined}
+              error={nodeTokens.currentCounts[index] === undefined ? nodeTokens.error : undefined}
+              textTokens={nodeTokens.currentCounts[index] !== undefined
+                ? applyTokenMultiplier(nodeTokens.currentCounts[index]!, tokenMultiplier).estimatedTokens : undefined} /></span> : undefined}
+        actions={entry.id === props.displayOnlyNodeId ? undefined : editingId === entry.id ? (
+          <>
+            {saveError ? <span role="alert">{saveError}</span> : null}
+            <ConversationMessageAction disabled={saving} label={props.t('timeline.cancelEdit')} onClick={cancelEdit}><X aria-hidden="true" /></ConversationMessageAction>
+            <ConversationMessageAction disabled={saving || !draft.trim() || (editingInputSwipe && props.inputSwipe?.disabled)}
+              label={props.t(editingInputSwipe ? 'swipe.submitInput' : 'timeline.saveEdit')} onClick={saveEdit}><Check aria-hidden="true" /></ConversationMessageAction>
+          </>
+        ) : (
+          <>
+            <ConversationMessageAction
+              label={props.t(copyState?.id === entry.id
+                ? copyState.status === 'copied' ? 'timeline.copied' : 'timeline.copyFailed'
+                : 'timeline.copy')}
+              onClick={() => void copyEntry(entry)}
+            >
+              {copyState?.id === entry.id && copyState.status === 'copied' ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+            </ConversationMessageAction>
+            <ConversationMessageAction
+              label={props.t(linkCopyState?.id === entry.id
+                ? linkCopyState.status === 'copied' ? 'timeline.linkCopied' : 'timeline.linkCopyFailed'
+                : 'timeline.copyLink')}
+              onClick={() => void copyEntryLink(entry)}
+            >
+              {linkCopyState?.id === entry.id && linkCopyState.status === 'copied' ? <Check aria-hidden="true" /> : <Link aria-hidden="true" />}
+            </ConversationMessageAction>
+            <ConversationMessageAction label={props.t('timeline.editLocal')} onClick={() => beginEdit(entry)}><Pencil aria-hidden="true" /></ConversationMessageAction>
+            <ConversationMessageAction disabled={props.busy} label={props.t('timeline.fork')} onClick={() => props.onForkNode(entry)}><GitBranch aria-hidden="true" /></ConversationMessageAction>
+            <ConversationMessageAction disabled label={props.t('timeline.deleteUnavailable')}><Trash2 aria-hidden="true" /></ConversationMessageAction>
+          </>
+        )}
+      />
+      </article>
+      {communicationContent}
+      </Suspense></ContentErrorBoundary>
+    )
   }
 
   return (
@@ -256,7 +436,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
         ref={timelineRef}
         onScroll={scheduleActiveEntryUpdate}
       >
-        <div className={styles.readingSurface}>
+        <div className={styles.readingSurface} ref={contentRef}>
         <div ref={headerRef} className={styles.timelineHeader}>
           <DisplayProjectionStatus projection={props.displayProjection} retryLabel={props.t('textTransform.refresh')} />
           {anchorStatus === 'unavailable' ? <p role="status">{props.t('timeline.anchorUnavailable')}</p> : null}
@@ -312,143 +492,28 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                 trailing={props.openingControls} /> : null}
             </div>
           )
-        ) : (Boolean(props.displayProjection?.pending && props.displayProjection.entries.size === 0 && !props.displayProjection.error)) ? (
-          <div aria-busy="true" className={styles.timelineCenterLoading}>
-            <LoadingText label={props.t('directory.loading')} />
-          </div>
         ) : (
           <div ref={listRef} className={styles.virtualList} style={{ height: virtualizer.getTotalSize() }}>
             {virtualizer.getVirtualItems().map(item => {
-              const index = item.index
-              const entry = props.timeline[index]
-              const role = readNarrativeNodeRole(props.timeline, index)
-              return (
-                <div
-                  key={entry.id}
-                  data-index={index}
-                  ref={virtualizer.measureElement}
-                  className={styles.virtualRow}
-                  style={{ top: `${item.start - scrollMargin}px` }}
-                >
-                <ContentErrorBoundary resetKey={entry.body.raw} fallback={<pre role="alert">{entry.body.raw}</pre>}>
-                <Suspense fallback={<div aria-busy="true" className={styles.messagePending} />}>
-                <article
-                inert={entry.id === props.displayOnlyNodeId || undefined}
-                aria-busy={entry.id === props.displayOnlyNodeId || undefined}
-                className={`${styles.message} ${styles[role]}`}
-                data-loom-component="chat-message"
-                data-loom-role="narrative"
-                data-loom-motion={messageMotion?.id === entry.id ? messageMotion.direction : undefined}
-                data-loom-state={editingId === entry.id ? 'editing' : 'settled'}
-                data-loom-latest={index === props.timeline.length - 1 ? 'true' : undefined}
-                id={`node-${encodeURIComponent(entry.id)}`}
-                key={entry.id}
-              >
-                <NarrativeMessageHeader role={role} userName={userName} avatarUrl={props.userIdentity?.avatarUrl} t={props.t} />
-                <div
-                  className={styles.messageSurface}
-                  data-loom-slot="message-content"
-                  ref={element => {
-                    if (element) {
-                      messageSurfaceRefs.current.set(entry.id, element)
-                      const pending = pendingAnchorScrollRef.current
-                      if (pending?.timelineId === props.timelineId && pending?.nodeId === entry.id && props.anchorNodeId === entry.id) {
-                        element.scrollIntoView({ block: 'center' })
-                        pendingAnchorScrollRef.current = undefined
-                      }
-                    }
-                    else messageSurfaceRefs.current.delete(entry.id)
-                  }}
-                >
-                  {entry.id === props.displayOnlyNodeId ? (
-                    <StaticMarkdown value={entry.body.raw} role={role} codeBlockLabels={messageCodeBlockLabels(props.t)} />
-                  ) : editingId === entry.id ? (
-                    <LongTextEditor
-                      autoFocus
-                      clearLabel={props.t('longTextEditor.clear')}
-                      clearedLabel={props.t('longTextEditor.cleared')}
-                      compact
-                      copiedLabel={props.t('longTextEditor.copied')}
-                      copyFailedLabel={props.t('longTextEditor.copyFailed')}
-                      copyLabel={props.t('longTextEditor.copy')}
-                      label={props.t(editingInputSwipe ? 'swipe.editInput' : 'timeline.editLocal')}
-                      headerExtra={<TextTokenSummary text={draft} scope={`${tokenScope}:${entry.id}`} t={props.t} />}
-                      disabled={saving}
-                      minHeight={editorMinHeight || undefined}
-                      mode="source"
-                      restoreInitialLabel={props.t('longTextEditor.restoreInitial')}
-                      showLineNumbers={false}
-                      sourceOnly
-                      spellCheck={false}
-                      undoEditLabel={props.t('longTextEditor.undoEdit')}
-                      undoLabel={props.t('longTextEditor.undoClear')}
-                      value={draft}
-                      onCancel={cancelEdit}
-                      onChange={value => { if (!savingRef.current) setDraft(value) }}
-                      onCommit={value => { if (!savingRef.current) setDraft(value) }}
-                      onSubmit={saveValue}
-                    />
-                  ) : (
-                    <NarrativeMessageBody
-                      displayProjection={props.displayProjection}
-                      entry={entry}
-                      macroContext={props.macroContext}
-                      rendererHost={props.rendererHost}
-                      role={role}
-                      t={props.t}
-                      timelineId={props.timelineId}
-                    />
-                  )}
-                </div>
-                <ConversationMessageChrome
-                  createdAt={entry.createdAt}
-                  index={index}
-                  trailing={entry.id === props.inputSwipe?.swipe.inputNodeId && editingId !== entry.id
-                    ? <NarrativeInputSwipePicker swipe={props.inputSwipe.swipe} disabled={props.inputSwipe.disabled || saving}
-                        onEdit={() => beginEdit(entry, true)} onSelect={props.inputSwipe.onSelect} t={props.t} />
-                    : index === props.timeline.length - 1
-                    ? props.swipeControls?.nodeId === entry.id ? props.swipeControls.content : props.openingControls
-                    : undefined}
-                  metadata={editingId !== entry.id
-                    ? <span> · <TokenSummary t={props.t} multiplier={tokenMultiplier} pending={nodeTokens.currentCounts[index] === undefined}
-                        error={nodeTokens.currentCounts[index] === undefined ? nodeTokens.error : undefined}
-                        textTokens={nodeTokens.currentCounts[index] !== undefined
-                          ? applyTokenMultiplier(nodeTokens.currentCounts[index]!, tokenMultiplier).estimatedTokens : undefined} /></span> : undefined}
-                  actions={entry.id === props.displayOnlyNodeId ? undefined : editingId === entry.id ? (
-                    <>
-                      {saveError ? <span role="alert">{saveError}</span> : null}
-                      <ConversationMessageAction disabled={saving} label={props.t('timeline.cancelEdit')} onClick={cancelEdit}><X aria-hidden="true" /></ConversationMessageAction>
-                      <ConversationMessageAction disabled={saving || !draft.trim() || (editingInputSwipe && props.inputSwipe?.disabled)}
-                        label={props.t(editingInputSwipe ? 'swipe.submitInput' : 'timeline.saveEdit')} onClick={saveEdit}><Check aria-hidden="true" /></ConversationMessageAction>
-                    </>
-                  ) : (
-                    <>
-                      <ConversationMessageAction
-                        label={props.t(copyState?.id === entry.id
-                          ? copyState.status === 'copied' ? 'timeline.copied' : 'timeline.copyFailed'
-                          : 'timeline.copy')}
-                        onClick={() => void copyEntry(entry)}
-                      >
-                        {copyState?.id === entry.id && copyState.status === 'copied' ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                      </ConversationMessageAction>
-                      <ConversationMessageAction
-                        label={props.t(linkCopyState?.id === entry.id
-                          ? linkCopyState.status === 'copied' ? 'timeline.linkCopied' : 'timeline.linkCopyFailed'
-                          : 'timeline.copyLink')}
-                        onClick={() => void copyEntryLink(entry)}
-                      >
-                        {linkCopyState?.id === entry.id && linkCopyState.status === 'copied' ? <Check aria-hidden="true" /> : <Link aria-hidden="true" />}
-                      </ConversationMessageAction>
-                      <ConversationMessageAction label={props.t('timeline.editLocal')} onClick={() => beginEdit(entry)}><Pencil aria-hidden="true" /></ConversationMessageAction>
-                      <ConversationMessageAction disabled={props.busy} label={props.t('timeline.fork')} onClick={() => props.onForkNode(entry)}><GitBranch aria-hidden="true" /></ConversationMessageAction>
-                      <ConversationMessageAction disabled label={props.t('timeline.deleteUnavailable')}><Trash2 aria-hidden="true" /></ConversationMessageAction>
-                    </>
-                  )}
-                />
-                </article>
-                </Suspense></ContentErrorBoundary>
-                </div>
-              )
+              const round = rounds[item.index]
+              const latest = item.index === rounds.length - 1
+              return <div key={round.id} data-index={item.index} ref={virtualizer.measureElement}
+                className={styles.virtualRow} style={{ top: `${item.start - scrollMargin}px` }}>
+                <section aria-label={round.number ? `第 ${round.number} 轮` : '创作准备'}>
+                  {round.communications.filter(group => !group.anchorNodeId).map(group => <div key={group.id}>
+                    <div className={styles.communication}>{renderCommunicationToggle(communicationKey(round, group), round.number)}</div>
+                    {renderCommunication(round, group, latest)}
+                  </div>)}
+                  {round.inputNode && renderRoundNode(round.inputNode, round, latest)}
+                  <NarrativeExecutionFlow key={round.execution.id} execution={round.execution} reading={false} hideReplies followWork onInspect={pauseFollowing}
+                    renderNarrative={step => {
+                      const node = round.nodes.find(node => node.id === step.id)
+                      return node ? renderRoundNode(node, round, latest) : <ConversationMarkdown
+                        role="assistant" value={step.content} streaming={step.state === 'running'}
+                        macroContext={props.macroContext} codeBlockLabels={messageCodeBlockLabels(props.t)} />
+                    }} />
+                </section>
+              </div>
             })}
           </div>
         )}
@@ -456,12 +521,20 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
           disabled={props.busy} onClick={props.onStartStory}>
           <Play size={16} aria-hidden="true" />{props.t('timeline.startStory')}
         </button> : null}
-        {props.swipeControls && !props.swipeControls.nodeId ? <div className={styles.swipeStatus}>
+        {props.swipeControls && !props.timeline.some(node => node.id === props.swipeControls?.nodeId) ? <div className={styles.swipeStatus}>
           <ConversationMessageChrome trailing={props.swipeControls.content} />
         </div> : null}
+        {props.timeline.length === 0 && rounds.map(round => <div className={styles.preparation} key={round.id}>
+          <NarrativeExecutionFlow execution={round.execution} reading={false} hideReplies followWork onInspect={pauseFollowing} />
+          {round.communications.map(group => <div key={group.id}>
+            {renderCommunicationToggle(communicationKey(round, group), 0)}
+            {renderCommunication(round, group, true)}
+          </div>)}
+        </div>)}
         {props.tail ? <div className={styles.tail} data-loom-surface="narrative.timeline.tail">{props.tail}</div> : null}
         </div>
       </div>
+      {!smooth.following && <div className={styles.returnLatest}><Button size="small" onClick={returnToLatest}><ChevronDown />回到最新进度</Button></div>}
       <NarrativeTimelineNavigator
         activeId={activeEntryId}
         items={navigatorItems}
@@ -536,5 +609,3 @@ export function resolveNarrativeDisplayText(
           : raw
   )
 }
-
-export { isConversationNearBottom as isTimelineNearBottom } from '../../shared/ui/conversation-viewport/use-conversation-viewport.js'

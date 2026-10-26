@@ -37,7 +37,7 @@ State 可以通过路径宏被读取，但不会因为存在于 Snapshot 中就�
 
 `application.inspectMacros` 生成当前预览；Preview / Invoke 返回实际构建使用的 `macroInspection`。检查包含快照、来源候选、选中来源、结果与诊断，不能把重新求值的预览冒充上一次构建。Client 与 Runtime 使用同一纯解析实现，浏览器从 `@loom-studio/shared/macros` 引入，避免加载 Node 专用入口。
 
-作者工作台以目录条目编辑默认值与额外候选，运行检查展示有效值、来源与候选选择。Server Extension 仍是受信代码；上述只读上下文不是任意脚本沙箱。基础解析的执行记录见 [宏动态值与来源检查 Plan](../../../archive/plans/macro-value-provider-and-inspector-plan.md)，持久选择交付见 [Context Plan 第 20 节](../../../workbench/plans/agent-context-skeleton-and-memory-projection-plan.md#20-配置宏选择持久化2026-09-24)。
+作者工作台以目录条目编辑默认值与额外候选，运行检查展示有效值、来源与候选选择。Server Extension 仍是受信代码；上述只读上下文不是任意脚本沙箱。基础解析的执行记录见 [宏动态值与来源检查 Plan](../../../archive/plans/macro-value-provider-and-inspector-plan.md)，持久选择交付见 [Context Plan 第 20 节](../../../archive/plans/agent-context-skeleton-and-memory-projection-plan.md#20-配置宏选择持久化2026-09-24)。
 
 ### 全局用户配置
 

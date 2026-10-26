@@ -241,6 +241,10 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/observabili
   extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
   inspectTextPipeline(input: InspectTextPipelineInput): Promise<TextPipelineInspection>
   listRenderers(): Promise<{ renderers: RendererDefinition[] }>
+  setLoomScriptExecutionStates(states: Array<{ mountId: string; revision: number; active: boolean }>): void
+  previewLoomScript(input: { source: string; text: string; phase?: TextTransformPhase; settings?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings }): Promise<{ output: string; matches: Array<{ ruleId: string; match: string }>; diagnostics: Array<{ message: string }>; extractions: Array<{ extractorId: string; values: JsonValue[]; diagnostics: Array<{ message: string }> }> }>
+  deleteLoomScriptMount(input: { mountId: string; expectedVersion: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
+  getLoomScriptSettings(input: { mountId: string }): Promise<{ definitions: import('@loom-studio/shared/loom-scripts').LoomScriptSettingDefinition[]; inherited?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; effective?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; saved: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; adopted: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; documentVersion: number; adoptedDocumentVersion?: number; validationError?: string }>
   importLoomScript(input: { owner: LoomScriptOwner; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
   updateLoomScript(input: { scriptDocumentId: string; expectedVersion: number; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
   getLoomScript(input: { scriptDocumentId: string }): Promise<{ script: LoomScriptEntry }>
@@ -715,7 +719,7 @@ export type CreateNarrativeTimelineResult = {
 export type ImportNarrativeHistoryInput = {
   cardId: string
   title?: string
-  messages: Array<{ content: string; createdAt?: string }>
+  messages: Array<{ content: string; role?: 'user' | 'assistant'; createdAt?: string }>
 }
 
 export type ReplaceNarrativeOpeningInput = Pick<CreateNarrativeTimelineInput, 'expectedCardVersion' | 'openingId' | 'openingContent'> & {
@@ -813,6 +817,7 @@ export type GetAgentSessionResult = {
 }
 
 export type ListAgentSessionsInput = {
+  includeTimelines?: boolean
   agentPresetId?: string
   timelineId?: string
   standalone?: boolean
@@ -877,6 +882,8 @@ export type DeleteAgentSessionResult = {
 
 export type UpdateAgentSessionInput = {
   agentSessionId: string
+  agentPresetId?: string
+  narrativeMode?: 'declared' | 'automatic'
   summaryPolicy?: import('@loom-studio/application-data').SessionSummaryPolicy
   title?: string
 }
@@ -893,6 +900,8 @@ export type InvokeAgentTurnInput = {
   agentSessionId: string
   input: string
   resume?: boolean
+  /** Replace the latest adopted discussion input and rerun from its material baseline. */
+  retry?: { entryId: string }
   activationFacts?: ActivationFacts
   narrativeTarget?: {
     timelineId: string

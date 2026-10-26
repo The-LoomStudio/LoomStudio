@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChartNoAxesCombined, ChevronDown, ChevronRight } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
@@ -10,6 +10,7 @@ type StudioRailProps = {
   modelConfigured?: boolean
   recentSessions?: ReactNode
   t: Translator
+  onOpenDashboard(): void
   preloadPanel?(panel: StudioPanelId): void
   togglePanel(panel: StudioPanelId): void
 }
@@ -70,6 +71,16 @@ export function StudioRail(props: StudioRailProps) {
               <div>{props.recentSessions}</div>
             </div>
           ) : null}
+          <button
+            className={styles.railTab}
+            type="button"
+            aria-haspopup="dialog"
+            title={props.t('dashboard.open')}
+            onClick={props.onOpenDashboard}
+          >
+            <ChartNoAxesCombined aria-hidden="true" />
+            <span className={styles.railLabel}>{props.t('dashboard.open')}</span>
+          </button>
         </div>
       </div>
       <div className={styles.railBottomSection}>

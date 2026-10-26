@@ -1,5 +1,5 @@
 import { isLikelyProviderEndpoint, normalizeOpenAICompatibleBaseUrl, readChatCompletionsEndpoint } from '../../../apps/studio-client/src/features/provider-settings/model/provider-base-url.js'
-import { chooseAgentPresetId } from '../../../apps/studio-client/src/features/agent-presets/model/use-agent-presets.js'
+import { chooseAgentPresetId } from '../../../apps/studio-client/src/features/prompt-resources/model/use-agent-presets.js'
 import type { AgentPreset } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 

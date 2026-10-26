@@ -20,6 +20,7 @@ import {
   createAgentsRuntimeMethods,
   refreshAgentToolRegistry,
   toAgentToolContent,
+  toAgentToolDefinition,
 } from './agents-runtime.js'
 import { createPromptRuntimeMethods } from './prompt-runtime.js'
 import { createSearchRuntimeMethods } from './search-runtime.js'
@@ -33,6 +34,8 @@ import {
   initializeOfficialFakeProviderProfiles,
 } from './providers-runtime.js'
 import { createExtensionsRuntimeMethods } from './extensions-runtime.js'
+import { migrateLegacyTextTransformRules } from '../scripts/loom-script-text-migration.js'
+import { setScriptExecutionStates } from '../scripts/loom-script-text-pipeline.js'
 import { createLoomScriptsRuntimeMethods, initializeLoomScriptAdoptions } from './loom-scripts-runtime.js'
 import { createOfficialContentRuntimeMethods } from './official-content-runtime.js'
 import { createMacroConfigurationRuntimeMethods } from './macros-runtime.js'
@@ -53,7 +56,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     subscribeNarrativeActivity: ctx.narrativeActivity.subscribe,
     registerReadonlyFiles: ctx.extensionReadonlyFiles.register,
     registerTimelineArchiveParticipant: ctx.timelineArchiveParticipants.register,
+    setLoomScriptExecutionStates: states => setScriptExecutionStates(ctx.documents, states),
     initialize: async () => {
+      await migrateLegacyTextTransformRules(ctx)
       await initializeLoomScriptAdoptions(ctx)
       await initializeGlobalState(ctx)
       await initializeOfficialFakeProviderProfiles(ctx)
@@ -75,10 +80,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         if (existing) {
           const content = existing.content as AgentToolContent
           if (definition.owner.namespace === 'official' && content.owner.namespace === 'official'
-            && !content.origin && !isDeepStrictEqual({
-              owner: content.owner, name: content.name, description: content.description,
-              input: content.input, ...(content.prompt ? { prompt: content.prompt } : {}),
-            }, definition)) {
+            && !content.origin && !isDeepStrictEqual(toAgentToolDefinition({ ...existing, content }), definition)) {
             await ctx.documents.write({
               id: definition.id,
               type: applicationDocumentTypes.agentTool,

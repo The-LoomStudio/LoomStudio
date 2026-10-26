@@ -1,48 +1,46 @@
-# Workspace 资源文件、导入导出与在线分发计划
+# Card 来源与作者开发工作区后续
 
-> **状态**：In Progress / 角色目录、Card Bundle、官方内容与 Extension ZIP 已有实现；资源包改造转独立计划，在线来源与开发模式待接续
-> **日期**：2026-09-13
-> **来源**：合并 `data-directory-resource-development-plan`、`typed-primary-resource-bundle-plan`、`extension-package-source-host-runtime-plan` 与 `workspace-dev-sync-plan`
+状态：本地目录、资源包和扩展安装基础已交付；Card 外部来源与开发模式仍待收束。
+更新：2026-10-25。本页收窄原入口，不新增远程抓取、更新或数据迁移授权。
+合并来源、包格式及分批结果见[完整原稿](../../archive/plans/workspace-resource-and-distribution-plan.md)。
 
-## 目标
+## 当前已交付
 
-统一处理 Workspace 资源从文件、目录、ZIP、Git 或用户自定义来源进入 Loom Studio，以及用户如何保存、更新和显式 Apply。
+- Data 根目录、角色目录保存/发现/确认导入、原 Card 显式 Apply 及媒体读取已有实现。
+- Card Bundle、PNG 内嵌包、Prompt Resource 导入导出、官方内容与本地 Extension ZIP 已接通。
+- 资源本体导出与包分发的底层改造已有独立交付；不再按“每份 Lore / Preset 自带完整附件包”续建。
+- Extension 远程 Git / ZIP、更新检测、安装确认与代码/数据分离已由模块计划交付，不在本页重复施工。
+- Blob prepared write 与共享 SQLite 元数据参与提交已有边界；事务失败不能删除其他写入可能共享的 finalized 字节。
 
-## 已完成
+## 真正未完成与未决合同
 
-- `data/` 根目录、角色目录保存、目录发现、确认导入、原 Card Apply、媒体读取与变更通知。
-- Card Bundle ZIP v2、PNG 内嵌 ZIP、脚本与 Text Pipeline 文件化。
-- Preset / Lore Prompt Resource ZIP 首切片。
-- Extension 本地 ZIP 安装、路径安全检查、临时解包与现有激活流程。
-- 官方 starter、显式安装、官方内容导出和完整 Character Status 样例。
-- Card Bundle、Prompt Resource 与 Card Directory 的脚本 Blob 写入使用 prepared write；已 finalized 的 hash 文件可能被其他准备中的写入共享，附件失败不会删除这些共享字节。
-- Asset / Blob 元数据与引用记录在同一 SQLite 事务中参与提交；事务回滚不保留本次未提交的元数据，但可能留下尚无元数据引用的 hash 文件，当前没有物理 GC。
+1. **Card 包外部来源**：外部资源链接、用户自定义更新来源、Git 更新及非 Git 版本替换仍需明确最小合同。
+   仅有 Extension 下载或包内依赖引用，不能视为角色卡外部来源更新完成。
+2. **更新语义**：需区分包身份、资源引用、来源版本、本地编辑和替换范围，明确缺失、冲突与失败的处理。
+   后续自动检测新版仍是规划；不因记录了来源地址而自动下载、安装、授权或覆盖用户修改。
+3. **作者开发工作区**：编辑源、应用内草稿、显式 Apply 与权限边界尚需收束。
+   复用现有目录发现和 Apply，不先规定另建同步服务、Watcher 或新的文件数据库。
 
-## 后续阶段
+## 已确认边界与授权
 
-1. 资源本体导出与包分发分离，转入 [资源包与 Agent 预设底层计划](../../archive/plans/resource-packages-and-agent-presets-backend-plan.md)。不再按“Preset / Lore 独立携带完整附件包”方向续建。
-2. 完成角色卡包与扩展包的外部资源链接、用户自定义更新来源、Git 更新和非 Git 版本替换；后续支持自动检测新版，不仅检测角色依赖的扩展。
-3. 讨论并实现 Workspace 开发模式：编辑源、草稿、显式 Apply 与权限边界。
+- 远程来源不固定；用户决定来源是否可信，平台负责已授权范围内的获取、校验和安装替换。
+- 角色私有扩展可随包携带真实文件；内嵌分发与外部链接并存，不因存在链接就获取或执行代码。
+- Lore / Agent 预设是独立资源；引用外部资源不会自动把目标复制成包内容或声明为依赖。
+- 身份、版本、媒体字节和作者编辑保留；不通过清空/重导入消除来源与更新冲突。
+- 不把作者源工作区与 Timeline 的不可变运行材料树合成一个权威；保存源文件不改变故事恢复点。
+- 原已确认的显式 Apply 与包边界保持；新的来源/替换/开发模式合同由用户与主 Agent 收束后再定实施写集。
 
-2026-09-27：角色卡包与扩展包保留为包身份，扩展允许纯资源；Agent 预设与 Lore 是可独立导出的资源。现有带附件 artifact 的读取和无损迁移由上述底层计划负责，本说明不表示已改变现有导出格式。相关工作台改进见 [独立 UI 计划](../../archive/plans/ui/resource-workbench-and-agent-presets-plan.md)。
+## 接续入口
 
-## 已确认边界
+- 扩展安装、官方成品与发行验收归 [Extension 模块后续](./extension-module-completion-plan.md)。
+- SDK/模板与作者工具归 [DX 后续](./extension-developer-experience.md)；外部 Agent 访问归 [CLI/MCP 计划](./application-capability-cli-mcp-adapters-plan.md)。
+- Timeline 文件消费与版本恢复归 [Workspace 后续](./timeline-workspace-and-vfs-organization-plan.md)，Script 执行归 [Script 计划](./loom-script-distribution-and-runtime-plan.md)。
+- 既有格式和数据事实以 [Data Architecture](../../architecture/data/README.md)及各导入导出入口为准，不把旧综合提案当当前施工合同。
 
-- 远程来源不固定，用户自行决定来源是否可信；平台负责获取、校验、安装和替换流程。
-- 角色私有扩展随角色包携带实际文件，具体本地分发由底层计划实现。内嵌分发与外部资源链接可以并存；不因存在链接就自动抓取、安装或授权代码。
-- 自动检测更新只负责发现与提示，不默认覆盖本地资源；用户采用更新后，已有 Timeline 的后续消费跟随当前资源，不再另行 Apply。外部资源引用不等于包更新地址，也不天然构成安装依赖。
-- 有 Git 时优先使用 Git；没有 Git 时允许安全地替换版本目录。
-- 平台不负责 Extension 作者自己的数据迁移。
-- 不执行包内安装脚本，不自动授予新权限；资源更新不重写已提交故事或已有 State，运行数据兼容由作者负责。
-- 文件目录、数据库、运行时 Session 和 Timeline State 保持不同职责。
-- 文件系统 Blob 与 SQLite 元数据不是跨进程单事务；未 finalized 的临时文件按写入流程清理，已 finalized 的共享 hash 字节不随单次失败删除。无引用字节留待具备所有权判断的 GC 或显式运维策略处理。
+## 最小关闭条件与验证边界
 
-## 非目标
-
-不建设 Marketplace、依赖求解、自动合并、通用 IDE、自动双向 Watcher、CLI/MCP 或通用 Sandbox。
-
-## 完成标准
-
-各主体可通过同一套正式编解码和安装边界完成本地导入导出；远程来源失败不产生半成品；用户显式操作才会修改既有资源；开发模式不绕过领域事务、CAS、权限和 Apply 合同。
-
-本 Plan 的导入失败标准具体包括：Card Bundle、Prompt Resource 和 Card Directory 在 Blob 准备或 SQLite 事务失败时不得留下本次操作产生的可见半成品。历史 orphan Blob、进程崩溃恢复、引用计数与物理 GC 不属于本轮完成范围。
+- 对继续实施的来源类型，用户能查看来源/版本、确认替换范围，并在本地修改、缺失资源及获取失败时得到明确结果。
+- 开发源、草稿与已 Apply 版本可区分；失败不发布部分应用状态，也不静默丢失作者编辑。
+- 用现有导入/导出/目录 Apply 的真实路径验证身份、字节、引用、冲突和回滚边界，不复制另一套打包实现。
+- 自动更新或完整开发模式若延期，记录明确去向；不得因扩展安装已完成而宣称 Card 来源与开发工作区完成。
+- 公网来源、用户目录写入、跨平台发行与人工操作验收按实际授权和执行分别记录，不以本地文件测试代替。

@@ -1,6 +1,7 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'dashboard.open': '대시보드',
   'promptResource.processingWarning': '프롬프트 처리 중 경고가 발생하여 일부 Lore가 건너뛰어졌을 수 있습니다. 빌드 진단을 확인하세요.',
   'promptResource.invalidResources': '다음 리소스를 읽을 수 없습니다. 다른 리소스는 계속 사용할 수 있습니다.',
   'promptResource.invalidResourcesHelp': '원본 데이터는 유지됩니다. 리소스 ID로 원본 파일이나 백업을 확인하고 복구 후 다시 불러오세요.',
@@ -172,6 +173,10 @@ export const messages = {
   'context.actionAdd': '항목 추가',
   'context.actionAddFolder': '새 폴더',
   'context.actionAddAnchor': '새 앵커',
+  'context.menuGroupAdd': '추가',
+  'context.menuGroupRole': '메시지 역할',
+  'context.menuGroupEdit': '편집',
+  'context.menuGroupDelete': '삭제',
   'context.actionRename': '이름 바꾸기',
   'context.actionDuplicate': '항목 복제',
   'context.actionDelete': '항목 삭제',
@@ -192,6 +197,12 @@ export const messages = {
   'context.actionHideMessageView': '블록 뷰 숨김',
   'context.compositionItems': '개',
   'context.nativeMessageSlot': '네이티브 메시지',
+  'context.metadata.messageSource': '메시지 소스',
+  'context.kind.messageSequence': '메시지 목록',
+  'context.actionAddMessageSequence': '세션 기록 추가',
+  'context.actionAddMessageAfter': '이 메시지 다음에 추가',
+  'context.messageSequence.description': '역할, 도구 호출 및 결과를 유지하여 세션 메시지를 펼칩니다. 스토리 세션에는 본문과 작업 기록이 포함됩니다.',
+  'context.messageSequence.placement': 'Message와 같은 계층의 메시지 목록입니다. 항목이나 앵커를 포함하거나 텍스트 주입 대상으로 사용할 수 없습니다.',
   'context.actionAddMessageBlock': '새 메시지 블록',
   'context.actionAddZoneToMessageBlock': '블록에 Zone 추가',
   'context.actionAddSlotToMessageBlock': '컨텍스트 Slot 추가',

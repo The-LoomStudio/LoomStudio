@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-export const loomScriptRuntimeSchema = z.enum(['client-sandbox', 'client', 'client-worker', 'server'])
-export type LoomScriptRuntime = z.infer<typeof loomScriptRuntimeSchema>
+export * from './loom-script-metadata.js'
+import { loomScriptSettingsSchema } from './loom-script-metadata.js'
 
 export const loomScriptMountTargetSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('workspace'), workspaceId: z.string() }),
@@ -24,6 +24,8 @@ export const loomScriptMountSchema = z.object({
   scriptDocumentId: z.string(), enabled: z.boolean(), orderIndex: z.number(),
   pinnedDocumentVersion: z.number().optional(), grantedCapabilities: z.array(z.string()),
   adoptedDocumentVersion: z.number().optional(),
+  settings: loomScriptSettingsSchema.optional(), adoptedSettings: loomScriptSettingsSchema.optional(),
+  runtimeRevision: z.number().int().nonnegative().optional(),
   origin: z.record(z.string(), z.json()), createdAt: z.string(), updatedAt: z.string(),
 })
 export type LoomScriptMount = z.infer<typeof loomScriptMountSchema>
@@ -34,6 +36,7 @@ export const createLoomScriptMountInputSchema = z.strictObject({
 export const updateLoomScriptMountInputSchema = z.strictObject({
   mountId: z.string(), expectedVersion: z.number(), enabled: z.boolean(), orderIndex: z.number(),
   pinnedDocumentVersion: z.number().optional(), grantedCapabilities: z.array(z.string()),
+  settings: loomScriptSettingsSchema.optional(),
 })
 export const listLoomScriptMountsInputSchema = z.strictObject({
   target: loomScriptMountTargetSchema.optional(), scriptDocumentId: z.string().optional(),

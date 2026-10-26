@@ -1,4 +1,4 @@
-import { normalizeCardBundleArtifact, type CardBundleArtifact, type PortableExtensionPayloadArtifact } from '@loom-studio/application-runtime'
+import { normalizeCardBundleArtifact, type CardBundleArtifact, type PortableExtensionPayloadArtifact } from '@loom-studio/application-runtime/artifacts'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
 import { crc32 } from 'node:zlib'
 import { readZipChecksums } from './zip-checksums.js'
@@ -30,6 +30,9 @@ type LegacyCardManifest = {
   scriptAttachments?: Array<{
     orderIndex: number
     resourceOrigin?: 'card' | 'external'
+    textResourceIds?: Record<string, string>
+    textResourceReferences?: Record<string, string>
+    settings?: LoomScriptAttachmentArtifact['settings']
     script: Omit<LoomScriptAttachmentArtifact['script'], 'source'> & { path: string }
   }>
 }
@@ -97,6 +100,9 @@ export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<strin
     scriptAttachments: scriptAttachments.map((attachment, index) => ({
       orderIndex: attachment.orderIndex,
       ...(attachment.resourceOrigin !== undefined ? { resourceOrigin: attachment.resourceOrigin } : {}),
+      ...(attachment.textResourceIds !== undefined ? { textResourceIds: attachment.textResourceIds } : {}),
+      ...(attachment.textResourceReferences !== undefined ? { textResourceReferences: attachment.textResourceReferences } : {}),
+      ...(attachment.settings !== undefined ? { settings: attachment.settings } : {}),
       script: {
         format: attachment.script.format,
         schemaVersion: attachment.script.schemaVersion,
@@ -225,6 +231,9 @@ function readScriptAttachments(
     return {
       orderIndex: attachment.orderIndex,
       ...(attachment.resourceOrigin !== undefined ? { resourceOrigin: attachment.resourceOrigin } : {}),
+      ...(attachment.textResourceIds !== undefined ? { textResourceIds: attachment.textResourceIds } : {}),
+      ...(attachment.textResourceReferences !== undefined ? { textResourceReferences: attachment.textResourceReferences } : {}),
+      ...(attachment.settings !== undefined ? { settings: attachment.settings } : {}),
       script: {
         format: attachment.script.format,
         schemaVersion: attachment.script.schemaVersion,

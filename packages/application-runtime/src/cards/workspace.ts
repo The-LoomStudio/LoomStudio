@@ -20,6 +20,7 @@ import type { VariableRenderContext } from '../prompt/variables.js'
 import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../state/state-definition.js'
 import { createStateArtifact } from '../state/state-contribution.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
+import { allocateImportedTextResourceIds, exportScriptTextResourceIds, importedTextResourceReferences, prepareTextTransformScript, rebaseScriptTextResourceReferences, remapImportedTextUses, writePreparedTextTransformScript } from '../scripts/loom-script-text-migration.js'
 import type {
   TextExtractorContent,
   TextTransformRuleContent,
@@ -92,15 +93,19 @@ export async function importCardBundle(input: {
   const scriptAttachments = artifact.scriptAttachments ?? []
   const documentParticipant = requireSqliteDocumentParticipant(input.documents)
   const extensionPackages = artifact.extensionPackages ?? []
-  if ((scriptAttachments.length > 0 || extensionPackages.length > 0) && !input.blobs) throw new Error('Blob Store is required to import Card attachments')
-  const preparedScriptResults = await Promise.allSettled(scriptAttachments.map(async attachment => ({
-    attachment,
-    metadata: parseLoomScriptSource(attachment.script.source),
-    prepared: await input.blobs!.prepareWrite({
+  if ((scriptAttachments.length > 0 || extensionPackages.length > 0 || artifact.textTransformRules?.length) && !input.blobs) throw new Error('Blob Store is required to import Card attachments')
+  const preparedRules = await Promise.all((artifact.textTransformRules ?? []).map(async rule => ({
+    rule,
+    ...await prepareTextTransformScript(input.blobs!, { ...rule, owner: { kind: 'workspace' }, createdAt: timestamp, updatedAt: timestamp }),
+  })))
+  const preparedScriptResults = await Promise.allSettled(scriptAttachments.map(async attachment => {
+    const metadata = parseLoomScriptSource(attachment.script.source)
+    return { attachment, metadata, textResourceIds: allocateImportedTextResourceIds(metadata, attachment, createId),
+      prepared: await input.blobs!.prepareWrite({
       source: new TextEncoder().encode(attachment.script.source),
       mediaType: 'text/javascript',
-    }),
-  })))
+    }) }
+  }))
   const preparedScripts = preparedScriptResults.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
   const failedPreparation = preparedScriptResults.find(
     (result): result is PromiseRejectedResult => result.status === 'rejected',
@@ -108,6 +113,7 @@ export async function importCardBundle(input: {
   if (failedPreparation) {
     throw failedPreparation.reason
   }
+  const textResourceReferences = importedTextResourceReferences(preparedScripts)
   const preparedPackageResults = await Promise.allSettled(extensionPackages.map(async archive => ({
     archive,
     prepared: await input.blobs!.prepareWrite({
@@ -134,14 +140,17 @@ export async function importCardBundle(input: {
       if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(cardId)) throw new Error('Invalid new Card ID')
       const importBundleId = createId('import-bundle')
       const textPipelineDocumentIds: string[] = []
-      for (const rule of artifact.textTransformRules ?? []) {
-        const document = await writeDocument<TextTransformRuleContent>(tx, {
-          id: createId('text-transform-rule'),
-          type: applicationDocumentTypes.textTransformRule,
-          content: { ...structuredClone(rule), owner: { kind: 'card', cardId }, createdAt: timestamp, updatedAt: timestamp },
-          expectedVersion: 'new',
+      const scriptDocumentIds: string[] = []
+      const scriptMountIds: string[] = []
+      for (const item of preparedRules) {
+        const mountId = createId('loom-script-mount')
+        const script = await writePreparedTextTransformScript(tx, {
+          scriptId: createId('loom-script'), mountId, ruleId: createId('text-transform-rule'),
+          rule: { ...structuredClone(item.rule), owner: { kind: 'card', cardId }, createdAt: timestamp, updatedAt: timestamp },
+          metadata: item.metadata, blob: input.blobs!.participateWrite(dataTx, item.prepared).blob,
         })
-        textPipelineDocumentIds.push(document.id)
+        scriptDocumentIds.push(script.id)
+        scriptMountIds.push(mountId)
       }
       for (const extractor of artifact.textExtractors ?? []) {
         const document = await writeDocument<TextExtractorContent>(tx, {
@@ -156,7 +165,11 @@ export async function importCardBundle(input: {
         id: createId('prompt-resource'),
         resourceKind: node.category ?? 'prompt',
         label: node.label,
-        metadata: { ...artifact.contextAssetSettings?.[artifact.contextAssets[index]!.id], sourceArtifactRef },
+        metadata: { ...artifact.contextAssetSettings?.[artifact.contextAssets[index]!.id], sourceArtifactRef,
+          ...(artifact.contextAssetSettings?.[artifact.contextAssets[index]!.id]?.textUses ? {
+            textUses: remapImportedTextUses(artifact.contextAssetSettings[artifact.contextAssets[index]!.id]!.textUses, textResourceReferences),
+          } : {}),
+        },
         rootNode: node,
       }))
       const resourceIds = storedResources.map(resource => resource.id)
@@ -177,8 +190,6 @@ export async function importCardBundle(input: {
         }))
       }
       const portableExtensionPayloadIds = portablePayloadDocuments.map(document => document.id)
-      const scriptDocumentIds: string[] = []
-      const scriptMountIds: string[] = []
       for (const item of preparedScripts) {
         const blob = input.blobs!.participateWrite(dataTx, item.prepared).blob
         const script = await writeDocument<LoomScriptContent>(tx, {
@@ -193,6 +204,8 @@ export async function importCardBundle(input: {
               fileName: item.attachment.script.fileName,
             },
             sourceDigest: blob.sha256,
+            textResourceIds: item.textResourceIds,
+            textResourceReferences: rebaseScriptTextResourceReferences(item.attachment, textResourceReferences),
             createdAt: timestamp,
             updatedAt: timestamp,
           },
@@ -207,6 +220,7 @@ export async function importCardBundle(input: {
             enabled: false,
             orderIndex: item.attachment.orderIndex,
             grantedCapabilities: [],
+            ...(item.attachment.settings ? { settings: item.attachment.settings } : {}),
             origin: {
               kind: 'card-bundle-import', artifactId: artifact.artifactId,
               ...(item.attachment.resourceOrigin !== undefined ? { resourceOrigin: item.attachment.resourceOrigin } : {}),
@@ -341,6 +355,7 @@ export async function exportCardArtifact(input: {
     ...(resource.useCardLore !== undefined ? { useCardLore: resource.useCardLore } : {}),
     ...(resource.useGlobalLore !== undefined ? { useGlobalLore: resource.useGlobalLore } : {}),
     ...(resource.historyPolicy !== undefined ? { historyPolicy: resource.historyPolicy } : {}),
+    ...(resource.textUses !== undefined ? { textUses: resource.textUses } : {}),
   }]))
   const inlineTemplates = structuredClone(card.content.stateTemplates ?? [])
   const inlineTemplateIds = new Set(inlineTemplates.map(template => template.id))
@@ -386,6 +401,9 @@ export async function exportCardArtifact(input: {
         source: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       },
       orderIndex: mount.content.orderIndex,
+      ...(mount.content.settings ? { settings: mount.content.settings } : {}),
+      textResourceIds: exportScriptTextResourceIds(script.id, script.content),
+      ...(script.content.textResourceReferences ? { textResourceReferences: script.content.textResourceReferences } : {}),
       ...(mount.content.origin.resourceOrigin === 'card' || mount.content.origin.resourceOrigin === 'external'
         ? { resourceOrigin: mount.content.origin.resourceOrigin } : {}),
     }

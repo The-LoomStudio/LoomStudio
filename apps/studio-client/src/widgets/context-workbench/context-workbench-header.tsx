@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import type { PromptResource } from '../../entities/index.js'
-import { findContextAssetPath } from '../../features/context-assets/model/context-asset-tree.js'
-import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
-import { findContextNode } from '../../features/context-assets/model/projection-order.js'
-import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { buildContextPathSegments } from '../../features/context-assets/ui/context-asset-header/build-context-path-segments.js'
+import { findContextAssetPath } from '../../features/prompt-resources/model/context-asset-tree.js'
+import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources/model/prompt-resource-view.js'
+import { findContextAssetNode } from '../../features/prompt-resources/model/context-asset-tree.js'
+import { ContextAssetHeader } from '../../features/prompt-resources/ui/context-asset-header/context-asset-header.js'
+import { buildContextPathSegments } from '../../features/prompt-resources/ui/context-asset-header/build-context-path-segments.js'
 import { useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -22,7 +22,7 @@ export function ContextWorkbenchHeader(props: {
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const selectedResource = props.selectedResourceId
     ? loreResources.find(r => r.id === props.selectedResourceId)
-    : loreResources.find(resource => resource.id === selectedId || Boolean(findContextNode([resource.rootNode], selectedId)))
+    : loreResources.find(resource => resource.id === selectedId || Boolean(findContextAssetNode([resource.rootNode], selectedId)))
       ?? loreResources[0]
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const selectNode = (id: string) => {

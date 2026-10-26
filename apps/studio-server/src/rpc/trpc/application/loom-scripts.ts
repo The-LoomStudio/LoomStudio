@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { loomScriptSettingsSchema } from '@loom-studio/shared/loom-scripts'
 import type { ApplicationRuntime, LoomScriptOwner } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import { createLoomScriptMountInputSchema, listLoomScriptMountsInputSchema, loomScriptOwnerSchema, updateLoomScriptMountInputSchema } from '@loom-studio/shared/loom-scripts'
@@ -10,6 +12,16 @@ import {
 import { jsonInput, procedure } from '../context.js'
 
 export const loomScriptsProcedures = {
+  previewLoomScript: procedure.input(jsonInput(params => z.strictObject({ source: z.string(), text: z.string().max(100000), phase: z.enum(['display', 'prompt', 'classify']).optional(), settings: loomScriptSettingsSchema.optional() }).parse(params)))
+    .query(({ ctx, input }) => ctx.runtime.previewLoomScript(input)),
+  getLoomScriptSettings: procedure.input(jsonInput(params => ({ mountId: readString(params, 'mountId') })))
+    .query(({ ctx, input }) => ctx.runtime.getLoomScriptSettings(input)),
+  deleteLoomScriptMount: procedure.input(jsonInput(params => ({ mountId: readString(params, 'mountId'), expectedVersion: readNumber(params, 'expectedVersion') })))
+    .mutation(async ({ ctx, input }) => {
+      const result = await ctx.runtime.deleteLoomScriptMount(input, ctx.request)
+      await ctx.services?.scripts?.resolve()
+      return result
+    }),
   'importLoomScript': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['importLoomScript']>[0] => {
     return { owner: readOwner(params, 'owner'), fileName: readString(params, 'fileName'), source: readString(params, 'source') }
   })).mutation(({ ctx, input }) => ctx.runtime.importLoomScript(input, ctx.request)),

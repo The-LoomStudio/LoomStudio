@@ -1,5 +1,5 @@
 import type { StudioRpcOutputs } from '../shared/api/trpc-client.js'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
 
 export type HistorySource =
@@ -50,7 +50,7 @@ export type TextTransformRuleDraft = {
   range?: { minDepth?: number; maxDepth?: number }
 }
 
-export type TextTransformRule = TextTransformRuleDraft & { id: string; version: number; createdAt: string; updatedAt: string }
+export type TextTransformRule = TextTransformRuleDraft & { id: string; version: number; createdAt: string; updatedAt: string; scriptDocumentId?: string; contributionId?: string }
   & { origin?: ExtensionPackageResourceOrigin }
 
 // Runtime inspection entries share the persisted CRUD shape, but are kept as

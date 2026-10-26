@@ -1,18 +1,7 @@
 import type { LoomScriptOwner, LoomScriptMount } from '@loom-studio/shared/loom-scripts'
 export type { LoomScriptOwner, LoomScriptMountTarget } from '@loom-studio/shared/loom-scripts'
-import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
-
-export type LoomScriptInput =
-  | { kind: 'match'; ruleId: string }
-  | { kind: 'artifact'; artifactType: string }
-
-export type LoomScriptRendererContributionDefinition = {
-  kind: 'renderer'
-  renderer: Omit<RendererContributionDefinition, 'adapter' | 'artifactType'>
-  inputs: LoomScriptInput[]
-}
-
-export type LoomScriptContributionDefinition = LoomScriptRendererContributionDefinition
+import type { LoomScriptContributionDefinition, LoomScriptSettingDefinition, LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
+export type { LoomScriptInput, LoomScriptContributionDefinition, LoomScriptRendererContributionDefinition } from '@loom-studio/shared/loom-scripts'
 
 export type LoomScriptContent = {
   owner: LoomScriptOwner
@@ -22,6 +11,12 @@ export type LoomScriptContent = {
   name: string
   runtime: import('@loom-studio/shared/loom-scripts').LoomScriptRuntime
   requires?: string[]
+  settings?: LoomScriptSettingDefinition[]
+  tags?: string[]
+  textResourceIds?: Record<string, string>
+  textResourceReferences?: Record<string, string>
+  textResourceOrigin?: import('../transforms/history-text.js').TextTransformRuleContent['origin']
+  textResourceOwner?: import('../transforms/history-text.js').TextRuleOwner
   contributions: LoomScriptContributionDefinition[]
   requestedCapabilities: string[]
   source: {
@@ -42,6 +37,7 @@ export type LoomScriptMountEntry = LoomScriptMount
 export type LoomScriptRuntimeMountSnapshot = {
   mountId: string
   mountVersion?: number
+  settings?: LoomScriptSettings
   target?: import('@loom-studio/shared/loom-scripts').LoomScriptMountTarget
   enabled: boolean
   orderIndex: number
@@ -56,6 +52,7 @@ export type LoomScriptRuntimeMountSnapshot = {
 export type ResolvedLoomScriptRendererMount = {
   mountId: string
   mountVersion?: number
+  settings?: LoomScriptSettings
   target?: import('@loom-studio/shared/loom-scripts').LoomScriptMountTarget
   enabled: boolean
   orderIndex: number
@@ -85,4 +82,7 @@ export type LoomScriptAttachmentArtifact = {
   script: LoomScriptArtifact
   orderIndex: number
   resourceOrigin?: 'card' | 'external'
+  textResourceIds?: Record<string, string>
+  textResourceReferences?: Record<string, string>
+  settings?: LoomScriptSettings
 }

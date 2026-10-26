@@ -1,3 +1,4 @@
+import type { StatisticsStore } from '@loom-studio/application-data'
 import {
   createAiGateway,
   createOfficialFakeChatCompletion,
@@ -30,21 +31,33 @@ export function createDocumentBackedProfiledAiGateway(options: {
   documents: DocumentStore
   registry: AiGatewayCapabilityRegistry
   secrets?: SecretStore
+  statistics?: StatisticsStore
   observations?: ObservationStore
 }): ProfiledAiGateway {
   const buildGateway = (id?: string, profileId?: string) => createProfiledAiGateway({
-    registry: id && options.observations ? {
+    registry: {
       ...options.registry,
-      invokeRegistered: input => options.registry.invokeRegistered({
+      invokeRegistered: async input => {
+        const invoke = (report?: Parameters<Parameters<StatisticsStore['track']>[1]>[0]) => options.registry.invokeRegistered({
         ...input,
-        onPrepared: evidence => options.observations!.capture(() => options.observations!.patch(id, {
+        ...(report ? { onUsage: report } : {}),
+        onPrepared: evidence => options.observations?.capture(() => options.observations!.patch(id!, {
           request: { phase: 'invoking', input: evidence.input,
             capability: { profileId: profileId!, providerId: input.providerId, capabilityId: input.capabilityId },
             providerCallId: evidence.providerCallId,
             configuration: safeGenerationConfiguration(evidence.profileConfig) },
         })),
-      }),
-    } : options.registry,
+        })
+        if (!options.statistics) return invoke()
+        const profile = await readDocument<AiCapabilityProfileContent>(options.documents, profileId!, applicationDocumentTypes.aiCapabilityProfile)
+        const provider = await readDocument<ProviderProfileContent>(options.documents, profile.content.providerProfileId, applicationDocumentTypes.providerProfile)
+        return options.statistics.track({ id: id ?? createId('usage'), providerProfileId: provider.id,
+          providerId: input.providerId, providerName: provider.content.displayName, capabilityId: input.capabilityId,
+          modelId: typeof input.profileConfig.modelId === 'string' ? input.profileConfig.modelId : undefined,
+          purpose: input.caller?.kind === 'extension' ? 'extension-capability' : 'capability', simulated: input.providerId === 'official.fake',
+        }, report => invoke(report), input.signal)
+      },
+    },
     resolveProfile: async profileId => {
       const profile = await readDocument<AiCapabilityProfileContent>(
         options.documents,
@@ -94,7 +107,7 @@ export function createDocumentBackedProfiledAiGateway(options: {
     const complete = async (result: ReturnType<ProfiledAiGateway['invoke']>) => {
       try {
         const value = await result
-        options.observations?.capture(() => options.observations!.patch(id, {
+        options.observations?.capture(() => options.observations!.patch(id!, {
           status: 'completed', durationMs: performance.now() - startedAt,
           request: { phase: 'completed', providerCallId: value.providerCallId, response: value.output },
         }))
@@ -102,7 +115,7 @@ export function createDocumentBackedProfiledAiGateway(options: {
       } catch (error) {
         options.observations?.capture(() => {
           const status = input.signal?.aborted || (error instanceof Error && error.name === 'AbortError') ? 'aborted' : 'failed'
-          options.observations!.patch(id, { status, durationMs: performance.now() - startedAt,
+          options.observations!.patch(id!, { status, durationMs: performance.now() - startedAt,
             diagnostic: error instanceof Error ? error.message : String(error), request: { phase: status } })
         })
         throw error
@@ -110,7 +123,7 @@ export function createDocumentBackedProfiledAiGateway(options: {
     }
     return { gateway: buildGateway(id, input.profileId), complete }
   }
-  if (!options.observations) return buildGateway()
+  if (!options.observations && !options.statistics) return buildGateway()
   return {
     invoke: input => { const call = prepare(input); return call.complete(call.gateway.invoke(input)) },
     createRun: input => {
@@ -135,6 +148,7 @@ export function createDocumentBackedAiGateway(options: {
   fallback?: AiGateway
   resolveProxyUrl?: () => string | undefined
   providerAdapters?: ProviderAdapterRegistry
+  statistics?: StatisticsStore
   observations?: ObservationStore
 }): AiGateway {
   const fallback = options.fallback ?? createFakeAiGateway()
@@ -210,16 +224,19 @@ export function createDocumentBackedAiGateway(options: {
             }
             return typeof message.content === 'string' && message.content.trim().length > 0
           })
-          const providerKind = resolved.provider.kind
+          const actualProvider = resolved.provider
+          const providerKind = actualProvider.kind
           options.observations?.capture(() => {
             const id = input.request.metadata?.observationRequestId
-            if (typeof id === 'string') options.observations!.patch(id, { request: {
+            if (typeof id === 'string') options.observations!.patch(id!, { request: {
               messages: sanitizedMessages,
               configuration: { provider: providerKind, ...safeGenerationConfiguration(parseProviderOptions(providerKind, input.request.providerOptions)?.[providerKind]) },
             } })
           })
-          return await invokePlatformGateway(createAiGateway(), {
-            provider: resolved.provider,
+          const dispatch = async (report?: Parameters<Parameters<StatisticsStore['track']>[1]>[0]) => {
+            const result = await invokePlatformGateway(createAiGateway(), {
+            ...(report ? { onUsage: report } : {}),
+            provider: actualProvider,
             modelId: input.model!.modelId,
             messages: sanitizedMessages,
             ...(input.request.tools ? { tools: input.request.tools } : {}),
@@ -228,7 +245,15 @@ export function createDocumentBackedAiGateway(options: {
             ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
             ...(input.delivery ? { delivery: input.delivery } : {}),
             ...(input.onEvent ? { onEvent: input.onEvent } : {}),
-          })
+            })
+            if (result.usage) report?.(result.usage, result.providerCallId)
+            return result
+          }
+          if (!options.statistics) return dispatch()
+          return options.statistics.track({ id: createId('usage'), providerProfileId: providerProfile.id,
+            providerId: providerExtensionId, providerName: providerProfile.content.displayName, modelId: input.model!.modelId,
+            sessionId: input.sessionId, purpose: String(input.request.metadata?.purpose ?? 'chat'), simulated: false,
+          }, report => dispatch(report), input.abortSignal)
         })
       }
       const resolved = providerAdapters.resolve(providerExtensionId, { config: providerProfile.content.config })

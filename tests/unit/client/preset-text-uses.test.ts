@@ -33,19 +33,22 @@ function elements(value: unknown): Element[] {
     ...(trailing ? visit(value.props.nodes as FileTreeNode[]) : [])]
 }
 
-describe('Preset text use draft', () => {
-  it('keeps rule and role Lore drafts across tabs and a pending CAS failure, then saves both fields', async () => {
-    const preset: PromptResource = { id: 'preset', version: 3, resourceKind: 'preset', createdAt: '', updatedAt: '',
+describe('Preset text use immediate save', () => {
+  it('saves each edit immediately, retains failed edits across tabs for retry, and batches resource changes', async () => {
+    let preset: PromptResource = { id: 'preset', version: 3, resourceKind: 'preset', createdAt: '', updatedAt: '',
       rootNode: { id: 'root', kind: 'module', label: 'Writer' }, textUses: [] }
     const api = {
       listRules: vi.fn(async () => ({ rules: [{ id: 'public-rule', name: 'Public', enabled: true, owner: { kind: 'workspace' } }] })),
       listExtractors: vi.fn(async () => ({ extractors: [{ id: 'extractor', name: 'Extract', enabled: false, owner: { kind: 'extension', packageId: 'example.memory' } }] })),
     } as unknown as StudioApi['textTransforms']
     let rejectSave!: (error: Error) => void
+    const originalPreset = preset
     const onSave = vi.fn()
       .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSave = reject }))
-      .mockResolvedValueOnce({ ...preset, version: 4, useCardLore: false, useGlobalLore: false,
-        textUses: [{ id: 'public-rule', kind: 'rule', enabled: false }] })
+      .mockImplementation(async input => {
+        preset = { ...preset, ...input, version: preset.version + 1 }
+        return preset
+      })
     const onOpen = vi.fn()
     const loreContent = vi.fn(() => null)
     const render = () => { hooks.cursor = 0; return elements(PresetTextUses({ preset, api, onSave, onOpen, loreContent, t: createTranslator('zh-CN') })) }
@@ -75,46 +78,41 @@ describe('Preset text use draft', () => {
       && element.props['aria-label'] === 'Lore')!
     expect(elements(lorePanel).some(element => element.props['aria-label'] === '使用角色世界书')).toBe(true)
     ;(control('使用角色世界书').props.onClick as () => void)()
-    ;(control('使用全局世界书').props.onClick as () => void)()
-    switchTab('text')
-    ;(control('启用规则：Public').props.onClick as () => void)()
-    switchTab('tools')
-    switchTab('lore')
-    expect(control('使用角色世界书').props['aria-pressed']).toBe(false)
-    expect(loreContent).toHaveBeenLastCalledWith(false, false)
-    switchTab('text')
-    expect(control('启用规则：Public').props['aria-pressed']).toBe(false)
-    const save = () => {
-      const button = render().find(element => element.props.children === '保存使用配置')!
-      ;(button.props.onClick as () => void)()
-    }
-    save()
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({
-      agentPresetId: 'preset', expectedVersion: 3, useCardLore: false, useGlobalLore: false,
-      textUses: [{ id: 'public-rule', kind: 'rule', enabled: false }],
+      agentPresetId: 'preset', expectedVersion: 3, useCardLore: false, useGlobalLore: true, textUses: [],
     }))
+    expect(control('使用全局世界书').props.disabled).toBe(true)
     switchTab('tools')
-    expect(control('使用角色世界书').props.disabled).toBe(true)
     rejectSave(new Error('version conflict'))
     await vi.waitFor(() => expect(render().some(element => element.props.role === 'alert'
       && element.props.children === 'version conflict')).toBe(true))
     switchTab('lore')
-    expect(render().some(element => element.props.role === 'alert' && element.props.children === 'version conflict')).toBe(true)
     expect(control('使用角色世界书').props['aria-pressed']).toBe(false)
-    switchTab('text')
-    expect(control('启用规则：Public').props['aria-pressed']).toBe(false)
-    save()
+    const retry = render().find(element => element.props.children === '重试保存')!
+    ;(retry.props.onClick as () => void)()
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(2))
     expect(onSave.mock.calls[1]).toEqual(onSave.mock.calls[0])
+    await vi.waitFor(() => expect(control('使用全局世界书').props.disabled).toBe(false))
+    ;(control('使用全局世界书').props.onClick as () => void)()
+    await vi.waitFor(() => expect(control('使用全局世界书').props.disabled).toBe(false))
+    expect(onSave.mock.lastCall?.[0]).toMatchObject({ expectedVersion: 4, useCardLore: false, useGlobalLore: false })
+    expect(loreContent).toHaveBeenLastCalledWith(false, false)
+    switchTab('text')
+    ;(control('启用规则：Public').props.onClick as () => void)()
+    await vi.waitFor(() => expect(control('启用规则：Public').props.disabled).toBe(false))
+    expect(onSave.mock.lastCall?.[0]).toMatchObject({ expectedVersion: 5, textUses: [{ id: 'public-rule', kind: 'rule', enabled: false }] })
+    expect(control('启用规则：Public').props['aria-pressed']).toBe(false)
     const all = (directory().props.nodes as FileTreeNode[]).flatMap(folder => folder.children ?? [])
     const actions = (directory().props.getBatchActions as (nodes: FileTreeNode[]) => import('../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js').FileTreeBatchAction[])(all)
     await actions.find(action => action.id === 'enable')!.run(all)
     expect(control('启用规则：Public').props['aria-pressed']).toBe(true)
     expect(control('启用提取器：Extract').props['aria-pressed']).toBe(true)
-    await actions.find(action => action.id === 'reset')!.run(all)
+    const latestActions = (directory().props.getBatchActions as (nodes: FileTreeNode[]) => import('../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js').FileTreeBatchAction[])(all)
+    await latestActions.find(action => action.id === 'reset')!.run(all)
     expect(control('启用规则：Public').props['aria-pressed']).toBe(true)
     expect(control('启用提取器：Extract').props['aria-pressed']).toBe(false)
     expect(preset.textUses).toEqual([])
+    expect(originalPreset.textUses).toEqual([])
 
   })
 })

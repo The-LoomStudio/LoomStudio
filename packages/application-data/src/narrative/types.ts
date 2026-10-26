@@ -1,3 +1,4 @@
+import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type {
   DataActorRef,
   DataCommitFact,
@@ -37,6 +38,7 @@ export type NarrativeBranch = {
   id: string
   timelineId: string
   title?: string
+  headEntryId?: string
   headNodeId?: string
   stateHeadRevisionId: string
   workspaceHeadRevisionId: string
@@ -51,6 +53,7 @@ export type NarrativeNode = {
   /** Persistent position on a path; not a globally unique node identity. */
   floor: number
   id: string
+  entryId?: string
   timelineId: string
   parentNodeId?: string
   stateRevisionId: string
@@ -60,13 +63,7 @@ export type NarrativeNode = {
   createdAt: string
 }
 
-export type NarrativeWriteContext = {
-  actor: DataActorRef
-  reason?: string
-  correlationId?: string
-  callId?: string
-  parentCallId?: string
-}
+export type NarrativeWriteContext = DataTransactionInput
 
 export type CreateNarrativeTimelineInput = NarrativeWriteContext & {
   id?: string
@@ -204,7 +201,7 @@ export type NarrativeTransaction = {
 
   getBranch(id: string): NarrativeBranch | null
   getNode(id: string): NarrativeNode | null
-  restoreBranch(input: { timelineId: string; branchId: string; expectedHeadNodeId: string | null; expectedStateHeadRevisionId: string; headNodeId: string | null; stateRevisionId: string; workspaceRevisionId?: string; expectedWorkspaceHeadRevisionId?: string }): NarrativeBranch
+  restoreBranch(input: { timelineId: string; branchId: string; expectedHeadNodeId: string | null; expectedStateHeadRevisionId: string; headNodeId: string | null; headEntryId?: string | null; stateRevisionId: string; workspaceRevisionId?: string; expectedWorkspaceHeadRevisionId?: string }): NarrativeBranch
   setBranchWorkspaceHead(input: { timelineId: string; branchId: string; expectedRevisionId: string; revisionId: string }): NarrativeBranch
   replaceOpening(input: Omit<ReplaceNarrativeOpeningInput, keyof NarrativeWriteContext>): CreateNarrativeTimelineResultWithoutCommit
   getTimeline(id: string): NarrativeTimeline | null
@@ -227,6 +224,7 @@ export type NarrativeSwipeCandidate = {
   agentSessionId: string
   runIds: string[]
   editBaseRunCount?: number
+  headEntryId?: string
   headNodeId?: string
   stateRevisionId: string
   workspaceRevisionId?: string
@@ -242,11 +240,14 @@ export type NarrativeSwipeGroup = {
   id: string
   timelineId: string
   branchId: string
-  inputNodeId: string
+  /** Communication attempts reuse a prose anchor without creating a roleplay input. */
+  inputKind?: 'communication'
+  inputNodeId?: string
   input: string
   baselineStateRevisionId: string
   baselineWorkspaceRevisionId?: string
   agentSessionId: string
+  baseEntryId?: string
   baseEntryCount: number
   candidates: NarrativeSwipeCandidate[]
   inputs?: Array<{
@@ -270,7 +271,7 @@ export type NarrativeSwipeGroup = {
 export type CreateNarrativeTimelineResultWithoutCommit = Omit<CreateNarrativeTimelineResult, 'commit'>
 export type AppendNarrativeNodeResultWithoutCommit = Omit<AppendNarrativeNodeResult, 'commit'>
 
-export type NarrativeRecoveryPoint = { branchId: string; nodeId: string; stateRevisionId: string; workspaceRevisionId: string }
+export type NarrativeRecoveryPoint = { headEntryId?: string; branchId: string; nodeId: string; stateRevisionId: string; workspaceRevisionId: string }
 
 export type NarrativeStore = {
   getRecoveryPoint(branchId: string, nodeId: string): Promise<NarrativeRecoveryPoint>

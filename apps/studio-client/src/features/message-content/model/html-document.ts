@@ -23,7 +23,12 @@ export function buildHtmlDocument(source: string, token: string): string {
 <script>
 (() => {
   const token = ${JSON.stringify(token).replace(/</g, '\\u003c')};
-  (${observeFrameSize.toString()})(height => parent.postMessage({type:'loom-html-height', token, height}, '*'), Infinity);
+  const observe = () => (${observeFrameSize.toString()})(height => parent.postMessage({type:'loom-html-height', token, height}, '*'), Infinity);
+  // The bootstrap lives in head; measuring while parsing can report an empty
+  // body and briefly collapse the host before the real content is available.
+  const start = () => requestAnimationFrame(observe);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {once:true});
+  else start();
 })();
 </script>`)
   const first = head.childNodes[0]

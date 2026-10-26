@@ -4,37 +4,79 @@
     "composite": false,
     "noEmit": true,
     "allowJs": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "paths": {
-      "@loom-studio/tokenizer": ["../packages/tokenizer/src/index.ts"],
-      "@loom-studio/tokenizer/async": ["../packages/tokenizer/src/async-counter.ts"],
-      "@loom-studio/tokenizer/contracts": ["../packages/tokenizer/src/contracts.ts"],
-      "@loom-studio/ai-gateway": ["../packages/ai-gateway/src/index.ts"],
-      "@loom-studio/ai-gateway/contracts": ["../packages/ai-gateway/src/contracts.ts"],
-      "@loom-studio/application-data": ["../packages/application-data/src/index.ts"],
-      "@loom-studio/asset-store": ["../packages/asset-store/src/index.ts"],
-      "@loom-studio/blob-store": ["../packages/blob-store/src/index.ts"],
-      "@loom-studio/client-bridge": ["../packages/client-bridge/src/index.ts"],
-      "@loom-studio/data-engine": ["../packages/data-engine/src/index.ts"],
-      "@loom-studio/diagnostics": ["../packages/diagnostics/src/index.ts"],
-      "@loom-studio/document-store": ["../packages/document-store/src/index.ts"],
-      "@loom-studio/application-runtime": ["../packages/application-runtime/src/index.ts"],
-      "@loom-studio/extension-host": ["../packages/extension-sdk/extension-host/src/index.ts"],
-      "@loom-studio/extension-sdk": ["../packages/extension-sdk/src/index.ts"],
-      "@loom-studio/kernel": ["../packages/kernel/src/index.ts"],
-      "@loom-studio/logging": ["../packages/logging/src/index.ts"],
-      "@loom-studio/logging/node": ["../packages/logging/src/node.ts"],
-      "@loom-studio/loom-runner": ["../packages/loom-runner/src/index.ts"],
-      "@loom-studio/secret-store": ["../packages/secret-store/src/index.ts"],
-      "@loom-studio/shared": ["../packages/shared/src/index.ts"],
-      "@loom-studio/trace-audit": ["../packages/trace-audit/src/index.ts"],
-      "@loom-studio/transport": ["../packages/transport/src/index.ts"],
-      "@loom-studio/ui": ["../packages/loom-ui/src/index.ts"],
-      "@loom-studio/shared/loom-scripts": ["../packages/shared/src/loom-script-contracts.ts"],
-      "@loom-studio/shared/tool-mounts": ["../packages/shared/src/tool-mount-contracts.ts"],
-      "@loom-studio/shared/macros": ["../packages/shared/src/macros.ts"],
-      "@loom-studio/sillytavern-importer": ["../extensions/st-data-compat/src/index.ts"],
-      "@loom/core": ["../packages/core/src/index.ts"]
+      "@loom-studio/tokenizer": [
+        "../packages/tokenizer/src/index.ts"
+      ],
+      "@loom-studio/tokenizer/async": [
+        "../packages/tokenizer/src/async-counter.ts"
+      ],
+      "@loom-studio/tokenizer/contracts": [
+        "../packages/tokenizer/src/contracts.ts"
+      ],
+      "@loom-studio/ai-gateway": [
+        "../packages/ai-gateway/src/index.ts"
+      ],
+      "@loom-studio/ai-gateway/contracts": [
+        "../packages/ai-gateway/src/contracts.ts"
+      ],
+      "@loom-studio/application-data": [
+        "../packages/application-data/src/index.ts"
+      ],
+      "@loom-studio/asset-store": [
+        "../packages/asset-store/src/index.ts"
+      ],
+      "@loom-studio/data-engine": [
+        "../packages/data-engine/src/index.ts"
+      ],
+      "@loom-studio/diagnostics": [
+        "../packages/diagnostics/src/index.ts"
+      ],
+      "@loom-studio/document-store": [
+        "../packages/document-store/src/index.ts"
+      ],
+      "@loom-studio/application-runtime": [
+        "../packages/application-runtime/src/index.ts"
+      ],
+      "@loom-studio/extension-host": [
+        "../packages/extension-sdk/extension-host/src/index.ts"
+      ],
+      "@loom-studio/extension-sdk": [
+        "../packages/extension-sdk/src/index.ts"
+      ],
+      "@loom-studio/kernel": [
+        "../packages/kernel/src/index.ts"
+      ],
+      "@loom-studio/logging": [
+        "../packages/logging/src/index.ts"
+      ],
+      "@loom-studio/logging/node": [
+        "../packages/logging/src/node.ts"
+      ],
+      "@loom-studio/secret-store": [
+        "../packages/secret-store/src/index.ts"
+      ],
+      "@loom-studio/shared": [
+        "../packages/shared/src/index.ts"
+      ],
+      "@loom-studio/ui": [
+        "../packages/loom-ui/src/index.ts"
+      ],
+      "@loom-studio/shared/loom-scripts": [
+        "../packages/shared/src/loom-script-contracts.ts"
+      ],
+      "@loom-studio/shared/tool-mounts": [
+        "../packages/shared/src/tool-mount-contracts.ts"
+      ],
+      "@loom-studio/shared/macros": [
+        "../packages/shared/src/macros.ts"
+      ],
+      "@loom-studio/sillytavern-importer": [
+        "../extensions/st-data-compat/src/index.ts"
+      ]
     }
   },
   "include": [
@@ -42,5 +84,7 @@
     "**/*.ts",
     "**/*.tsx"
   ],
-  "exclude": ["extensions/**"]
+  "exclude": [
+    "extensions/**"
+  ]
 }

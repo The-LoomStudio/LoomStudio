@@ -1,5 +1,5 @@
 import { createId } from '@loom-studio/shared'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type {
   AgentTranscriptEntry,
@@ -14,14 +14,15 @@ import type {
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
 import {
-  loadTranscript, releasePrimaryRun, resolveSessionRun, runAgentTurn,
-  type ActiveAgentRun, type ObservedRun, type RunRecovery,
-  retainToolPresentation,
+  loadTranscript, releasePrimaryRun, resolveSessionRun,
+  type ObservedRun, type RunRecovery,
+  retainRunPresentation,
 } from './agent-run-observer.js'
 export { inspectSessionRunStatus, releasePrimaryRun, mergeAgentRunEntries } from './agent-run-observer.js'
 export type { ActiveAgentRun, RunRecovery } from './agent-run-observer.js'
 import { useNarrativeCollections } from './use-narrative-collections.js'
-import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
+import { useTimelineSession } from './use-timeline-session.js'
+import { useSessionRun, streamingEntry } from './use-session-run.js'
 import type { LatestOperationContext } from '../../../shared/hooks/use-async-operations.js'
 import { openingChoiceRequest, type OpeningChoice } from '../../cards/model/opening-choice.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -75,6 +76,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [timeline, setTimeline] = useState<NarrativeTimeline>()
   const [openingSelection, setOpeningSelection] = useState<{ source: CardSource; timelineId?: string; choice: OpeningChoice }>()
   const pendingSends = useRef(new Map<string, { api: StudioApi; signature: string; requestId: string }>())
+  const retryingDiscussion = useRef(false)
   async function createConfirmedRun(request: Parameters<StudioApi['agentSessions']['createRun']>[0]) {
     const signature = JSON.stringify(request)
     const previous = pendingSends.current.get(request.agentSessionId)
@@ -115,20 +117,22 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [cardTimelinePage, setCardTimelinePage] = useState<{ source: CardSource; timelines: NarrativeTimeline[] }>()
   const cardTimelines = cardTimelinePage?.source === cardSourceRef.current ? cardTimelinePage.timelines : []
   const [agentSession, setAgentSession] = useState<AgentSession>()
-  const [primarySession, setPrimarySession] = useState<AgentSession>()
+  const root = useTimelineSession(input.api, timeline?.id, branch?.id, input.runAction, refreshRootNarrative, result => {
+    setLastRun(result)
+    setPromptPreview(undefined)
+  })
+  const primarySession = root.session
+  const [inputMode, setInputModeState] = useState<'roleplay' | 'discussion'>('roleplay')
+  const inputModeRef = useRef(inputMode)
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
   const [agentSessionReady, setAgentSessionReady] = useState(true)
   const [agentSessionLoading, setAgentSessionLoading] = useState(false)
   const [agentMessages, setAgentTranscriptEntries] = useState<AgentTranscriptEntry[]>([])
   const [agentComposerInput, setAgentComposerInput] = useState('')
   const [lastRun, setLastRun] = useState<InvokeAgentTurnResult>()
-  const [activeAgentRun, setActiveAgentRun] = useState<ActiveAgentRun>()
-  const observedRunRef = useRef<ObservedRun | undefined>(undefined)
-  const startingRunRef = useRef(false)
+  const startingNarrativeRef = useRef(false)
   const narrativeSubmissionRef = useRef<NarrativeSubmission | undefined>(undefined)
   const [narrativeSubmission, setNarrativeSubmission] = useState<NarrativeSubmission>()
-  const [runRecovery, setRunRecovery] = useState<RunRecovery>()
-  const [runRecoveryBusy, setRunRecoveryBusy] = useState(false)
   const [promptPreview, setPromptPreview] = useState<PreviewAgentTurnResult>()
   const [composerInput, setComposerInput] = useState(input.initialInput)
   const composerInputsRef = useRef({ narrative: composerInput, agent: agentComposerInput })
@@ -139,6 +143,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const agentSessionPromiseRef = useRef<Promise<AgentSession> | undefined>(undefined)
   const agentSessionRef = useRef<AgentSession | undefined>(undefined)
   const primarySessionRef = useRef<AgentSession | undefined>(undefined)
+  primarySessionRef.current = primarySession
   const agentSelectionRef = useRef(0)
   const agentSessionReadyRef = useRef(true)
   const optimisticEntryIdRef = useRef(0)
@@ -146,9 +151,47 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [swipeBusy, setSwipeBusy] = useState(false)
   const swipeOperationRef = useRef(false)
   const swipeReadRef = useRef(0)
-  const [swipeDisplay, setSwipeDisplay] = useState<{ api: StudioApi; timelineId: string; branchId: string; inputNodeId: string; node: NarrativeNode }>()
+  const [swipeDisplay, setSwipeDisplay] = useState<{ api: StudioApi; timelineId: string; branchId: string; inputNodeId?: string; node: NarrativeNode; runId?: string }>()
   const transcriptProjectionRef = useRef('')
   const transcriptReadRef = useRef(0)
+  const sessionRun = useSessionRun({
+    kind: 'sidebar', api: input.api,
+    isCurrent: run => run.selection === agentSelectionRef.current && run.api === cardSourceRef.current.api && !cardSourceRef.current.disposed
+      && (!run.narrativeTarget || run.narrativeTarget.timelineId === displayedNarrativeRef.current.timelineId
+        && run.narrativeTarget.branchId === displayedNarrativeRef.current.branchId),
+    makeRun: (runId, previous, action) => {
+      const sessionId = previous?.sessionId ?? agentSessionRef.current?.id
+      if (!sessionId) return
+      return { api: input.api, selection: agentSelectionRef.current, sessionId, runId,
+        target: previous?.target ?? (action === 'abandon' && sessionId === primarySessionRef.current?.id ? 'narrative' : 'agent'), input: previous?.input,
+        narrativeTarget: previous?.narrativeTarget ?? (action === 'abandon' && timeline && branch ? { timelineId: timeline.id, branchId: branch.id } : undefined),
+        streamingId: `streaming-agent-entry-${++optimisticEntryIdRef.current}`, cursor: 0, status: 'running', observing: false }
+    },
+    updateEntries: (run, update) => { if (agentSessionRef.current?.id === run.sessionId) setAgentTranscriptEntries(update) },
+    refresh: async (run, recovery) => {
+      if (recovery || run.status === 'cancelled') clearRunPlaceholders(run)
+      await refreshRunState(run)
+    },
+    completed: (run, result) => {
+      if (agentSessionRef.current?.id === run.sessionId) {
+        publishAgentSession(result.agentSession)
+        setAgentTranscriptEntries(current => [
+          ...current.filter(entry => entry.id !== run.optimisticEntryId && entry.id !== run.streamingId
+            && entry.id !== result.entries.user.id && entry.id !== result.entries.assistant.id),
+          result.entries.user, result.entries.assistant,
+        ])
+      } else setAllAgentSessions(current => current.map(item => item.id === run.sessionId ? result.agentSession : item))
+      setLastRun(result)
+      setPromptPreview(undefined)
+    },
+    reportFailure: error => notify.providerError(error, input.t),
+    reportAcknowledgement: error => input.logger?.warn('Agent completion acknowledgement failed; delivery expiry will release the result.', { error }),
+    abandonRejected: input.t?.('runRecovery.abandonRejected'),
+    abandonNotSuspended: input.t?.('runRecovery.abandonNotSuspended'),
+  })
+  const { activeRun: activeAgentRun, setActiveRun: setActiveAgentRun, recovery: runRecovery, setRecovery: setRunRecovery,
+    busy: runRecoveryBusy, setBusy: setRunRecoveryBusy, observed: observedRunRef, starting: startingRunRef,
+    owns: ownsRun, observe: observeRun } = sessionRun
   const swipe = swipeResult?.api === input.api && swipeResult.timelineId === timeline?.id
     && swipeResult.branchId === branch?.id ? swipeResult.swipe : undefined
 
@@ -177,6 +220,21 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     }
   }
 
+  async function refreshRootNarrative() {
+    const target = displayedNarrativeRef.current
+    if (!target.timelineId || !target.branchId) return
+    const revision = narrativeWriteRevisionRef.current
+    await refreshSwipe(target.timelineId, target.branchId)
+    const page = await input.api.narratives.getPage({ timelineId: target.timelineId, branchId: target.branchId, limit: 100 })
+    const displayed = displayedNarrativeRef.current
+    if (displayed.api !== target.api || displayed.timelineId !== target.timelineId || displayed.branchId !== target.branchId || revision !== narrativeWriteRevisionRef.current) return
+    setTimeline(page.timeline)
+    setBranch(page.branch)
+    setBranches(current => current.map(item => item.id === page.branch.id ? page.branch : item))
+    setNodes(current => reconcileNarrativeNodes(current, page.nodes))
+    if (!olderWindowRef.current) setOlderCursor(page.nextCursor)
+  }
+
   async function refreshDisplayedTranscript() {
     const sessionId = agentSessionRef.current?.id
     if (!sessionId) return
@@ -186,7 +244,9 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (request !== transcriptReadRef.current || selection !== agentSelectionRef.current
       || input.api !== cardSourceRef.current.api || cardSourceRef.current.disposed
       || sessionId !== agentSessionRef.current?.id) return
-    setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
+    const live = observedRunRef.current
+    if (!live?.observing || live.status !== 'running' || live.sessionId !== sessionId)
+      setAgentTranscriptEntries(current => retainRunPresentation(current, transcript.entries))
   }
 
   async function selectSwipe(candidateId: string) {
@@ -220,8 +280,13 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     }
   }
 
+  useEffect(() => {
+    setSwipeDisplay(current => current?.runId && (current.runId !== root.activeRun?.runId
+      || root.activeRun.status !== 'running') ? undefined : current)
+  }, [root.activeRun?.runId, root.activeRun?.status])
+
   async function generateSwipe(mode: 'swipe' | 'regenerate' | 'retry', allowSessionChange = false, newInput?: string) {
-    if (!swipe?.canGenerate || swipe.active || swipe.suspended || swipeOperationRef.current) return false
+    if (!swipe?.canGenerate || swipe.active || swipe.suspended || swipeOperationRef.current || root.activeRun?.status === 'running') return false
     const displayed = displayedNarrativeRef.current
     if (displayed.api !== input.api || displayed.timelineId !== swipe.timelineId || displayed.branchId !== swipe.branchId) return false
     swipeOperationRef.current = true
@@ -238,7 +303,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         if (!session || session.timelineId !== swipe.timelineId) throw new Error(input.t?.('swipe.noPrimary') ?? 'No primary writing session')
         if ((swipe.requiresRegeneration || session.id !== swipe.sourceAgentSessionId) && (!allowSessionChange || mode !== 'regenerate'))
           throw new Error(input.t?.('swipe.sessionChanged') ?? 'Primary writing session changed')
-        const selection = agentSelectionRef.current
         const started = await createConfirmedRun({
           agentSessionId: session.id, input: '', activationFacts: input.activationFacts,
           macroSelections: input.getMacroSelections?.(swipe.timelineId, swipe.branchId),
@@ -247,22 +311,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
               ...(newInput !== undefined ? { input: newInput } : {}), ...(allowSessionChange ? { allowSessionChange: true } : {}) } },
         })
         accepted = true
-        const displayed = displayedNarrativeRef.current
-        if (selection !== agentSelectionRef.current || displayed.api !== input.api
-          || displayed.timelineId !== swipe.timelineId || displayed.branchId !== swipe.branchId) return
-        const run: ObservedRun = {
-          api: input.api, selection, runId: started.runId, sessionId: session.id, target: 'narrative',
-          narrativeTarget: { timelineId: swipe.timelineId, branchId: swipe.branchId },
-          streamingId: '', cursor: 0, status: 'running', observing: false,
-        }
-        observedRunRef.current = run
-        setRunRecovery(undefined)
-        setActiveAgentRun({ runId: started.runId, status: 'running' })
-        await input.runAction(() => refreshRunState(run))
-        await observeRun(run)
+        if (display) setSwipeDisplay({ ...display, runId: started.runId })
+        await root.executeStarted(started.runId)
+
       })
     } finally {
-      setSwipeDisplay(current => current === display ? undefined : current)
+      if (!accepted) setSwipeDisplay(current => current === display ? undefined : current)
       swipeOperationRef.current = false
       setSwipeBusy(false)
       if (swipe) await input.runAction(() => refreshSwipe(swipe.timelineId, swipe.branchId))
@@ -349,10 +403,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           const selected = sessions.find(item => item.id === agentSessionRef.current?.id)
           if (selected) { agentSessionRef.current = selected; setAgentSession(selected) }
         }
-        if (primarySessionRef.current?.timelineId === timelineId && primarySessionRef.current) {
-          const primary = sessions.find(item => item.id === primarySessionRef.current?.id)
-          if (primary) publishPrimarySession(primary)
-        }
+
       })
     }
     const unsubscribe = subscribeDataCommits(operations => {
@@ -362,10 +413,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       for (const operation of relevant) {
         if (operation.kind !== 'delete') continue
         if (operation.entityId === agentSessionRef.current?.id) resetAgentSession()
-        if (operation.entityId === primarySessionRef.current?.id) {
-          if (timelineId) safeLocalStorage.removeItem(primaryStorageKey(timelineId))
-          publishPrimarySession(undefined)
-        }
       }
       if (relevant.some(item => !item.scope || item.kind !== 'update')) {
         refresh()
@@ -394,8 +441,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         setAllAgentSessions(current => current.map(item => sessions.find(session => session.id === item.id) ?? item))
         const selected = sessions.find(item => item.id === agentSessionRef.current?.id)
         if (selected) { agentSessionRef.current = selected; setAgentSession(selected) }
-        const primary = sessions.find(item => item.id === primarySessionRef.current?.id)
-        if (primary) publishPrimarySession(primary)
+
       })
     }, refresh)
     return () => { disposed = true; sequence++; unsubscribe() }
@@ -415,9 +461,23 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     return () => { source.disposed = true }
   }, [input.api, input.selectedCardId])
 
+  function modeDraftKey(key: string, mode = inputModeRef.current) {
+    return mode === 'discussion' ? `${key}:discussion` : key
+  }
+
+  function setInputMode(mode: 'roleplay' | 'discussion') {
+    if (mode === inputModeRef.current) return
+    inputModeRef.current = mode
+    setInputModeState(mode)
+    const key = modeDraftKey(readComposerDraftKey(timeline, branch, input.selectedCardId), mode)
+    const value = composerDraftsRef.current.get(key) ?? ''
+    composerInputsRef.current.narrative = value
+    setComposerInput(value)
+  }
+
   function setComposerDraft(value: string) {
     composerInputsRef.current.narrative = value
-    composerDraftsRef.current.set(readComposerDraftKey(timeline, branch, input.selectedCardId), value)
+    composerDraftsRef.current.set(modeDraftKey(readComposerDraftKey(timeline, branch, input.selectedCardId)), value)
     setComposerInput(value)
   }
 
@@ -436,9 +496,10 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       setRunRecovery(undefined)
       setRunRecoveryBusy(false)
     }
-    const key = readComposerDraftKey(nextTimeline, nextBranch, cardSourceRef.current.cardId)
-    const value = composerDraftsRef.current.get(key) ?? fallback
+    const key = modeDraftKey(readComposerDraftKey(nextTimeline, nextBranch, cardSourceRef.current.cardId))
+    const value = composerDraftsRef.current.get(key) ?? (inputModeRef.current === 'roleplay' ? fallback : '')
     composerDraftsRef.current.set(key, value)
+    composerInputsRef.current.narrative = value
     setComposerInput(value)
   }
 
@@ -533,7 +594,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         setNodes(result.nodes)
         setOlderCursor(undefined)
         resetAgentSession()
-        publishPrimarySession(undefined)
         setAgentSessions([])
         setPromptPreview(undefined)
         setLastRun(undefined)
@@ -589,7 +649,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   async function activateTimeline(timelineId: string, branchId?: string) {
     let activatedBranchId: string | undefined
     const selection = beginAgentSelection()
-    publishPrimarySession(undefined)
     setAgentSessions([])
     await input.runLatestAction(async context => {
       try {
@@ -626,7 +685,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setNodes([])
     setOlderCursor(undefined)
     resetAgentSession()
-    publishPrimarySession(undefined)
     setAgentSessions([])
     setPromptPreview(undefined)
     setLastRun(undefined)
@@ -635,14 +693,48 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
 
   async function submitTurn(event: FormEvent) {
     event.preventDefault()
-    return sendNarrativeInput()
+    if (inputMode === 'roleplay') return sendNarrativeInput()
+    if (!timeline || !branch || !composerInput.trim() || !root.session?.agentPresetId) return
+    const content = composerInput
+    const draftKey = modeDraftKey(readComposerDraftKey(timeline, branch, input.selectedCardId), 'discussion')
+    await input.runAction(async () => {
+      await root.execute({ agentSessionId: timeline.id, input: content,
+        macroSelections: input.getMacroSelections?.(timeline.id, branch.id), activationFacts: input.activationFacts,
+        narrativeTarget: { timelineId: timeline.id, branchId: branch.id } }, createConfirmedRun,
+        () => {
+          if (composerDraftsRef.current.get(draftKey) !== content) return
+          composerDraftsRef.current.delete(draftKey)
+          if (inputModeRef.current === 'discussion' && displayedNarrativeRef.current.timelineId === timeline.id
+            && displayedNarrativeRef.current.branchId === branch.id) setComposerDraft('')
+        })
+    })
   }
 
   async function retryNarrativeInput() {
+    if (root.activeRun?.status === 'suspended') return input.runAction(root.resume)
+    const latestInput = root.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')
+    if (canRetryDiscussion && latestInput && latestInput.entry.purpose !== 'narrative' && typeof latestInput.entry.content === 'string') {
+      return retryDiscussionInput(latestInput.id, latestInput.entry.content)
+    }
     if (swipe) return generateSwipe('retry')
     const submission = narrativeSubmissionRef.current
     if (!submission || !ownsNarrativeSubmission(submission)) return
     await sendNarrativeInput(submission)
+  }
+
+  async function retryDiscussionInput(entryId: string, content: string): Promise<boolean> {
+    if (retryingDiscussion.current || !timeline || !branch || !content.trim() || root.activeRun?.status === 'running') return false
+    const latest = root.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')
+    if (latest?.id !== entryId || latest.entry.purpose === 'narrative') throw new Error('只能编辑或重试最新一次沟通输入')
+    retryingDiscussion.current = true
+    try {
+      return await input.runAction(async () => {
+        if (root.activeRun?.status === 'suspended') await root.abandon()
+        await root.execute({ agentSessionId: timeline.id, input: content, retry: { entryId },
+          macroSelections: input.getMacroSelections?.(timeline.id, branch.id), activationFacts: input.activationFacts,
+          narrativeTarget: { timelineId: timeline.id, branchId: branch.id } }, createConfirmedRun)
+      })
+    } finally { retryingDiscussion.current = false }
   }
 
   function ownsNarrativeSubmission(submission: NarrativeSubmission) {
@@ -663,40 +755,18 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       await input.runAction(async () => { throw new Error('请先点击“开始一个新故事”') })
       return undefined
     }
-    if (replacingOpeningRef.current || openingChanged) return undefined
-    if (!agentSessionReadyRef.current) return undefined
+    if (replacingOpeningRef.current || openingChanged || root.activeRun?.status === 'running' || root.activeRun?.status === 'suspended') return undefined
     if (runRecovery?.target === 'narrative' && runRecovery.refreshFailed) return undefined
-    if (swipeOperationRef.current || startingRunRef.current || (observedRunRef.current?.target === 'narrative' && ownsRun(observedRunRef.current)
+    if (swipeOperationRef.current || startingNarrativeRef.current || (observedRunRef.current?.target === 'narrative' && ownsRun(observedRunRef.current)
       && (observedRunRef.current.status === 'running' || observedRunRef.current.observing))) return undefined
 
-    startingRunRef.current = true
+    startingNarrativeRef.current = true
     try {
       await input.runAction(async () => {
-        if (!primarySessionRef.current || primarySessionRef.current.timelineId !== timeline?.id) {
-          // ponytail: Reuse the existing client binding until backend writing configuration owns first-send creation.
-          if (safeLocalStorage.getItem(primaryStorageKey(timeline.id))) {
-            throw new Error('原主写作对话不可用，请重新选择主写作对话')
-          }
-          if (!input.selectedAgentPresetId) throw new Error('请先选择写作使用的 Agent 预设，无需手动创建对话')
-          const source = cardSourceRef.current
-          const selection = agentSelectionRef.current
-          const created = await input.api.agentSessions.create({
-            agentPresetId: input.selectedAgentPresetId, timelineId: timeline.id,
-          })
-          // Keep the binding on its originating Timeline even if navigation changed during creation.
-          safeLocalStorage.setItem(primaryStorageKey(timeline.id), created.session.id)
-          if (source.disposed || source !== cardSourceRef.current || selection !== agentSelectionRef.current
-            || displayedNarrativeRef.current.timelineId !== timeline.id
-            || displayedNarrativeRef.current.branchId !== branch.id) return
-          publishPrimarySession(created.session)
-          setAgentSessions(current => [created.session, ...current.filter(item => item.id !== created.session.id)])
-          setAllAgentSessions(current => [created.session, ...current.filter(item => item.id !== created.session.id)])
-          if (!agentSessionRef.current) publishAgentSession(created.session)
-        }
+        if (!primarySessionRef.current?.agentPresetId) throw new Error('请先选择故事使用的 Agent 预设')
         let currentTimeline = timeline
         let currentBranch = branch
 
-        const selection = agentSelectionRef.current
         const previous = narrativeSubmissionRef.current
         let submission = retry ?? (previous && ownsNarrativeSubmission(previous)
           && !previous.delivered && previous.content === content ? previous : {
@@ -721,13 +791,13 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           setBranches(current => current.map(item => item.id === written.branch.id ? written.branch : item))
           setNodes(current => current.some(node => node.id === written.node.id) ? current : [...current, written.node])
         }
-        if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api
+        if (input.api !== cardSourceRef.current.api
           || displayedNarrativeRef.current.timelineId !== currentTimeline.id || displayedNarrativeRef.current.branchId !== currentBranch.id) {
           return
         }
         const session = primarySessionRef.current
-        if (!session || session.timelineId !== currentTimeline.id) throw new Error('请先设置主写作对话')
-        if (selection !== agentSelectionRef.current || !ownsNarrativeSubmission(submission)) return
+        if (!session || session.timelineId !== currentTimeline.id) throw new Error('故事根 Session 尚未就绪')
+        if (!ownsNarrativeSubmission(submission)) return
 
         const started = await createConfirmedRun({
           agentSessionId: session.id,
@@ -741,51 +811,23 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           },
         })
         publishNarrativeSubmission({ ...submission, delivered: true })
-        if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api
+        if (input.api !== cardSourceRef.current.api
           || displayedNarrativeRef.current.timelineId !== currentTimeline.id || displayedNarrativeRef.current.branchId !== currentBranch.id) {
           return
         }
-        setRunRecovery(undefined)
-        setActiveAgentRun({ runId: started.runId, status: 'running' })
-
-        const optimisticEntryId = `optimistic-agent-entry-${++optimisticEntryIdRef.current}`
-
-        if (agentSessionRef.current?.id === session.id) setAgentTranscriptEntries(current => {
-          const lastEntry = current.at(-1)
-          const optimisticEntry: AgentTranscriptEntry = {
-            id: optimisticEntryId,
-            agentSessionId: session.id,
-            parentEntryId: lastEntry?.id,
-            sequence: (lastEntry?.sequence ?? 0) + 1,
-            entry: { kind: 'message', role: 'user', content },
-            createdAt: new Date().toISOString(),
-          }
-          return [...current, optimisticEntry]
-        })
-
         const draftKey = readComposerDraftKey(currentTimeline, currentBranch, input.selectedCardId)
         if (!retry) {
-          if (composerDraftsRef.current.get(draftKey) === composerInput) composerDraftsRef.current.delete(draftKey)
-          setComposerInput(current => current === composerInput ? '' : current)
+          composerDraftsRef.current.delete(draftKey)
+          if (inputModeRef.current === 'roleplay') {
+            if (composerInputsRef.current.narrative === composerInput) composerInputsRef.current.narrative = ''
+            setComposerInput(current => current === composerInput ? '' : current)
+          }
         }
+        await root.executeStarted(started.runId)
 
-        const streamingId = `streaming-agent-entry-${++optimisticEntryIdRef.current}`
-        if (agentSessionRef.current?.id === session.id) setAgentTranscriptEntries(current => [...current, {
-          id: streamingId,
-          agentSessionId: session.id,
-          sequence: (current.at(-1)?.sequence ?? 0) + 1,
-          entry: { kind: 'message', role: 'assistant', content: '' },
-          createdAt: new Date().toISOString(),
-        }])
-        await observeRun({
-          api: input.api, selection, runId: started.runId, sessionId: session.id,
-          target: 'narrative', input: retry?.content ?? composerInput,
-          narrativeTarget: { timelineId: currentTimeline.id, branchId: currentBranch.id },
-          optimisticEntryId, streamingId, cursor: 0, status: 'running', observing: false,
-        })
       })
     } finally {
-      startingRunRef.current = false
+      startingNarrativeRef.current = false
     }
   }
 
@@ -826,86 +868,21 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         setAgentComposerInput(current => current === agentComposerInput ? '' : current)
 
         const streamingId = `streaming-agent-entry-${++optimisticEntryIdRef.current}`
-        setAgentTranscriptEntries(current => [...current, {
-          id: streamingId,
-          agentSessionId: session.id,
-          sequence: (current.at(-1)?.sequence ?? 0) + 1,
-          entry: { kind: 'message', role: 'assistant', content: '' },
-          createdAt: new Date().toISOString(),
-        }])
-        await observeRun({
+        const run: ObservedRun = {
           api: input.api, selection, runId: started.runId, sessionId: session.id,
           target: 'agent', input: agentComposerInput, optimisticEntryId: optimisticId,
           streamingId, cursor: 0, status: 'running', observing: false,
-        })
+        }
+        setAgentTranscriptEntries(current => [...current, streamingEntry(run, current)])
+        await observeRun(run)
       })
     } finally {
       startingRunRef.current = false
     }
   }
 
-  async function pauseAgentRun() {
-    const run = activeAgentRun
-    if (!run || run.status !== 'running') return
-    await input.runAgentAction(async () => {
-      const result = await input.api.agentSessions.pauseRun(run.runId)
-      if (result.accepted) setActiveAgentRun(current => current?.runId === run.runId ? { ...current, status: result.state } : current)
-    })
-  }
-
-  async function resumeAgentRun() {
-    const run = activeAgentRun
-    if (!run || run.status !== 'suspended') return
-    if (startingRunRef.current || observedRunRef.current?.observing || runRecovery?.status === 'disconnected') return
-    const selection = agentSelectionRef.current
-    const candidate = observedRunRef.current
-    const previous = candidate && ownsRun(candidate) && candidate.runId === run.runId ? candidate : undefined
-    const sessionId = previous?.sessionId ?? agentSessionRef.current?.id
-    if (!sessionId) return
-
-    await input.runAgentAction(async () => {
-      startingRunRef.current = true
-      try {
-        const result = await input.api.agentSessions.resumeRun({
-          runId: run.runId,
-          agentSessionId: sessionId,
-        })
-
-        if (!result.accepted || selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) {
-          return
-        }
-
-        setRunRecovery(undefined)
-        setActiveAgentRun({ runId: result.runId, status: 'running' })
-
-        const streamingId = `streaming-agent-entry-${++optimisticEntryIdRef.current}`
-        if (agentSessionRef.current?.id === sessionId) setAgentTranscriptEntries(current => [...current, {
-          id: streamingId,
-          agentSessionId: sessionId,
-          sequence: (current.at(-1)?.sequence ?? 0) + 1,
-          entry: { kind: 'message', role: 'assistant', content: '' },
-          createdAt: new Date().toISOString(),
-        }])
-
-        await observeRun({
-          api: input.api, selection, runId: result.runId, sessionId,
-          target: previous?.target ?? 'agent',
-          input: previous?.input,
-          narrativeTarget: previous?.narrativeTarget,
-          streamingId, cursor: 0, status: 'running', observing: false,
-        })
-      } finally {
-        startingRunRef.current = false
-      }
-    })
-  }
-
-  function ownsRun(run: ObservedRun) {
-    return observedRunRef.current === run && run.selection === agentSelectionRef.current
-      && run.api === cardSourceRef.current.api && !cardSourceRef.current.disposed
-      && (!run.narrativeTarget || (run.narrativeTarget.timelineId === displayedNarrativeRef.current.timelineId
-        && run.narrativeTarget.branchId === displayedNarrativeRef.current.branchId))
-  }
+  const pauseAgentRun = () => input.runAgentAction(sessionRun.pause)
+  const resumeAgentRun = () => input.runAgentAction(sessionRun.resume)
 
   function clearRunPlaceholders(run: ObservedRun) {
     if (agentSessionRef.current?.id === run.sessionId)
@@ -924,7 +901,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (!ownsRun(run)) return
     if (agentSessionRef.current?.id === run.sessionId) {
       publishAgentSession(transcript.session)
-      setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
+      setAgentTranscriptEntries(current => retainRunPresentation(current, transcript.entries))
     } else {
       setAllAgentSessions(current => current.map(item => item.id === run.sessionId ? transcript.session : item))
     }
@@ -943,95 +920,8 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setPromptPreview(undefined)
   }
 
-  async function refreshTerminalRun(run: ObservedRun, error?: unknown) {
-    if (!ownsRun(run) || (run.status !== 'failed' && run.status !== 'cancelled' && run.status !== 'suspended')) return
-    clearRunPlaceholders(run)
-    if ((run.status === 'failed' || run.status === 'suspended') && error) {
-      notify.providerError(error, input.t)
-    }
-    const recovery: RunRecovery = {
-      target: run.target, status: run.status, input: run.target === 'agent' ? run.input : undefined,
-      ...(error ? { error: error instanceof Error ? error.message : String(error) } : {}),
-    }
-    setRunRecovery(recovery)
-    try {
-      await refreshRunState(run)
-    } catch (refreshError) {
-      if (ownsRun(run)) setRunRecovery({
-        ...recovery, refreshFailed: true,
-        error: [recovery.error, refreshError instanceof Error ? refreshError.message : String(refreshError)].filter(Boolean).join('\n'),
-      })
-    }
-  }
-
-  async function observeRun(run: ObservedRun) {
-    if (run.observing || run.selection !== agentSelectionRef.current || run.api !== cardSourceRef.current.api) return
-    observedRunRef.current = run
-    run.observing = true
-    setRunRecoveryBusy(true)
-    try {
-      let result: InvokeAgentTurnResult | undefined
-      try {
-        result = await runAgentTurn(run, () => ownsRun(run),
-          update => {
-            if (agentSessionRef.current?.id === run.sessionId) setAgentTranscriptEntries(update)
-          }, setActiveAgentRun,
-          () => setRunRecovery(current => current?.status === 'disconnected' ? undefined : current))
-      } catch (error) {
-        if (!ownsRun(run)) return
-        if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'suspended') await refreshTerminalRun(run, error)
-        else setRunRecovery({ target: run.target, status: 'disconnected', error: error instanceof Error ? error.message : String(error) })
-        throw error
-      }
-      if (!ownsRun(run)) return
-      if (!result) {
-        if (run.status === 'cancelled') await refreshTerminalRun(run)
-        else {
-          setRunRecovery(undefined)
-          try {
-            await refreshRunState(run)
-          } catch (error) {
-            if (run.status !== 'completed') throw error
-            if (ownsRun(run)) setRunRecovery({
-              target: run.target, status: 'refresh-failed', refreshFailed: true,
-              error: error instanceof Error ? error.message : String(error),
-            })
-          }
-        }
-        return
-      }
-      setRunRecovery(undefined)
-      if (agentSessionRef.current?.id === run.sessionId) {
-        publishAgentSession(result.agentSession)
-        setAgentTranscriptEntries(current => [
-          ...current.filter(entry => entry.id !== run.optimisticEntryId && entry.id !== run.streamingId
-            && entry.id !== result.entries.user.id && entry.id !== result.entries.assistant.id),
-          result.entries.user, result.entries.assistant,
-        ])
-      } else {
-        setAllAgentSessions(current => current.map(item => item.id === run.sessionId ? result.agentSession : item))
-      }
-      setLastRun(result)
-      setPromptPreview(undefined)
-      void run.api.agentSessions.acknowledgeRunCompletion(run.runId).catch(error => {
-        // The delivery expiry releases this result if acknowledgement is offline.
-        input.logger?.warn('Agent completion acknowledgement failed; delivery expiry will release the result.', { error })
-      })
-      try {
-        await refreshRunState(run)
-      } catch (error) {
-        if (ownsRun(run)) setRunRecovery({
-          target: run.target, status: 'refresh-failed', refreshFailed: true,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    } finally {
-      run.observing = false
-      if (ownsRun(run)) setRunRecoveryBusy(false)
-    }
-  }
-
   function observeTaskRun(sessionId: string, runId: string) {
+    if (sessionId === timeline?.id) { void root.executeStarted(runId); return }
     if (input.api !== cardSourceRef.current.api || cardSourceRef.current.disposed
       || agentSessionRef.current?.id !== sessionId || startingRunRef.current) return
     followSessionRun(sessionId, runId)
@@ -1059,6 +949,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function refreshTaskSession(sessionId: string) {
+    if (sessionId === timeline?.id) { await root.refreshTask(); return }
     if (input.api !== cardSourceRef.current.api || cardSourceRef.current.disposed
       || agentSessionRef.current?.id !== sessionId) return
     const run = observedRunRef.current
@@ -1086,87 +977,11 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function reconnectAgentRun() {
-    const run = observedRunRef.current
-    if (!run || !ownsRun(run) || run.observing || startingRunRef.current) return
-    const reconnect = async () => {
-      if (run.status === 'completed') {
-        setRunRecoveryBusy(true)
-        try {
-          await refreshRunState(run)
-          if (ownsRun(run)) setRunRecovery(undefined)
-        } finally {
-          if (ownsRun(run)) setRunRecoveryBusy(false)
-        }
-      } else if (run.status === 'failed' || run.status === 'cancelled') {
-        run.observing = true
-        setRunRecoveryBusy(true)
-        try { await refreshTerminalRun(run) } finally {
-          run.observing = false
-          if (ownsRun(run)) setRunRecoveryBusy(false)
-        }
-      } else {
-        await observeRun(run)
-      }
-    }
-    if (run.target === 'narrative') await input.runAction(reconnect)
-    else await input.runAgentAction(reconnect)
+    await (observedRunRef.current?.target === 'narrative' ? input.runAction : input.runAgentAction)(sessionRun.reconnect)
   }
-
   async function abandonAgentRun() {
-    const active = activeAgentRun
-    const previous = observedRunRef.current
-    if (!active || active.status !== 'suspended' || runRecoveryBusy || startingRunRef.current
-      || (previous && (!ownsRun(previous) || previous.observing))) return
-    const sessionId = previous?.sessionId ?? agentSessionRef.current?.id
-    if (!sessionId) return
-    const run: ObservedRun = previous ?? {
-      api: input.api, selection: agentSelectionRef.current, runId: active.runId, sessionId,
-      target: sessionId === primarySessionRef.current?.id ? 'narrative' : 'agent',
-      ...(timeline && branch ? { narrativeTarget: { timelineId: timeline.id, branchId: branch.id } } : {}),
-      streamingId: '', cursor: 0, status: 'suspended', observing: false,
-    }
-    observedRunRef.current = run
-    run.observing = true
-    setRunRecoveryBusy(true)
-    const abandon = async () => {
-      let abandoned = false
-      try {
-        const state = await run.api.agentSessions.runState(run.runId, run.sessionId)
-        if (!ownsRun(run)) return
-        if (state.state !== 'suspended') {
-          run.status = state.state
-          setActiveAgentRun({ runId: state.runId, status: state.state })
-          if (state.state === 'running') {
-            setRunRecovery(undefined)
-            run.observing = false
-            await observeRun(run)
-            return
-          }
-          throw new Error(input.t?.('runRecovery.abandonNotSuspended') ?? 'The run is not suspended')
-        }
-        const result = await run.api.agentSessions.abandonRun(run.runId, run.sessionId)
-        if (!result.accepted) throw new Error(input.t?.('runRecovery.abandonRejected') ?? 'The attempt could not be abandoned')
-        abandoned = true
-        run.status = 'cancelled'
-        if (!ownsRun(run)) return
-        setActiveAgentRun(undefined)
-        setRunRecovery(undefined)
-        clearRunPlaceholders(run)
-        await refreshRunState(run)
-      } catch (error) {
-        if (ownsRun(run)) setRunRecovery({
-          target: run.target, status: abandoned ? 'refresh-failed' : run.status === 'suspended' ? 'suspended' : run.status === 'running' ? 'disconnected' : 'failed',
-          ...(abandoned ? { refreshFailed: true } : {}),
-          error: error instanceof Error ? error.message : String(error),
-        })
-        throw error
-      } finally {
-        run.observing = false
-        if (ownsRun(run)) setRunRecoveryBusy(false)
-      }
-    }
-    if (run.target === 'narrative') await input.runAction(abandon)
-    else await input.runAgentAction(abandon)
+    await (observedRunRef.current?.target === 'narrative'
+      || !observedRunRef.current && agentSessionRef.current?.id === primarySessionRef.current?.id ? input.runAction : input.runAgentAction)(sessionRun.abandon)
   }
 
   function restoreRunInput() {
@@ -1179,20 +994,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setRunRecovery(current => current ? { ...current, input: undefined } : undefined)
   }
 
-  async function approveAgentMutation(allow: boolean, reason?: string) {
-    const run = activeAgentRun
-    const approval = run?.approval
-    if (!run || !approval) return false
-    const result = await (approval.action
-      ? input.api.agentSessions.approveHistoryRead
-      : input.api.agentSessions.approveMutation)(run.runId, approval.requestId, allow, reason)
-    if (result.accepted) {
-      setActiveAgentRun(current => current?.runId === run.runId && current.approval?.requestId === approval.requestId
-        ? { ...current, approval: undefined }
-        : current)
-    }
-    return result.accepted
-  }
+  const approveAgentMutation = sessionRun.approve
 
   async function previewPrompt() {
     if (!timeline || !branch || composerInput.trim().length === 0) return
@@ -1201,7 +1003,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     await input.runAction(async () => {
       const selection = agentSelectionRef.current
       const session = primarySessionRef.current
-      if (!session || session.timelineId !== timeline.id) throw new Error('请先设置主写作对话')
+      if (!session || session.timelineId !== timeline.id) throw new Error('故事根 Session 尚未就绪')
       if (selection !== agentSelectionRef.current) return
       const result = await input.api.agentSessions.preview({
         agentSessionId: session.id,
@@ -1353,60 +1155,22 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     }
   }
 
-  function primaryStorageKey(timelineId: string) {
-    return `loom.studio.primarySession:${input.storageScope}:${timelineId}`
+  async function setPrimaryAgentSession(_session: AgentSession) {
+    throw new Error('故事使用固定根 Session，请在输入框切换故事预设')
   }
 
-  function publishPrimarySession(session: AgentSession | undefined) {
-    primarySessionRef.current = session
-    setPrimarySession(session)
-  }
-
-  async function setPrimaryAgentSession(session: AgentSession, targetTimeline = timeline) {
-    if (!targetTimeline || session.timelineId !== targetTimeline.id) throw new Error('主写作对话必须属于当前时间线')
-    if (primarySessionRef.current?.id === session.id) return
-    if (startingRunRef.current || (agentSessionRef.current?.id === primarySessionRef.current?.id
-      && activeAgentRun?.status === 'running')) throw new Error('生成期间不能切换主写作对话')
-    const previous = primarySessionRef.current
-    const source = cardSourceRef.current
-    const selection = agentSelectionRef.current
-    if (previous) await releasePrimaryRun(input.api, previous.id)
-    if (source.disposed || cardSourceRef.current !== source || selection !== agentSelectionRef.current
-      || displayedNarrativeRef.current.timelineId !== targetTimeline.id) return
-    safeLocalStorage.setItem(primaryStorageKey(targetTimeline.id), session.id)
-    publishPrimarySession(session)
-    setPromptPreview(undefined)
-    if (previous && previous.id !== session.id) {
-      if (agentSessionRef.current?.id === previous.id) {
-        agentSelectionRef.current++
-        observedRunRef.current = undefined
-        setActiveAgentRun(undefined)
-      }
-      setRunRecovery(undefined)
-    }
-  }
-
-  async function createAgentSession(presetId: string, makeMain: boolean): Promise<AgentSession | undefined> {
+  async function createAgentSession(presetId: string, _makeMain: boolean): Promise<AgentSession | undefined> {
     const source = cardSourceRef.current
     const selection = agentSelectionRef.current
     const targetTimeline = timeline
     const isCurrent = () => ownsCollectionSource() && !source.disposed && cardSourceRef.current === source
       && selection === agentSelectionRef.current && displayedNarrativeRef.current.timelineId === targetTimeline?.id
-    if (makeMain && !targetTimeline) {
-      throw new Error('请先点击“开始一个新故事”，再设置主写作对话')
-    }
     const created = await input.api.agentSessions.create({
       agentPresetId: presetId, ...(targetTimeline ? { timelineId: targetTimeline.id } : {}),
     })
     setAllAgentSessions(current => [created.session, ...current.filter(item => item.id !== created.session.id)])
     if (!isCurrent()) return undefined
     setAgentSessions(current => [created.session, ...current.filter(item => item.id !== created.session.id)])
-    if (makeMain) {
-      await setPrimaryAgentSession(created.session, targetTimeline)
-      if (!ownsCollectionSource() || source.disposed || cardSourceRef.current !== source
-        || displayedNarrativeRef.current.timelineId !== targetTimeline?.id
-        || primarySessionRef.current?.id !== created.session.id) return undefined
-    }
     return created.session
   }
 
@@ -1414,6 +1178,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (!ownsCollectionSource()) return
     agentSessionRef.current = session
     setAgentSession(session)
+    if (session.kind === 'timeline') return
     setAgentSessions(current => [session, ...current.filter(item => item.id !== session.id)]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id)))
     setAllAgentSessions(current => [session, ...current.filter(item => item.id !== session.id)]
@@ -1473,7 +1238,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       const page = await input.api.agentSessions.list({
         ...(timelineId ? { timelineId } : { standalone: true }), cursor, limit: 100,
       })
-      sessions.push(...page.sessions)
+      sessions.push(...page.sessions.filter(session => session.kind !== 'timeline'))
       cursor = page.nextCursor
     } while (cursor)
     return sessions
@@ -1483,16 +1248,13 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     const sessions = await listAgentSessions(timelineId)
     if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
     setAgentSessions(sessions)
-    publishPrimarySession(timelineId
-      ? sessions.find(item => item.id === safeLocalStorage.getItem(primaryStorageKey(timelineId)))
-      : undefined)
     const selected = sessions.find(item => item.id === selectedId) ?? sessions[0]
     if (selected) {
       const transcript = await loadTranscript(input.api, selected.id, true)
       const restoredRun = await resolveSessionRun(input.api, selected.id, transcript.entries)
       if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
       publishAgentSession(transcript.session)
-      setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
+      setAgentTranscriptEntries(current => retainRunPresentation(current, transcript.entries))
       setActiveAgentRun(restoredRun)
       if (restoredRun?.status === 'running') followSessionRun(selected.id, restoredRun.runId)
     }
@@ -1513,12 +1275,14 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
 
   async function activateAgentSession(sessionOrId: AgentSession | string, canActivate?: () => boolean) {
     if (canActivate && !canActivate()) return
+    if (typeof sessionOrId !== 'string' && sessionOrId.kind === 'timeline') return
     const sessionId = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId.id
     const selection = beginAgentSelection(true)
     let activated: { session: AgentSession; branchId?: string } | undefined
     await input.runAgentAction(async () => {
       try {
         const transcript = await loadTranscript(input.api, sessionId, true)
+        if (transcript.session.kind === 'timeline') { markAgentSessionReady(true); return }
         const timelineId = transcript.session.timelineId
         const sameNarrative = timelineId === timeline?.id && (!timelineId || Boolean(branch))
         const details = !sameNarrative && timelineId ? await input.api.narratives.get(timelineId) : undefined
@@ -1530,9 +1294,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
         if (canActivate && !canActivate()) return
         if (!sameNarrative) {
-          publishPrimarySession(timelineId
-            ? sessions.find(item => item.id === safeLocalStorage.getItem(primaryStorageKey(timelineId)))
-            : undefined)
           setTimeline(page?.timeline)
           setBranch(page?.branch)
           setBranches(details?.branches ?? [])
@@ -1542,7 +1303,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         }
         setAgentSessions(sessions)
         publishAgentSession(transcript.session)
-        setAgentTranscriptEntries(current => retainToolPresentation(current, transcript.entries))
+        setAgentTranscriptEntries(current => retainRunPresentation(current, transcript.entries))
         setActiveAgentRun(restoredRun)
         if (restoredRun?.status === 'running') followSessionRun(sessionId, restoredRun.runId)
         markAgentSessionReady(true)
@@ -1603,6 +1364,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function deleteAgentSession(agentSessionId: string) {
+    if (agentSessionId === timeline?.id) throw new Error('故事根 Session 随故事一起删除')
     let deleted = false
     await input.runAgentAction(async () => {
       await input.api.agentSessions.delete(agentSessionId)
@@ -1611,10 +1373,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       setAllAgentSessions(current => current.filter(item => item.id !== agentSessionId))
       if (agentSessionRef.current?.id === agentSessionId) {
         resetAgentSession()
-      }
-      if (primarySessionRef.current?.id === agentSessionId) {
-        if (timeline) safeLocalStorage.removeItem(primaryStorageKey(timeline.id))
-        publishPrimarySession(undefined)
       }
       deleted = true
       if (input.t) notify.success(input.t('notify.success.deleted'))
@@ -1646,15 +1404,27 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     ? { target: observedRunRef.current?.target ?? (agentSession?.id === primarySession?.id ? 'narrative' : 'agent'),
       status: 'suspended', error: visibleActiveRun.error ?? (runRecovery?.status === 'suspended' ? runRecovery.error : undefined) }
     : observedRunRef.current && ownsRun(observedRunRef.current) ? runRecovery : undefined
+  const latestRootInput = root.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')
+  const canRetryDiscussion = !!latestRootInput && latestRootInput.entry.purpose !== 'narrative'
 
   return {
     swipe,
-    swipeBusy: swipeBusy || Boolean(observedRunRef.current?.sessionId === primarySession?.id
+    swipeBusy: swipeBusy || root.activeRun?.status === 'running' || Boolean(observedRunRef.current?.sessionId === primarySession?.id
       && observedRunRef.current?.observing),
     selectSwipe,
     generateSwipe,
     selectAgentPreset,
     primarySession,
+    rootMessages: root.entries,
+    approveRootMutation: root.approve,
+    rootActiveRun: root.activeRun,
+    rootRecovery: root.recovery,
+    reconnectRootRun: async () => { await input.runAction(root.reconnect) },
+    pauseRootRun: () => input.runAction(root.pause),
+    resumeRootRun: () => input.runAction(root.resume),
+    abandonRootRun: async () => { await input.runAction(root.abandon) },
+    configureRoot: (patch: Parameters<typeof root.configure>[0]) => input.runAction(() => root.configure(patch)),
+    inputMode, setInputMode,
     createAgentSession,
     setPrimaryAgentSession,
     agentComposerInput,
@@ -1676,11 +1446,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     abandonAgentRun,
     restoreRunInput,
     retryNarrativeInput,
-    canRetryNarrativeInput: swipe ? Boolean(swipe.canGenerate && !swipe.active && !swipe.suspended && !swipeBusy
+    retryDiscussionInput,
+    canRetryNarrativeInput: root.activeRun?.status === 'suspended' || (canRetryDiscussion && root.activeRun?.status !== 'running') || (swipe ? Boolean(swipe.canGenerate && !swipe.active && !swipe.suspended && !swipeBusy
       && primarySessionRef.current && !runRecoveryBusy) : Boolean(narrativeSubmission && ownsNarrativeSubmission(narrativeSubmission)
       && agentSessionReady && !startingRunRef.current && !runRecoveryBusy
       && !(observedRunRef.current && ownsRun(observedRunRef.current)
-        && (observedRunRef.current.status === 'running' || observedRunRef.current.observing))),
+        && (observedRunRef.current.status === 'running' || observedRunRef.current.observing)))),
     approveAgentMutation,
     cancelAgentRun,
     pauseAgentRun,

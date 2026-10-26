@@ -218,6 +218,7 @@ export type ToolExecutionScope = {
     }): Promise<{ revisionId: string }>
   }
   narrative?: {
+    declareNext?(): void
     timelineId: string
     branchId: string
     sample(input: Omit<NarrativeSampleRequest, 'timelineId' | 'branchId'> & { view?: 'raw' | 'prompt' }, signal?: AbortSignal, approveHistory?: ApproveNarrativeHistory, approvalControl?: import('../vfs/types.js').VfsApprovalControl): Promise<NarrativeSampleResult>

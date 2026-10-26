@@ -7,6 +7,8 @@ export {
   type SqliteDataEngine,
   type SqliteDataEngineOptions,
   type SqliteDataTransaction,
+  type DataTransactionInput,
   type SqliteMigration,
   type SqliteMigrationSet,
 } from './sqlite.js'
+export { readSqliteSpaceUsage } from './storage-statistics.js'

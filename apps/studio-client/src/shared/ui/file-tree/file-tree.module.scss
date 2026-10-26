@@ -135,7 +135,10 @@
   border-left: 1px solid var(--loom-color-border);
 }
 
+.dragSpacer { flex: 0 0 14px; width: 14px; }
+
 .dragHandle {
+  flex: 0 0 14px;
   position: relative;
   z-index: 1;
   width: 14px;

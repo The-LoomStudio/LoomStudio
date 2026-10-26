@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Button } from '@loom-studio/ui'
-import { toast } from '../../../apps/studio-client/node_modules/sonner/dist/index.mjs'
+import { notify } from '../../../apps/studio-client/src/shared/notifications/index.js'
 import { StateVariablesPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-variables-panel.js'
 import { StateAuthoringPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-authoring-panel.js'
 import { StateSourcesPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-sources-panel.js'
@@ -13,7 +13,7 @@ import type { StateTarget } from '../../../apps/studio-client/src/entities/index
 import type { StateSourcesInspection } from '../../../apps/studio-client/src/entities/state.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
-vi.mock('../../../apps/studio-client/node_modules/sonner/dist/index.mjs', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('../../../apps/studio-client/src/shared/notifications/index.js', () => ({ notify: { success: vi.fn(() => 'test-success'), error: vi.fn(() => 'test-error') } }))
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
   useMemo: (factory: () => unknown) => factory(),
@@ -53,7 +53,7 @@ const t = createTranslator('en-US')
 function fixture() {
   const apply = vi.fn<ComponentProps<typeof StateVariablesPanel>['api']['apply']>()
     .mockResolvedValue({ ...snapshot(a, 1), mutation: { changesetId: 'change' } })
-  const get = vi.fn(async (target: StateTarget) => snapshot(target, 1))
+  const get = vi.fn<ComponentProps<typeof StateVariablesPanel>['api']['get']>(async target => snapshot(target, 1))
   const props: ComponentProps<typeof StateVariablesPanel> = {
     api: {
       get, apply,
@@ -120,8 +120,8 @@ describe('State panel source isolation', () => {
       const copy = getActions(nodes[0]).find(action => action.id === 'copy-pointer')!
       copy.onSelect()
       expect(writeText).toHaveBeenCalledTimes(1)
-      await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(t('longTextEditor.copyFailed')))
-      expect(toast.success).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(notify.error).toHaveBeenCalledWith(t('longTextEditor.copyFailed')))
+      expect(notify.success).not.toHaveBeenCalled()
     } finally {
       vi.unstubAllGlobals()
     }
@@ -131,7 +131,7 @@ describe('State panel source isolation', () => {
     f.get.mockImplementation(async target => ({
       ...snapshot(target, 1),
       snapshot: { ...snapshot(target, 1).snapshot, value: { inventory: [{ name: 'item', count: 2 }] } },
-    }) as ReturnType<typeof snapshot>)
+    }))
     f.render()
     await f.settle()
     function arrayControls() {
@@ -301,7 +301,7 @@ describe('State panel source isolation', () => {
 describe('State authoring save ownership', () => {
   it('locks edits during saving, keeps failed drafts and isolates a new card', async () => {
     const card = {
-      id: 'card-a', version: 1, name: 'A', opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
+      id: 'card-a', artifactId: 'fixture-artifact', version: 1, name: 'A', opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
       timelineStateBindings: [], createdAt: 'now', updatedAt: 'now',
     }
     const pending = Promise.withResolvers<typeof card>()
@@ -319,7 +319,7 @@ describe('State authoring save ownership', () => {
     const draft = String(detail.props.sourceText).replace('stateContributionIds: []', 'stateContributionIds: [draft-a]')
     ;(detail.props.updateSource as (text: string) => void)(draft)
     all = render()
-    ;(all.find(item => item.type === Button)!.props.onClick as () => void)()
+    ;(all.find(item => item.props['aria-label'] === t('stateAuthoring.saveCard'))!.props.onClick as () => void)()
     expect(render().find(item => item.type === 'fieldset')!.props.disabled).toBe(true)
     ;(detail.props.updateSource as (text: string) => void)('invalid: [')
     expect(render().find(item => typeof item.props.updateSource === 'function')!.props.sourceText).toBe(draft)
@@ -330,13 +330,13 @@ describe('State authoring save ownership', () => {
 
     const late = Promise.withResolvers<typeof card>()
     save.mockReturnValueOnce(late.promise)
-    ;(render().find(item => item.type === Button)!.props.onClick as () => void)()
+    ;(render().find(item => item.props['aria-label'] === t('stateAuthoring.saveCard'))!.props.onClick as () => void)()
     for (const value of hooks.values) (value as { cleanup?: () => void })?.cleanup?.()
     const next = StateAuthoringPanel({ ...props, card: { ...card, id: 'card-b' } })
     expect(next.key).not.toBe(outer.key)
     late.resolve({ ...card, version: 2 })
     for (let i = 0; i < 4; i++) await Promise.resolve()
-    expect(toast.success).not.toHaveBeenCalled()
+    expect(notify.success).not.toHaveBeenCalled()
   })
 })
 
@@ -407,7 +407,7 @@ describe('State source inspection panel', () => {
       next.timeline!.target = b
       f.inspectSources.mockResolvedValueOnce(next)
     } else f.props.api = { inspectSources: vi.fn().mockResolvedValue(next) }
-    expect(elements(f.render()).some(item => item.type === FileTree)).toBe(false)
+    expect(elements(f.render()).find(item => item.type === FileTree)?.props.nodes).toEqual([])
     await f.settle()
     pending.resolve(sourceInspection())
     const tree = elements(await f.settle()).find(item => item.type === FileTree)!
@@ -445,7 +445,7 @@ describe('State source inspection panel', () => {
     f.render()
     expect(elements(await f.settle()).some(item => item.type === FileTree)).toBe(true)
     f.props.refreshToken = 'adoption-changed'
-    expect(elements(f.render()).some(item => item.type === FileTree)).toBe(false)
+    expect(elements(f.render()).find(item => item.type === FileTree)?.props.nodes).toEqual([])
     await f.settle()
     expect(f.inspectSources).toHaveBeenCalledTimes(3)
   })

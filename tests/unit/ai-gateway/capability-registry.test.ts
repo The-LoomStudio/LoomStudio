@@ -148,3 +148,19 @@ describe('AI Gateway capability registry', () => {
     })
   })
 })
+
+it('reports standard capability usage without changing output, including when the handler later fails', async () => {
+  const registry = createAiGatewayCapabilityRegistry()
+  const reports: unknown[] = []
+  registry.register({ provider: { id: 'metered', displayName: 'Metered', capabilities: [{ id: 'embedding', displayName: 'Embedding' }] },
+    handlers: { embedding: ({ reportUsage, input }) => {
+      reportUsage?.({ inputTokens: 7, totalTokens: 7 })
+      if ((input as { fail?: boolean }).fail) throw new Error('response invalid')
+      return [0.1, 0.2]
+    } },
+  }, { kind: 'platform' })
+  const request = { providerId: 'metered', capabilityId: 'embedding', accountConfig: {}, profileConfig: {}, input: {}, onUsage: (usage: unknown) => { reports.push(usage) } }
+  await expect(registry.invokeRegistered(request)).resolves.toMatchObject({ output: [0.1, 0.2], usage: { inputTokens: 7, totalTokens: 7 } })
+  await expect(registry.invokeRegistered({ ...request, input: { fail: true } })).rejects.toThrow('response invalid')
+  expect(reports).toEqual([{ inputTokens: 7, totalTokens: 7 }, { inputTokens: 7, totalTokens: 7 }])
+})

@@ -3,6 +3,8 @@ import { createAgentStore, createNarrativeStore, createPromptResourceStore } fro
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createApplicationRuntime, createAgentToolRegistry, defaultSessionSummaryPolicy, type GatewayInvokeChatInput, type ToolDefinition } from '@loom-studio/application-runtime'
+import { planSessionSummary } from '../../../packages/application-runtime/src/agents/session-summary.js'
+import type { AgentSession, AgentTranscriptEntry } from '@loom-studio/application-data'
 import { readSessionHistory } from '../../../packages/application-runtime/src/agents/session-history.js'
 
 async function fixture(standalone = false) {
@@ -308,5 +310,45 @@ describe('Session summary lifecycle', () => {
       expect((await f.runtime.getTimelineWorkspace(f.target!)).entries[0]).toMatchObject({ content: { text: 'NEW_SHARED_WORK' } })
       expect(JSON.stringify((await readSessionHistory(f.agents, f.session.id)).entries)).toContain('FIRST')
     } finally { f.engine.close() }
+  })
+})
+
+
+describe('Timeline work summary boundaries', () => {
+  const context = {} as Parameters<typeof planSessionSummary>[0]
+  const session: AgentSession = { id: 'timeline', kind: 'timeline', entryCount: 100,
+    createdAt: '2026-10-24', updatedAt: '2026-10-24', summaryPolicy: {
+      ...defaultSessionSummaryPolicy, triggerFloors: 2, bufferFloors: 1,
+    } }
+  const entry = (sequence: number, runId: string, data: AgentTranscriptEntry['entry']): AgentTranscriptEntry => ({
+    id: `entry-${sequence}`, agentSessionId: session.id, sequence, runId, entry: data, createdAt: session.createdAt,
+  })
+  const entries = [
+    entry(1, 'first', { kind: 'message', role: 'user', purpose: 'narrative', content: 'Round one' }),
+    entry(2, 'first', { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'First body' }),
+    entry(3, 'first', { kind: 'run-state', state: 'completed' }),
+    entry(4, 'guidance', { kind: 'message', role: 'user', purpose: 'discussion', content: 'Guidance in the same round' }),
+    entry(5, 'guidance', { kind: 'run-state', state: 'completed' }),
+    entry(20, 'second', { kind: 'message', role: 'user', purpose: 'narrative', content: 'Round two' }),
+    entry(21, 'second', { kind: 'tool-invocation', invocationId: 'call', toolId: 'tool', exposedName: 'tool', transport: 'native-function', status: 'proposed' }),
+    entry(22, 'second', { kind: 'tool-result', invocationId: 'call', toolId: 'tool', status: 'completed', content: [] }),
+    entry(23, 'second', { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Second body' }),
+    entry(24, 'second', { kind: 'run-state', state: 'completed' }),
+  ]
+  it('uses adopted Entry coverage and retains every Run and tool pair in buffered rounds', async () => {
+    const plan = await planSessionSummary(context, { session, entries })
+    expect(plan).toMatchObject({ expectedEntryCount: 100, boundary: { sourceThroughSequence: 24, retiredThroughSequence: 5 } })
+    const oneRound = await planSessionSummary(context, { session, entries: entries.slice(0, 5) })
+    expect(oneRound).toBeUndefined()
+  })
+  it('does not retire a new roleplay input before its Run completes', async () => {
+    const plan = await planSessionSummary(context, { session: { ...session, summaryPolicy: { ...session.summaryPolicy!, bufferFloors: 0 } },
+      entries: [...entries, entry(30, 'new', { kind: 'message', role: 'user', purpose: 'narrative', content: 'Unexecuted round' })], force: true })
+    expect(plan?.boundary).toMatchObject({ sourceThroughSequence: 30, retiredThroughSequence: 24 })
+    const preparation = await planSessionSummary(context, { session,
+      entries: [entry(1, 'prepare', { kind: 'message', role: 'user', content: 'Prepare' }),
+        entry(2, 'prepare', { kind: 'run-state', state: 'completed' }),
+        entry(3, 'future', { kind: 'message', role: 'user', content: 'Not run yet' })], force: true })
+    expect(preparation?.boundary).toMatchObject({ sourceThroughSequence: 3, retiredThroughSequence: 2 })
   })
 })

@@ -24,7 +24,7 @@
    - 诊断收集器是纯内存结构，不直接进行同步磁盘 I/O。
 2. **职责清晰划分**：
    - 本包只负责当前的诊断状态收集；
-   - 编译轨迹的完整回放归 `@loom-studio/trace-audit`；持久化文本日志归 `@loom-studio/logging`。
+   - Prompt 构建证据归 Application Observation；持久化文本日志归 `@loom-studio/logging`。
 
 ---
 

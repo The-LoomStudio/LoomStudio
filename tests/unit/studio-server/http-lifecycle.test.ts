@@ -1,6 +1,6 @@
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import { createAssetStore } from '@loom-studio/asset-store'
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createId, nowIso } from '@loom-studio/shared'
 import { once } from 'node:events'

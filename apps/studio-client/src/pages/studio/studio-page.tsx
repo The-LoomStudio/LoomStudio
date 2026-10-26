@@ -47,6 +47,7 @@ type StudioPageProps = {
   t: Translator
   wallpaperUrl?: string
   onRedo(): void
+  onOpenDashboard(): void
   onOpenSearch(): void
   searchQuery?: string
   onClearSearch(): void
@@ -388,6 +389,10 @@ export function StudioPage(props: StudioPageProps) {
         recentSessions={props.recentSessions}
         t={props.t}
         preloadPanel={props.preloadPanel}
+        onOpenDashboard={() => {
+          setMobileDrawerOpen(false)
+          props.onOpenDashboard()
+        }}
         togglePanel={panel => {
           setMobileDrawerOpen(false)
           togglePanel(panel)

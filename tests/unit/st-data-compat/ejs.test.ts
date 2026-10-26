@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { ejsProcessor } from '../../../extensions/st-data-compat/src/runtime/ejs.js'
 import type { ExtensionPromptEntry } from '@loom-studio/extension-sdk'
+import { convertSillyTavernLorebook } from '../../../extensions/st-data-compat/src/normalizer/lorebook.js'
+import { evaluatePromptActivation, isPromptActivation } from '../../../packages/application-runtime/src/prompt/prompt-activation.js'
 
 const entry = (id: string, content: string, label = id): ExtensionPromptEntry => ({
   id, sourceId: 'world', sourceLabel: 'World', sourceNodeId: id, kind: 'lore', label, content,
@@ -15,6 +17,29 @@ const context = () => ({
 })
 
 describe('isolated EJS data compatibility', () => {
+  it('keeps empty-key Lore dormant while allowing explicit EJS activation and suppressing initvar', async () => {
+    const nodes = convertSillyTavernLorebook({ entries: [
+      { comment: 'Dormant', keys: [], content: 'Dormant text' },
+      { comment: 'Forced', keys: [], content: 'Forced text' },
+      { comment: 'Directive', keys: [], content: '@@activate\nDirective text' },
+      { comment: '[initvar]', keys: [], content: 'hp: 10' },
+      { comment: '[Preprocessing]', constant: true, content: '<% await activewi("Forced", true); %>' },
+    ] }).artifact.rootNode.children!
+    expect(nodes.every(node => isPromptActivation(node.capabilities?.activation))).toBe(true)
+    expect(nodes.every(node => node.enabled)).toBe(true)
+    expect(nodes.slice(0, 4).map(node => evaluatePromptActivation({ activation: node.capabilities?.activation }).active))
+      .toEqual([false, false, false, false])
+    expect(evaluatePromptActivation({ activation: nodes[4]!.capabilities?.activation }).active).toBe(true)
+    const session = await ejsProcessor.create(context())
+    try {
+      const patches = await session.prepare!(nodes.map(node => entry(node.id, node.body!, node.label)))
+      expect(patches).not.toContainEqual({ id: nodes[0]!.id, active: true })
+      expect(patches).toContainEqual({ id: nodes[1]!.id, active: true })
+      expect(patches).toContainEqual({ id: nodes[2]!.id, active: true })
+      expect(patches).toContainEqual({ id: nodes[3]!.id, active: false })
+    } finally { await session.dispose?.() }
+  })
+
   it('renders escaped/raw expressions, print, async code and latest MVU reads', async () => {
     const session = await ejsProcessor.create(context())
     try {

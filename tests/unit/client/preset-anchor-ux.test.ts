@@ -1,9 +1,10 @@
+import { listPresetAnchorOptions } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-anchor-options.js'
 import { isValidElement, type ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
-import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
-import { ContextAssetDetailHeader } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-detail-header/context-asset-detail-header.js'
-import { ContextAssetDetail } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-detail/context-asset-detail.js'
+import type { ContextAssetNode, PromptResource } from '../../../apps/studio-client/src/entities/index.js'
+import { ContextAssetDetailHeader } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-detail-header/context-asset-detail-header.js'
+import { ContextAssetDetail } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-detail/context-asset-detail.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
 vi.mock('react', async original => ({
@@ -41,6 +42,17 @@ describe('Preset Anchor UX', () => {
     hooks.cursor = 0
     hooks.values = []
     hooks.effects = []
+  })
+
+  it('shows Session history as a message sequence with no editable anchor or content, and excludes it from text targets', () => {
+    const node: ContextAssetNode = { id: 'session', kind: 'virtual', label: 'History', capabilities: { targetAnchorId: '@chat.session' } }
+    const detail = ContextAssetDetail({ editorMode: 'source', metadataOpen: true, node,
+      onChangeNode: vi.fn(), onCommitNode: vi.fn(), onEditorModeChange: vi.fn(), onMetadataOpenChange: vi.fn(), t })
+    expect(elements(detail).some(item => item.type === 'input')).toBe(false)
+    expect(elements(detail).some(item => item.type === 'p' && String(item.props.children).includes('原生消息'))).toBe(true)
+    const preset = { rootNode: { id: 'root', kind: 'module', label: 'Preset', children: [node,
+      { id: 'lore', kind: 'virtual', label: 'Lore', capabilities: { targetAnchorId: '@lore.stable' } }] } } as PromptResource
+    expect(listPresetAnchorOptions(preset).map(option => option.id)).toEqual(['@lore.stable'])
   })
 
   it('ContextAssetDetailHeader surfaces anchor ID in subtitle for virtual anchor nodes', () => {
@@ -107,8 +119,8 @@ describe('Preset Anchor UX', () => {
     expect(onCommitNode).toHaveBeenCalledWith({ capabilities: { targetAnchorId: '@custom.tools' } })
   })
 
-  it('ContextAssetExplorer renders anchor badge in tree when targetAnchorId is distinct from label', async () => {
-    const { ContextAssetExplorer } = await import('../../../apps/studio-client/src/features/context-assets/ui/context-asset-workbench.js')
+  it('ContextAssetExplorer renders the anchor ID first with the name as secondary text', async () => {
+    const { ContextAssetExplorer } = await import('../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-workbench.js')
     const { FileTree } = await import('../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js')
 
     const explorer = ContextAssetExplorer({
@@ -116,7 +128,10 @@ describe('Preset Anchor UX', () => {
       displayNodes: [],
       expandedIds: [],
       onExpandedIdsChange: vi.fn(),
-      onSelect: vi.fn(),
+      onSelectId: vi.fn(),
+      query: '', onQueryChange: vi.fn(), scrollKey: 'anchor-test', workspaceId: 'anchor-test',
+      onAddNode: vi.fn(async () => undefined), onDeleteNode: vi.fn(async () => undefined), onDuplicateNode: vi.fn(async () => undefined),
+      onRenameNode: vi.fn(async () => undefined), onMoveNode: vi.fn(), onToggleEnabled: vi.fn(),
       t,
     })
 
@@ -124,10 +139,10 @@ describe('Preset Anchor UX', () => {
     const fileTree = all.find(item => item.type === FileTree)
     expect(fileTree).toBeDefined()
 
-    const renderLabelSuffix = fileTree?.props.renderLabelSuffix as (item: unknown) => ReactElement | null
+    const renderLabelSuffix = fileTree?.props.renderLabelSuffix as (item: unknown) => ReactElement<{ children?: ReactElement<{ text: string }>; title?: string }> | null
     expect(renderLabelSuffix).toBeDefined()
 
-    // 1. Virtual node with Chinese name and targetAnchorId -> renders badge with targetAnchorId
+    // 1. The anchor ID is the primary label; the human-readable name is secondary.
     const anchorNode: ContextAssetNode = {
       id: 'default.system',
       kind: 'virtual',
@@ -136,8 +151,10 @@ describe('Preset Anchor UX', () => {
     }
     const badge = renderLabelSuffix(anchorNode)
     expect(badge).toBeDefined()
-    expect(badge?.props.children).toBe('@chat.system')
-    expect(badge?.props.title).toBe('@chat.system')
+    expect(fileTree?.props.formatLabel(anchorNode)).toBe('@chat.system')
+    expect(elements(fileTree?.props.renderLabel(anchorNode)).some(item => item.props.text === '@chat.system')).toBe(true)
+    expect(badge?.props.children?.props.text).toBe('基础补充')
+    expect(badge?.props.title).toBe('基础补充')
 
     // 2. Virtual node where label equals anchor ID -> returns null to avoid duplicate text
     const selfNamedAnchor: ContextAssetNode = {

@@ -19,7 +19,6 @@ const initialBuild = spawnSync('pnpm', ['run', 'build:packages'], {
 if (initialBuild.status !== 0) process.exit(initialBuild.status ?? 1)
 
 const processes = [
-  start('loom-core', ['--filter', '@loom/core', 'exec', 'tsc', '-p', 'tsconfig.build.json', '--watch', '--preserveWatchOutput']),
   start('studio-packages', ['exec', 'tsc', '-b', 'tsconfig.packages.json', '--watch', '--preserveWatchOutput']),
   target === 'server'
     ? start('studio-server', ['exec', 'tsx', 'watch', '--include', 'packages/**/dist/**/*', '--include', 'official/**', '--include', 'tests/fixtures/extensions/**/dist/**/*', '--exclude', '**/*.tsbuildinfo', 'apps/studio-server/src/main.ts'])

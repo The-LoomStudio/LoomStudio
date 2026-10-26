@@ -1,0 +1,67 @@
+.flow {
+  min-width: 0;
+  svg { width: 13px; height: 13px; flex: 0 0 auto; stroke-width: 1.6; }
+  button:focus-visible, summary:focus-visible { outline: 1px solid var(--loom-color-accent); outline-offset: 3px; }
+}
+.overview {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
+  font-size: 11px !important;
+  line-height: 1.7;
+  text-align: left;
+  > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  > svg:last-child { width: 11px; }
+  &:hover { color: var(--loom-color-text-muted); }
+}
+.overview { margin: 0 0 14px; }
+.sequence { display: flow-root; }
+.failure, .status { margin: 8px 0; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.failure { color: var(--loom-color-danger, var(--loom-color-text-muted)); }
+.status { color: var(--loom-color-text-subtle); }
+.workDetail {
+  margin: 4px 0;
+  color: var(--loom-color-text-subtle);
+  summary {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 27px;
+    list-style: none;
+    cursor: pointer;
+    font-size: 11px;
+    line-height: 1.7;
+    &::-webkit-details-marker { display: none; }
+    > span { min-width: 0; overflow-wrap: anywhere; }
+    > svg:last-child { width: 10px; }
+    &:hover { color: var(--loom-color-text-muted); }
+  }
+  &[open] > summary > svg:last-child { transform: rotate(90deg); }
+  pre, .reasoning {
+    margin: 7px 0 15px 20px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  pre { padding: 10px 13px; border-radius: 5px; background: color-mix(in srgb, var(--loom-color-surface) 40%, transparent); font: 11px/1.85 var(--loom-font-family-mono); }
+  .reasoning { font-size: 12px; line-height: 1.9; color: var(--loom-color-text-muted); }
+}
+.reply {
+  margin: 26px 0 18px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--loom-color-text-muted);
+  overflow-wrap: anywhere;
+  p { margin: 6px 0 0; }
+}
+.replyHeading { display: flex; align-items: center; gap: 6px; color: var(--loom-color-text-subtle); font-size: 10px; }
+.rotated { transform: rotate(90deg); }
+.spin { animation: narrative-flow-spin 1.2s linear infinite; }
+@keyframes narrative-flow-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

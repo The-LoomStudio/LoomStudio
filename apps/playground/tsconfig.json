@@ -5,15 +5,27 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "references": [
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/application-runtime" },
-    { "path": "../../packages/diagnostics" },
-    { "path": "../../packages/document-store" },
-    { "path": "../../packages/extension-sdk/extension-host" },
-    { "path": "../../packages/trace-audit" },
-    { "path": "../../packages/loom-runner" },
-    { "path": "../../packages/kernel" }
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/application-runtime"
+    },
+    {
+      "path": "../../packages/diagnostics"
+    },
+    {
+      "path": "../../packages/document-store"
+    },
+    {
+      "path": "../../packages/extension-sdk/extension-host"
+    },
+    {
+      "path": "../../packages/kernel"
+    }
   ]
 }

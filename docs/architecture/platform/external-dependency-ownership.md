@@ -70,12 +70,12 @@ Server 的 `./trpc` 是仅含 `types` 的 package export，Client 通过 TypeScr
 - Node HTTP 层完成认证与 Origin 检查，并将有大小预算的请求体、可信 Session 身份和取消信号交给官方 Fetch adapter。客户端的 `createSessionFetch` 负责 Session bootstrap 与一次 401 恢复。
 - procedure 错误使用 tRPC 格式；原始领域错误码在 `error.data.domainCode`，关联信息在 `error.data.correlationId` / `callId`，不向客户端输出 stack。认证、请求体过大等 HTTP 前置失败仍由 HTTP 层响应。
 - `kernel.invoke` 只承接动态扩展方法，转入 Kernel 已有的权限与生命周期调度；静态平台命名空间必须走具体 typed procedure，不能借该网关绕过输入契约。Kernel 自身不依赖 tRPC。
-- SSE 与 `/assets` 媒体 HTTP 路径保持独立；本次选型不建立 tRPC subscription，也不改变领域状态或持久化所有权。`@loom-studio/transport` 只保留事件契约，不再定义主应用 RPC envelope。
+- SSE 与 `/assets` 媒体 HTTP 路径保持独立；本次选型不建立 tRPC subscription，也不改变领域状态或持久化所有权。事件 envelope 类型由 `@loom-studio/extension-sdk` 提供，不定义主应用 RPC envelope。
 
 实现入口：[`HTTP adapter`](../../../apps/studio-server/src/http/trpc-request.ts)、
 [`procedure context / error formatter`](../../../apps/studio-server/src/rpc/trpc/context.ts)、
 [`Kernel gateway`](../../../apps/studio-server/src/rpc/trpc/kernel.ts)。
-动态客户端边界另见 [`Client Bridge`](../../../packages/client-bridge/README.md)，
+动态客户端边界另见 [`Client Bridge`](../../../apps/studio-client/README.md)，
 方法导航见 [`RPC Methods`](../../workbench/reference/rpc-methods.md)。
 
 ## 3. 构建与质量依赖

@@ -20,6 +20,7 @@ vi.mock('react', async importOriginal => ({
 type Element = ReactElement<Record<string, unknown>>
 vi.mock('../../../apps/studio-client/src/shared/ui/conversation-viewport/use-conversation-viewport.js', () => ({
   useConversationViewport: ({ items }: { items: { id: string }[] }) => ({
+    smooth: { following: true, pause: vi.fn(), resume: vi.fn() },
     scrollRef: { current: null }, listRef: { current: null }, headerRef: { current: null },
     scrollMargin: 0, onScroll: vi.fn(),
     virtualizer: {

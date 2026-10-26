@@ -10,6 +10,11 @@ export function createScriptService(options: { runtime: ApplicationRuntime; host
   let context: ScriptContext = {}
   let sequence = 0
   let closed = false
+  let published = new Map<string, number>()
+  function publish(states: Array<{ mountId: string; revision: number; active: boolean }>) {
+    published = new Map(states.filter(state => state.active).map(state => [state.mountId, state.revision]))
+    options.runtime.setLoomScriptExecutionStates(states)
+  }
   return {
     async resolve(input: ScriptContext = context) {
       const request = ++sequence
@@ -20,10 +25,19 @@ export function createScriptService(options: { runtime: ApplicationRuntime; host
         ...mount,
         target: mount.target?.kind === 'card' ? { kind: 'card', cardId: mount.target.cardId } : { kind: 'global' },
       }))
+      // Keep unchanged instances ready while reconciling. A new revision cannot borrow the old instance's readiness.
+      publish(runs.flatMap(run => published.get(run.mountId) === (run.mountVersion ?? 0) && run.grantedCapabilities.includes('runtime.server')
+        ? [{ mountId: run.mountId, revision: run.mountVersion ?? 0, active: true }] : []))
       const serverInstances = await runtime.reconcile(runs)
+      if (!closed && request === sequence) {
+        publish(runs.map(run => ({
+          mountId: run.mountId, revision: run.mountVersion ?? 0,
+          active: serverInstances.some(instance => instance.mountId === run.mountId && (instance.state === 'active' || instance.state === 'degraded')),
+        })))
+      }
       return { ...result, serverInstances: serverInstances.map(instanceResponse) }
     },
-    async dispose() { closed = true; sequence++; await runtime.dispose() },
+    async dispose() { closed = true; sequence++; publish([]); await runtime.dispose() },
   }
 }
 

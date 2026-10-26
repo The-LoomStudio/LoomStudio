@@ -2,7 +2,7 @@ import { subscribeExtensionEvents } from '../../../shared/api/extension-events.j
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { queryExtensionLogs, type Logger, type MemoryLogSink } from '@loom-studio/logging'
 import { useAppearanceStore } from '../../../shared/studio-shell/appearance-store.js'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { ManagedClientExtensionModule, ManagedClientExtensionPackage, ManagedExtensionPackage } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { invalidateCardMedia } from '../../../shared/lib/card-media.js'

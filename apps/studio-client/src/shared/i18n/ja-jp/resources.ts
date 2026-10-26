@@ -1,6 +1,7 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'dashboard.open': 'ダッシュボード',
   'promptResource.processingWarning': 'プロンプト処理で警告が発生しました。一部の Lore がスキップされた可能性があります。構築診断を確認してください。',
   'promptResource.invalidResources': '次のリソースを読み込めません。他のリソースは引き続き利用できます。',
   'promptResource.invalidResourcesHelp': '元データは保持されています。リソース ID を使って元ファイルやバックアップを確認し、修復後に再読み込みしてください。',
@@ -172,6 +173,10 @@ export const messages = {
   'context.actionAdd': 'エントリー追加',
   'context.actionAddFolder': '新規フォルダ',
   'context.actionAddAnchor': '新規アンカー',
+  'context.menuGroupAdd': '追加',
+  'context.menuGroupRole': 'メッセージのロール',
+  'context.menuGroupEdit': '編集',
+  'context.menuGroupDelete': '削除',
   'context.actionRename': '名前を変更',
   'context.actionDuplicate': 'エントリー複製',
   'context.actionDelete': 'エントリー削除',
@@ -192,6 +197,12 @@ export const messages = {
   'context.actionHideMessageView': 'ブロックビューを隠す',
   'context.compositionItems': '項目',
   'context.nativeMessageSlot': 'ネイティブメッセージ',
+  'context.metadata.messageSource': 'メッセージソース',
+  'context.kind.messageSequence': 'メッセージ列',
+  'context.actionAddMessageSequence': '会話履歴を追加',
+  'context.actionAddMessageAfter': 'このメッセージの後に追加',
+  'context.messageSequence.description': '会話のメッセージを役割、ツール呼び出しと結果を保って展開します。物語セッションでは本文と作業履歴を含みます。',
+  'context.messageSequence.placement': 'Message と同じ階層のメッセージ列です。項目やアンカーを含めたり、テキスト注入先にしたりできません。',
   'context.actionAddMessageBlock': 'メッセージブロックを作成',
   'context.actionAddZoneToMessageBlock': 'ブロックに Zone を追加',
   'context.actionAddSlotToMessageBlock': 'コンテキスト Slot を追加',

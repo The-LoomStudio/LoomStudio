@@ -2,7 +2,7 @@ import { readLogFailure, type Logger } from '@loom-studio/logging'
 import { createTRPCClient, httpLink, loggerLink, type TRPCClient } from '@trpc/client'
 import type { inferRouterInputs, inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@loom-studio/studio-server/trpc'
-import { createSessionFetch } from '@loom-studio/client-bridge'
+import { createSessionFetch } from './session-fetch.js'
 
 export type StudioRpcInputs = inferRouterInputs<AppRouter>
 export type StudioRpcOutputs = inferRouterOutputs<AppRouter>

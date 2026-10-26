@@ -1,4 +1,4 @@
-import type { BlobStore } from '@loom-studio/blob-store'
+import type { BlobStore } from './blobs/types.js'
 import type { SqliteDataEngine } from '@loom-studio/data-engine'
 import type { DatabaseSync } from 'node:sqlite'
 import type {

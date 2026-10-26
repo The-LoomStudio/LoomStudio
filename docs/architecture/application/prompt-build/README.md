@@ -17,9 +17,9 @@ PromptBuild 是 Studio Application 中负责把领域数据投影为模型输入
   -> Compiled Prompt / Provider Messages
 ```
 
-PromptBuild 拥有 Card、Lore、Narrative Timeline、Ordered Tree、Anchor、Slot、Activation 和 Caged Depth 等领域语义。Loom Core 只执行 Fragment pipeline，不理解这些字段。
+PromptBuild 拥有 Card、Lore、Narrative Timeline、Ordered Tree、Anchor、Slot、Activation 和 Caged Depth 等领域语义。原型 Core 已退役，领域编译由 Application 直接实现。
 
-当前 Agent Turn 将 Preset 有序树、该预设显式采用的 Lore、可选的当前角色 Lore、Agent Session History 和当前输入准备为 SourceNode / PromptContribution，再通过 Application 加工与 DFS 编排生成消息。全局 Lore Mount 注册不代表默认写入所有 Agent。Runtime 默认使用 `@chat.narrative`、`@chat.session`、`@chat.input` 等 Anchor。该路径没有执行 Core 的 `materialize -> order -> emit` Pass；Trace 仍使用兼容的 `core-compact-1` 版本，但已注册的作者正文处理器会留下真实 prepare/render 执行记录。未使用处理器的构建不产生这些记录。
+当前 Agent Turn 将 Preset 有序树、该预设显式采用的 Lore、可选的当前角色 Lore、Agent Session History 和当前输入准备为 SourceNode / PromptContribution，再通过 Application 加工与 DFS 编排生成消息。全局 Lore Mount 注册不代表默认写入所有 Agent。Runtime 默认使用 `@chat.narrative`、`@chat.session`、`@chat.input` 等 Anchor。Trace 仍使用兼容的 `core-compact-1` 版本，但已注册的作者正文处理器会留下真实 prepare/render 执行记录。未使用处理器的构建不产生这些记录。
 
 ## 作者正文加工
 
@@ -35,7 +35,9 @@ Lore Entry 的 `enabled` 是持久化作者配置，Activation 则在每次 Prom
 
 Agent Tool 使用两条构建表面：Provider-managed Tool 与 `messages[]` 平级进入 Provider Payload；Content Tool Description 作为外部 Runtime Source 进入 PromptBuild Anchor / Slot。Tool 的正式接缝见 [`../agent/provider-and-prompt-build.md`](../agent/provider-and-prompt-build.md)。
 
-Narrative History 本身不携带 Provider role。它是可被 Preset MessageBlock 挂载的运行时 Context Slot；官方骨架默认将它包在 Developer Block 中，但 Preset 可以把该 Slot 放入任意 MessageBlock，由包裹它的 Block 决定最终的 `system`、`developer`、`user` 或 `assistant` role。
+Narrative 正文投影本身不携带 Provider role。主故事 Session 将仍需保留的正文与工作记录按原始顺序合并，通过 `@chat.session` 原生消息序列消费。独立辅助 Session 可把采样正文作为一份长文本贡献到 `@chat.narrative`，由外层 MessageBlock 决定 system/user/assistant role；剧情总结独立贡献到 `@memory.narrative`。作者 developer 读取为 system，不修改历史执行记录。
+
+`@chat.session` 仍沿用 virtual 节点和 targetAnchorId 保存，但 Shared 输出声明将它标记为消息序列。它只能位于 Message 之外，不能包含子节点或接收文本贡献；其他 Anchor 接收文本。旧已保存预设的历史包裹仍保留原生编译语义，新增/移动/导入禁止这种嵌套。
 
 新建预设采用包内 JSON Default 骨架。无显式目标的 Preset Entry 在树中原位输出，已有显式目标的 Entry 仍按锚点注入；Agent Turn 只遍历所选 Preset 的骨架，不直接输出外部资源树。Session 文本消息保留原有角色与独立边界，不继承包裹块的角色。完整顺序、已接线来源与预留位置见 [Default 预设骨架](default-preset.md)。
 
@@ -80,12 +82,12 @@ External Source
 
 同一变量值中出现的 Macro 标记不构成新的结构化注入。需要独立来源、激活或排序的状态栏等内容，应产出 Prompt Contribution；只需嵌入宿主正文的一段字符串可以使用宏，不按文本长短划分。宏不会递归生成节点。
 
-## 正式文档
+## 当前与历史文档
 
 - [`injection-and-inline-expansion.md`](injection-and-inline-expansion.md) — Anchor / Slot 与宏的消费边界，以及 Agent 主动读取的领域交界；
-- [`loom-core/README.md`](loom-core/README.md) — Loom Core 定位、设计原则、非目标与 public surface；
-- [`loom-core/execution-model.md`](loom-core/execution-model.md) — Fragment、Pass、Registry、错误和 Owner Tracking；
-- [`loom-core/trace-and-replay.md`](loom-core/trace-and-replay.md) — Mutation、Trace v1、Diagnostic、Replay 与 DevTool 边界；
-- [`loom-core/studio-integration.md`](loom-core/studio-integration.md) — PromptBuild、Loom Runner、Kernel 与 Provider 集成边界。
+- [退役 Core 概览](../../../archive/loom-project/retired-core-2026-10-25/README.md) — 已退役原型：Loom Core 定位、设计原则、非目标与 public surface；
+- [退役 Core 执行模型](../../../archive/loom-project/retired-core-2026-10-25/execution-model.md) — 已退役原型：Fragment、Pass、Registry、错误和 Owner Tracking；
+- [退役 Core Trace 与 Replay](../../../archive/loom-project/retired-core-2026-10-25/trace-and-replay.md) — 已退役原型：Mutation、Trace v1、Diagnostic、Replay 与 DevTool 边界；
+- [退役 Core 集成边界](../../../archive/loom-project/retired-core-2026-10-25/studio-integration.md) — 已退役原型集成：PromptBuild、Loom Runner、Kernel 与 Provider 集成边界。
 
 Structure / Source / Capability、Skeleton、Activation 和动态投影等历史设计保留于 [`讨论归档`](../../../archive/discussion/application/prompt/README.md)，当前演进由 [Plan](../../../workbench/plans/README.md) 承接。只有已经与实现一致的部分才会逐项晋升。

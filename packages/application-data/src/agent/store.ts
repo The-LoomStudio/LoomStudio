@@ -57,6 +57,16 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         task_id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id),
         data_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE INDEX agent_summary_tasks_session ON agent_summary_tasks(agent_session_id, created_at);`) } },
+      { version: 9, migrate: db => { db.exec(`
+        ALTER TABLE agent_sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'agent';
+        ALTER TABLE agent_sessions ADD COLUMN narrative_mode TEXT;
+        ALTER TABLE agent_sessions ADD COLUMN preset_id TEXT;
+        UPDATE agent_sessions SET preset_id = agent_preset_id;
+        ALTER TABLE agent_sessions DROP COLUMN agent_preset_id;
+        ALTER TABLE agent_sessions RENAME COLUMN preset_id TO agent_preset_id;
+        ALTER TABLE agent_transcript_entries ADD COLUMN round_id TEXT;
+        ALTER TABLE agent_transcript_entries ADD COLUMN candidate_id TEXT;
+      `) } },
     ],
   })
 
@@ -74,6 +84,68 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
           .run(input.taskId, input.agentSessionId, JSON.stringify(input), timestamp, timestamp)
         tx.recordOperations([operation(existing ? 'update' : 'create', input.taskId, 'agent.summary-task')])
       },
+      restoreTimelineEntries: input => {
+        const session = requireSession(database, input.agentSessionId)
+        if (session.kind !== 'timeline' || session.entryCount !== 0)
+          throw new AgentStoreError('agent.archive_target_invalid', 'History restoration requires an empty Timeline Session')
+        const entries = [...input.entries].sort((a, b) => a.sequence - b.sequence)
+        const saved = new Map<string, AgentTranscriptEntry>()
+        let sequence = 0
+        for (const entry of entries) {
+          validateId(entry.id, 'id')
+          validateTranscriptEntry(entry.entry)
+          if (entry.agentSessionId !== session.id || !Number.isSafeInteger(entry.sequence) || entry.sequence <= sequence
+            || saved.has(entry.id) || entry.parentEntryId !== undefined && !saved.has(entry.parentEntryId))
+            throw new AgentStoreError('agent.archive_entry_invalid', 'Invalid archived Entry identity, sequence or parent')
+          const path: AgentTranscriptEntry[] = []
+          let parent = entry.parentEntryId ? saved.get(entry.parentEntryId) : undefined
+          while (parent) { path.push(parent); parent = parent.parentEntryId ? saved.get(parent.parentEntryId) : undefined }
+          const calls: ToolInvocationState = new Map()
+          for (const ancestor of path.reverse()) {
+            if (ancestor.entry.kind === 'tool-invocation') calls.set(ancestor.entry.invocationId, { toolId: ancestor.entry.toolId, hasResult: false })
+            if (ancestor.entry.kind === 'tool-result') calls.set(ancestor.entry.invocationId, { toolId: ancestor.entry.toolId, hasResult: true })
+          }
+          validateTranscriptEntry(entry.entry, calls)
+          if (entry.entry.kind === 'message' && entry.entry.continuesEntryId) {
+            const continued = saved.get(entry.entry.continuesEntryId)
+            if (!continued || continued.entry.kind !== 'message' || !path.some(ancestor => ancestor.id === continued.id))
+              throw new AgentStoreError('agent.archive_entry_invalid', 'Archived continuation is outside its parent path')
+          }
+          insertEntry(database, entry)
+          updateToolInvocationState(database, entry, calls)
+          saved.set(entry.id, entry)
+          sequence = entry.sequence
+        }
+        if (!Number.isSafeInteger(input.entryCount) || input.entryCount < sequence || input.headEntryId !== undefined && !saved.has(input.headEntryId))
+          throw new AgentStoreError('agent.archive_head_invalid', 'Invalid archived Session head or write count')
+        database.prepare('UPDATE agent_sessions SET head_entry_id = ?, entry_count = ?, updated_at = ? WHERE id = ?')
+          .run(input.headEntryId ?? null, input.entryCount, now(), session.id)
+        tx.recordOperations([...entries.map(entry => operation('create', entry.id, 'agent.transcript-entry', session.id)), operation('update', session.id, 'agent.session', session.id)])
+        return requireSession(database, session.id)
+      },
+      getEntry: id => readEntry(database, id),
+      createTimelineSession: input => {
+        validateId(input.id, 'id')
+        validateOptionalId(input.agentPresetId, 'agentPresetId')
+        validateOptionalText(input.title, 'title')
+        const timestamp = now()
+        database.prepare(`INSERT INTO agent_sessions
+          (id, kind, agent_preset_id, timeline_id, title, narrative_mode, entry_count, created_at, updated_at)
+          VALUES (?, 'timeline', ?, ?, ?, 'declared', 0, ?, ?)`)
+          .run(input.id, input.agentPresetId ?? null, input.id, input.title ?? null, timestamp, timestamp)
+        tx.recordOperations([operation('create', input.id, 'agent.session', input.id)])
+        return requireSession(database, input.id)
+      },
+      setTimelineHead: input => {
+        const session = requireSession(database, input.agentSessionId)
+        if (session.kind !== 'timeline') throw new AgentStoreError('agent.timeline_session_required', 'Only Timeline Sessions can change adopted history')
+        if (input.headEntryId !== null && requireEntry(database, input.headEntryId).agentSessionId !== session.id)
+          throw new AgentStoreError('agent.head_session_mismatch', 'Head belongs to another Session')
+        database.prepare('UPDATE agent_sessions SET head_entry_id = ?, updated_at = ? WHERE id = ?').run(input.headEntryId, now(), session.id)
+        syncTimelineBranch(database, tx, session.id, input.headEntryId)
+        tx.recordOperations([operation('update', session.id, 'agent.session', session.id)])
+        return requireSession(database, session.id)
+      },
       getSession: id => readSession(database, id),
       getLatestWorkSummary: id => readLatestWorkSummary(database, id),
       createSession: (input) => {
@@ -83,6 +155,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         const timestamp = now()
         const session: AgentSession = {
           id: input.id ?? nextId('agent-session'),
+          kind: 'agent',
           agentPresetId: input.agentPresetId,
           timelineId: input.timelineId,
           title: input.title,
@@ -98,7 +171,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
           )
           .run(
             session.id,
-            session.agentPresetId,
+            session.agentPresetId!,
             session.timelineId ?? null,
             session.title ?? null,
             timestamp,
@@ -108,7 +181,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         return session
       },
       listSessions: (input) => readSessions(database, input),
-      appendEntries: (input) => {
+      appendEntries: (input, options) => {
         const session = requireSession(database, input.agentSessionId)
         for (const item of input.entries) {
           if (item.entry.kind !== 'run-state' || item.entry.state !== 'running') continue
@@ -212,12 +285,14 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
             session.id,
           )
           sequence += 1
+          const entryId = item.id ?? nextId('agent-entry')
           const entry: AgentTranscriptEntry = {
-            id: item.id ?? nextId('agent-entry'),
+            id: entryId,
             agentSessionId: session.id,
             parentEntryId,
             sequence,
             runId: item.runId,
+            ...timelineEntryIdentity(database, { ...session, headEntryId: parentEntryId }, item, entryId),
             entry: structuredClone(item.entry) as AgentTranscriptEntryData,
             createdAt: now(),
           }
@@ -232,6 +307,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
             'UPDATE agent_sessions SET head_entry_id = ?, entry_count = ?, updated_at = ? WHERE id = ?',
           )
           .run(parentEntryId ?? null, sequence, updatedAt, session.id)
+        if (session.kind === 'timeline') syncTimelineBranch(database, tx, session.id, parentEntryId ?? null, options?.timelineBranchId)
         tx.recordOperations([
           ...appended.map((entry) =>
             operation('create', entry.id, 'agent.transcript-entry', session.timelineId),
@@ -262,8 +338,22 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
       },
       updateSession: (input) => {
         const session = requireSession(database, input.agentSessionId)
-        if ('agentPresetId' in input) {
+        if (session.kind !== 'timeline' && ('agentPresetId' in input || 'narrativeMode' in input)) {
           throw new AgentStoreError('agent.session_preset_immutable', 'Agent Session preset binding is immutable')
+        }
+        if (session.kind === 'timeline' && input.timelineId === null)
+          throw new AgentStoreError('agent.timeline_session_binding_immutable', 'Timeline Session cannot be detached')
+        if (input.agentPresetId !== undefined || input.narrativeMode !== undefined) {
+          const active = database.prepare(`SELECT entry_json FROM agent_transcript_entries WHERE agent_session_id = ?
+            AND json_extract(entry_json, '$.kind') = 'run-state' ORDER BY sequence DESC LIMIT 1`).get(session.id)
+          const state = active ? JSON.parse(String(active.entry_json)) : undefined
+          if (state && (['created', 'running', 'suspended'].includes(state.state) || state.state === 'failed' && state.recovery))
+            throw new AgentStoreError('agent.session_binding_active_run', 'Cannot change configuration while a Run is active or suspended')
+          validateOptionalId(input.agentPresetId, 'agentPresetId')
+          if (input.narrativeMode !== undefined && !['declared', 'automatic'].includes(input.narrativeMode))
+            throw new AgentStoreError('agent.narrative_mode_invalid', 'Invalid Narrative mode')
+          database.prepare('UPDATE agent_sessions SET agent_preset_id = ?, narrative_mode = ? WHERE id = ?')
+            .run(input.agentPresetId ?? session.agentPresetId ?? null, input.narrativeMode ?? session.narrativeMode ?? null, session.id)
         }
         validateOptionalText(input.title, 'title')
         if (input.timelineId === null) {
@@ -324,6 +414,10 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
   }
 
   return {
+    listEntries: agentSessionId => engine.read(database => {
+      requireSession(database, agentSessionId)
+      return database.prepare('SELECT * FROM agent_transcript_entries WHERE agent_session_id = ? ORDER BY sequence ASC').all(agentSessionId).map(entryFromRow)
+    }),
     countSummaryMessages: (agentSessionId, retiredThrough, sourceThrough) => engine.read(database => {
       const session = requireSession(database, agentSessionId)
       const row = database.prepare(`WITH RECURSIVE history(id, parent_entry_id, sequence, entry_json) AS (
@@ -459,7 +553,7 @@ function insertEntry(
   try {
     database
       .prepare(
-        `INSERT INTO agent_transcript_entries (id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO agent_transcript_entries (id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at, round_id, candidate_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         entry.id,
@@ -469,6 +563,8 @@ function insertEntry(
         entry.runId ?? null,
         JSON.stringify(entry.entry),
         entry.createdAt,
+        entry.roundId ?? null,
+        entry.candidateId ?? null,
       )
   } catch (error) {
     throw new AgentStoreError(
@@ -484,21 +580,18 @@ function readToolInvocationState(
   database: DatabaseSync,
   agentSessionId: string,
 ): ToolInvocationState {
-  const rows = database
-    .prepare(
-      'SELECT invocation_id, tool_id, result_entry_id FROM agent_tool_invocations WHERE agent_session_id = ?',
-    )
-    .all(agentSessionId) as Array<{
-    invocation_id: string
-    tool_id: string
-    result_entry_id: string | null
-  }>
-  return new Map(
-    rows.map((row) => [
-      row.invocation_id,
-      { toolId: row.tool_id, hasResult: row.result_entry_id !== null },
-    ]),
-  )
+  const session = requireSession(database, agentSessionId)
+  const rows = database.prepare(`WITH RECURSIVE path AS (
+    SELECT * FROM agent_transcript_entries WHERE id = ?
+    UNION ALL SELECT e.* FROM agent_transcript_entries e JOIN path p ON e.id = p.parent_entry_id
+  ) SELECT entry_json FROM path ORDER BY sequence ASC`).all(session.headEntryId ?? null)
+  const state: ToolInvocationState = new Map()
+  for (const row of rows) {
+    const entry = JSON.parse(String(row.entry_json)) as AgentTranscriptEntryData
+    if (entry.kind === 'tool-invocation') state.set(entry.invocationId, { toolId: entry.toolId, hasResult: false })
+    if (entry.kind === 'tool-result') state.set(entry.invocationId, { toolId: entry.toolId, hasResult: true })
+  }
+  return state
 }
 
 function updateToolInvocationState(
@@ -557,10 +650,10 @@ function readEntryPage(
   }
   const rows = database
     .prepare(
-      `WITH RECURSIVE session_entries(id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at, depth) AS (
-      SELECT id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at, 1 FROM agent_transcript_entries WHERE id = ? AND agent_session_id = ?
-      UNION ALL SELECT e.id, e.agent_session_id, e.parent_entry_id, e.sequence, e.run_id, e.entry_json, e.created_at, se.depth + 1 FROM agent_transcript_entries e JOIN session_entries se ON e.id = se.parent_entry_id WHERE se.parent_entry_id IS NOT NULL AND se.depth < 10000
-    ) SELECT id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at FROM session_entries LIMIT ?`,
+      `WITH RECURSIVE session_entries(id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at, round_id, candidate_id, depth) AS (
+      SELECT id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at, round_id, candidate_id, 1 FROM agent_transcript_entries WHERE id = ? AND agent_session_id = ?
+      UNION ALL SELECT e.id, e.agent_session_id, e.parent_entry_id, e.sequence, e.run_id, e.entry_json, e.created_at, e.round_id, e.candidate_id, se.depth + 1 FROM agent_transcript_entries e JOIN session_entries se ON e.id = se.parent_entry_id WHERE se.parent_entry_id IS NOT NULL AND se.depth < 10000
+    ) SELECT id, agent_session_id, parent_entry_id, sequence, run_id, entry_json, created_at, round_id, candidate_id FROM session_entries LIMIT ?`,
     )
     .all(startEntryId, session.id, limit)
   if (rows.length === 0) requireEntry(database, startEntryId)
@@ -582,7 +675,7 @@ function readSession(
 ): AgentSession | null {
   const row = database
     .prepare(
-      'SELECT id, agent_preset_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at, summary_policy_json FROM agent_sessions WHERE id = ?',
+      'SELECT id, agent_preset_id, kind, narrative_mode, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at, summary_policy_json FROM agent_sessions WHERE id = ?',
     )
     .get(id)
   if (!row) return null
@@ -608,7 +701,7 @@ function readEntry(
 ): AgentTranscriptEntry | null {
   const row = database
     .prepare(
-      'SELECT entry.id, entry.agent_session_id, entry.parent_entry_id, entry.sequence, entry.run_id, entry.entry_json, entry.created_at FROM agent_transcript_entries entry JOIN agent_sessions session ON session.id = entry.agent_session_id WHERE entry.id = ? AND session.tombstoned = 0',
+      'SELECT entry.id, entry.agent_session_id, entry.parent_entry_id, entry.sequence, entry.run_id, entry.entry_json, entry.created_at, entry.round_id, entry.candidate_id FROM agent_transcript_entries entry JOIN agent_sessions session ON session.id = entry.agent_session_id WHERE entry.id = ? AND session.tombstoned = 0',
     )
     .get(id)
   return row ? entryFromRow(row) : null
@@ -626,10 +719,12 @@ function requireEntry(
   return entry
 }
 function readLatestWorkSummary(database: DatabaseSync, agentSessionId: string): AgentTranscriptEntry | null {
-  requireSession(database, agentSessionId)
-  const row = database.prepare(`SELECT * FROM agent_transcript_entries
-    WHERE agent_session_id = ? AND json_extract(entry_json, '$.kind') = 'work-summary'
-    ORDER BY sequence DESC LIMIT 1`).get(agentSessionId)
+  const session = requireSession(database, agentSessionId)
+  const row = database.prepare(`WITH RECURSIVE path AS (
+    SELECT * FROM agent_transcript_entries WHERE id = ?
+    UNION ALL SELECT e.* FROM agent_transcript_entries e JOIN path p ON e.id = p.parent_entry_id
+  ) SELECT * FROM path WHERE json_extract(entry_json, '$.kind') = 'work-summary'
+    ORDER BY sequence DESC LIMIT 1`).get(session.headEntryId ?? null)
   return row ? entryFromRow(row) : null
 }
 
@@ -637,7 +732,9 @@ function sessionFromRow(row: unknown): AgentSession {
   const value = row as Record<string, unknown>
   return {
     id: String(value.id),
-    agentPresetId: String(value.agent_preset_id),
+    kind: value.kind as AgentSession['kind'],
+    agentPresetId: optionalString(value.agent_preset_id),
+    ...(value.kind === 'timeline' ? { narrativeMode: (value.narrative_mode ?? 'declared') as 'declared' | 'automatic' } : {}),
     timelineId: optionalString(value.timeline_id),
     title: optionalString(value.title),
     headEntryId: optionalString(value.head_entry_id),
@@ -673,6 +770,7 @@ function readSessions(
   }
 
   const conditions = ['tombstoned = 0']
+  if (!input.includeTimelines) conditions.push("kind = 'agent'")
   const params: Array<string | number> = []
 
   if (input.agentPresetId) {
@@ -692,7 +790,7 @@ function readSessions(
 
   const rows = database
     .prepare(
-      `SELECT id, agent_preset_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at, summary_policy_json
+      `SELECT id, agent_preset_id, kind, narrative_mode, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at, summary_policy_json
        FROM agent_sessions
        WHERE ${conditions.join(' AND ')}
        ORDER BY updated_at DESC, id DESC
@@ -714,6 +812,8 @@ function entryFromRow(row: unknown): AgentTranscriptEntry {
     parentEntryId: optionalString(value.parent_entry_id),
     sequence: Number(value.sequence),
     runId: optionalString(value.run_id),
+    roundId: optionalString(value.round_id),
+    candidateId: optionalString(value.candidate_id),
     entry: parsed,
     createdAt: String(value.created_at),
   }
@@ -758,6 +858,9 @@ function validateTranscriptEntry(
         'Agent message role must be user or assistant',
       )
     validateContent(value.content)
+    if (value.purpose !== undefined && value.purpose !== 'narrative' && value.purpose !== 'discussion')
+      throw new AgentStoreError('agent.message_purpose_invalid', 'Invalid message purpose')
+    if (value.narrativeId !== undefined) validateId(value.narrativeId, 'narrativeId')
     if (value.continuesEntryId !== undefined) {
       if (value.role !== 'assistant')
         throw new AgentStoreError(
@@ -1010,4 +1113,42 @@ function operation(
     store: 'agent', kind, entityId, entityType,
     ...(timelineId ? { scope: { store: 'narrative', entityType: 'narrative.timeline', entityId: timelineId } } : {}),
   }
+}
+
+function syncTimelineBranch(database: DatabaseSync, tx: SqliteDataTransaction, timelineId: string, headEntryId: string | null, targetBranchId?: string) {
+  if (!database.prepare("SELECT 1 FROM sqlite_master WHERE name = 'narrative_branches'").get()) return
+  const row = targetBranchId
+    ? database.prepare('SELECT id FROM narrative_branches WHERE id = ? AND timeline_id = ?').get(targetBranchId, timelineId)
+    : database.prepare('SELECT active_branch_id AS id FROM narrative_timelines WHERE id = ?').get(timelineId)
+  if (!row?.id) return
+  const branchId = String(row.id)
+  database.prepare('UPDATE narrative_branches SET head_entry_id = ? WHERE id = ?').run(headEntryId, branchId)
+  tx.recordOperations([{ store: 'narrative', kind: 'update', entityId: branchId, entityType: 'narrative.branch' }])
+}
+
+function timelineEntryIdentity(database: DatabaseSync, session: AgentSession, item: { entry: AgentTranscriptEntryData; runId?: string; roundId?: string; candidateId?: string }, entryId: string) {
+  if (session.kind !== 'timeline') return {}
+  if (item.entry.kind === 'message' && item.entry.role === 'user' && item.entry.purpose === 'narrative') return { roundId: entryId }
+  const hasSwipes = database.prepare("SELECT 1 FROM sqlite_master WHERE name = 'narrative_swipe_groups'").get()
+  if (item.runId && hasSwipes) {
+    const attempt = database.prepare(`SELECT g.id AS group_id, json_extract(candidate.value, '$.id') AS candidate_id
+      FROM narrative_swipe_groups g, json_each(g.metadata_json, '$.candidates') candidate,
+        json_each(candidate.value, '$.runIds') run
+      WHERE g.timeline_id = ? AND g.deleted_at IS NULL AND run.value = ?
+        AND json_extract(g.metadata_json, '$.closed') = 0 LIMIT 1`).get(session.id, item.runId)
+    if (attempt) return { roundId: item.roundId ?? String(attempt.group_id), candidateId: item.candidateId ?? String(attempt.candidate_id) }
+  }
+  if (item.roundId || item.candidateId) return { roundId: item.roundId, candidateId: item.candidateId }
+  const row = database.prepare(`WITH RECURSIVE path AS (
+    SELECT * FROM agent_transcript_entries WHERE id = ?
+    UNION ALL SELECT e.* FROM agent_transcript_entries e JOIN path p ON e.id = p.parent_entry_id
+  ) SELECT round_id FROM path WHERE json_extract(entry_json, '$.kind') = 'message'
+    AND json_extract(entry_json, '$.role') = 'user' AND json_extract(entry_json, '$.purpose') = 'narrative'
+    ORDER BY sequence DESC LIMIT 1`).get(session.headEntryId ?? null)
+  const roundId = row?.round_id ? String(row.round_id) : undefined
+  if (!roundId || !hasSwipes) return { roundId }
+  const groupRow = database.prepare(`SELECT metadata_json FROM narrative_swipe_groups WHERE id = ? AND timeline_id = ? AND deleted_at IS NULL
+    AND json_extract(metadata_json, '$.closed') = 0`).get(roundId, session.id)
+  const group = groupRow ? JSON.parse(String(groupRow.metadata_json)) : undefined
+  return { roundId, candidateId: group?.activeCandidateId as string | undefined }
 }

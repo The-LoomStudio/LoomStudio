@@ -3,7 +3,8 @@ export type NarrativeSwipeView = {
   timelineId: string
   branchId: string
   revision: number
-  inputNodeId: string
+  inputKind?: 'communication'
+  inputNodeId?: string
   inputs?: Array<{ nodeId: string; input: string; selectedCandidateId?: string }>
   sourceAgentSessionId: string
   selectedCandidateId?: string

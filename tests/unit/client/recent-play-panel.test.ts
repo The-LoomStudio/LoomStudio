@@ -13,7 +13,7 @@ describe('recent play panel', () => {
       id: 'timeline-1', title: 'Story', createdFrom: { cardId: card.id, cardVersion: 1 },
       updatedAt, createdAt: updatedAt, activeBranchId: 'branch-1', promptResourceIds: [],
     } as NarrativeTimeline
-    const session = {
+    const session = { kind: 'agent' as const,
       id: 'session-1', title: 'Agent conversation', agentPresetId: 'preset-1',
       timelineId: timeline.id, entryCount: 42, createdAt: updatedAt, updatedAt,
     } as AgentSession
@@ -47,7 +47,7 @@ describe('recent play panel', () => {
       activeTimelineId: 'current-story', activeSessionId: 'viewed', primarySessionId: 'writer',
       cards: [], agentPresets: [],
       timelines: [{ id: 'current-story', title: 'Current story', updatedAt: timestamp, createdAt: timestamp, activeBranchId: 'branch', promptResourceIds: [] }],
-      agentSessions: ['viewed', 'writer', 'other'].map(id => ({
+      agentSessions: ['viewed', 'writer', 'other'].map(id => ({ kind: 'agent' as const,
         id, title: id, agentPresetId: 'preset', entryCount: 1, createdAt: timestamp, updatedAt: timestamp,
       })),
       t, onOpenCard: () => {}, onOpenTimeline: () => {}, onOpenAgentSession: () => {},

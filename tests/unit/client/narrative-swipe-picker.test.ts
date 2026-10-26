@@ -70,20 +70,22 @@ describe('Swipe regeneration confirmation and footer order', () => {
     p.swipe.suspended = true
     expect(renderInput().props.disabled).toBe(true)
   })
-  it('shows an empty third candidate with transcript access and keeps discarded candidates out of the count', () => {
+  it('shows one retry action for an empty candidate without a legacy Session shortcut', () => {
     const p = props()
     p.swipe.requiresRegeneration = false
     p.swipe.candidates.push({ id: 'b', preview: 'B', status: 'completed' },
       { id: 'c', preview: '', status: 'failed' }, { id: 'old', preview: '', status: 'discarded' })
     p.swipe.selectedCandidateId = 'c'
-    p.onOpenSession = vi.fn()
     const tree = elements(NarrativeSwipePicker(p))
     const control = tree.find(item => item.type === SwipeControl)!
     expect(control.props).toMatchObject({ index: 2, count: 3, disabled: false })
     expect(tree.some(item => item.props.role === 'status' && item.props.children === p.t('swipe.noBody'))).toBe(true)
-    const open = tree.find(item => item.props.label === p.t('swipe.viewRun'))!
-    ;(open.props.onClick as () => void)()
-    expect(p.onOpenSession).toHaveBeenCalledOnce()
+    expect(tree.some(item => item.props.label === p.t('swipe.viewRun'))).toBe(false)
+    expect(tree.some(item => item.props.label === p.t('swipe.regenerate'))).toBe(false)
+    const commands = tree.filter(item => item.props.label === p.t('swipe.retry'))
+    expect(commands).toHaveLength(1)
+    ;(commands[0].props.onClick as () => void)()
+    expect(p.onGenerate).toHaveBeenCalledExactlyOnceWith('retry')
   })
   it('generates from the last right arrow, switches existing candidates, and respects locks', () => {
     const p = props()

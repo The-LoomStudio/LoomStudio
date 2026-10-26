@@ -7,6 +7,7 @@ import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/in
 
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
+  memo: (component: unknown) => component,
   useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, vi.fn()],
   useRef: (current: unknown) => ({ current }),
   useEffect: () => undefined,
@@ -15,6 +16,7 @@ vi.mock('react', async importOriginal => ({
 }))
 vi.mock('../../../apps/studio-client/src/shared/ui/conversation-viewport/use-conversation-viewport.js', () => ({
   useConversationViewport: () => ({
+    smooth: { following: true, pause: vi.fn(), resume: vi.fn() },
     scrollRef: { current: null }, listRef: { current: null }, headerRef: { current: null },
     scrollMargin: 0, onScroll: vi.fn(),
     virtualizer: { getTotalSize: () => 0, getVirtualItems: () => [], measureElement: vi.fn() },
@@ -34,7 +36,7 @@ function panelProps(): AgentChatPanelProps {
     reconnectAgentRun: vi.fn(async () => {}), restoreRunInput: vi.fn(),
     busy: false, input: '', profiles: [], providerAccounts: [], messages: [],
     t: createTranslator('en-US'), onChangeInput: vi.fn(), onSelectProfile: vi.fn(), onSubmit: vi.fn(),
-    session: { id: 'session', agentPresetId: 'preset', title: 'Example', entryCount: 0, createdAt: '', updatedAt: '' },
+    session: { kind: 'agent' as const, id: 'session', agentPresetId: 'preset', title: 'Example', entryCount: 0, createdAt: '', updatedAt: '' },
     onDeleteSession: vi.fn(),
   }
 }

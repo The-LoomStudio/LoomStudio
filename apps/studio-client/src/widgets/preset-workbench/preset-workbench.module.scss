@@ -140,75 +140,6 @@
   }
 }
 
-.sourceDirectory {
-  max-height: 180px;
-  overflow: auto;
-  padding: 8px;
-
-  summary {
-    cursor: pointer;
-    overflow-wrap: anywhere;
-    color: var(--loom-color-text-subtle);
-    font-size: var(--loom-font-size-2);
-  }
-
-  button {
-    display: block;
-    width: 100%;
-    min-width: 0;
-    text-align: left;
-    overflow-wrap: anywhere;
-    border: 0;
-    background: transparent;
-  }
-
-  button[aria-current='page'] {
-    background: var(--loom-color-surface-subtle);
-  }
-}
-
-.modelDetail:not([hidden]) {
-  height: 100%;
-  overflow: auto;
-}
-
-.zoneDetail {
-  height: 100%;
-  overflow: auto;
-  padding: 24px;
-}
-
-.zoneDetail header p,
-.zoneDetail header span,
-.zoneDetail dt {
-  color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
-}
-
-.zoneDetail header h1 {
-  color: var(--loom-color-text);
-  margin: 4px 0;
-}
-
-.zoneDetail dl {
-  display: grid;
-  gap: 12px;
-  margin-top: 28px;
-}
-
-.zoneDetail dl div {
-  border-bottom: 1px solid var(--loom-color-border);
-  display: grid;
-  gap: 4px;
-  grid-template-columns: 140px minmax(0, 1fr);
-  padding-bottom: 10px;
-}
-
-.zoneDetail dd {
-  color: var(--loom-color-text);
-  margin: 0;
-}
-
 .toolExplorer {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -406,69 +337,11 @@
   overflow-wrap: anywhere;
 }
 
-.presetOverviewCards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-
-.presetOverviewCard {
-  background: var(--loom-color-surface-subtle);
-  border: 1px solid var(--loom-color-border);
-  border-radius: var(--loom-radius-panel, 8px);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
-
-  &:hover {
-    border-color: var(--loom-color-accent, var(--loom-color-accent));
-    background: var(--loom-color-surface);
-  }
-
-  header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--loom-color-text-subtle);
-    font-size: var(--loom-font-size-2, 13px);
-    font-weight: 500;
-
-    svg {
-      color: var(--loom-color-accent);
-    }
-  }
-
-  .presetOverviewCardValue {
-    font-size: var(--loom-font-size-4, 16px);
-    font-weight: 600;
-    color: var(--loom-color-text);
-  }
-
-  .presetOverviewCardDesc {
-    font-size: var(--loom-font-size-1, 12px);
-    color: var(--loom-color-text-muted);
-    line-height: 1.4;
-    flex: 1;
-  }
-
-  button {
-    margin-top: 6px;
-    align-self: flex-start;
-  }
-}
-
 .presetOverviewActions {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-}
-
-.presetModelForm {
-  padding: 0;
-  min-width: 0;
 }
 
 .presetConfigSection {
@@ -568,3 +441,17 @@
   color: var(--loom-color-text-muted);
   overflow-wrap: anywhere;
 }
+.libraryHost, .libraryPane { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.libraryPane[hidden] { display: none; }
+.libraryBack { margin-bottom: 8px; }
+.configurationBody { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.configurationContent { flex: 1; min-height: 0; }
+.configurationStatus { flex: none; margin: 0; padding: 8px 24px; font-size: var(--loom-font-size-2); }
+.configurationStatus[role='alert'] { color: var(--loom-color-danger); }
+.configurationContent .presetOverview { padding: 0; overflow: hidden; gap: 0; }
+.presetOverviewHeader[hidden] { display: none; }
+.configurationContent .presetUsageConfig { height: 100%; min-height: 0; gap: 0; overflow: hidden; }
+.configurationContent .presetUsageConfig > nav { flex: none; padding: 0 24px; border-bottom: 1px solid var(--loom-color-divider); }
+.configurationContent .presetUsagePanel { flex: 1; min-height: 0; overflow: auto; padding: 20px 24px 28px; scrollbar-gutter: stable; }
+.configurationContent .presetUsageSave { flex: none; padding: 8px 24px; }
+.configurationContent .presetConfigSection { padding: 0; border: 0; }

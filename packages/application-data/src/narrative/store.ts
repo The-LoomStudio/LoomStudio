@@ -1,6 +1,9 @@
+import { recordUserInteraction } from '../statistics/store.js'
 import type { DataCommitOperation, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
 import { createId, nowIso, optionalString } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
+import { createAgentStore } from '../agent/store.js'
+import type { AgentTransaction } from '../agent/types.js'
 import { createWorkspaceStore, initialWorkspaceEntries } from '../workspace/store.js'
 import { createNarrativeSwipeStore } from './swipes.js'
 import type {
@@ -43,6 +46,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
   const now = options.now ?? nowIso
 
   const workspaces = createWorkspaceStore(options)
+  const agents = createAgentStore(options)
 
   engine.migrate({
     namespace: migrationNamespace,
@@ -84,6 +88,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         )
       `) },
       { version: 8, migrate: migrateNodeKind },
+      { version: 9, migrate: database => migrateTimelineAuthority(database, nextId, now) },
     ],
   })
   assertNarrativeSchema(engine.database)
@@ -119,6 +124,9 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         const timestamp = now()
         database.prepare('UPDATE narrative_branches SET head_node_id = ?, state_head_revision_id = ?, workspace_head_revision_id = ?, updated_at = ? WHERE id = ?')
           .run(node?.id ?? null, input.stateRevisionId, workspaceRevisionId, timestamp, branch.id)
+        const headEntryId = input.headEntryId === undefined ? (node ? recoveryAtNode(database, branch, node).headEntryId : undefined) : input.headEntryId
+        database.prepare('UPDATE narrative_branches SET head_entry_id = ? WHERE id = ?').run(headEntryId ?? null, branch.id)
+        if (timeline.activeBranchId === branch.id) agents.transaction(tx).setTimelineHead({ agentSessionId: timeline.id, headEntryId: headEntryId ?? null })
         database.prepare('UPDATE narrative_timelines SET updated_at = ? WHERE id = ?').run(timestamp, timeline.id)
         tx.recordOperations([operation('update', branch.id, 'narrative.branch'), operation('update', timeline.id, 'narrative.timeline')])
         return requireBranch(database, branch.id)
@@ -153,7 +161,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         const replacement = input.openingNode
         if (replacement) {
           validateBody(replacement.body)
-          const node = insertNode(database, {
+          const node = insertNode(database, agents.transaction(tx), tx, branch.id, {
             id: nextId('node'), timelineId: timeline.id,
             stateRevisionId: branch.stateHeadRevisionId, workspaceRevisionId: branch.workspaceHeadRevisionId, body: replacement.body,
             source: { changesetId: tx.changesetId }, createdAt: replacement.createdAt ?? timestamp,
@@ -162,6 +170,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         }
         database.prepare('UPDATE narrative_branches SET head_node_id = ?, updated_at = ? WHERE id = ?')
           .run(nodes[0]?.id ?? null, timestamp, branch.id)
+        if (!nodes.length) agents.transaction(tx).setTimelineHead({ agentSessionId: timeline.id, headEntryId: null })
         if (opening.nodeId) {
           database.prepare('DELETE FROM narrative_recovery_points WHERE node_id = ?').run(opening.nodeId)
           database.prepare('DELETE FROM narrative_nodes WHERE id = ?').run(opening.nodeId)
@@ -186,15 +195,16 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         for (const node of input.nodes) {
           if (node.timelineId !== timeline.id) throw new NarrativeStoreError('narrative.timeline_mismatch', 'Archive node timeline mismatch')
           validateBody(node.body)
-          insertNode(database, node)
+          insertNode(database, agents.transaction(tx), tx, undefined, node)
           tx.recordOperations([operation('create', node.id, 'narrative.node')])
         }
-        for (const branch of input.branches) {
+        for (const imported of input.branches) {
+          const branch = { ...imported, headEntryId: imported.headEntryId ?? (imported.headNodeId ? requireNode(database, imported.headNodeId).entryId : undefined) }
           assertBranchTimeline(branch, timeline.id)
           if (branch.id === timeline.activeBranchId) {
             if (branch.parentBranchId || branch.forkedFromNodeId) throw new NarrativeStoreError('narrative.archive_root_invalid', 'Archive root cannot have a parent')
-            database.prepare('UPDATE narrative_branches SET head_node_id = ?, state_head_revision_id = ?, workspace_head_revision_id = ?, updated_at = ? WHERE id = ?')
-              .run(branch.headNodeId ?? null, branch.stateHeadRevisionId, branch.workspaceHeadRevisionId, branch.updatedAt, branch.id)
+            database.prepare('UPDATE narrative_branches SET head_node_id = ?, state_head_revision_id = ?, workspace_head_revision_id = ?, updated_at = ?, head_entry_id = ? WHERE id = ?')
+              .run(branch.headNodeId ?? null, branch.stateHeadRevisionId, branch.workspaceHeadRevisionId, branch.updatedAt, branch.headEntryId ?? null, branch.id)
             tx.recordOperations([operation('update', branch.id, 'narrative.branch')])
           } else {
             insertBranch(database, branch)
@@ -204,8 +214,10 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         for (const point of input.recoveryPoints ?? []) {
           if (!input.branches.some(branch => branch.id === point.branchId) || !input.nodes.some(node => node.id === point.nodeId))
             throw new NarrativeStoreError('narrative.recovery_invalid', 'Recovery point must belong to the imported path')
-          writeRecoveryPoint(database, point)
+          writeRecoveryPoint(database, { ...point, headEntryId: point.headEntryId ?? requireNode(database, point.nodeId).entryId })
         }
+        const active = requireBranch(database, timeline.activeBranchId)
+        agents.transaction(tx).setTimelineHead({ agentSessionId: timeline.id, headEntryId: active.headEntryId ?? null })
       },
       editBranchNode: input => {
         validateBody(input.body)
@@ -233,20 +245,29 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         }
         const opening = readEditableOpening(database, timeline, branch)
         captureBranchRecovery(database, branch)
+        const adoptedHead = agents.transaction(tx).getSession(timeline.id)!.headEntryId
+        if (timeline.activeBranchId !== branch.id)
+          database.prepare('UPDATE agent_sessions SET head_entry_id = ? WHERE id = ?').run(branch.headEntryId ?? null, timeline.id)
         const replacements: Array<{ previousNodeId: string; node: NarrativeNode }> = []
         let parentNodeId = target.parentNodeId
         // ponytail: Copying the suffix is linear in later messages; keeps branch isolation without mutable shared text.
         for (const previous of suffix.reverse()) {
-          const node = insertNode(database, {
+          const node = insertNode(database, agents.transaction(tx), tx, branch.id, {
             ...previous,
             id: nextId('node'),
             parentNodeId,
             body: previous.id === target.id ? input.body : previous.body,
+            entryId: previous.id === target.id ? undefined : previous.entryId,
+            source: previous.id === target.id ? { ...previous.source, agentMessageId: undefined } : previous.source,
           })
-          writeRecoveryPoint(database, { ...recoveryAtNode(database, branch, previous), nodeId: node.id })
+          writeRecoveryPoint(database, { ...recoveryAtNode(database, branch, previous), nodeId: node.id, headEntryId: previous.id === target.id ? node.entryId : recoveryAtNode(database, branch, previous).headEntryId })
           replacements.push({ previousNodeId: previous.id, node })
           parentNodeId = node.id
         }
+        const revisedHead = agents.transaction(tx).getSession(timeline.id)!.headEntryId
+        if (timeline.activeBranchId !== branch.id)
+          database.prepare('UPDATE agent_sessions SET head_entry_id = ? WHERE id = ?').run(adoptedHead ?? null, timeline.id)
+        database.prepare('UPDATE narrative_branches SET head_entry_id = ? WHERE id = ?').run(revisedHead ?? null, branch.id)
         const timestamp = now()
         database.prepare('UPDATE narrative_branches SET head_node_id = ?, updated_at = ? WHERE id = ?')
           .run(parentNodeId!, timestamp, branch.id)
@@ -269,6 +290,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       createTimeline: input => {
         const timestamp = now()
         const timelineId = input.id ?? nextId('timeline')
+        agents.transaction(tx).createTimelineSession({ id: timelineId, title: input.title })
         const branchId = input.primaryBranchId ?? nextId('branch')
         const workspaceRevisionId = workspaces.transaction(tx).create({ timelineId, entries: initialWorkspaceEntries() }).id
         const promptResourceIds = [...new Set(input.promptResourceIds ?? [])]
@@ -296,7 +318,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         const opening = input.openingNode
         if (opening) {
           validateBody(opening.body)
-          const node = insertNode(database, {
+          const node = insertNode(database, agents.transaction(tx), tx, branchId, {
             id: opening.id ?? nextId('node'),
             timelineId,
             stateRevisionId: input.stateRevisionId,
@@ -313,6 +335,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
           timelineId,
           title: input.primaryBranchTitle,
           headNodeId: nodes[0]?.id,
+          headEntryId: agents.transaction(tx).getSession(timelineId)?.headEntryId,
           stateHeadRevisionId: input.stateRevisionId,
           workspaceHeadRevisionId: workspaceRevisionId,
           createdAt: timestamp,
@@ -347,8 +370,19 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
           throw new NarrativeStoreError('narrative.head_conflict', `Narrative branch head conflict: ${branch.id}`)
         }
 
-        captureBranchRecovery(database, branch)
-        const node = insertNode(database, {
+        const sourceEntry = input.source?.agentMessageId ? agents.transaction(tx).getEntry(input.source.agentMessageId) : null
+        let recoveryHeadEntryId = branch.headEntryId
+        if (sourceEntry?.agentSessionId === timeline.id && sourceEntry.entry.kind === 'message' && sourceEntry.entry.content === input.body.raw) {
+          let firstSegment = sourceEntry
+          while (firstSegment.entry.kind === 'message' && firstSegment.entry.continuesEntryId)
+            firstSegment = agents.transaction(tx).getEntry(firstSegment.entry.continuesEntryId)!
+          recoveryHeadEntryId = firstSegment.parentEntryId
+        }
+        captureBranchRecovery(database, { ...branch, headEntryId: recoveryHeadEntryId })
+        const adoptedHead = agents.transaction(tx).getSession(timeline.id)!.headEntryId
+        if (timeline.activeBranchId !== branch.id)
+          database.prepare('UPDATE agent_sessions SET head_entry_id = ? WHERE id = ?').run(branch.headEntryId ?? null, timeline.id)
+        const node = insertNode(database, agents.transaction(tx), tx, branch.id, {
           id: input.nodeId ?? nextId('node'),
           kind: input.kind ?? 'narrative',
           timelineId: timeline.id,
@@ -359,6 +393,10 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
           source: { ...input.source, changesetId: tx.changesetId },
           createdAt: now(),
         })
+        const appendedHead = agents.transaction(tx).getSession(timeline.id)!.headEntryId
+        if (timeline.activeBranchId !== branch.id)
+          database.prepare('UPDATE agent_sessions SET head_entry_id = ? WHERE id = ?').run(adoptedHead ?? null, timeline.id)
+        database.prepare('UPDATE narrative_branches SET head_entry_id = ? WHERE id = ?').run(appendedHead ?? null, branch.id)
         const updatedAt = now()
         database.prepare(`
           UPDATE narrative_branches
@@ -388,11 +426,11 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
           throw new NarrativeStoreError('narrative.node_not_found', `Narrative node ${input.nodeId} does not belong to timeline ${timeline.id}`)
         }
         const opening = readEditableOpening(database, timeline, requireBranch(database, timeline.activeBranchId))
-        database.prepare(`
-          UPDATE narrative_nodes
-          SET body_format = ?, body_raw = ?
-          WHERE id = ?
-        `).run(input.body.format, input.body.raw, existingNode.id)
+        const session = agents.transaction(tx).getSession(timeline.id)!
+        const saved = agents.transaction(tx).appendEntries({ agentSessionId: timeline.id, expectedEntryCount: session.entryCount,
+          entries: [{ entry: { kind: 'message', role: existingNode.kind === 'user-input' ? 'user' : 'assistant',
+            content: input.body.raw, purpose: 'narrative', narrativeId: existingNode.id } }] }).entries[0]!
+        database.prepare('UPDATE narrative_nodes SET entry_id = ? WHERE id = ?').run(saved.id, existingNode.id)
         const updatedAt = now()
         database.prepare('UPDATE narrative_timelines SET opening_json = ?, updated_at = ? WHERE id = ?')
           .run(timeline.opening ? JSON.stringify(opening ? { ...opening, custom: true } : timeline.opening) : null, updatedAt, timeline.id)
@@ -423,6 +461,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
           timelineId: timeline.id,
           title: input.title,
           headNodeId: fromNode.id,
+          headEntryId: recovery.headEntryId,
           stateHeadRevisionId: recovery.stateRevisionId,
           workspaceHeadRevisionId: recovery.workspaceRevisionId,
           parentBranchId: sourceBranch.id,
@@ -472,6 +511,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         }
         database.prepare('UPDATE narrative_timelines SET active_branch_id = ?, updated_at = ? WHERE id = ?')
           .run(branch.id, now(), timeline.id)
+        agents.transaction(tx).setTimelineHead({ agentSessionId: timeline.id, headEntryId: branch.headEntryId ?? null })
         tx.recordOperations([operation('update', timeline.id, 'narrative.timeline')])
         return requireTimeline(database, timeline.id)
       },
@@ -479,6 +519,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       deleteTimeline: input => {
         const timeline = requireTimeline(database, input.timelineId)
         swipes.transaction(tx).deleteTimeline(timeline.id)
+        agents.transaction(tx).deleteSession({ agentSessionId: timeline.id })
         const deletedAt = now()
         database.prepare(`
           UPDATE narrative_timelines
@@ -552,8 +593,8 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     getNode: (id, options) => engine.read(database => readNode(database, id, options?.includeDeleted)),
     listNodes: timelineId => engine.read(database => {
       const rows = database.prepare(`SELECT id, timeline_id, parent_node_id, state_revision_id, workspace_revision_id, floor, body_format, body_raw,
-        source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind
-        FROM narrative_nodes WHERE timeline_id = ? ORDER BY created_at ASC, id ASC`).all(timelineId)
+        source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind, entry_id
+        FROM narrative_node_projection WHERE timeline_id = ? ORDER BY created_at ASC, id ASC`).all(timelineId)
       return rows.map(row => nodeFromRow(row))
     }),
     getPage: input => engine.read(database => readPage(database, input)),
@@ -606,6 +647,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
             throw new NarrativeStoreError('narrative.swipe_active', 'Active Swipe execution must finish or be abandoned before new input')
           }
           swipeTx.closeLatest(branch.id)
+          if (input.actor.kind === 'client') recordUserInteraction(dataTx, { id: input.nodeId, timelineId: input.timelineId, kind: 'narrative' })
           return transaction(dataTx).appendNode({
             ...input, kind: 'user-input',
             stateRevisionId: branch.stateHeadRevisionId,
@@ -660,7 +702,7 @@ function readEditableOpening(database: DatabaseSync, timeline: NarrativeTimeline
     const node = requireNode(database, opening.nodeId)
     if (node.timelineId !== timeline.id || node.parentNodeId) return undefined
   }
-  const count = database.prepare('SELECT count(*) AS count FROM narrative_nodes WHERE timeline_id = ?').get(timeline.id)!
+  const count = database.prepare('SELECT count(*) AS count FROM narrative_node_projection WHERE timeline_id = ?').get(timeline.id)!
   return branch.headNodeId === opening.nodeId && Number(count.count) === (opening.nodeId ? 1 : 0) ? opening : undefined
 }
 
@@ -785,15 +827,15 @@ function assertNarrativeSchema(database: DatabaseSync): void {
 }
 
 function recoveryFromRow(row: Record<string, string>): NarrativeRecoveryPoint {
-  return { branchId: row.branch_id!, nodeId: row.node_id!, stateRevisionId: row.state_revision_id!, workspaceRevisionId: row.workspace_revision_id! }
+  return { headEntryId: optionalString(row.head_entry_id), branchId: row.branch_id!, nodeId: row.node_id!, stateRevisionId: row.state_revision_id!, workspaceRevisionId: row.workspace_revision_id! }
 }
 function writeRecoveryPoint(database: DatabaseSync, point: NarrativeRecoveryPoint) {
-  database.prepare('INSERT OR REPLACE INTO narrative_recovery_points VALUES (?, ?, ?, ?)')
-    .run(point.branchId, point.nodeId, point.stateRevisionId, point.workspaceRevisionId)
+  database.prepare('INSERT OR REPLACE INTO narrative_recovery_points (branch_id, node_id, state_revision_id, workspace_revision_id, head_entry_id) VALUES (?, ?, ?, ?, ?)')
+    .run(point.branchId, point.nodeId, point.stateRevisionId, point.workspaceRevisionId, point.headEntryId ?? null)
 }
 function captureBranchRecovery(database: DatabaseSync, branch: NarrativeBranch) {
   if (branch.headNodeId) writeRecoveryPoint(database, { branchId: branch.id, nodeId: branch.headNodeId,
-    stateRevisionId: branch.stateHeadRevisionId, workspaceRevisionId: branch.workspaceHeadRevisionId })
+    stateRevisionId: branch.stateHeadRevisionId, workspaceRevisionId: branch.workspaceHeadRevisionId, headEntryId: branch.headEntryId })
 }
 function readRecoveryPoint(database: DatabaseSync, branchId: string, nodeId: string): NarrativeRecoveryPoint {
   const branch = requireBranch(database, branchId)
@@ -804,17 +846,17 @@ function readRecoveryPoint(database: DatabaseSync, branchId: string, nodeId: str
 function recoveryAtNode(database: DatabaseSync, branch: NarrativeBranch, node: NarrativeNode): NarrativeRecoveryPoint {
   const branchId = branch.id
   const nodeId = node.id
-  if (branch.headNodeId === nodeId) return { branchId, nodeId, stateRevisionId: branch.stateHeadRevisionId, workspaceRevisionId: branch.workspaceHeadRevisionId }
+  if (branch.headNodeId === nodeId) return { branchId, nodeId, stateRevisionId: branch.stateHeadRevisionId, workspaceRevisionId: branch.workspaceHeadRevisionId, headEntryId: branch.headEntryId }
   const row = database.prepare('SELECT * FROM narrative_recovery_points WHERE branch_id = ? AND node_id = ?').get(branchId, nodeId) as Record<string, string> | undefined
-  return row ? recoveryFromRow(row) : { branchId, nodeId, stateRevisionId: node.stateRevisionId, workspaceRevisionId: node.workspaceRevisionId }
+  return row ? recoveryFromRow(row) : { branchId, nodeId, stateRevisionId: node.stateRevisionId, workspaceRevisionId: node.workspaceRevisionId, headEntryId: node.entryId }
 }
 
 function insertBranch(database: DatabaseSync, branch: NarrativeBranch): void {
   database.prepare(`
     INSERT INTO narrative_branches (
       id, timeline_id, title, head_node_id, state_head_revision_id, workspace_head_revision_id,
-      parent_branch_id, forked_from_node_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      parent_branch_id, forked_from_node_id, created_at, updated_at, head_entry_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     branch.id,
     branch.timelineId,
@@ -826,21 +868,33 @@ function insertBranch(database: DatabaseSync, branch: NarrativeBranch): void {
     branch.forkedFromNodeId ?? null,
     branch.createdAt,
     branch.updatedAt,
+    branch.headEntryId ?? null,
   )
 }
 
-function insertNode(database: DatabaseSync, input: Omit<NarrativeNode, 'floor' | 'kind'> & { floor?: number; kind?: NarrativeNode['kind'] }): NarrativeNode {
+function insertNode(database: DatabaseSync, agent: AgentTransaction, tx: SqliteDataTransaction, targetBranchId: string | undefined, input: Omit<NarrativeNode, 'floor' | 'kind'> & { floor?: number; kind?: NarrativeNode['kind'] }): NarrativeNode {
   const parentFloor = input.parentNodeId ? requireNode(database, input.parentNodeId).floor : 0
   const floor = input.floor ?? parentFloor + 1
   if (!Number.isSafeInteger(floor) || floor <= parentFloor) {
     throw new NarrativeStoreError('narrative.floor_invalid', 'Floor must be a positive integer greater than its parent floor')
   }
-  const node = { ...input, floor, kind: input.kind ?? 'narrative' }
+  const referenced = input.entryId ? agent.getEntry(input.entryId) : input.source?.agentMessageId ? agent.getEntry(input.source.agentMessageId) : null
+  const canReuse = referenced?.agentSessionId === input.timelineId && referenced.entry.kind === 'message' && referenced.entry.content === input.body.raw
+  const session = agent.getSession(input.timelineId)!
+  const entryId = canReuse ? referenced.id : agent.appendEntries({ agentSessionId: input.timelineId, expectedEntryCount: session.entryCount,
+    entries: [{ entry: { kind: 'message', role: input.kind === 'user-input' ? 'user' : 'assistant', content: input.body.raw,
+      purpose: 'narrative', narrativeId: input.id } }] }, targetBranchId ? { timelineBranchId: targetBranchId } : undefined).entries[0]!.id
+  if (canReuse && !input.entryId && referenced.entry.kind === 'message') {
+    database.prepare(`UPDATE agent_transcript_entries SET entry_json = json_set(entry_json, '$.purpose', 'narrative', '$.narrativeId', COALESCE(json_extract(entry_json, '$.narrativeId'), ?)) WHERE id = ?`)
+      .run(input.id, entryId)
+    tx.recordOperations([{ store: 'agent', kind: 'update', entityId: entryId, entityType: 'agent.transcript-entry' }])
+  }
+  const node = { ...input, entryId, floor, kind: input.kind ?? 'narrative' }
   database.prepare(`
     INSERT INTO narrative_nodes (
-      id, timeline_id, parent_node_id, state_revision_id, workspace_revision_id, floor, body_format, body_raw,
+      id, timeline_id, parent_node_id, state_revision_id, workspace_revision_id, floor, entry_id,
       source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     node.id,
     node.timelineId,
@@ -848,8 +902,7 @@ function insertNode(database: DatabaseSync, input: Omit<NarrativeNode, 'floor' |
     node.stateRevisionId,
     node.workspaceRevisionId,
     node.floor,
-    node.body.format,
-    node.body.raw,
+    node.entryId,
     node.source?.agentSessionId ?? null,
     node.source?.agentMessageId ?? null,
     node.source?.runId ?? null,
@@ -883,20 +936,20 @@ function readPage(
 
   const rows = database.prepare(`
     WITH RECURSIVE branch_nodes(id, timeline_id, parent_node_id, state_revision_id, workspace_revision_id, floor, body_format, body_raw,
-                                source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind, depth) AS (
+                                source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind, entry_id, depth) AS (
       SELECT id, timeline_id, parent_node_id, state_revision_id, workspace_revision_id, floor, body_format, body_raw,
-             source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind, 1
-      FROM narrative_nodes
+             source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind, entry_id, 1
+      FROM narrative_node_projection
       WHERE id = ? AND timeline_id = ?
       UNION ALL
       SELECT n.id, n.timeline_id, n.parent_node_id, n.state_revision_id, n.workspace_revision_id, n.floor, n.body_format, n.body_raw,
-             n.source_agent_session_id, n.source_agent_message_id, n.source_run_id, n.source_changeset_id, n.created_at, n.kind, bn.depth + 1
-      FROM narrative_nodes n
+             n.source_agent_session_id, n.source_agent_message_id, n.source_run_id, n.source_changeset_id, n.created_at, n.kind, n.entry_id, bn.depth + 1
+      FROM narrative_node_projection n
       JOIN branch_nodes bn ON n.id = bn.parent_node_id
       WHERE bn.parent_node_id IS NOT NULL AND bn.depth < 10000
     )
     SELECT id, timeline_id, parent_node_id, state_revision_id, workspace_revision_id, floor, body_format, body_raw,
-           source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind
+           source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, kind, entry_id
     FROM branch_nodes
     LIMIT ?
   `).all(startNodeId, timeline.id, limit)
@@ -920,11 +973,11 @@ function readPage(
 function readTimeline(database: DatabaseSync, id: string, includeDeleted = false): NarrativeTimeline | null {
   const row = database.prepare(`
     SELECT id, title,
-           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
+           (SELECT substr(body_raw, 1, 240) FROM narrative_node_projection node
             WHERE node.timeline_id = narrative_timelines.id AND node.parent_node_id IS NULL
             ORDER BY node.created_at ASC, node.id ASC LIMIT 1) AS opening_preview,
            (SELECT substr(node.body_raw, 1, 240) FROM narrative_branches branch
-            JOIN narrative_nodes node ON node.id = branch.head_node_id
+            JOIN narrative_node_projection node ON node.id = branch.head_node_id
             WHERE branch.id = narrative_timelines.active_branch_id) AS latest_preview,
            created_from_card_id, created_from_card_version, prompt_resource_ids_json,
            active_branch_id, opening_json, created_at, updated_at, tombstoned, deleted_at
@@ -966,11 +1019,11 @@ function readTimelines(
   }
   const rows = database.prepare(`
     SELECT id, title,
-           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
+           (SELECT substr(body_raw, 1, 240) FROM narrative_node_projection node
             WHERE node.timeline_id = narrative_timelines.id AND node.parent_node_id IS NULL
             ORDER BY node.created_at ASC, node.id ASC LIMIT 1) AS opening_preview,
            (SELECT substr(node.body_raw, 1, 240) FROM narrative_branches branch
-            JOIN narrative_nodes node ON node.id = branch.head_node_id
+            JOIN narrative_node_projection node ON node.id = branch.head_node_id
             WHERE branch.id = narrative_timelines.active_branch_id) AS latest_preview,
            created_from_card_id, created_from_card_version, prompt_resource_ids_json,
            active_branch_id, opening_json, created_at, updated_at, tombstoned, deleted_at
@@ -991,7 +1044,7 @@ function readBranches(database: DatabaseSync, timelineId: string): NarrativeBran
   requireTimeline(database, timelineId)
   return database.prepare(`
     SELECT id, timeline_id, title, head_node_id, state_head_revision_id, workspace_head_revision_id,
-           parent_branch_id, forked_from_node_id, created_at, updated_at
+           parent_branch_id, forked_from_node_id, created_at, updated_at, head_entry_id
     FROM narrative_branches
     WHERE timeline_id = ?
     ORDER BY created_at ASC, id ASC
@@ -1007,7 +1060,7 @@ function requireTimeline(database: DatabaseSync, id: string, includeDeleted = fa
 function readBranch(database: DatabaseSync, id: string, includeDeleted = false): NarrativeBranch | null {
   const row = database.prepare(`
     SELECT branch.id, branch.timeline_id, branch.title, branch.head_node_id, branch.state_head_revision_id, branch.workspace_head_revision_id, workspace_head_revision_id,
-           branch.parent_branch_id, branch.forked_from_node_id, branch.created_at, branch.updated_at
+           branch.parent_branch_id, branch.forked_from_node_id, branch.created_at, branch.updated_at, branch.head_entry_id
     FROM narrative_branches branch
     JOIN narrative_timelines timeline ON timeline.id = branch.timeline_id
     WHERE branch.id = ? AND (? = 1 OR timeline.tombstoned = 0)
@@ -1025,8 +1078,8 @@ function readNode(database: DatabaseSync, id: string, includeDeleted = false): N
   const row = database.prepare(`
     SELECT node.id, node.timeline_id, node.parent_node_id, node.state_revision_id, node.workspace_revision_id, node.floor, node.body_format, node.body_raw,
            node.source_agent_session_id, node.source_agent_message_id, node.source_run_id,
-           node.source_changeset_id, node.created_at, node.kind
-    FROM narrative_nodes node
+           node.source_changeset_id, node.created_at, node.kind, node.entry_id
+    FROM narrative_node_projection node
     JOIN narrative_timelines timeline ON timeline.id = node.timeline_id
     WHERE node.id = ? AND (? = 1 OR timeline.tombstoned = 0)
   `).get(id, includeDeleted ? 1 : 0)
@@ -1068,6 +1121,7 @@ function branchFromRow(row: unknown): NarrativeBranch {
     timelineId: String(value.timeline_id),
     title: optionalString(value.title),
     headNodeId: optionalString(value.head_node_id),
+    headEntryId: optionalString(value.head_entry_id),
     stateHeadRevisionId: requiredString(value.state_head_revision_id, 'state_head_revision_id'),
     workspaceHeadRevisionId: requiredString(value.workspace_head_revision_id, 'workspace_head_revision_id'),
     parentBranchId: optionalString(value.parent_branch_id),
@@ -1089,6 +1143,7 @@ function nodeFromRow(row: unknown): NarrativeNode {
     id: String(value.id),
     timelineId: String(value.timeline_id),
     parentNodeId: optionalString(value.parent_node_id),
+    entryId: optionalString(value.entry_id),
     stateRevisionId: requiredString(value.state_revision_id, 'state_revision_id'),
     kind: value.kind as NarrativeNode['kind'],
     floor: Number(value.floor),
@@ -1104,11 +1159,11 @@ function isNodeInBranchPath(database: DatabaseSync, branch: NarrativeBranch, nod
   const row = database.prepare(`
     WITH RECURSIVE branch_path(id, parent_node_id, depth) AS (
       SELECT id, parent_node_id, 1
-      FROM narrative_nodes
+      FROM narrative_node_projection
       WHERE id = ?
       UNION ALL
       SELECT n.id, n.parent_node_id, bp.depth + 1
-      FROM narrative_nodes n
+      FROM narrative_node_projection n
       JOIN branch_path bp ON n.id = bp.parent_node_id
       WHERE bp.parent_node_id IS NOT NULL AND bp.depth < 10000
     )
@@ -1184,4 +1239,37 @@ function parseStringArray(value: unknown, field: string): string[] {
   } catch {
     throw new NarrativeStoreError('narrative.data_invalid', `Narrative ${field} is invalid`)
   }
+}
+
+function migrateTimelineAuthority(database: DatabaseSync, nextId: (prefix: string) => string, now: () => string) {
+  database.exec(`ALTER TABLE narrative_nodes ADD COLUMN entry_id TEXT REFERENCES agent_transcript_entries(id);
+    ALTER TABLE narrative_branches ADD COLUMN head_entry_id TEXT REFERENCES agent_transcript_entries(id);
+    ALTER TABLE narrative_recovery_points ADD COLUMN head_entry_id TEXT REFERENCES agent_transcript_entries(id);`)
+  for (const timeline of database.prepare('SELECT * FROM narrative_timelines').all()) {
+    const timelineId = String(timeline.id)
+    database.prepare(`INSERT INTO agent_sessions (id, kind, timeline_id, title, narrative_mode, entry_count, created_at, updated_at)
+      VALUES (?, 'timeline', ?, ?, 'declared', 0, ?, ?)`)
+      .run(timelineId, timelineId, timeline.title, timeline.created_at, timeline.updated_at)
+    let sequence = 0
+    for (const node of database.prepare(`WITH RECURSIVE path AS (
+      SELECT *, 1 AS depth FROM narrative_nodes WHERE timeline_id = ? AND parent_node_id IS NULL
+      UNION ALL SELECT n.*, p.depth + 1 FROM narrative_nodes n JOIN path p ON n.parent_node_id = p.id
+    ) SELECT * FROM path ORDER BY depth, created_at, id`).all(timelineId)) {
+      const entryId = nextId('agent-entry')
+      const parent = node.parent_node_id ? database.prepare('SELECT entry_id FROM narrative_nodes WHERE id = ?').get(node.parent_node_id)?.entry_id : null
+      database.prepare(`INSERT INTO agent_transcript_entries (id, agent_session_id, parent_entry_id, sequence, entry_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`)
+        .run(entryId, timelineId, parent ?? null, ++sequence, JSON.stringify({ kind: 'message', role: node.kind === 'user-input' ? 'user' : 'assistant',
+          content: node.body_raw, purpose: 'narrative', narrativeId: node.id }), node.created_at)
+      database.prepare('UPDATE narrative_nodes SET entry_id = ? WHERE id = ?').run(entryId, node.id)
+    }
+    database.prepare('UPDATE agent_sessions SET entry_count = ? WHERE id = ?').run(sequence, timelineId)
+  }
+  database.exec(`UPDATE narrative_branches SET head_entry_id = (SELECT entry_id FROM narrative_nodes WHERE id = head_node_id);
+    UPDATE narrative_recovery_points SET head_entry_id = (SELECT entry_id FROM narrative_nodes WHERE id = node_id);
+    UPDATE agent_sessions SET head_entry_id = (SELECT b.head_entry_id FROM narrative_timelines t JOIN narrative_branches b ON b.id = t.active_branch_id WHERE t.id = agent_sessions.id) WHERE kind = 'timeline';
+    ALTER TABLE narrative_nodes DROP COLUMN body_raw;
+    ALTER TABLE narrative_nodes DROP COLUMN body_format;
+    CREATE VIEW narrative_node_projection AS SELECT n.*, 'loom-markdown.v1' AS body_format,
+      json_extract(e.entry_json, '$.content') AS body_raw FROM narrative_nodes n JOIN agent_transcript_entries e ON e.id = n.entry_id;`)
 }

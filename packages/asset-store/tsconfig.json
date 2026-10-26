@@ -6,8 +6,11 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
-    { "path": "../blob-store" },
-    { "path": "../data-engine" }
+    {
+      "path": "../data-engine"
+    }
   ],
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

@@ -3,7 +3,7 @@ import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost, type ExtensionHostOptions } from '@loom-studio/extension-host'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { createExtensionFixture, createExtensionHostHarness, manifest } from './helpers.js'
 
 describe('extension host logging contract', () => {
@@ -11,8 +11,10 @@ describe('extension host logging contract', () => {
     const logs = createMemoryLogSink({ capacity: 100 })
     const logger = createRootLogger({ service: 'test', instanceId: 'scoped', sinks: [logs] })
     const pages = new Map<string, ExtensionLogPage>()
+    const documents = createInMemoryDocumentStore()
+    onTestFinished(() => documents.close())
     const host = createExtensionHost({
-      documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(), logger: logger.child('extension'),
+      documents, diagnostics: createInMemoryDiagnosticsRegistry(), logger: logger.child('extension'),
       callRpc: async () => null,
       registerRpc: () => { throw new Error('No RPC contributions') },
       queryLogs: async (packageId, input, installationId) => {
@@ -120,8 +122,10 @@ describe('extension host logging contract', () => {
       queryCall = { packageId, input }
       return { items: [], cursor: 'memory:test:0', hasMore: false, sources: ['current'] }
     }
+    const documents = createInMemoryDocumentStore()
+    onTestFinished(() => documents.close())
     const extensionHost = createExtensionHost({
-      documents: createInMemoryDocumentStore(),
+      documents,
       diagnostics: createInMemoryDiagnosticsRegistry(),
       queryLogs,
       callRpc: async () => null,
@@ -134,24 +138,28 @@ describe('extension host logging contract', () => {
         dispose: () => undefined,
       }),
     })
-    const directory = createExtensionFixture('logging-query-extension', {
-      manifest: manifest('example.loggingQuery', []),
-      source: `export async function activate(ctx) {
-        await ctx.logs.query({ limit: 1 })
-        try {
-          await ctx.rpc.call('logs.list')
-        } catch (error) {
-          if (error instanceof Error && error.message.includes('reserved Studio namespace RPC')) return
-          throw error
-        }
-        throw new Error('logs RPC was not rejected')
-      }`,
-    })
+    try {
+      const directory = createExtensionFixture('logging-query-extension', {
+        manifest: manifest('example.loggingQuery', []),
+        source: `export async function activate(ctx) {
+          await ctx.logs.query({ limit: 1 })
+          try {
+            await ctx.rpc.call('logs.list')
+          } catch (error) {
+            if (error instanceof Error && error.message.includes('reserved Studio namespace RPC')) return
+            throw error
+          }
+          throw new Error('logs RPC was not rejected')
+        }`,
+      })
 
-    await extensionHost.discover(directory)
-    const summary = await extensionHost.activate('example.loggingQuery', 'server')
+      await extensionHost.discover(directory)
+      const summary = await extensionHost.activate('example.loggingQuery', 'server')
 
-    expect(summary.state).toBe('active')
-    expect(queryCall).toEqual({ packageId: 'example.loggingQuery', input: { limit: 1 } })
+      expect(summary.state).toBe('active')
+      expect(queryCall).toEqual({ packageId: 'example.loggingQuery', input: { limit: 1 } })
+    } finally {
+      await extensionHost.disposeAll()
+    }
   })
 })

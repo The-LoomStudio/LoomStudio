@@ -5,11 +5,11 @@ import type { Card, ContextAssetNode, PromptResource } from '../../entities/inde
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { FileTree } from '../../shared/ui/file-tree/file-tree.js'
-import { ContextAssetEditor } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { TokenSnapshotControl, TokenSnapshotSummary } from '../../features/context-assets/ui/resource-token-summary.js'
-import { useResourceTokenSnapshot } from '../../features/context-assets/model/use-resource-token-snapshot.js'
+import { ContextAssetEditor } from '../../features/prompt-resources/ui/context-asset-workbench.js'
+import { TokenSnapshotControl, TokenSnapshotSummary } from '../../features/prompt-resources/ui/resource-token-summary.js'
+import { useResourceTokenSnapshot } from '../../features/prompt-resources/model/use-resource-token-snapshot.js'
 import { RuleEditorFields } from '../../features/text-transforms/ui/rule-editor-fields.js'
-import { LoomScriptSourceFields } from '../../features/text-transforms/ui/loom-script-source-fields.js'
+import { LoomScriptSourceFields } from '../../features/loom-scripts/ui/loom-script-source-fields.js'
 import { MacroEntryDetail } from '../../features/state-variables/ui/macro-entry-detail.js'
 import { objectToYaml, yamlToObject } from '../../features/state-variables/model/state-variable-editor.js'
 import { ExtensionSettingsForm } from '../../features/extension-renderers/ui/extension-settings-form.js'
@@ -322,8 +322,8 @@ function CardStateDefinitionEditor(props: {
   card: Card
   id: string
   definition?: Awaited<ReturnType<StudioApi['states']['listDefinitions']>>['definitions'][number]
-  onSave(schema: Record<string, import('@loom-studio/client-bridge').ClientJsonValue>,
-    initial: Record<string, import('@loom-studio/client-bridge').ClientJsonValue>,
+  onSave(schema: Record<string, import('@loom-studio/shared').JsonValue>,
+    initial: Record<string, import('@loom-studio/shared').JsonValue>,
     label: string | undefined, templateVersion: number, expectedVersion: number, onCommitted: (version: number) => void): Promise<void>
   t: Translator
 }) {

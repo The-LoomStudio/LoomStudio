@@ -2,13 +2,27 @@ import {
   createAiGatewayCapabilityRegistry,
   createProfiledAiGateway,
   registerOfficialFakeAiProvider,
+  type AiGatewayCapabilityRegistry,
+  type ProfiledAiGateway,
 } from '@loom-studio/ai-gateway'
 import { describe, expect, it, vi } from 'vitest'
 import type { JsonValue } from '@loom-studio/shared'
-import { createAiGatewayOperations } from '../../../apps/studio-server/src/rpc/trpc/ai-operations.js'
+import { aiRouter } from '../../../apps/studio-server/src/rpc/trpc/services.js'
+import type { StudioTrpcContext } from '../../../apps/studio-server/src/rpc/trpc/context.js'
+import type { StudioRpcServices } from '../../../apps/studio-server/src/rpc/trpc/services-context.js'
 
-function callAiGatewayRpc(services: Parameters<typeof createAiGatewayOperations>[0], method: `ai.${keyof ReturnType<typeof createAiGatewayOperations>}`, params?: JsonValue) {
-  return createAiGatewayOperations(services)[method.slice(3) as keyof ReturnType<typeof createAiGatewayOperations>](params)
+function caller(services: { registry: AiGatewayCapabilityRegistry; gateway: ProfiledAiGateway }) {
+  const runtime = {} as StudioTrpcContext['runtime']
+  return aiRouter.createCaller({
+    runtime,
+    request: {},
+    services: {
+      applicationRuntime: runtime,
+      kernel: {} as StudioRpcServices['kernel'],
+      aiCapabilities: services.registry,
+      aiGateway: services.gateway,
+    },
+  })
 }
 
 describe('AI Gateway RPC', () => {
@@ -42,12 +56,12 @@ describe('AI Gateway RPC', () => {
     ])
     const createRun = vi.spyOn(gateway, 'createRun')
     try {
-      const created = await callAiGatewayRpc({ registry, gateway }, 'ai.run.create', {
+      const created = await caller({ registry, gateway }).run.create({
         profileId: 'profile', input: {},
       }) as { runId: string }
       const rpcResult = await createRun.mock.results[0]!.value.result
       expect(rpcResult.output).toEqual(output)
-      expect(await callAiGatewayRpc({ registry, gateway }, 'ai.run.subscribe', { runId: created.runId })).toMatchObject({
+      expect(await caller({ registry, gateway }).run.subscribe({ runId: created.runId })).toMatchObject({
         state: 'completed',
         events: [
           { type: 'started', runId: created.runId },
@@ -74,10 +88,10 @@ describe('AI Gateway RPC', () => {
       }),
     })
 
-    await expect(callAiGatewayRpc({ registry, gateway }, 'ai.providers.list', {})).resolves.toMatchObject({
+    await expect(caller({ registry, gateway }).providers.list()).resolves.toMatchObject({
       providers: [{ id: 'official.fake' }],
     })
-    await expect(callAiGatewayRpc({ registry, gateway }, 'ai.invoke', {
+    await expect(caller({ registry, gateway }).invoke({
       profileId: 'profile-1',
       input: { messages: [{ role: 'user', content: 'rpc' }] },
     })).resolves.toMatchObject({
@@ -112,14 +126,19 @@ describe('AI Gateway RPC', () => {
       }),
     })
     const services = { registry, gateway }
-    const created = await callAiGatewayRpc(services, 'ai.run.create', { profileId: 'profile-1', input: {} }) as { runId: string }
-    await expect(callAiGatewayRpc(services, 'ai.run.state', { runId: created.runId })).resolves.toMatchObject({ state: 'running' })
-    await expect(callAiGatewayRpc(services, 'ai.run.cancel', { runId: created.runId, reason: 'user-stop' })).resolves.toMatchObject({ runId: created.runId })
-    await expect(callAiGatewayRpc(services, 'ai.run.subscribe', { runId: created.runId })).resolves.toMatchObject({
+    await expect(caller(services).run.state({ runId: 'missing' })).rejects.toThrow('Gateway run not found: missing')
+    const created = await caller(services).run.create({ profileId: 'profile-1', input: {} }) as { runId: string }
+    await expect(caller(services).run.state({ runId: created.runId })).resolves.toMatchObject({ state: 'running' })
+    await expect(caller(services).run.cancel({ runId: created.runId, reason: 'user-stop' })).resolves.toMatchObject({ runId: created.runId })
+    await expect(caller(services).run.subscribe({ runId: created.runId })).resolves.toMatchObject({
       events: [
         { type: 'started' },
         { type: 'cancelled', reason: 'user-stop' },
       ],
+      state: 'cancelled',
+    })
+    await expect(caller(services).run.subscribe({ runId: created.runId, cursor: 1 })).resolves.toMatchObject({
+      events: [{ type: 'cancelled', reason: 'user-stop' }],
       state: 'cancelled',
     })
   })

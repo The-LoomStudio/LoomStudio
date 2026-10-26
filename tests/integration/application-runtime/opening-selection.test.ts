@@ -70,7 +70,7 @@ describe('opening selection', () => {
       expect(created.timeline.opening).toEqual({ id: 'default', nodeId: created.nodes[0]!.id, locked: false })
       const target = { timelineId: created.timeline.id, branchId: created.branch.id }
       const scope = await context.states.getScope({ kind: 'timeline', ownerId: target.timelineId })
-      const configured = await context.engine.transact({ actor: { kind: 'system', id: 'test' } }, tx => {
+      const configured = await context.engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
         const state = context.states.transaction(tx).createRevision({
           scopeId: scope!.id, parentRevisionId: created.branch.stateHeadRevisionId,
           snapshot: { configured: true }, operations: [],
@@ -195,7 +195,7 @@ describe('opening selection', () => {
       await expect(runtime.createNarrativeTimeline({ cardId, openingId: 'default', openingContent: '' })).rejects.toThrow('not both')
       await handleTimelineRpc(runtime, 'application.createNarrativeTimeline', { cardId, openingId: 'meeting' })
       await expect(handleTimelineRpc(runtime, 'application.createNarrativeTimeline', { cardId, openingContent: 42 }))
-        .rejects.toThrow('Expected optional string param: openingContent')
+        .rejects.toMatchObject({ code: 'BAD_REQUEST', cause: { issues: [{ code: 'invalid_type', path: ['openingContent'], expected: 'string' }] } })
       await expect(handleCardsRpc(runtime, 'application.updateCard', {
         cardId, opening: { content: '', alternatives: [{ title: 'Missing content' }] },
       })).rejects.toThrow('Expected single opening content')

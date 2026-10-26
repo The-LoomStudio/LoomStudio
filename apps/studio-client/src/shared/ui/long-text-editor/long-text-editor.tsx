@@ -22,6 +22,7 @@ const MarkdownPreview = lazy(async () => {
 })
 
 type LongTextEditorBaseProps = {
+  language?: 'markdown' | 'javascript' | 'loom-script'
   hideLabel?: boolean
   headerExtra?: ReactNode
   clearLabel: string
@@ -96,6 +97,7 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
   useImperativeHandle(ref, () => ({
     focus: () => codeEditorRef.current?.focus(),
     undo: () => codeEditorRef.current?.undo() ?? false,
+    revealLine: line => codeEditorRef.current?.revealLine(line),
   }), [])
 
   useEffect(() => {
@@ -230,6 +232,7 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
         )}>
           <CodeMirrorEditor
             ref={codeEditorRef}
+            language={props.language}
             autoFocus={props.autoFocus}
             hidden={props.mode !== 'source'}
             disabled={props.disabled}

@@ -1,4 +1,4 @@
-import type { ObservationRecord, ObservationSource, ObservationStep } from '../widgets/observability-workbench/observation-view.js'
+import type { ObservationRecord, ObservationSource, ObservationStep } from '../features/observability/model/observation-view.js'
 
 const sources: ObservationSource[] = [
   { id: 'preset', parentId: 'preset-root', orderIndex: 0, activationKind: 'always', nodeKind: 'entry', included: true, title: '叙事约定', path: '诺姆 / 写作预设 / 开场', active: true, reason: '预设原位输出 → system message', original: '你是 {{char}} 的叙事搭档。保持克制，通过动作与对话推进故事。', rendered: '你是 诺姆 的叙事搭档。保持克制，通过动作与对话推进故事。' },

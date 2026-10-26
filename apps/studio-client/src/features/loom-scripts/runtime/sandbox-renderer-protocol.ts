@@ -1,4 +1,4 @@
-import { createFrameRequestClient, type ClientNotification, type ClientRendererContext, type LoomSandboxRendererInput, type LoomSandboxRendererWireContext, type IframeRequestResult } from '@loom-studio/extension-sdk'
+import { createFrameRequestClient, type ClientNotification, type ClientRendererContext, type LoomSandboxRendererInput, type LoomSandboxRendererWireContext } from '@loom-studio/extension-sdk'
 import type { JsonValue } from '@loom-studio/shared'
 import { mountIsolatedFrame } from '../../../shared/iframe-runtime/frame-lifecycle.js'
 import { isFrameRecord, serveFrameRequests } from '../../../shared/iframe-runtime/frame-channel.js'
@@ -13,6 +13,7 @@ export type LoomSandboxRendererInstanceOptions = {
   scriptDocumentId: string
   documentVersion: number
   source: string
+  settings?: Readonly<Record<string, string | number | boolean>>
   stateRead(target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }): Promise<JsonValue>
   notify?(input: ClientNotification): void | Promise<void>
   onClose(): void
@@ -28,9 +29,7 @@ export function mountLoomSandboxRenderer(root: HTMLElement, context: ClientRende
   const requests = serveFrameRequests(channel.port1, {
     async handle(method, params) {
       const capability = method === 'state.read' ? 'state.read' : method === 'notifications.show' ? 'ui.notify' : undefined
-      const result = await resolveLoomSandboxCapability({ capability, input: params }, options.grantedCapabilities, options.stateRead, options.notify)
-      if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code })
-      return result.value
+      return resolveLoomSandboxCapability({ capability, input: params }, options.grantedCapabilities, options.stateRead, options.notify)
     },
     onInvalidMessage: () => options.onDiagnostic({ code: 'renderer.sandbox_failed', message: 'Invalid iframe request envelope' }),
   })
@@ -87,39 +86,39 @@ export async function resolveLoomSandboxCapability(
   grantedCapabilities: readonly string[],
   stateRead: LoomSandboxRendererInstanceOptions['stateRead'],
   notify?: LoomSandboxRendererInstanceOptions['notify'],
-): Promise<IframeRequestResult> {
+): Promise<JsonValue> {
   if (!isFrameRecord(request) || (request.capability !== 'state.read' && request.capability !== 'ui.notify')) {
-    return { ok: false, error: { code: 'capability.invalid_request', message: 'Unknown capability request' } }
+    throw Object.assign(new Error('Unknown capability request'), { code: 'capability.invalid_request' })
   }
   if (!grantedCapabilities.includes(request.capability)) {
-    return { ok: false, error: { code: 'capability.denied', message: `Capability ${request.capability} is not granted` } }
+    throw Object.assign(new Error(`Capability ${request.capability} is not granted`), { code: 'capability.denied' })
   }
   try {
     if (request.capability === 'ui.notify') {
       const notification = readClientNotification(request.input)
       if (!notify) throw new Error('Notification host is unavailable')
       await notify(notification)
-      return { ok: true, value: null }
+      return null
     }
     const target = isFrameRecord(request.input) ? request.input.target : undefined
     if (!isFrameRecord(target) || (target.scope !== 'global' && !(target.scope === 'timeline'
       && typeof target.timelineId === 'string' && target.timelineId.length > 0
       && typeof target.branchId === 'string' && target.branchId.length > 0))) {
-      return { ok: false, error: { code: 'capability.invalid_request', message: 'Invalid state.read target' } }
+      throw Object.assign(new Error('Invalid state.read target'), { code: 'capability.invalid_request' })
     }
-    return { ok: true, value: await stateRead(target.scope === 'global' ? { scope: 'global' } : {
+    return await stateRead(target.scope === 'global' ? { scope: 'global' } : {
       scope: 'timeline', timelineId: target.timelineId as string, branchId: target.branchId as string,
-    }) }
+    })
   } catch (error) {
-    return { ok: false, error: {
+    throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), {
       code: isFrameRecord(error) && typeof error.code === 'string' ? error.code : 'capability.failed',
-      message: error instanceof Error ? error.message : String(error),
-    } }
+    })
   }
 }
 
 function toWireContext(context: ClientRendererContext, options: LoomSandboxRendererInstanceOptions, inputs: readonly LoomSandboxRendererInput[]): LoomSandboxRendererWireContext {
   return {
+    scriptSettings: structuredClone(options.settings ?? {}),
     identity: { scriptDocumentId: options.scriptDocumentId, documentVersion: options.documentVersion, contributionId: options.contributionId },
     surface: context.surface,
     scope: structuredClone(context.scope),
@@ -170,7 +169,7 @@ function context(value){
   const theme=value.host?.themeSnapshot;
   if(theme?.version===1){document.documentElement.style.colorScheme=theme.colorScheme;for(const [name,value] of Object.entries(theme.tokens))document.documentElement.style.setProperty(name,value);}
   if(value.host?.locale){document.documentElement.lang=value.host.locale;}
-  return {...value,close:()=>port.postMessage({type:'loom.renderer.close',instanceId}),
+  return {...value,scriptSettings:Object.freeze(value.scriptSettings??{}),close:()=>port.postMessage({type:'loom.renderer.close',instanceId}),
     notifications:{show:async input=>{await client.request('notifications.show',input);}},
     capabilities:{request:request=>request?.capability==='state.read'?client.request('state.read',request.input):request?.capability==='ui.notify'?client.request('notifications.show',request.input):Promise.reject(new Error('Unknown capability'))}};
 }

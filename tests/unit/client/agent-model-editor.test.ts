@@ -1,7 +1,8 @@
+import { AgentModelSelection } from '../../../apps/studio-client/src/features/provider-settings/ui/agent-model-selection.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
-import { AgentModelEditor } from '../../../apps/studio-client/src/widgets/agent-panel/agent-model-editor.js'
-import { AgentModelPicker } from '../../../apps/studio-client/src/widgets/agent-panel/agent-model-picker.js'
+import { AgentModelEditor } from '../../../apps/studio-client/src/features/prompt-resources/ui/agent-model-editor.js'
+import { AgentModelPicker } from '../../../apps/studio-client/src/features/provider-settings/ui/agent-model-picker.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[] }))
@@ -32,8 +33,9 @@ function fixture() {
   const props: ComponentProps<typeof AgentModelEditor> = {
     preset: { id: 'preset', version: 2, resourceKind: 'preset', rootNode: { id: 'root', kind: 'module', label: 'Agent' },
       model: { providerProfileId: 'provider', modelId: 'original' }, createdAt: '', updatedAt: '' },
-    modelProfiles: [], providerAccounts: [], t: createTranslator('en-US'),
-    onCreateModel: vi.fn().mockResolvedValue(undefined), onListModels: vi.fn(),
+    t: createTranslator('en-US'),
+    renderModelPicker: input => AgentModelSelection({ ...input, modelProfiles: [], providerAccounts: [], t: props.t, onListModels: async () => [] }),
+    onCreateModel: vi.fn().mockResolvedValue(undefined),
     onSave: vi.fn().mockImplementation(async input => ({ ...props.preset, version: props.preset.version + 1, model: input.model, approvalPolicy: input.approvalPolicy })),
   }
   const render = () => { hooks.cursor = 0; return elements(AgentModelEditor(props)) }

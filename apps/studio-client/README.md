@@ -2,7 +2,7 @@
 
 > **状态**：Active Workspace Guide / Current Source Is Authority
 
-Studio Client 是 React/Vite Web Client，负责页面组合、交互状态和 typed RPC 消费。它不直接访问 Kernel、SQLite、文件系统或 `@loom/core`。
+Studio Client 是 React/Vite Web Client，负责页面组合、交互状态和 typed RPC 消费。它不直接访问 Kernel、SQLite或文件系统。
 
 ## 任务到文件与验证入口
 
@@ -13,13 +13,12 @@ Studio Client 是 React/Vite Web Client，负责页面组合、交互状态和 t
 | 角色卡列表、创建、选择、Card | [use-cards.ts](src/features/cards/model/use-cards.ts)、[character-panel/](src/widgets/character-panel/) | [card-operation-failures.test.ts](../../tests/unit/client/card-operation-failures.test.ts) |
 | 角色资料/开场编辑、远程导入、目录发现 | [use-character-profile-editor.ts](src/features/cards/model/use-character-profile-editor.ts)、[use-remote-card-import.ts](src/features/cards/model/use-remote-card-import.ts)、[use-card-directory-discovery.ts](src/features/cards/model/use-card-directory-discovery.ts) | [card-editor-lifecycle.test.ts](../../tests/unit/client/card-editor-lifecycle.test.ts)；Widget 布局仍归 CharacterPanel |
 | 历史面板预览、批量删除结果 | [use-history-previews.ts](src/features/sessions/model/use-history-previews.ts)、[delete-history-items.ts](src/features/sessions/model/delete-history-items.ts) | [sessions-panel-source.test.ts](../../tests/unit/client/sessions-panel-source.test.ts) |
-| Timeline/Session 目录缓存、Run 轮询与重放 | [use-narrative-collections.ts](src/features/narrative-runtime/model/use-narrative-collections.ts)、[agent-run-observer.ts](src/features/narrative-runtime/model/agent-run-observer.ts) | [card-timeline-selection.test.ts](../../tests/unit/client/card-timeline-selection.test.ts)、[narrative-run-recovery.test.ts](../../tests/unit/client/narrative-run-recovery.test.ts) |
+| Timeline/Session 目录缓存、Run 控制与重放 | [use-narrative-collections.ts](src/features/narrative-runtime/model/use-narrative-collections.ts)、[use-session-run.ts](src/features/narrative-runtime/model/use-session-run.ts)、[agent-run-observer.ts](src/features/narrative-runtime/model/agent-run-observer.ts) | [card-timeline-selection.test.ts](../../tests/unit/client/card-timeline-selection.test.ts)、[narrative-run-recovery.test.ts](../../tests/unit/client/narrative-run-recovery.test.ts)、[use-timeline-session.test.ts](../../tests/unit/client/use-timeline-session.test.ts) |
 | Text Transform 作者编辑与运行检查 | [use-text-transform-controller.ts](src/features/text-transforms/model/use-text-transform-controller.ts)、[use-text-transform-inspection.ts](src/features/text-transforms/model/use-text-transform-inspection.ts) | [text-transform-source.test.ts](../../tests/unit/client/text-transform-source.test.ts) |
 | 剧情、主写作、Agent Session、输入投递 | [use-narrative-runtime.ts](src/features/narrative-runtime/model/use-narrative-runtime.ts) | [use-narrative-runtime.test.ts](../../tests/unit/client/use-narrative-runtime.test.ts)、[narrative-session-lifecycle.test.ts](../../tests/unit/client/narrative-session-lifecycle.test.ts) |
 | Session 搜索、改名、查看与主对话选择 | [agent-session-picker.tsx](src/widgets/agent-chat-panel/agent-session-picker.tsx) | [agent-session-picker.test.ts](../../tests/unit/client/agent-session-picker.test.ts) |
-| Agent Preset、预设选择与 Lore 使用 | [use-agent-presets.ts](src/features/agent-presets/model/use-agent-presets.ts)、[preset-workbench.tsx](src/widgets/preset-workbench/preset-workbench.tsx) | [preset-lore-uses.test.ts](../../tests/unit/client/preset-lore-uses.test.ts)（使用配置 UI） |
-| 世界书、Context Assets、资源树操作 | [tree-ops.ts](src/features/context-assets/model/tree-ops.ts)、[use-context-assets.ts](src/features/context-assets/model/use-context-assets.ts) | [context-assets.test.ts](../../tests/unit/client/context-assets.test.ts) |
-| 投影、projection order、编排视图 | [projection-order.ts](src/features/context-assets/model/projection-order.ts)、[projection-workbench.ts](src/features/context-assets/model/projection-workbench.ts) | [projection-order.test.ts](../../tests/unit/client/projection-order.test.ts)、[projection-workbench.test.ts](../../tests/unit/client/projection-workbench.test.ts) |
+| Agent Preset、预设选择与 Lore 使用 | [use-agent-presets.ts](src/features/prompt-resources/model/use-agent-presets.ts)、[preset-workbench.tsx](src/widgets/preset-workbench/preset-workbench.tsx) | [preset-lore-uses.test.ts](../../tests/unit/client/preset-lore-uses.test.ts)（使用配置 UI） |
+| 世界书、Context Assets、资源树操作 | [tree-ops.ts](src/features/prompt-resources/model/tree-ops.ts)、[use-context-assets.ts](src/features/prompt-resources/model/use-context-assets.ts) | [context-assets.test.ts](../../tests/unit/client/context-assets.test.ts) |
 | PromptBuild 展示步骤 | [build-prompt-build-steps.ts](src/features/prompt-build/model/build-prompt-build-steps.ts) | [prompt-build-steps.test.ts](../../tests/unit/client/prompt-build-steps.test.ts) |
 | Provider 账号、模型选择、凭据表单 | [use-provider-settings.ts](src/features/provider-settings/model/use-provider-settings.ts) | [provider-settings.test.ts](../../tests/unit/client/provider-settings.test.ts) |
 | typed API、RPC 方法映射 | [studio-api.ts](src/shared/api/studio-api.ts) | [studio-api.test.ts](../../tests/unit/client/studio-api.test.ts) |
@@ -61,14 +60,20 @@ pnpm exec vitest run tests/unit/client
 
 `/dev/preview/observability` 是“模型日志”的开发样例预览，固定使用样例；正式入口“日志 → 模型日志”读取后端临时观测。支持记录搜索/分类、步骤切换、消息展开与来源跳转、宏变量、工具和单步用量视图；窄屏下钻返回、列表宽度拖动均只保存在内存中。顶部可切换正常、运行中、失败、空列表和较多记录（也可用 `?scene=normal|running|failed|empty|many`），运行中为固定状态样例。所有内容与数字均为示例，不代表已有 Trace 字段或真实调用结果。
 
-模型日志展示组件位于 `src/widgets/observability-workbench/`；`observation-view.ts` 只定义 UI 输入，不是后端契约。样例与场景控制位于 `src/dev-preview/observability-fixtures.ts`、`observability-preview.tsx`。正式数据通过 `features/observability/` 和 `observations.*` 只读 RPC 按记录、步骤懒加载，样例入口继续复用同一组件。本草稿复用不含持久状态的 `WindowColumnLayout`，避免导入会初始化布局 Storage 的工作台宿主。整体 UI 方向已获用户认可，具体状态与真实业务接入继续迭代，已确认目标见[模型日志计划](../../docs/workbench/plans/prompt-run-observability-plan.md)。
+模型日志领域模型与局部展示位于 `src/features/observability/`，完整工作台和跨 Feature 接线位于 `src/widgets/log-viewer/`；`observation-view.ts` 只定义 UI 输入，不是后端契约。样例与场景控制位于 `src/dev-preview/observability-fixtures.ts`、`observability-preview.tsx`。正式数据通过 `features/observability/` 和 `observations.*` 只读 RPC 按记录、步骤懒加载，样例入口继续复用同一组件。本草稿复用不含持久状态的 `WindowColumnLayout`，避免导入会初始化布局 Storage 的工作台宿主。整体 UI 方向已获用户认可，具体状态与真实业务接入继续迭代，已确认目标见[模型日志计划](../../docs/archive/plans/prompt-run-observability-plan.md)。
 
 开发预览仅在 Vite 开发环境显式注册，认证和业务初始化前分流，不访问真实数据或持久 Storage。启动 Client 后打开 `/dev/preview/narrative-session`，体验 Timeline Session 统一交互草稿；`?scene=empty` 从空白开始，`?scene=long` 展示较多轮次。页面内可重播工具/正文流程、讨论修订、整轮 Swipe、切换候选/预设/输出模式，以及查看副 Session 和上下文投影。模拟输出为固定样例，不调用模型。
 
 
-预览注册位于 `src/dev-preview/preview-entry.tsx`，样例与模拟控制器位于 `src/dev-preview/narrative-session-preview.tsx`，可复用展示组件位于 `src/widgets/narrative-session/`。新增预览必须同时在 `main.tsx` 的开发分流和显式注册中列出路径；不得加入生产路由。旧消息 HTML 演示未恢复，回归样例保留在 `tests/fixtures/client/message-html-examples.ts`。
+流式阅读草稿仍使用该路由：`?scene=streaming` 自动播放长思考、工具参数与多段正文；顶部可切换慢速、均匀、突发并暂停/单步。副 Session 复用正式 `AgentChatPanel`，点击「重播副 Session」独立播放。新跟随与限高行为已接入正式 Timeline 和副 Session；真实增量继续消费现有 Run API，详情见 [局部 README](src/dev-preview/narrative-session/README.md) 和 [实施计划](../../docs/archive/plans/ui/streaming-reading-preview-plan.md)。
 
-该预览对应的[融合架构构想](../../docs/workbench/drafts/narrative-timeline-session-unification.md)已转为 Draft、暂不实施。页面保留为交互参考；后续 UI 改善以现有 Timeline 与 Session 双模型为前提，不能把样例直接接为融合后端。
+预览注册位于 `src/dev-preview/preview-entry.tsx`，样例与模拟控制器位于 `src/dev-preview/narrative-session-preview.tsx`，正式复用展示和轮次投影位于 `src/features/narrative-runtime/`，预览宿主与预览 Composer 位于 `src/dev-preview/narrative-session/`。新增预览必须同时在 `main.tsx` 的开发分流和显式注册中列出路径；不得加入生产路由。旧消息 HTML 演示未恢复，回归样例保留在 `tests/fixtures/client/message-html-examples.ts`。
+
+`/dev/preview/dashboard` 提供 Dashboard 浮层草稿：复用通用 Dialog，桌面大窗口、窄屏接近全屏，关闭后保留模拟故事位置。包含概览、模型用量、游玩统计、资源、数据与存储五个视图；支持日期范围、每日柱状图选择、提供商筛选、角色搜索与排序、角色 / 提供商 / 存储分类下钻和返回。快捷管理关闭浮层并显示模拟工作区落点，再次打开保留视图与筛选。窗口标题栏切换正常、空数据、较多角色场景（也支持 `?scene=empty|many`），重置恢复内存样例。
+
+Dashboard 展示组件为 `src/widgets/dashboard/dashboard-panel.tsx` 的 `DashboardDialog` / `DashboardPanel`，输入与操作意图位于 `dashboard-view.ts`；样例与宿主位于 `src/dev-preview/dashboard-fixtures.ts`、`dashboard-preview.tsx`。输入 `data / period`，通过 `onPeriodChange / onAction` 交给宿主处理；该类型仅为 UI 输入，不是已确定的 RPC 或持久化合同。预览页的用量、资源、分类空间及磁盘剩余仍是模拟数据，无业务请求或真实管理操作。正式 Dashboard 由 `src/app/studio-dashboard.tsx` 与 `src/features/dashboard/model/use-dashboard.ts` 接线，从工作区「活动」分组的历史下方打开浮层；查询真实统计、分页调用记录、当前资源库存及按需存储快照，快捷管理进入现有页面。已取消游玩时长，不增加活动监听。采集起点、累计保留口径、验证证据及剩余限制见 [Dashboard 实施方案](../../docs/workbench/plans/dashboard-statistics-and-resource-inventory-plan.md)。
+
+该预览对应的[融合架构计划](../../docs/archive/plans/narrative-timeline-session-unification-plan.md)于 2026-10-24 重新授权实施。预览本身继续使用内存样例，不代表真实后端已接通；正式接线及实际验证范围见实施计划。
 
 正式搜索入口位于工作区左上角，也可按 `⌘K` / `Ctrl+K`。最近访问仅记录本次应用会话中从搜索打开的条目。正式 Narrative 与 Agent 消息消费 `features/message-content`，完整 HTML 文档使用隔离 iframe。
 
@@ -172,3 +177,22 @@ URL / History 路由导航       -> React Router
 - [Logging Architecture](../../docs/architecture/platform/logging.md)
 
 `/dev/preview/scene-card` 运行同一份[场景背景卡脚本](../../docs/architecture/extensions/examples/scene-background-card.md)，复用 Script Runtime 和 Renderer 宿主，使用仓库官方图片与内存资源目录。支持切图、展开、停用、局部刷新、模拟缺包及下载；不调用业务 API，也不自动安装或授权脚本。
+
+`/dev/preview/scripts` 复用正式 `ScriptManagementPanel`，提供正常、空列表与较多脚本的交互预览。正常场景包含“全局停用、角色启用”的同一脚本，用于核对各范围开关及全部停用。API 和布局 Storage 均使用当前预览文档内存，不调用业务接口、不执行源码；关闭详情与停用实例是独立操作。只在开发环境注册，视觉与交互方向待用户验收。
+
+`/dev/preview/presets` 提供预设库草稿：按个人、作者套件与官方来源浏览，以浮层打开单个预设的配置，保留底下的目录、筛选与滚动位置；修改即时作用于内存样例，点击浮层外、关闭按钮或按 Escape 关闭，无需保存或返回步骤；浮层标题下固定并列的模型与审批、Lore、正则 / 提取器、工具、脚本 / 模块标签；各标签内容独立滚动，模型页包含模型选择、流式输出与工具审批，再独立进入消息编排，查看公共资源与实际采用关系，再通过双栏将条目、分组或整条 Message 复制到当前预设。包含正常、空列表、较多内容、长名称与嵌套样例；可编辑样例文本、采用资源、复制及撤销上次复制。刷新或重置后恢复样例，数据和布局 Storage 只在内存中，不请求业务接口。样例入口仅开发环境可用；目录与配置浮层宿主已被正式预设面板复用，双栏复制仍为预览能力。
+
+正式预设面板现在默认显示来源目录。点击名称、图标或行主体进入当前预设的消息编排；只有“配置”按钮打开浮层。目录使用 `PresetLibraryCatalog`，浮层使用 `PresetConfigurationDialog`，两者也供预览复用。正式配置复用现有模型选择、审批、Lore、正则/提取器及工具挂载，按顶部标签切换；修改立即保存，保存中阻止重复写入与关闭，失败保留提示与重试。编排的深链接、节点编辑和导入导出继续使用原接口，返回库目录保留筛选和列表位置。脚本/模块预设绑定与跨预设双栏复制尚未接入正式业务。
+
+展示组件位于 `src/features/prompt-resources/ui/preset-library/preset-library-workbench.tsx`；样例和操作位于 `src/dev-preview/preset-library-fixtures.ts`、`preset-library-preview.tsx`。正式接入时复用展示组件及其 `presets / sources / resources / models / tools` 输入和配置、编辑、采用、复制回调；当前复制资源选项沿用来源预设的全部资源引用，不自动推断条目依赖，也不复制公共资源实体。套件来源、模型连接和工具目录均为样例展示，不预设正式扩展包 Schema 或更新策略。配置浮层与编排页采用同一份内存数据；模型、审批、Lore 来源开关与工具只演示选择，不连接真实 Provider 或执行工具。
+
+动态扩展 RPC adapter 与会话恢复位于 `src/shared/api/client-bridge.ts`、`session-fetch.ts`，与 typed client 共用 session fetch，不再独立为 workspace 包。
+
+### 目录归属收敛（2026-10-25）
+
+- `features/prompt-resources` 统一资源库、树编辑和预设选择，`usePromptResourceWorkspace` 连接快照与草稿；`features/agent-presets/model/use-agent-tools.ts` 仅保留独立工具管理。
+- `features/provider-settings/ui` 拥有模型选择与品牌图标，预设模型绑定位于 `features/prompt-resources/ui`，由 PresetWorkbench 组合。
+- `features/sessions` 拥有共用 Transcript 渲染构造、工具展示、创建对话框和摘要状态；聊天、历史和记忆 Widget 保留各自布局。
+- `widgets/text-transform-workbench` 组合文本转换与 `loom-scripts` 的局部状态；`widgets/extension-workbench` 将脚本管理注入扩展工作台，Feature 不导入兄弟 Feature。
+
+实施合同与验证范围见[前端目录边界计划](../../docs/archive/plans/frontend-feature-boundary-consolidation-plan.md)。

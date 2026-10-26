@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { Button, Dialog } from '@loom-studio/ui'
-import { MessageSquare, RefreshCw, RotateCcw } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import type { NarrativeSwipeView } from '../model/use-narrative-runtime.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { SwipeControl } from '../../../shared/ui/swipe-control/swipe-control.js'
@@ -12,7 +12,6 @@ export function NarrativeSwipePicker(props: {
   busy: boolean
   primarySessionId?: string
   onSelect(candidateId: string): void
-  onOpenSession?(): void
   onGenerate(mode: 'swipe' | 'regenerate' | 'retry', allowSessionChange?: boolean): void
   t: Translator
 }) {
@@ -34,15 +33,10 @@ export function NarrativeSwipePicker(props: {
     else props.onGenerate(mode)
   }
   return <>
-    {candidates[index]?.status === 'failed' ? <>
-      <span role="status">{t('swipe.noBody')}</span>
-      {props.onOpenSession ? <ConversationMessageAction label={t('swipe.viewRun')} onClick={props.onOpenSession}><MessageSquare aria-hidden="true" /></ConversationMessageAction> : null}
-    </> : null}
+    {candidates[index]?.status === 'failed' ? <span role="status">{t('swipe.noBody')}</span> : null}
     {swipe.reason ? <span role="status">{swipe.reason}</span> : null}
-    {index >= 0 ? <>
-      <ConversationMessageAction disabled={!canGenerate} label={t('swipe.regenerate')} onClick={() => generate('regenerate')}><RefreshCw aria-hidden="true" /></ConversationMessageAction>
-    </> : null}
-    {canRetry ? <ConversationMessageAction disabled={!canGenerate} label={t('swipe.retry')} onClick={() => generate('retry')}><RotateCcw aria-hidden="true" /></ConversationMessageAction> : null}
+    <ConversationMessageAction disabled={!canGenerate} label={t(canRetry ? 'swipe.retry' : 'swipe.regenerate')}
+      onClick={() => generate(canRetry ? 'retry' : 'regenerate')}><RotateCcw aria-hidden="true" /></ConversationMessageAction>
     {index >= 0 ? <SwipeControl index={index} count={candidates.length} disabled={!canSelect}
       previousLabel={t('swipe.previous')} nextLabel={t(index === candidates.length - 1 ? 'swipe.generate' : 'swipe.next')} chooseLabel={t('swipe.choose')}
       onGenerateNext={canGenerate ? () => generate('swipe') : undefined}

@@ -1,3 +1,4 @@
+import { dashboardRouter } from './dashboard.js'
 import { observabilityProcedures } from './application/observability.js'
 import { agentsProcedures } from './application/agents.js'
 import { cardsProcedures } from './application/cards.js'
@@ -17,6 +18,7 @@ import { extensionsRouter, kernelRouter, platformRouters } from './kernel.js'
 import { aiRouter, directoriesRouter, logsRouter, officialRouter, settingsRouter } from './services.js'
 
 export const studioTrpcRouter = t.router({
+  dashboard: dashboardRouter,
   ...platformRouters,
   extensions: extensionsRouter, kernel: kernelRouter,
   official: officialRouter, settings: settingsRouter, logs: logsRouter, directories: directoriesRouter, ai: aiRouter,

@@ -8,7 +8,7 @@ export function useStudioDerivedState(
     selectedCardDetails?: { id: string; name: string; media?: { avatarAssetId?: string } }
     narrativeTimeline?: { createdFrom?: { cardId?: string } }
     cards: Array<{ id: string; name: string; media?: { avatarAssetId?: string } }>
-    narrativeAgentSession?: { agentPresetId: string }
+    narrativeAgentSession?: { agentPresetId?: string }
     operationPending: Record<string, { pendingCount: number }>
     startup: { ready(area: 'cards' | 'providers' | 'tools'): boolean }
     presetResourcesReady: boolean

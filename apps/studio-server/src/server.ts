@@ -1,3 +1,6 @@
+import { createStorageSnapshot } from './statistics/storage-snapshot.js'
+import { readSqliteSpaceUsage } from '@loom-studio/data-engine'
+import { createStatisticsStore } from '@loom-studio/application-data'
 import { createExtensionAgentTasks } from './extensions/extension-agent-tasks.js'
 import { createExtensionApplicationAdapter } from './extensions/extension-application-adapter.js'
 import { createCardTransferService } from './codecs/card-transfer-service.js'
@@ -26,7 +29,7 @@ import {
 } from '@loom-studio/ai-gateway'
 import { createAgentStore } from '@loom-studio/application-data'
 import { createAssetStore, type AssetStore } from '@loom-studio/asset-store'
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine, type SqliteDataEngine } from '@loom-studio/data-engine'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createSqliteDocumentStore, type DocumentStore } from '@loom-studio/document-store'
@@ -38,10 +41,8 @@ import { queryExtensionLogs, readLogFailure, type Logger, type LogReader, type L
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createPromptResourceStore, migrateLoreDocuments, type PromptResourceStore } from '@loom-studio/application-data'
 import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
-import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId, nowIso } from '@loom-studio/shared'
 import { createStateStore } from '@loom-studio/application-data'
-import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { join, resolve } from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -136,8 +137,6 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       })
     },
   }) : undefined
-  const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit })
   const aiCapabilities = createAiGatewayCapabilityRegistry()
   const macroProviders = createMacroProviderRegistry()
   const promptProcessors = createPromptProcessorRegistry()
@@ -146,14 +145,17 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   const stateContributions = createStateContributionRegistry()
   registerOfficialFakeAiProvider(aiCapabilities)
   const providerAdapters = createOfficialProviderAdapterRegistry({ aiCapabilities })
+  const statistics = dataEngine ? createStatisticsStore(dataEngine, nowIso, () => { diagnostics.add({ severity: 'warning', source: 'statistics', code: 'statistics.capture_failed', message: 'Usage recording failed; statistics may be incomplete.' }) }) : undefined
   const observations = createObservationStore({ persistencePath: join(localPaths.configRoot, 'observations') })
   const profiledAiGateway = createDocumentBackedProfiledAiGateway({
+    statistics,
     observations,
     documents,
     registry: aiCapabilities,
     secrets,
   })
   const baseGateway = createDocumentBackedAiGateway({
+    statistics,
     observations,
     documents,
     secrets,
@@ -308,10 +310,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     documents,
     dataCommits: dataEngine ?? documents,
     diagnostics,
-    traceAudit,
     extensionHost,
     extensionManager,
-    loomRunner,
   })
   const importConversions = createExtensionImportConversions(kernel)
   const scripts = createScriptService({
@@ -377,6 +377,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     saveImportedCard,
   })
   const rpcServices: StudioRpcServices = {
+    dashboard: statistics ? { statistics, storage: createStorageSnapshot(localPaths, options.sqlitePath ?? localPaths.databaseFile), database: () => readSqliteSpaceUsage(dataEngine!) } : undefined,
     scripts,
     directoryCatalog, directoryResources: resourceDirectories, directoryImporter, startupDirectoryScan,
     batchImporter: createExtensionBatchImporter({ kernel, runtime: applicationRuntime, assets, saveImportedCard }),

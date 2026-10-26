@@ -22,6 +22,11 @@
   min-width: 0;
 }
 
+.previewReservation {
+  overflow: clip;
+  transition: height 180ms ease-out;
+}
+
 .previewSkeleton {
   position: absolute;
   inset: 0;
@@ -37,6 +42,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .previewShell[data-ready] .preview { animation: none; }
+  .previewReservation { transition: none; }
 }
 
 .content {

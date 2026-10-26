@@ -1,0 +1,21 @@
+.host { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--loom-color-background); color: var(--loom-color-text); }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; padding: 12px 24px; border-bottom: 1px solid var(--loom-color-divider); }
+.toolbar > span { display: flex; align-items: center; gap: 10px; font-weight: var(--loom-font-weight-5); }
+.toolbar small { color: var(--loom-color-text-muted); font-size: var(--loom-font-size-2); font-weight: var(--loom-font-weight-1); }
+.workspace { flex: 1; min-height: 0; overflow: auto; padding: 40px 24px; }
+.story, .destination { max-width: 740px; margin: 0 auto; padding: 32px; }
+.story h1, .destination h1 { margin: 12px 0; font-size: var(--loom-font-size-8); }
+.subtitle { color: var(--loom-color-text-muted); font-size: var(--loom-font-size-3); }
+.kicker { display: block; margin-top: 12px; color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-2); }
+.prose { padding: 30px 0; line-height: 2; font-size: var(--loom-font-size-5); color: var(--loom-color-text-muted); }
+.help { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; border-top: 1px solid var(--loom-color-divider); padding-top: 18px; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-3); }
+.help p { flex: 1; line-height: var(--loom-line-height-body); }
+.destination > p { color: var(--loom-color-text-muted); line-height: var(--loom-line-height-body); margin-bottom: 24px; }
+.previewControls { display: flex; align-items: center; gap: 8px; font-size: var(--loom-font-size-2); color: var(--loom-color-text-muted); }
+.previewControls select { border: 0; border-bottom: 1px solid var(--loom-color-border); border-radius: 0; padding: 4px; background: var(--loom-color-surface); color: var(--loom-color-text); font: inherit; }
+@media (max-width: 640px) {
+  .toolbar { padding: 12px; }
+  .toolbar small, .previewControls > span { display: none; }
+  .workspace { padding: 24px 12px; }
+  .story, .destination { padding: 12px; }
+}

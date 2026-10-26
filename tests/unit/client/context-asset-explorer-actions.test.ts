@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
-import { ContextAssetExplorer } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-workbench.js'
+import { ContextAssetExplorer } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-workbench.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], cleanups: [] as (() => void)[] }))
@@ -58,6 +58,18 @@ function fixture() {
 }
 
 describe('Context Asset explorer action outcomes', () => {
+  it('uses preset-root display nodes to expose Message and history actions instead of text actions', () => {
+    const state = fixture()
+    state.props.displayNodes = [{ id: 'root', kind: 'folder', category: 'preset-root', label: 'Preset', children: [] }]
+    state.props.onAddMessageBlockNode = vi.fn()
+    state.props.onAddMessageSequenceNode = vi.fn()
+    const actions = (state.tree().props.getActions as (node: unknown) => Array<{ id: string }>)(state.props.displayNodes[0])
+    expect(actions.map(action => action.id)).toContain('addMessageBlock')
+    expect(actions.map(action => action.id)).toContain('addMessageSequence')
+    expect(actions.map(action => action.id)).not.toContain('add')
+    expect(actions.map(action => action.id)).not.toContain('duplicate')
+  })
+
   it.each(['add', 'duplicate', 'delete'])('keeps the current selection on failed %s', async action => {
     const state = fixture()
     await state.action(action)

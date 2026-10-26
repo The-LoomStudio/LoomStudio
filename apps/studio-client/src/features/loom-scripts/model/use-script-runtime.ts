@@ -49,7 +49,7 @@ export function useScriptRuntime(input: {
   }), [input.rendererHost, input.api, input.logger])
 
   const reconcile = useCallback(async () => {
-    runtime.renderer.reconcile(runtime.mounts.filter(mount => mount.script.runtime === 'client-sandbox'))
+    runtime.renderer.reconcile(runtime.mounts.filter(mount => mount.script.runtime === 'client-sandbox').map(mount => ({ ...mount, script: { ...mount.script, contributions: mount.script.contributions.filter(item => item.kind === 'renderer') } })))
     await runtime.client.reconcile(runtime.mounts, import.meta.env.DEV ? sceneScriptDevelopment.overrides() : undefined)
     if (!runtime.active) return
     for (const diagnostic of runtime.client.host.diagnostics()) {

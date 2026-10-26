@@ -4,9 +4,13 @@ import { ChatComposer, type ChatComposerQuickAction } from '../chat-composer/cha
 import styles from './agent-composer.module.scss'
 import { RunRecoveryControls, type RunRecoveryControlsProps } from '../../features/narrative-runtime/ui/run-recovery-controls.js'
 
-const AGENT_EXPANSION_MIN_HEIGHT = 220
-
 export type AgentComposerProps = RunRecoveryControlsProps & {
+  inputMode?: 'roleplay' | 'discussion'
+  onInputModeChange?(mode: 'roleplay' | 'discussion'): void
+  sendLeadingAction?: ReactNode
+  runStatus?: 'idle' | 'running' | 'suspended'
+  onPause?(): void
+  onResume?(): void
   inputRef?: Ref<HTMLTextAreaElement>
   canPreviewPrompt: boolean
   canSendNarrative: boolean
@@ -18,10 +22,8 @@ export type AgentComposerProps = RunRecoveryControlsProps & {
   narrativeTextareaDisabled: boolean
   quickActions?: readonly ChatComposerQuickAction[]
   t: Translator
-  agentPanelOpen?: boolean
   pinned?: boolean
   onTogglePinned?(): void
-  onToggleAgentPanel?(): void
   onChangeNarrativeInput(value: string): void
   onHeightChange?(height: number): void
   onPreviewPrompt(): void
@@ -78,16 +80,22 @@ export function AgentComposer(props: AgentComposerProps) {
       <div className={styles.foreground}>
       <ChatComposer
         inputRef={props.inputRef}
+        inputMode={props.inputMode}
+        onInputModeChange={props.onInputModeChange}
+        sendLeadingAction={props.sendLeadingAction}
+        runStatus={props.runStatus}
+        resumeWithInput={Boolean(props.inputMode)}
+        onPause={props.onPause}
+        onResume={props.onResume}
         canPreviewPrompt={props.canPreviewPrompt}
         canSend={props.canSendNarrative && !disconnected && !props.runRecoveryBusy}
-        expanded={props.agentPanelOpen}
         input={props.narrativeInput}
         moreLabel={props.t('composer.more')}
         pinLabel={props.t('composer.pin')}
         pinned={props.pinned}
         previewLabel={props.t('composer.preview')}
         quickActions={props.quickActions}
-        retryLabel={props.t('swipe.reset')}
+        retryLabel={props.inputMode === 'discussion' ? '重试这次沟通' : props.t('swipe.reset')}
         canRetry={props.canRetryNarrativeInput && !disconnected && !props.runRecoveryBusy}
         onRetry={props.onRetryNarrativeInput}
         sheet={props.composerSheet}
@@ -95,8 +103,8 @@ export function AgentComposer(props: AgentComposerProps) {
         resumeLabel={props.t('agent.run.resume')}
         sendLabel={props.t('composer.send')}
         textareaDisabled={!disconnected && props.narrativeTextareaDisabled}
-        textareaLabel={props.t('composer.inputLabel')}
-        toggleExpandedLabel={props.agentPanelOpen ? props.t('agent.hide') : props.t('agent.open')}
+        textareaLabel={props.inputMode ? props.inputMode === 'discussion' ? '沟通输入' : '扮演输入' : props.t('composer.inputLabel')}
+        placeholder={props.inputMode ? props.inputMode === 'discussion' ? '告诉 Agent 你想调整哪里……' : '你会怎么做？' : undefined}
         unpinLabel={props.t('composer.unpin')}
         onChangeInput={props.onChangeNarrativeInput}
         onHeightChange={props.onHeightChange}
@@ -105,15 +113,10 @@ export function AgentComposer(props: AgentComposerProps) {
           if (disconnected || props.runRecoveryBusy) { event.preventDefault(); return }
           props.onSubmitNarrative(event)
         }}
-        onToggleExpanded={props.onToggleAgentPanel}
         onTogglePinned={props.onTogglePinned}
       />
       </div>
       </div>
     </>
   )
-}
-
-export function clampAgentExpansionHeight(height: number, maximumHeight: number): number {
-  return Math.min(Math.max(AGENT_EXPANSION_MIN_HEIGHT, height), maximumHeight)
 }

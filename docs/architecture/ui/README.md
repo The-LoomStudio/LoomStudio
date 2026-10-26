@@ -35,5 +35,5 @@ Architecture / Application / UI:
 当前路线从 [UI Plan 索引](../../workbench/plans/ui/README.md) 进入。以下材料分别保留历史依据和当前计划，归档候选不自动成为待办：
 
 - [Workspace 与 Motion 历史设计](../../archive/discussion/ui/widget-workspace-and-motion-v0.md)
-- [`../../workbench/plans/ui/prompt-resource-diff-mode-v0.md`](../../workbench/plans/ui/prompt-resource-diff-mode-v0.md)
+- [`../../workbench/plans/ui/prompt-resource-diff-mode-v0.md`](../../workbench/drafts/prompt-resource-diff-mode-v0.md)
 - [第一方 UI 历史设计](../../archive/discussion/application/ui/README.md)

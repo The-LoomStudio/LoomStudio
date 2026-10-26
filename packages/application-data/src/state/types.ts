@@ -1,3 +1,4 @@
+import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type {
   DataActorRef,
   DataCommitFact,
@@ -33,13 +34,7 @@ export type StateSnapshot = {
   revision: StateRevision
 }
 
-export type StateWriteContext = {
-  actor: DataActorRef
-  reason?: string
-  correlationId?: string
-  callId?: string
-  parentCallId?: string
-}
+export type StateWriteContext = DataTransactionInput
 
 export type CreateStateScopeInput = {
   id?: string

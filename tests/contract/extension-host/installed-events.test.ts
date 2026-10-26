@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { createEventBus } from '@loom-studio/kernel'
 import { createExtensionFixture, createExtensionHostHarness, manifest } from './helpers.js'
 

@@ -1,3 +1,7 @@
+import { recordUserInteraction } from '@loom-studio/application-data'
+import { cloneToolSchema } from './tool-schema.js'
+import { createLoomContentScannerState, pushLoomContentChunk } from './content-transport.js'
+import type { SqliteDataTransaction } from '@loom-studio/data-engine'
 import { measureObservationSize } from '../observability/store.js'
 import { observationRequest } from '../observability/gateway.js'
 import type { ObservationRequest } from '../observability/types.js'
@@ -41,7 +45,7 @@ import type {
 } from '../types.js'
 import type { TextTransformRuleEntry } from '../transforms/history-text.js'
 import { codeActToolIds } from './codeact/prompts.js'
-import { classifyAssistantContent, decodeToolResponse, encodeToolResultMessage, scanContentTools } from './tool-response-protocol.js'
+import { classifyAssistantContent, decodeToolResponse, encodeToolResultMessage } from './tool-response-protocol.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { isExtensionResourceAvailable, readAvailableExtensionInstallations } from '../runtime/extension-resource-access.js'
 import type { AgentToolContent } from '../types.js'
@@ -271,6 +275,8 @@ type NativeToolLoopInput = {
   tokenMultiplier?: number
   initialMessages: ChatMessage[]
   recoveryRequest: InvokeAgentTurnInput
+  materialBaseline?: AgentRunRecoveryCheckpoint['materialBaseline']
+  retryRoundId?: string
   processedPrompt?: AgentRunRecoveryCheckpoint['processedPrompt']
   promptExtensionLeases?: AgentRunRecoveryCheckpoint['promptExtensionLeases']
   userInput: string
@@ -281,12 +287,14 @@ type NativeToolLoopInput = {
   classificationRules?: TextTransformRuleEntry[]
   requestContext?: RuntimeRequestContext
   delivery?: 'stream' | 'complete'
+  narrativeOutput?: { mode: 'declared' | 'automatic'; adopt(tx: SqliteDataTransaction, entry: AgentTranscriptEntry, content: string): void }
   resumeUserEntry?: AgentTranscriptEntry
   resumeAssistantEntryId?: string
   progress?: AgentRunProgress
 }
 
 export async function runNativeToolLoop(input: NativeToolLoopInput): Promise<NativeToolLoopResult> {
+  const previousDeclareNext = input.toolExecutionScope?.narrative?.declareNext
   const scopes: Array<Awaited<ReturnType<typeof beginTimelineExtensionWork>>> = []
   const controller = new AbortController()
   const promptExtensionLeases = [...(input.promptExtensionLeases ?? [])]
@@ -326,6 +334,7 @@ export async function runNativeToolLoop(input: NativeToolLoopInput): Promise<Nat
       return consumed.result
     })
   } finally {
+    if (input.toolExecutionScope?.narrative) input.toolExecutionScope.narrative.declareNext = previousDeclareNext
     for (const scope of scopes) scope.dispose()
   }
 }
@@ -366,6 +375,11 @@ async function runToolLoop(
   const continuation = input.requestContext?.agentRun?.continuation
   let acceptedContent = continuation?.recovery?.acceptedContent
   let pendingAssistantContent = continuation?.recovery?.pendingAssistantContent ?? ''
+  const narrativeOutput = session.kind === 'timeline' ? input.narrativeOutput : undefined
+  const narrativeState = { declared: false, ...continuation?.recovery?.narrativeOutput }
+  if (narrativeOutput && input.toolExecutionScope?.narrative) {
+    input.toolExecutionScope.narrative.declareNext = () => { narrativeState.declared = true }
+  }
   let nextRecoveryStep = continuation?.recovery?.nextProviderStep ?? 1
   if (continuation?.recovery && continuation.recovery.toolContract !== toolContract) {
     throw Object.assign(new Error('Agent tool contract changed since the checkpoint'), { code: 'agent.recovery_tools_changed' })
@@ -380,11 +394,13 @@ async function runToolLoop(
     return encodeRunRecovery({
       version: 1, phase, executor: { pid: process.pid, id: input.runId },
       request: input.recoveryRequest,
+      ...(input.materialBaseline ? { materialBaseline: input.materialBaseline } : {}),
       ...(input.requestContext?.agentRun?.sendRequestDigest ?? continuation?.recovery?.sendRequestDigest
         ? { sendRequestDigest: input.requestContext?.agentRun?.sendRequestDigest ?? continuation?.recovery?.sendRequestDigest } : {}),
       model: input.model, toolContract,
       ...(input.toolExecutionScope?.narrativeSource ? { narrativeSource: input.toolExecutionScope.narrativeSource } : {}),
       messages, userEntryId, nextProviderStep,
+      ...(narrativeOutput ? { narrativeOutput: { ...narrativeState } } : {}),
       promptExtensionLeases: input.promptExtensionLeases ?? [],
       ...(input.processedPrompt ? { processedPrompt: input.processedPrompt } : {}),
       ...(pendingAssistantContent ? { pendingAssistantContent } : {}),
@@ -413,8 +429,11 @@ async function runToolLoop(
   const userEntry = input.resumeUserEntry ?? initial.entries[0]!
 
   try {
-    if (acceptedContent) return await finishAcceptedContent()
-    for (let step = continuation?.recovery?.nextProviderStep ?? 1; ; step += 1) {
+    if (acceptedContent) {
+      const finished = await finishAcceptedContent()
+      if (finished) return finished
+    }
+    for (let step = nextRecoveryStep; ; step += 1) {
       nextRecoveryStep = step
       progress.providerStep = step
       progress.stage = 'provider'
@@ -507,10 +526,14 @@ async function runToolLoop(
       await assertPromptDependencies()
       progress.stage = 'response'
       await appendObservation(() => [{ ...providerObservation(providerResult), measurementId, providerStep: step }])
-      const { classified, contentScan, invocationPairs, providerMessage } = decodeToolResponse({
-        providerResult, sessionId: session.id, classificationRules: input.classificationRules ?? [],
+      const logicalProviderResult = narrativeOutput && pendingAssistantContent
+        ? { ...providerResult, message: { ...providerResult.message, content: pendingAssistantContent + (providerResult.message.content ?? '') } }
+        : providerResult
+      const { classified, contentScan, invocationPairs, providerMessage: decodedProviderMessage } = decodeToolResponse({
+        providerResult: logicalProviderResult, sessionId: session.id, classificationRules: input.classificationRules ?? [],
         byExposedName, contentTools, createInvocationId: () => input.ctx.createId('tool-invocation'),
       })
+      const providerMessage = { ...decodedProviderMessage, content: providerResult.message.content }
       checkpointMessages = [...stepMessages, providerMessage]
       input.ctx.observations?.capture(() => {
         input.ctx.observations!.patch(measurementId!, { request: { assistantContent: contentScan.text } })
@@ -540,15 +563,21 @@ async function runToolLoop(
           ...(providerResult.providerCallId ? { providerCallId: providerResult.providerCallId } : {}),
         })
       }
+      const isNarrative = Boolean(narrativeOutput && (narrativeState.declared
+        || narrativeOutput.mode === 'automatic' && input.purpose === 'narrative'))
+      const continueAfterNarrative = isNarrative && narrativeState.declared && Boolean(contentScan.text)
+        && providerResult.finishReason !== 'length'
+      if (isNarrative && contentScan.text) narrativeState.logicalId ??= input.ctx.createId('narrative')
       if (contentScan.text) {
         stepEntries.push({
           kind: 'message',
           role: 'assistant',
           content: contentScan.text,
+          ...(isNarrative ? { purpose: 'narrative' as const, narrativeId: narrativeState.logicalId } : {}),
           ...(continuationAssistantEntryId ? {
             continuesEntryId: continuationAssistantEntryId,
           } : {}),
-          ...(providerResult.finishReason === 'length' ? { state: 'partial' as const } : {}),
+          ...(['length', 'error'].includes(providerResult.finishReason ?? '') ? { state: 'partial' as const } : {}),
         })
       }
       for (const pair of invocationPairs) {
@@ -569,6 +598,7 @@ async function runToolLoop(
           status: 'proposed',
         })
       }
+      if (narrativeOutput && providerResult.finishReason === 'length' && !invocationPairs.length) pendingAssistantContent += providerResult.message.content ?? ''
       if (invocationPairs.length) stepEntries.push({
         kind: 'run-state', state: 'running', recovery: recovery('tools', checkpointMessages, step),
       })
@@ -576,11 +606,10 @@ async function runToolLoop(
         && providerResult.finishReason !== 'length' && Boolean(providerResult.message.content) && Boolean(contentScan.text)
       let contentDiagnostics: string[] = []
       if (finalResponse) {
-        const completeText = classifyAssistantContent(pendingAssistantContent + (providerResult.message.content ?? ''),
-          session.id, input.classificationRules ?? []).text
+        const completeText = narrativeOutput ? contentScan.text : pendingAssistantContent + contentScan.text
         const prepared = await prepareStateContent(input.ctx, {
           assertSource: input.toolExecutionScope?.assertNarrativeSource,
-          text: scanContentTools(completeText, contentTools.map(tool => tool.definition.name)).text,
+          text: completeText,
           operationId: `agent-content:${input.runId}:${step}`,
           target: input.recoveryRequest.narrativeTarget ? {
             timelineId: input.recoveryRequest.narrativeTarget.timelineId, branchId: input.branchId,
@@ -590,25 +619,33 @@ async function runToolLoop(
         contentDiagnostics = prepared.diagnostics
         if (prepared.mutation) {
           const { raw: _raw, ...recoverableResult } = providerResult
-          acceptedContent = { mutation: prepared.mutation, extensionLeases: prepared.extensionLeases, entries: stepEntries, providerResult: recoverableResult, diagnostics: contentDiagnostics }
+          acceptedContent = { mutation: prepared.mutation, extensionLeases: prepared.extensionLeases, entries: stepEntries, providerResult: recoverableResult, diagnostics: contentDiagnostics, continueAfter: continueAfterNarrative }
           // Once accepted, replay commits these exact operations, never re-runs extension code.
           await append([{ kind: 'run-state', state: 'running', recovery: recovery('content', checkpointMessages, step) }])
           streamedText = ''
           streamedReasoning = ''
           streamedToolInputs.clear()
-          return await finishAcceptedContent()
+          const finished = await finishAcceptedContent()
+          if (finished) return finished
+          continue
         }
       }
-      if (finalResponse) stepEntries.push({
+      if (finalResponse && !continueAfterNarrative) stepEntries.push({
         kind: 'run-state', state: 'completed', ...(contentDiagnostics.length ? { reason: contentDiagnostics.join('\n') } : {}),
       })
       if (invocationPairs.length === 0 && providerResult.finishReason === 'length') {
-        pendingAssistantContent += providerResult.message.content ?? ''
+        if (!narrativeOutput) pendingAssistantContent += contentScan.text
         stepEntries.push({
           kind: 'run-state', state: 'running', recovery: recovery('provider', checkpointMessages, step + 1),
         })
-      } else pendingAssistantContent = ''
+      } else if (!narrativeOutput) pendingAssistantContent = ''
+      if (continueAfterNarrative) stepEntries.push({
+        kind: 'run-state', state: 'running', recovery: recovery('provider', checkpointMessages, step + 1),
+      })
       const persistedStep = await runTool(() => append(stepEntries))
+      if (narrativeOutput && providerResult.finishReason === 'length') {
+        continuationAssistantEntryId = persistedStep.entries.findLast(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant')?.id
+      }
       for (const pair of invocationPairs) {
         pendingTools.set(pair.invocation.id, {
           invocation: pair.invocation,
@@ -630,6 +667,13 @@ async function runToolLoop(
           providerMessages.push(providerMessage)
           nextRecoveryStep = step + 1
           completeStep('Output limit reached · continuing')
+          continue
+        }
+        if (continueAfterNarrative) {
+          continuationAssistantEntryId = undefined
+          providerMessages.push(providerMessage)
+          nextRecoveryStep = step + 1
+          completeStep('Narrative output accepted · continuing')
           continue
         }
         if (!providerResult.message.content)
@@ -753,7 +797,15 @@ async function runToolLoop(
       }
     })
     // Whitespace from a provider is not a valid partial assistant message.
+    if (narrativeOutput && streamedText) {
+      const scanned = pushLoomContentChunk(createLoomContentScannerState(), streamedText,
+        { knownToolNames: contentTools.map(tool => tool.definition.name) })
+      streamedText = classifyAssistantContent(scanned.state.text, session.id, input.classificationRules ?? []).text
+    }
     if (!streamedText.trim()) streamedText = ''
+    const partialNarrative = Boolean(narrativeOutput && streamedText && (narrativeState.declared
+      || narrativeOutput.mode === 'automatic' && input.purpose === 'narrative'))
+    if (partialNarrative) narrativeState.logicalId ??= input.ctx.createId('narrative')
     const aborted =
       input.requestContext?.abortSignal?.aborted || isAbortError(error)
     const userPaused = aborted && input.requestContext?.abortSignal?.reason === 'user-pause'
@@ -802,6 +854,7 @@ async function runToolLoop(
           kind: 'message',
           role: 'assistant',
           content: streamedText,
+          ...(partialNarrative ? { purpose: 'narrative' as const, narrativeId: narrativeState.logicalId } : {}),
           state: 'partial',
         })
         for (const [invocationId, tool] of streamedToolInputs) {
@@ -885,7 +938,7 @@ async function runToolLoop(
     throw error
   }
 
-  async function finishAcceptedContent(): Promise<NativeToolLoopResult> {
+  async function finishAcceptedContent(): Promise<NativeToolLoopResult | undefined> {
     const accepted = acceptedContent!
     await assertPromptDependencies()
     input.requestContext?.abortSignal?.throwIfAborted()
@@ -896,11 +949,19 @@ async function runToolLoop(
     const source = input.toolExecutionScope?.narrativeSource
     await (source ? guardNarrativeWrite(input.ctx, source, apply) : apply())
     const persisted = await runTool(() => append([...accepted.entries, {
-      kind: 'run-state', state: 'completed',
+      kind: 'run-state', state: accepted.continueAfter ? 'running' : 'completed',
+      ...(accepted.continueAfter ? { recovery: recovery('provider', checkpointMessages, nextRecoveryStep + 1) } : {}),
       ...(accepted.diagnostics?.length ? { reason: accepted.diagnostics.join('\n') } : {}),
     }]))
     const assistantEntry = persisted.entries.find(entry => entry.entry.kind === 'message')!
     acceptedContent = undefined
+    pendingAssistantContent = ''
+    if (accepted.continueAfter) {
+      providerMessages.splice(0, providerMessages.length, ...checkpointMessages)
+      nextRecoveryStep += 1
+      continuationAssistantEntryId = undefined
+      return undefined
+    }
     completeStep('Assistant output and State content accepted')
     return {
       session, userEntry, assistantEntry, providerResult: accepted.providerResult,
@@ -953,6 +1014,15 @@ async function runToolLoop(
   }
 
   async function append(entries: AgentTranscriptEntryData[], firstId?: string, takeover?: NonNullable<RuntimeRequestContext['agentRun']>['continuation']) {
+    const previousNarrativeState = { ...narrativeState }
+    const narrativeSource = input.toolExecutionScope?.narrativeSource
+    const previousCursorNodeId = narrativeSource?.cursorNodeId
+    const adopted = entries.find(entry => entry.kind === 'message' && entry.role === 'assistant'
+      && entry.purpose === 'narrative' && entry.state !== 'partial')
+    if (adopted) {
+      narrativeState.declared = false
+      narrativeState.logicalId = undefined
+    }
     const write: Parameters<AgentStore['appendEntries']>[0] = {
       actor: input.requestContext?.actor ?? (input.requestContext?.clientId
         ? { kind: 'client', id: input.requestContext.clientId }
@@ -963,28 +1033,75 @@ async function runToolLoop(
       parentCallId: input.requestContext?.parentCallId,
       agentSessionId: session.id,
       expectedEntryCount: session.entryCount,
-      entries: entries.map((entry, index) => ({ ...(index === 0 && firstId ? { id: firstId } : {}), runId: input.runId, entry })),
+      entries: entries.map((entry, index) => {
+        const id = index === 0 && firstId ? firstId : input.ctx.createId('agent-entry')
+        if (entry === adopted) narrativeState.consumedEntryId = id
+        return { id, runId: input.runId, ...(input.retryRoundId ? { roundId: input.retryRoundId } : {}), entry }
+      }).map((item, _index, all) => {
+        if (item.entry.kind !== 'run-state' || !item.entry.recovery || !narrativeOutput) return item
+        const checkpoint: JsonObject = { ...item.entry.recovery, narrativeOutput: { ...narrativeState } }
+        if (adopted) {
+          delete checkpoint.pendingAssistantContent
+          delete checkpoint.partialEntryId
+        } else {
+          const partial = all.findLast(value => value.entry.kind === 'message' && value.entry.state === 'partial')
+          if (partial) checkpoint.partialEntryId = partial.id
+        }
+        return { ...item, entry: { ...item.entry, recovery: checkpoint } }
+      }),
     }
-    const result = takeover
-      ? await input.ctx.dataEngine.transact(write, async dataTx => {
-          const agents = input.agents.transaction(dataTx)
-          const stopped = agents.appendEntries({
-            agentSessionId: session.id, expectedEntryCount: takeover.expectedEntryCount!,
-            entries: [{ runId: takeover.sourceRunId, entry: {
-              kind: 'run-state', state: 'suspended', reason: `Execution transferred to ${input.runId}`,
-            } }],
-          })
-          return agents.appendEntries({ ...write, expectedEntryCount: stopped.session.entryCount })
-        }).then(result => ({ ...result.value, commit: result.commit }))
-      : await input.agents.appendEntries(write)
-    session = result.session
-    lastChangesetId = result.commit.changesetId
-    input.requestContext?.agentRun?.onEvent({
-      type: 'transcript-appended',
-      runId: input.requestContext.agentRun.runId,
-      entries: result.entries,
-    })
-    return { entries: result.entries, changesetId: lastChangesetId }
+    try {
+      const transact = () => input.ctx.dataEngine.transact(write, async dataTx => {
+            const agents = input.agents.transaction(dataTx)
+            if (input.materialBaseline && entries.some(entry => entry.kind === 'message' && entry.role === 'user')) {
+              const baseline = input.materialBaseline
+              const branch = input.ctx.narratives!.transaction(dataTx).getBranch(baseline.branchId)
+              if (!branch || (branch.headEntryId ?? null) !== baseline.headEntryId || (branch.headNodeId ?? null) !== baseline.headNodeId
+                || branch.stateHeadRevisionId !== baseline.stateRevisionId || branch.workspaceHeadRevisionId !== baseline.workspaceRevisionId)
+                throw Object.assign(new Error('Discussion context changed before the Run started'), { code: 'agent.retry_conflict' })
+            }
+            const stopped = takeover ? agents.appendEntries({
+              agentSessionId: session.id, expectedEntryCount: takeover!.expectedEntryCount!,
+              entries: [{ runId: takeover!.sourceRunId, entry: {
+                kind: 'run-state', state: 'suspended', reason: `Execution transferred to ${input.runId}`,
+              } }],
+            }) : undefined
+            const appended = agents.appendEntries({ ...write, expectedEntryCount: stopped?.session.entryCount ?? write.expectedEntryCount })
+            if (write.actor.kind === 'client' && !input.resumeUserEntry && !input.retryRoundId
+              && !input.recoveryRequest.retry && !input.recoveryRequest.narrativeTarget?.inputNodeId) {
+              const accepted = appended.entries.find(value => value.entry.kind === 'message' && value.entry.role === 'user')
+              if (accepted) recordUserInteraction(dataTx, { id: accepted.id, sessionId: session.id, kind: 'agent' })
+            }
+            for (const entry of appended.entries) {
+              if (entry.entry.kind !== 'message' || entry.entry.role !== 'assistant'
+                || entry.entry.purpose !== 'narrative' || entry.entry.state === 'partial') continue
+              narrativeOutput!.adopt(dataTx, entry, entry.entry.content)
+            }
+            return appended
+          }).then(result => ({ ...result.value, commit: result.commit }))
+      const result = takeover || narrativeOutput || write.actor.kind === 'client'
+        ? await (adopted && input.toolExecutionScope?.withNarrativeWrite
+          ? input.toolExecutionScope.withNarrativeWrite(transact) : transact())
+        : await input.agents.appendEntries(write)
+      if (adopted) {
+        pendingAssistantContent = ''
+        continuationAssistantEntryId = undefined
+      }
+      session = result.session
+      lastChangesetId = result.commit.changesetId
+      input.requestContext?.agentRun?.onEvent({
+        type: 'transcript-appended',
+        runId: input.requestContext.agentRun.runId,
+        entries: result.entries,
+      })
+      return { entries: result.entries, changesetId: lastChangesetId }
+    } catch (error) {
+      if (narrativeSource) narrativeSource.cursorNodeId = previousCursorNodeId
+      narrativeState.declared = previousNarrativeState.declared
+      narrativeState.logicalId = previousNarrativeState.logicalId
+      narrativeState.consumedEntryId = previousNarrativeState.consumedEntryId
+      throw error
+    }
   }
 }
 
@@ -1047,9 +1164,9 @@ async function resolveTools(
 function readNativeSchema(tool: CompiledToolExposure): JsonObject {
   const schema =
     tool.input.kind === 'structured'
-      ? cloneJsonObject(tool.input.schema)
+      ? cloneToolSchema(tool.input.schema)
       : tool.input.structuredFallback
-        ? cloneJsonObject(tool.input.structuredFallback.schema)
+        ? cloneToolSchema(tool.input.structuredFallback.schema)
         : undefined
   if (!schema)
     throw new Error(`Agent tool has no Native Function schema: ${tool.toolId}`)
@@ -1100,19 +1217,6 @@ function applyParameterDescription(
   cursor.description = description
 }
 
-function cloneJsonObject(value: JsonObject): JsonObject {
-  return cloneJsonValue(value) as JsonObject
-}
-
-function cloneJsonValue(value: JsonValue): JsonValue {
-  if (Array.isArray(value)) return value.map(cloneJsonValue)
-  if (isJsonObject(value))
-    return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [key, cloneJsonValue(child)]),
-    )
-  return value
-}
-
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -1160,7 +1264,7 @@ async function executeInvocation(
       },
     }
   }
-  const { signal, dispose } = createToolSignal(externalSignal)
+  const signal = externalSignal ?? new AbortController().signal
   try {
     // CodeAct terminates its Worker and drains accepted host operations before returning an abort result.
     if (codeActToolIds.has(invocation.toolId))
@@ -1181,24 +1285,6 @@ async function executeInvocation(
         message: 'Tool execution was aborted',
       },
     }
-  } finally {
-    dispose()
-  }
-}
-
-function createToolSignal(externalSignal?: AbortSignal): {
-  signal: AbortSignal
-  dispose(): void
-} {
-  const controller = new AbortController()
-  const abort = () => controller.abort(externalSignal?.reason)
-  externalSignal?.addEventListener('abort', abort, { once: true })
-  if (externalSignal?.aborted) abort()
-  return {
-    signal: controller.signal,
-    dispose: () => {
-      externalSignal?.removeEventListener('abort', abort)
-    },
   }
 }
 

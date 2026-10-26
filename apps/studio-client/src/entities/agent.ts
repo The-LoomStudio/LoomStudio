@@ -1,6 +1,6 @@
 import type { StudioRpcOutputs } from '../shared/api/trpc-client.js'
 import type { ToolContentPlacement, PresetToolMountInput } from '@loom-studio/shared/tool-mounts'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { MacroInspection } from '@loom-studio/shared'
 import type { MutationReceipt } from './common.js'
 import type { PromptProjection } from './prompt.js'
@@ -21,7 +21,9 @@ type ChatToolCall = {
 
 export type AgentSession = {
   id: string
-  agentPresetId: string
+  kind: 'agent' | 'timeline'
+  agentPresetId?: string
+  narrativeMode?: 'declared' | 'automatic'
   title?: string
   timelineId?: string
   headEntryId?: string
@@ -32,10 +34,12 @@ export type AgentSession = {
 
 export type AgentTranscriptEntry = {
   id: string
-  /** Client-only identity retained when a streamed tool becomes a saved entry. */
+  /** Client-only identity retained when streamed reasoning, text or a tool becomes a saved entry. */
   presentationId?: string
   agentSessionId: string
   parentEntryId?: string
+  roundId?: string
+  candidateId?: string
   sequence: number
   runId?: string
   entry: {

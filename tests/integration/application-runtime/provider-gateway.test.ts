@@ -1,6 +1,10 @@
-import { createAgentStore } from '@loom-studio/application-data'
+import { getAgentRunService } from '../../../apps/studio-server/src/agents/agent-run-service.js'
+import { runAgentTurn } from '../../../apps/studio-client/src/features/narrative-runtime/model/agent-run-observer.js'
+import type { AgentTranscriptEntry } from '../../../apps/studio-client/src/entities/agent.js'
+import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
+import { createAgentStore, createNarrativeStore, createStatisticsStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { applicationDocumentTypes, createApplicationRuntime, createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
+import { applicationDocumentTypes, createApplicationRuntime, createDocumentBackedAiGateway, createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
@@ -9,6 +13,85 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('application runtime Provider Profile integration', () => {
   afterEach(() => vi.unstubAllGlobals())
+
+  it('persists native chat usage independently of provider deletion and observations', async () => {
+    vi.stubGlobal('fetch', (async () => new Response(JSON.stringify({ id: 'metered-call', model: 'metered',
+      choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Done' } }],
+      usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+    }), { headers: { 'content-type': 'application/json' } })) satisfies typeof fetch)
+    const f = createRuntimeFixture()
+    try {
+      createNarrativeStore({ engine: f.engine })
+      const stats = createStatisticsStore(f.engine, () => '2026-10-25T00:00:00.000Z')
+      const gateway = createDocumentBackedAiGateway({ documents: f.documents, secrets: f.secrets, statistics: stats })
+      const { providerProfile } = await f.runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible',
+        displayName: 'Metered', config: { baseUrl: 'https://metered.test/v1' }, enabledModelIds: ['metered'], credential: { apiKey: 'test-only' } })
+      await gateway.invokeChat({ model: { providerProfileId: providerProfile.id, modelId: 'metered' },
+        request: { messages: [{ role: 'user', content: 'Hello' }] }, sessionId: 'direct-call', runId: 'run', branchId: 'direct' })
+      await f.runtime.deleteProviderProfile({ providerProfileId: providerProfile.id })
+      const result = await stats.usage({ to: '2026-10-26T00:00:00.000Z', timeZone: 'UTC' })
+      expect(result.totals).toMatchObject({ requests: 1, total: 15, input: 12, output: 3 })
+      expect(result.collectionErrors).toBe(0)
+      expect(result.providers[0]?.name).toBe('Metered')
+    } finally { f.close() }
+  })
+
+  it('delivers real SDK fullStream reasoning and text through the Run API into stable client records', async () => {
+    const connected = Promise.withResolvers<ReadableStreamDefaultController<Uint8Array>>()
+    const requests: Record<string, unknown>[] = []
+    vi.stubGlobal('fetch', (async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)))
+      return new Response(new ReadableStream<Uint8Array>({ start: controller => connected.resolve(controller) }), {
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) satisfies typeof fetch)
+    const f = createRuntimeFixture()
+    const service = getAgentRunService(f.runtime)
+    let runId: string | undefined
+    let consuming: Promise<unknown> | undefined
+    try {
+      const { providerProfile } = await f.runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible',
+        displayName: 'Local stream fixture', config: { baseUrl: 'https://stream.test/v1' },
+        enabledModelIds: ['stream-model'], credential: { apiKey: 'test-only' } })
+      const preset = await createPreset(f.runtime)
+      await f.runtime.updateAgentPreset({ agentPresetId: preset.id, expectedVersion: preset.version, name: 'Stream',
+        delivery: 'stream', model: { providerProfileId: providerProfile.id, modelId: 'stream-model' } })
+      const { session } = await f.runtime.createAgentSession({ agentPresetId: preset.id })
+      ;({ runId } = await service.create({ agentSessionId: session.id, input: 'Stream a reply' }))
+      const api = { agentSessions: { subscribeRun: service.subscribe,
+        getTranscript: (input: { agentSessionId: string }) => f.runtime.getAgentTranscriptPage(input),
+      } } as unknown as StudioApi
+      let entries: AgentTranscriptEntry[] = []
+      consuming = runAgentTurn({ api, runId, sessionId: session.id, selection: 0, target: 'agent',
+        streamingId: 'streaming-agent-entry-probe', cursor: 0, status: 'running', observing: true },
+      () => true, update => { entries = update(entries) }, () => {}, () => {})
+      const controller = await connected.promise
+      const encoder = new TextEncoder()
+      const send = (delta: Record<string, unknown>, finish: string | null = null) => controller.enqueue(encoder.encode(
+        `data: ${JSON.stringify({ id: 'stream-call', object: 'chat.completion.chunk', model: 'stream-model',
+          choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`))
+      send({ role: 'assistant', reasoning_content: 'Inspect the scene.' })
+      await vi.waitFor(() => expect(entries.some(item => item.entry.kind === 'reasoning' && item.entry.content === 'Inspect the scene.')).toBe(true))
+      const thoughtKey = entries.find(item => item.entry.kind === 'reasoning')!.presentationId
+      send({ content: 'The door opens.' })
+      await vi.waitFor(() => expect(entries.find(item => item.entry.kind === 'message' && item.entry.role === 'assistant')?.entry)
+        .toMatchObject({ content: 'The door opens.', state: 'partial' }))
+      expect(entries.find(item => item.entry.kind === 'reasoning')?.entry.state).toBe('completed')
+      const textKey = entries.find(item => item.entry.kind === 'message' && item.entry.role === 'assistant')!.presentationId
+      expect(thoughtKey).toBeDefined(); expect(textKey).toBeDefined()
+      expect(entries.findIndex(item => item.entry.kind === 'reasoning')).toBeLessThan(entries.findIndex(item => item.entry.role === 'assistant' && item.entry.kind === 'message'))
+      send({}, 'stop'); controller.enqueue(encoder.encode('data: [DONE]\n\n')); controller.close()
+      await consuming
+      expect(requests).toEqual([expect.objectContaining({ model: 'stream-model', stream: true })])
+      expect(entries.find(item => item.entry.kind === 'reasoning')?.presentationId).toBe(thoughtKey)
+      expect(entries.find(item => item.entry.kind === 'message' && item.entry.content === 'The door opens.')?.presentationId).toBe(textKey)
+      expect(entries.some(item => item.id.startsWith('streaming-reasoning-'))).toBe(false)
+    } finally {
+      if (runId) { service.cancel(runId); service.acknowledgeCompletion(runId) }
+      await consuming?.catch(() => {})
+      f.close()
+    }
+  })
 
   it('stores per-model multipliers outside connection config and rejects stale or invalid updates', async () => {
     const fixture = createRuntimeFixture()
@@ -421,7 +504,7 @@ function createRuntimeFixture() {
     authorizeUse: (_metadata, context) => context.caller === 'application.ai-gateway',
   })
   return {
-    documents,
+    documents, engine, secrets,
     runtime: createApplicationRuntime({
       agents: createAgentStore({ engine }),
       dataEngine: engine,

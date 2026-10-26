@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useContextAssets } from '../../../apps/studio-client/src/features/context-assets/model/use-context-assets.js'
+import { useContextAssets } from '../../../apps/studio-client/src/features/prompt-resources/model/use-context-assets.js'
 import type { PromptResource, UpdatePromptResourceResult } from '../../../apps/studio-client/src/entities/index.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
@@ -32,18 +32,23 @@ function resource(version = 1, body = 'Saved'): PromptResource {
 function fixture(updateAsset = vi.fn()) {
   let upstream = [resource()]
   const updateAssets = vi.fn()
+  const createAsset = vi.fn()
+  const deleteAsset = vi.fn()
+  const moveAsset = vi.fn()
   const get = vi.fn(async () => ({ resource: upstream[0]! }))
+  const recordEdit = vi.fn()
+  const onResourceChange = vi.fn((changed: PromptResource) => { upstream = [changed] })
   const render = () => {
     hooks.cursor = 0
     return useContextAssets({
       scope: '/rpc',
-      resources: upstream, api: { promptResources: { get, updateAsset, updateAssets } } as unknown as StudioApi,
-      onResourceChange: changed => { upstream = [changed] },
-      recordEdit: vi.fn(), runAction: action => action(), t: createTranslator('en-US'),
+      resources: upstream, api: { promptResources: { get, updateAsset, updateAssets, createAsset, deleteAsset, moveAsset } } as unknown as StudioApi,
+      onResourceChange,
+      recordEdit, runAction: action => action(), t: createTranslator('en-US'),
     })
   }
   return {
-    render, get, updateAsset, updateAssets,
+    render, get, updateAsset, updateAssets, createAsset, deleteAsset, moveAsset, recordEdit, onResourceChange,
     refresh: (next: PromptResource[]) => {
       upstream = next
       render().setResources(next)
@@ -52,6 +57,83 @@ function fixture(updateAsset = vi.fn()) {
 }
 
 describe('Context Asset editing drafts', () => {
+  it.each(['entry', 'folder', 'zone', 'copy'] as const)('submits only the %s node and publishes the authoritative response', async kind => {
+    const state = fixture()
+    let resolve!: (value: UpdatePromptResourceResult) => void
+    state.createAsset.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+    const editor = state.render()
+    const pending = kind === 'entry' ? editor.addContextAsset('root')
+      : kind === 'folder' ? editor.addContextAssetFolder('root')
+        : kind === 'zone' ? editor.addContextAssetInZone('resource', 'lore.lower')
+          : editor.duplicateContextAsset('entry')
+    await vi.waitFor(() => expect(state.createAsset).toHaveBeenCalledOnce())
+    const request = state.createAsset.mock.calls[0]![0] as Parameters<StudioApi['promptResources']['createAsset']>[0]
+    expect(request).toMatchObject({ resourceId: 'resource', targetAssetId: 'entry', position: kind === 'copy' ? 'after' : 'before' })
+    expect(request.asset.id).not.toBe('entry')
+    expect(request.asset.kind).toBe(kind === 'folder' ? 'folder' : 'entry')
+    if (kind === 'zone') expect(request.asset.capabilities?.projection).toMatchObject({ zoneId: 'lore.lower', entryOrderHint: 100 })
+    if (kind === 'copy') expect(request.asset).toMatchObject({ label: 'Entry Copy', body: 'Saved' })
+    expect(state.onResourceChange).not.toHaveBeenCalled()
+    expect(state.recordEdit).not.toHaveBeenCalled()
+    expect(state.render().nodes[0]?.children?.map(node => node.id)).toEqual(['entry'])
+    const saved = resource(2)
+    saved.rootNode.children = [{ ...request.asset, meta: 'server response' }]
+    resolve({ resource: saved, mutation: { changesetId: kind } })
+    await expect(pending).resolves.toBe(request.asset.id)
+    expect(state.render().nodes).toEqual([saved.rootNode])
+    expect(state.onResourceChange).toHaveBeenCalledExactlyOnceWith(saved)
+    expect(state.recordEdit).toHaveBeenCalledWith(expect.objectContaining({ changesetId: kind,
+      anchor: { documentId: 'resource', subjectId: request.asset.id } }))
+  })
+
+  it.each(['message', 'history'] as const)('places a %s beside its containing Message', async kind => {
+    const state = fixture()
+    const initial = resource()
+    initial.resourceKind = 'preset'
+    initial.rootNode = { id: 'root', kind: 'module', category: 'preset', label: 'Preset', children: [
+      { id: 'message', kind: 'message', label: 'System', children: [{ id: 'entry', kind: 'entry', label: 'Text' }] },
+    ] }
+    state.refresh([initial])
+    state.createAsset.mockResolvedValue({ resource: { ...initial, version: 2 }, mutation: { changesetId: kind } })
+    const pending = kind === 'message' ? state.render().addContextAssetMessageBlock('entry', 'assistant')
+      : state.render().addContextAssetMessageSequence('entry')
+    await pending
+    expect(state.createAsset).toHaveBeenCalledWith(expect.objectContaining({ targetAssetId: 'message', position: 'after',
+      asset: expect.objectContaining(kind === 'message' ? { kind: 'message', capabilities: { roleHint: 'assistant' } }
+        : { kind: 'virtual', capabilities: { targetAnchorId: '@chat.session' } }) }))
+  })
+
+  it('returns the parent selection after deletion and publishes only the server tree', async () => {
+    const state = fixture()
+    const saved = resource(2)
+    saved.rootNode.children = []
+    state.deleteAsset.mockResolvedValue({ resource: saved, mutation: { changesetId: 'deleted' } })
+    await expect(state.render().deleteContextAsset('entry', 'entry')).resolves.toBe('root')
+    expect(state.deleteAsset).toHaveBeenCalledExactlyOnceWith({ resourceId: 'resource', assetId: 'entry' })
+    expect(state.render().nodes).toEqual([saved.rootNode])
+  })
+
+  it.each(['add', 'copy', 'delete', 'move'] as const)('does not publish or record a failed structural %s', async kind => {
+    const state = fixture()
+    const initial = resource()
+    initial.rootNode.children!.push({ id: 'target', kind: 'folder', label: 'Target', children: [] })
+    state.refresh([initial])
+    const failure = new Error('Write rejected')
+    state.createAsset.mockRejectedValue(failure)
+    state.deleteAsset.mockRejectedValue(failure)
+    state.moveAsset.mockRejectedValue(failure)
+    const editor = state.render()
+    const pending = kind === 'add' ? editor.addContextAsset('root')
+      : kind === 'copy' ? editor.duplicateContextAsset('entry')
+        : kind === 'delete' ? editor.deleteContextAsset('entry', 'entry')
+          : editor.moveContextAsset('entry', 'target', 'inside')
+    await expect(pending).rejects.toBe(failure)
+    expect(state.render().nodes).toEqual([initial.rootNode])
+    expect(state.onResourceChange).not.toHaveBeenCalled()
+    expect(state.recordEdit).not.toHaveBeenCalled()
+    if (kind === 'move') expect(state.moveAsset).toHaveBeenCalledExactlyOnceWith({ resourceId: 'resource', assetId: 'entry', targetAssetId: 'target', position: 'inside' })
+  })
+
   it('captures the version actually displayed even when the first input races a remote refresh', async () => {
     const state = fixture()
     const displayedEditor = state.render()
@@ -173,6 +255,8 @@ describe('Context Asset editing drafts', () => {
     expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Unsaved')
     await expect(state.render().updateContextAsset('entry', { body: 'Unsaved' })).rejects.toBe(conflict)
     expect(state.updateAsset).toHaveBeenCalledTimes(1)
+    expect(state.onResourceChange).not.toHaveBeenCalled()
+    expect(state.recordEdit).not.toHaveBeenCalled()
   })
 
   it('advances only its own successful baseline and retains input typed while saves are pending', async () => {
@@ -220,11 +304,14 @@ describe('Context Asset editing drafts', () => {
   it('allows an explicit retry after network failure without changing the editing baseline', async () => {
     const state = fixture(vi.fn().mockRejectedValue(new Error('Network failure')))
     await expect(state.render().updateContextAsset('entry', { body: 'Retained' })).rejects.toThrow('Network failure')
+    expect(state.onResourceChange).not.toHaveBeenCalled()
+    expect(state.recordEdit).not.toHaveBeenCalled()
     state.updateAssets.mockResolvedValue({ resource: resource(2, 'Retained'), mutation: { changesetId: 'retry' } })
     await state.render().retryDraft('resource')
     expect(state.updateAssets).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1 }))
     expect(state.render().draftResourceIds).toEqual([])
     expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Retained')
+    expect(state.recordEdit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ changesetId: 'retry' }))
   })
 
   it('updates the root node label when renaming a resource root asset', async () => {

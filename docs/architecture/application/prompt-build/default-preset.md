@@ -12,7 +12,7 @@
 
 ## 物理顺序与来源
 
-下表按 JSON 树顺序排列。除 Session 与当前输入外，默认都是 system 消息；剧情块默认 developer。来源为空且没有普通正文的块不输出消息。提醒、工作区与普通尾部各自拥有独立 MessageBlock。
+下表按 JSON 树顺序排列。除 Session 原生消息与当前输入外，默认都是 system 消息。作者角色选项为 system/user/assistant；旧作者 developer 读取为 system，历史运行记录不改写。来源为空且没有普通正文的块不输出消息。提醒、工作区与普通尾部各自拥有独立 MessageBlock。
 
 | 位置 | Anchor / 内容 | 当前来源 |
 | --- | --- | --- |
@@ -20,9 +20,10 @@
 | 稳定工具说明 | `@chat.tools`、`@runtime.skills` | Content Tool 编译结果；Skills 自动生产尚未接入 |
 | 用户设定 | 普通 Entry `{{user.description}}`，随后 `@user.context` | 当前全局用户固定描述；已采用并激活的作者 Lore 补充 |
 | 常驻资料 | 包裹 Entry、`@lore.stable` | 指向该位置的 Lore Entry |
-| 剧情基线 | `@narrative.before`、`@memory.narrative`、`@chat.narrative`、`@narrative.after` | 已注册记忆来源的摘要与固定 Raw 范围；前后补充为显式资源贡献 |
+| 剧情记忆 | `@memory.narrative` | 已注册剧情记忆来源发布的总结文本 |
+| 外部故事正文 | `@narrative.before`、`@chat.narrative`、`@narrative.after` | 独立辅助 Session 采用的正文长文本；主故事 Session 不重复贡献正文；前后补充为显式文本贡献 |
 | 工作记忆 | `@memory.workspace`、`@memory.session` | 当前分支 Workspace 根 `MEMORY.md`；当前 Session 最新已保存的工作交接文本 |
-| Session 原生消息 | `@chat.session` | 上次交接之后的文本、允许回放的 reasoning、Native / Content 工具事实 |
+| 会话历史（消息序列） | `@chat.session` | 主故事 Session 按记录身份合并仍需保留的正文与工作历史；独立 Session 采用自己的工作历史，保留 role 与工具事实 |
 | 本次动态上下文 | `@lore.lower`、`@runtime.state`、`@memory.recalled`、`@chat.session.post`、`@tools.dynamic` | 条件 Lore 与显式贡献；State、召回、动态工具自动生产尚未接入 |
 | 最新输入 | `@chat.input` | 当前调用输入，单独 user 消息 |
 | 普通尾部 | `@prompt.tail`、`@fresh.tail` | 只留位置 |
@@ -39,11 +40,12 @@
 
 ```text
 Preset 有序树 + 已挂载 Lore + 宏检查结果
-Narrative 共用采样器 -> 共用 prompt 阶段文本变换 -> @chat.narrative
+辅助 Session：Narrative 采样 -> prompt 文本变换 -> 正文长文本 -> @chat.narrative
+主故事 Session：正文与工作记录按身份去重、按 sequence 合并 -> @chat.session
 已发布记忆来源 -> @memory.narrative + 固定 Narrative 采样范围
 当前分支共享 MEMORY.md -> @memory.workspace
 最新 Session 工作交接 -> @memory.session
-交接后的 Session 消息 / 工具投影 -> @chat.session
+仍需保留的 Session 消息 / 工具投影 -> @chat.session
 当前调用输入 -> @chat.input
 已启用 Content Tools -> @chat.tools 或挂载指定位置
   -> SourceNode / PromptContribution
@@ -56,7 +58,7 @@ Narrative 共用采样器 -> 共用 prompt 阶段文本变换 -> @chat.narrative
 
 无 `targetAnchorId` 的 Preset Entry 按树位置输出，宏展开与父级 enabled / Activation 同样生效。新建 Preset Entry 不再自动指定 `@chat.system`。已有显式指定目标的 Entry 仍按锚点注入，不再在原位置重复输出；外部资源树不作为第二份骨架直接输出。
 
-MessageBlock 决定普通文本的 role。Session 来源例外：保留各条消息原有角色和边界，不因外层包裹而全部变成 system，也不合并相邻的同角色历史消息。当前输入在默认模板里只有一个位置，不另外重复到 Session 尾部。
+MessageBlock 决定内部普通文本的 role。`@chat.session` 是与 Message 同级的原生消息序列，不是文本锚点，不能容纳子节点或作为 Lore/工具说明的文本注入目标；同一预设只放一个。菜单、拖拽和资源写入共用 Shared 放置规则。旧已保存预设中的 Message 包裹仍可编译，保留原生角色与边界；新建、移动和导入不能再创建这种嵌套。当前输入在默认模板里只有一个位置，不另外重复到 Session 尾部。
 
 Session Contribution 可携带原生消息批次：Native 调用与 `tool` 结果、Content 调用块与返回块按已有 Transcript 重建。工具批次不经过正文宏或正则处理，不受外层 role 覆盖，也不会因投影而重新执行工具。未记录结果的调用只说明“执行结果未知”，不补造成功回执。该载荷仅允许 Session 来源使用。
 

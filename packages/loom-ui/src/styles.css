@@ -532,15 +532,16 @@ input[type='radio'][data-loom-ui-radio]:disabled {
 }
 .loom-ui-menu-item[data-highlighted],
 .loom-ui-menu-item[data-state='open'] { border-color: transparent; color: var(--loom-color-text); background: color-mix(in srgb, var(--loom-color-surface) 68%, transparent); box-shadow: none; }
-.loom-ui-menu:has(.loom-ui-menu-hover-indicator[style*='opacity: 1']) .loom-ui-menu-item[data-highlighted] { background: transparent; }
+.loom-ui-menu:has(.loom-ui-menu-hover-indicator[style*='opacity: 1']) .loom-ui-menu-item[data-highlighted]:not([data-tone='danger']) { background: transparent; }
 .loom-ui-menu-item[data-disabled] { opacity: 0.5; pointer-events: none; }
 .loom-ui-menu-item[data-inset] { padding-left: 36px; }
 .loom-ui-menu-item[data-tone='danger'] { color: color-mix(in srgb, var(--loom-color-danger) 82%, var(--loom-color-text-muted)); }
-.loom-ui-menu-item[data-tone='danger'][data-highlighted] { color: var(--loom-color-danger); background: color-mix(in srgb, var(--loom-color-danger-background) 72%, transparent); }
+.loom-ui-menu-item[data-tone='danger'][data-highlighted] { color: var(--loom-color-text); background: color-mix(in srgb, var(--loom-color-danger) 28%, var(--loom-color-surface)); }
 .loom-ui-menu-leading { width: var(--loom-icon-size-4); height: var(--loom-icon-size-4); display: flex; align-items: center; justify-content: center; }
 .loom-ui-menu-leading svg { width: var(--loom-icon-size-3); height: var(--loom-icon-size-3); stroke-width: 1.4; }
 .loom-ui-menu-label { min-width: 0; flex: 1; overflow: hidden; font-size: var(--loom-font-size-2); text-overflow: ellipsis; white-space: nowrap; }
-.loom-ui-menu-separator { height: 1px; margin: var(--loom-divider-space) var(--loom-divider-inset); background: var(--loom-color-divider); }
+.loom-ui-menu-separator { flex: 0 0 1px; height: 1px; margin: 5px 8px; background: var(--loom-color-border); }
+.loom-ui-menu-group-label { padding: 2px 8px 3px; color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-1); font-weight: 500; user-select: none; }
 
 @keyframes loom-ui-menu-enter {
   from {

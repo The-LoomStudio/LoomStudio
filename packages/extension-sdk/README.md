@@ -26,6 +26,7 @@ Server Module 还可用 `ctx.prompt.registerProcessor` 注册作者正文的候�
 
 - Manifest v2 与 Package/Module/Instance identity；
 - RPC、Event、Document、Asset 与 AI Gateway capability；
+- `StudioEvent` / `EventMeta` 事件 envelope（源码为 [`src/events.ts`](./src/events.ts)）；原 transport 包已撤去，事件授权、可见性与 wire shape 保持原合同；
 - Config/Record Storage 和 Portable Payload；
 - `ExtensionActivationContext`；
 - `ServerExtensionModule`。

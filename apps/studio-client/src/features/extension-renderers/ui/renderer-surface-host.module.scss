@@ -16,6 +16,14 @@
   pointer-events: none;
 }
 
+.surface[data-renderer-surface='shell.focus-surface'] {
+  height: 100%;
+
+  > .instance {
+    height: 100%;
+  }
+}
+
 .instance > iframe {
   pointer-events: auto;
   width: 100%;

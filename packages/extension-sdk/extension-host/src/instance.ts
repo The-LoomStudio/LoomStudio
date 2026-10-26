@@ -179,7 +179,7 @@ export function createContext(
     if (!options.canRunTimelineWork) throw new Error('Timeline eligibility checks are unavailable')
     return options.canRunTimelineWork({ timelineId, installationId: extensionInstallationId(packageManifest.id, record.target) })
   }
-  const subscribeEvents = (patterns: string[], handler: (event: import('@loom-studio/transport').StudioEvent) => void | Promise<void>) => {
+  const subscribeEvents = (patterns: string[], handler: (event: import('@loom-studio/extension-sdk').StudioEvent) => void | Promise<void>) => {
     if (!options.subscribeEvents) throw new Error('Extension event subscriptions are not available in this host')
     let active = true
     const registration = options.subscribeEvents(patterns, async event => {

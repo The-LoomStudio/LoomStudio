@@ -34,7 +34,7 @@ import type {
 } from '@loom-studio/extension-sdk'
 import { extensionStorageTokenPattern } from '@loom-studio/extension-sdk'
 import type { JsonValue, StateContribution } from '@loom-studio/shared'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 
 export type ExtensionState = 'discovered' | 'manifestLoaded' | 'manifestValidated' | 'loaded' | 'activating' | 'active' | 'degraded' | 'disabled'
 
@@ -298,7 +298,7 @@ export type ExtensionModuleRecord = {
   load?: (instanceId: string) => Promise<import('@loom-studio/extension-sdk').ServerExtensionModule>
 }
 
-export const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit']
+export const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics']
 export const studioReservedNamespaces = [...kernelNamespaces, 'application', 'logs', 'studio']
 export const extensionConfigDocumentType = 'airp.extensionConfig'
 export const extensionRecordDocumentType = 'airp.extensionRecord'

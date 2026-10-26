@@ -33,10 +33,10 @@ describe('sessions-panel-model', () => {
 
   it('partitions sessions into bound and standalone groups', () => {
     const sessions: AgentSession[] = [
-      { id: 's1', agentPresetId: 'p1', timelineId: 't1', entryCount: 2, createdAt: '', updatedAt: '' },
-      { id: 's2', agentPresetId: 'p1', entryCount: 0, createdAt: '', updatedAt: '' },
-      { id: 's3', agentPresetId: 'p2', timelineId: 't1', entryCount: 5, createdAt: '', updatedAt: '' },
-      { id: 's4', agentPresetId: 'p2', entryCount: 1, createdAt: '', updatedAt: '' },
+      { kind: 'agent' as const, id: 's1', agentPresetId: 'p1', timelineId: 't1', entryCount: 2, createdAt: '', updatedAt: '' },
+      { kind: 'agent' as const, id: 's2', agentPresetId: 'p1', entryCount: 0, createdAt: '', updatedAt: '' },
+      { kind: 'agent' as const, id: 's3', agentPresetId: 'p2', timelineId: 't1', entryCount: 5, createdAt: '', updatedAt: '' },
+      { kind: 'agent' as const, id: 's4', agentPresetId: 'p2', entryCount: 1, createdAt: '', updatedAt: '' },
     ]
 
     const { sessionsByTimelineId, standaloneSessions } = partitionSessions(sessions)
@@ -72,8 +72,8 @@ describe('sessions-panel-model', () => {
     ]
 
     const sessions: AgentSession[] = [
-      { id: 'session-alpha', agentPresetId: 'prof-story', title: 'Chapter Draft', entryCount: 1, createdAt: '', updatedAt: '' },
-      { id: 'session-beta', agentPresetId: 'prof-helper', title: 'Debug Session', entryCount: 3, createdAt: '', updatedAt: '' },
+      { kind: 'agent' as const, id: 'session-alpha', agentPresetId: 'prof-story', title: 'Chapter Draft', entryCount: 1, createdAt: '', updatedAt: '' },
+      { kind: 'agent' as const, id: 'session-beta', agentPresetId: 'prof-helper', title: 'Debug Session', entryCount: 3, createdAt: '', updatedAt: '' },
     ]
 
     expect(filterAgentSessions(sessions, profiles, '')).toHaveLength(2)

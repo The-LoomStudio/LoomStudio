@@ -8,8 +8,8 @@ let root: Root
 let container: HTMLDivElement
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
-  vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () { this.open = true })
-  vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () { this.open = false })
+  vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function (this: HTMLDialogElement) { this.open = true })
+  vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function (this: HTMLDialogElement) { this.open = false })
   container = document.createElement('div')
   document.body.append(container)
   root = createRoot(container)

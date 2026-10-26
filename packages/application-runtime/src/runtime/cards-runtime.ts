@@ -1,3 +1,5 @@
+import type { LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
+import { listScriptTextTransformRules } from '../scripts/loom-script-text-migration.js'
 import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
 import type { NarrativeTimeline } from '@loom-studio/application-data'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
@@ -93,6 +95,15 @@ async function deleteCardDocuments(
   }
   await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: card.id })
   for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+  const scripts = (await listDocuments<LoomScriptContent>(documents, applicationDocumentTypes.loomScript))
+    .filter(script => script.content.owner.kind === 'card' && script.content.owner.cardId === card.id)
+  const scriptIds = new Set(scripts.map(script => script.id))
+  for (const mount of await listDocuments<LoomScriptMountContent>(documents, applicationDocumentTypes.loomScriptMount)) {
+    if (scriptIds.has(mount.content.scriptDocumentId) || (mount.content.target.kind === 'card' && mount.content.target.cardId === card.id)) {
+      await documents.delete({ id: mount.id, expectedVersion: mount.version })
+    }
+  }
+  for (const script of scripts) await documents.delete({ id: script.id, expectedVersion: script.version })
   await documents.delete({ id: card.id, expectedVersion: card.version })
 }
 
@@ -196,6 +207,7 @@ async function deleteCards(
             for (const timelines of timelinesByCard.values()) {
               for (const timeline of timelines) {
                 narrativeTx!.deleteTimeline({ timelineId: timeline.id })
+                await tombstoneExtensionStorageScope(documents, { kind: 'agent-session', agentSessionId: timeline.id })
                 if (ctx.agents) {
                   const agents = ctx.agents.transaction(dataTx)
                   let page
@@ -529,8 +541,8 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
       const timelines = ctx.narratives ? await listAllCardTimelines(ctx, input.cardId) : []
       const timelineIds = new Set(timelines.map(timeline => timeline.id))
       const extensionData = await countCardDeletionExtensionData(ctx.documents, input.cardId, timelineIds)
-      const textTransformRuleIds = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
-        .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.cardId)
+      const textTransformRuleIds = (await listScriptTextTransformRules(ctx.documents))
+        .filter(rule => rule.owner.kind === 'card' && rule.owner.cardId === input.cardId)
         .map(rule => rule.id)
       return {
         cardId: input.cardId,

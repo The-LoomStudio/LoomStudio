@@ -28,18 +28,19 @@ export async function readExtensionPromptInputs(input: {
   if (input.addition.content !== undefined && !Array.isArray(input.addition.content))
     throw new Error('Prompt content must be an array')
   const resourceIds = [...new Set(input.addition.loreResourceIds ?? [])]
-  for (const id of resourceIds) {
-    const resource = await input.promptResources.getResource(id)
-    if (!resource || resource.resourceKind !== 'lore') throw new Error(`Lore resource not found: ${id}`)
-    if (!isExtensionResourceAvailable(resource.metadata.origin, input.installations))
-      throw new Error(`Lore resource is not available in this context: ${id}`)
-    if (input.ownerInstallationId && !isOwnedResource(resource.metadata.origin, input.ownerInstallationId, input.ownerPackageId!))
-      throw new Error(`Lore resource is not owned by this extension installation: ${id}`)
-  }
   const resources = await readPromptResourceInputs({
     promptResources: input.promptResources,
     resourceIds,
     variables: input.variables,
+    onMissingResource: id => { throw new Error(`Lore resource not found: ${id}`) },
+    canReadResource: resource => {
+      if (resource.resourceKind !== 'lore') throw new Error(`Lore resource not found: ${resource.id}`)
+      if (!isExtensionResourceAvailable(resource.origin, input.installations))
+        throw new Error(`Lore resource is not available in this context: ${resource.id}`)
+      if (input.ownerInstallationId && !isOwnedResource(resource.origin, input.ownerInstallationId, input.ownerPackageId!))
+        throw new Error(`Lore resource is not owned by this extension installation: ${resource.id}`)
+      return true
+    },
   })
   const sourceNodes = [...resources.sourceNodes]
   const contributions = [...resources.contributions]

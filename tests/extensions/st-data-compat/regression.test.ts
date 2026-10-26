@@ -41,6 +41,21 @@ describe('SillyTavern compatibility', () => {
     expect(rules.map(rule => rule.phases)).toEqual([['display'], ['prompt']])
   })
 
+  it('retains both explicit regex phases for Prompt and Markdown consumers', () => {
+    const [converted] = convertSillyTavernRegexScripts([{
+      findRegex: '/secret/g', replaceString: 'visible', placement: [2], promptOnly: true, markdownOnly: true,
+    }])
+    const source = { kind: 'narrative' as const, timelineId: 'timeline', branchId: 'branch' }
+    const rule: TextTransformRuleEntry = {
+      ...converted!, id: 'both', version: 1, owner: { kind: 'workspace' }, createdAt: '', updatedAt: '',
+    }
+    for (const phase of ['prompt', 'display'] as const) {
+      const result = projectHistoryEntries({ source, phase,
+        entries: [{ id: 'entry', source, text: 'secret', sequence: 0 }], rules: [rule] })
+      expect(result.entries[0]?.text).toBe('visible')
+    }
+  })
+
   it('reports ST fields that cannot be represented by the native pipeline', () => {
     expect(diagnoseSillyTavernRegexScripts([{
       scriptName: 'Legacy',

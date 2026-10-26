@@ -1,0 +1,241 @@
+
+
+.toolCollapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 220ms cubic-bezier(0.2, 0, 0.2, 1), opacity 180ms ease;
+
+  &[data-open='true'] {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+
+.toolCollapseInner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 2. 独立工具执行组块 (Tool Group Block: 只要有工具连在一起，就是一个单独滚动区间) */
+.toolGroupBlock {
+  width: 100%;
+  margin: 1px 0 2px;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.toolGroupHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 2px 6px;
+  margin-left: -6px;
+  border: 0;
+  border-radius: var(--loom-radius-control, 4px);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  font: inherit;
+  color: var(--loom-color-text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: background-color 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--loom-color-surface) 65%, transparent);
+    color: var(--loom-color-text);
+
+    .toolGroupChevron {
+      color: var(--loom-color-text);
+    }
+  }
+}
+
+.toolGroupChevron {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--loom-color-text-subtle);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/* 工具组独立滚动区间 (上限 260px，gap 为 0，极度紧凑精致) */
+.toolGroupViewport {
+  width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 1px 0;
+  margin-top: 1px;
+}
+
+/* 单个工具条目 */
+.toolItem {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 1px 0;
+}
+
+.toolItemHeader {
+  width: 100%;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+  transition: background-color 0.12s ease, color 0.12s ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--loom-color-surface) 60%, transparent);
+    color: var(--loom-color-text);
+
+    .toolItemChevron {
+      color: var(--loom-color-text);
+    }
+  }
+}
+
+.toolItemIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--loom-color-text-subtle);
+
+  svg {
+    width: 13px;
+    height: 13px;
+    display: block;
+  }
+}
+
+.toolItemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.toolItemChevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--loom-color-text-subtle);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/* 图 3 规范：展开后的单层深色全宽卡片，无套娃、占满可用宽度、可适度放大但有上限 */
+.toolDetailCard {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0 6px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--loom-color-surface);
+  border: 1px solid var(--loom-color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: tool-card-in 180ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
+@keyframes tool-card-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.toolDetailTag {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--loom-color-text-subtle);
+  letter-spacing: 0.02em;
+}
+
+.toolDetailSection {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  & + & {
+    padding-top: 8px;
+    border-top: 1px solid var(--loom-color-border);
+  }
+}
+
+.toolDetailError {
+  color: #ef6b73;
+}
+
+/* 直接在卡片内展示等宽代码文本，无需嵌套第二层黑框 */
+.toolDetailCode {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--loom-font-mono, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--loom-color-text);
+  max-height: 220px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.toolDetailFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 11px;
+  color: #22c55e;
+  font-weight: 500;
+
+  &[data-status='error'] {
+    color: #ef4444;
+  }
+
+  &[data-status='running'],
+  &[data-status='interrupted'] {
+    color: var(--loom-color-text-muted);
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.toolSpinner { animation: summarySpin 1.2s linear infinite; }
+@keyframes summarySpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .toolSpinner { animation: none; } }
+[data-smooth-follow] .toolDetailCode { max-height: none; overflow: visible; }
+
+[data-smooth-follow] .toolGroupViewport { max-height: none; overflow: visible; }

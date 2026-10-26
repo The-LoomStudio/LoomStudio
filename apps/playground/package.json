@@ -14,9 +14,7 @@
     "@loom-studio/document-store": "workspace:*",
     "@loom-studio/extension-host": "workspace:*",
     "@loom-studio/kernel": "workspace:*",
-    "@loom-studio/loom-runner": "workspace:*",
     "@loom-studio/shared": "workspace:*",
-    "@loom-studio/trace-audit": "workspace:*",
     "diff": "8.0.2",
     "yaml": "^2.9.0"
   }

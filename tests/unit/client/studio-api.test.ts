@@ -1,5 +1,6 @@
 import { createStudioTrpcClient } from '../../../apps/studio-client/src/shared/api/trpc-client.js'
-import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
+import type { ClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it } from 'vitest'
 import { createStudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'

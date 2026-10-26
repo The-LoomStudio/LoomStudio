@@ -30,15 +30,15 @@ createKernel(options)
        dispose Extension Host
 ```
 
-`createKernel()` 由 Studio Server 注入 Document Store、Data Commit Source、Diagnostics、Trace Audit、Extension Host、可选 Extension Management Service 与 Loom Runner。
+`createKernel()` 由 Studio Server 注入 Document Store、Data Commit Source、Diagnostics、Extension Host 与可选 Extension Management Service。
 
 当前保留 RPC namespace：
 
 ```text
-system / events / docs / extensions / diagnostics / loom / trace / audit
+system / events / docs / extensions / diagnostics
 ```
 
-Kernel 负责 RPC owner/冲突校验、调用链 ID、Data Commit 事件投影、Document/Revert 薄适配、Extension 管理适配、Diagnostics/Trace/Audit/Loom 调用和动态 Introspection。
+Kernel 负责 RPC owner/冲突校验、调用链 ID、Data Commit 事件投影、Document/Revert 薄适配、Extension 管理适配、Diagnostics 查询和动态 Introspection。
 
 Kernel 不拥有 Application Runtime、Provider 选择、Prompt 编译、Narrative/Agent Store、HTTP/WebSocket/SSE Transport 或前端状态。Event Bus 也不是 Application Command Bus、可靠队列或网络 Stream。
 
@@ -56,4 +56,4 @@ Package 的 `test` 脚本定位根目录 `tests/contract/kernel`；上面的命�
 - [Kernel Architecture](../../docs/architecture/kernel/README.md)
 - [Data Architecture](../../docs/architecture/data/README.md)
 - [Extension Architecture](../../docs/architecture/extensions/README.md)
-- [Loom Core Studio Integration](../../docs/architecture/application/prompt-build/loom-core/studio-integration.md)
+- [已退役 Core 原型设计](../../docs/archive/loom-project/retired-core-2026-10-25/studio-integration.md)

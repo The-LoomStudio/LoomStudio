@@ -16,7 +16,8 @@ import type { DiagnosticInput } from '@loom-studio/diagnostics'
 import type { DocumentRecord, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
 import type { ExtensionLogAccess, ExtensionLogWriter } from '@loom-studio/logging'
 import type { ChatMessage, JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from './events.js'
+export type { EventMeta, StudioEvent } from './events.js'
 import { extensionInstallationId, type ExtensionInstallationTarget } from './installation.js'
 export { extensionInstallationId, installedExtensionContributionId, type ExtensionInstallationTarget } from './installation.js'
 
@@ -136,19 +137,12 @@ export type EventPublishIdentity =
 
 export type ExtensionModuleRuntime = 'server' | 'client' | 'client-worker'
 
-export type RendererSurface =
-  | 'shell.background'
-  | 'narrative.entry.inline'
-  | 'narrative.timeline.tail'
-  | 'memory.panel'
-  | 'agent.message.inline'
-  | 'agent.session.tail'
-  | 'composer.sheet'
-  | 'shell.workspace-panel'
-  | 'shell.focus-surface'
-  | 'standalone.page'
+import { rendererSurfaces, rendererInstanceScopes } from '@loom-studio/shared/loom-scripts'
+export { rendererSurfaces, rendererInstanceScopes }
 
-export type RendererInstanceScope = 'workspace' | 'timeline' | 'agent-session' | 'node' | 'message'
+export type RendererSurface = (typeof rendererSurfaces)[number]
+
+export type RendererInstanceScope = (typeof rendererInstanceScopes)[number]
 
 export type RendererConflictPolicy = 'collection' | 'exclusive' | 'navigation' | 'anchored-projection'
 
@@ -357,6 +351,8 @@ export type LoomSandboxCapabilityRequest = {
 } | { capability: 'ui.notify'; input: import('./iframe-context.js').ClientNotification }
 
 export type LoomSandboxRendererWireContext = {
+  /** Loom Script configuration captured at explicit activation/refresh; absent for ordinary extensions. */
+  readonly scriptSettings?: Readonly<Record<string, string | number | boolean>>
   identity: {
     scriptDocumentId: string
     documentVersion: number
@@ -555,6 +551,8 @@ export type RegisteredClientBackground = ClientBackgroundDefinition & {
 }
 
 export type ClientExtensionActivationContext = {
+  /** Loom Script configuration captured at explicit activation/refresh; absent for ordinary extensions. */
+  readonly scriptSettings?: Readonly<Record<string, string | number | boolean>>
   styles: { register(contributionId: string, activate: ClientStyleFactory): ExtensionRegistrationHandle }
   /** Fixed for a Timeline-participating instance; changing Branch cancels the old instance. */
   timeline: { readonly target?: Readonly<import('./timeline.js').ExtensionTimelineTarget> }
@@ -1002,6 +1000,8 @@ export type ExtensionStateSubscription = {
 }
 
 export type ExtensionActivationContext = {
+  /** Loom Script configuration captured at explicit activation/refresh; absent for ordinary extensions. */
+  readonly scriptSettings?: Readonly<Record<string, string | number | boolean>>
   archives: { registerRecords(adapter: import('./narrative-work.js').ExtensionRecordArchive): ExtensionRegistrationHandle }
   narrative: {
     /** Reads require timeline.run and are bound to its target. */

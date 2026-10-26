@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useGlobalSearchStore } from '../../../apps/studio-client/src/features/global-search/model/global-search-store.js'
-import { ContextAssetExplorer } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-workbench.js'
+import { ContextAssetExplorer } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-workbench.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 afterEach(() => {

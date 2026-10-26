@@ -1,9 +1,7 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { readConversationPosition, useConversationPosition, type ConversationPositionScope } from './conversation-position.js'
+import { useSmoothFollow } from '../streaming-viewport/use-smooth-follow.js'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
-
-export function isConversationNearBottom(element: Pick<HTMLElement, 'scrollHeight' | 'scrollTop' | 'clientHeight'>): boolean {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
-}
 
 export function useConversationViewport(options: {
   items: readonly { id: string }[]
@@ -11,18 +9,19 @@ export function useConversationViewport(options: {
   scopeId?: string
   pinnedId?: string
   overscan?: number
-  composerHeight?: number
-  composerExpanded?: boolean
   followInitially?: boolean
+  restoration?: ConversationPositionScope
 }) {
   const active = options.active !== false
   const scrollRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const followsBottomRef = useRef(options.followInitially !== false)
-  const savedScrollOffsetRef = useRef(0)
-  const motionActiveRef = useRef(false)
+  const position = useMemo(() => options.followInitially === false ? undefined : readConversationPosition(options.restoration),
+    [options.restoration?.view, options.restoration?.scope, options.followInitially])
+  const followInitially = position?.following ?? options.followInitially !== false
+  const smooth = useSmoothFollow({ scrollRef, contentRef, enabled: active, scopeId: options.scopeId, initially: followInitially })
+  const savedScrollOffsetRef = useRef(position?.scrollOffset ?? 0)
   const [scrollMargin, setScrollMargin] = useState(0)
   const pinnedIndex = options.items.findIndex(item => item.id === options.pinnedId)
   const virtualizer = useVirtualizer({
@@ -34,8 +33,8 @@ export function useConversationViewport(options: {
     estimateSize: () => 280,
     overscan: options.overscan ?? 5,
     scrollMargin,
-    anchorTo: 'end',
-    followOnAppend: followsBottomRef.current,
+    anchorTo: 'start',
+    followOnAppend: false,
     scrollEndThreshold: 48,
     useFlushSync: false,
     rangeExtractor: useCallback(range => {
@@ -45,10 +44,10 @@ export function useConversationViewport(options: {
     }, [pinnedIndex]),
   })
 
+  useConversationPosition({ key: options.restoration, initial: position, active, scrollRef, virtualizer, items: options.items, followingRef: smooth.followingRef, interruptionRef: smooth.interruptionRef })
+
   useLayoutEffect(() => {
-    savedScrollOffsetRef.current = 0
-    followsBottomRef.current = options.followInitially !== false
-    if (active && followsBottomRef.current) virtualizer.scrollToEnd()
+    savedScrollOffsetRef.current = position?.scrollOffset ?? 0
   }, [options.scopeId])
 
   useLayoutEffect(() => {
@@ -65,50 +64,9 @@ export function useConversationViewport(options: {
     return () => observer.disconnect()
   }, [options.items.length > 0, active])
 
-  useLayoutEffect(() => {
-    if (!active) return
-    const follow = () => {
-      const element = scrollRef.current
-      if (element && followsBottomRef.current) element.scrollTop = element.scrollHeight
-    }
-    follow()
-    const observer = new ResizeObserver(follow)
-    if (listRef.current) observer.observe(listRef.current)
-    if (contentRef.current) observer.observe(contentRef.current)
-    if (scrollRef.current) observer.observe(scrollRef.current)
-    return () => observer.disconnect()
-  }, [options.items, options.composerHeight, active])
-
-  useLayoutEffect(() => {
-    if (!active || options.composerExpanded === undefined || !followsBottomRef.current) return
-    const element = scrollRef.current
-    if (!element) return
-    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      element.scrollTop = element.scrollHeight
-      return
-    }
-    let frame: number
-    motionActiveRef.current = true
-    const startedAt = performance.now()
-    const follow = (timestamp: number) => {
-      if (followsBottomRef.current) element.scrollTop = element.scrollHeight
-      if (timestamp - startedAt < 200) frame = requestAnimationFrame(follow)
-      else motionActiveRef.current = false
-    }
-    frame = requestAnimationFrame(follow)
-    return () => {
-      cancelAnimationFrame(frame)
-      motionActiveRef.current = false
-    }
-  }, [options.composerExpanded, active])
-
   function onScroll() {
-    if (!active) return
-    if (!motionActiveRef.current && scrollRef.current) {
-      savedScrollOffsetRef.current = scrollRef.current.scrollTop
-      followsBottomRef.current = isConversationNearBottom(scrollRef.current)
-    }
+    if (active && scrollRef.current) savedScrollOffsetRef.current = scrollRef.current.scrollTop
   }
 
-  return { scrollRef, listRef, headerRef, contentRef, virtualizer, scrollMargin, followsBottomRef, motionActiveRef, onScroll }
+  return { smooth, scrollRef, listRef, headerRef, contentRef, virtualizer, scrollMargin, onScroll }
 }

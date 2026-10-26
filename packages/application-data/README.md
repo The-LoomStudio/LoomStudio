@@ -9,10 +9,10 @@
 本包负责将 AIRP（AI Role-Play）核心业务实体的生命周期、状态迁移与快照持久化到共享的 SQLite 存储中：
 
 1. **Agent 存储 (`src/agent/`)**：
-   - 管理独立 Agent 运行会话（`AgentSession`）与 Append-only 的 canonical Transcript（`AgentTranscriptEntry`），不以 Provider wire message 为持久化模型；
+   - 管理普通副会话及与 Timeline 同 ID 的特殊会话（`AgentSession.kind`），使用 Append-only 的 canonical Transcript（`AgentTranscriptEntry`），不以 Provider wire message 为持久化模型；
    - 保存 Message、Observation、Tool Invocation/Result 与 Run 状态；`appendEntries()` 使用 `expectedEntryCount` 校验并发基线，校验工具调用与结果的配对。
 2. **Narrative 存储 (`src/narrative/`)**：
-   - 管理非线性交互叙事的时间线（`NarrativeTimeline`）、分支（`NarrativeBranch`）与内容节点（`NarrativeNode`）；
+   - 管理故事 Header（`NarrativeTimeline`）、分支（`NarrativeBranch`）与正文投影索引（`NarrativeNode.entryId`）；正文只存于 canonical message，查询视图读取同一内容；
    - 支持分支创建/切换、沿 parent 链分页与 `editBranchNode()` 路径复制；不负责模型重演或 Agent 执行。
 3. **State 存储 (`src/state/`)**：
    - 维护 `StateScope` 与包含 JSON snapshot、operations 的 `StateRevision`，提供全局状态 Head 的版本校验；
@@ -66,7 +66,7 @@ import {
 
 - [`NarrativeStore.appendInput()`](./src/narrative/store.ts) 以固定 `nodeId`、`expectedHeadNodeId` 和正文提交用户输入。同一输入重试返回原节点与原 Changeset；正文、原 parent 或归属不一致返回 `narrative.input_conflict`，不生成第二条正文。调用方在成功落库后另行投递 Agent Session；本 Store 不启动 Agent，也不把两次调用合成一个事务。
 - [`PromptResourceStore.mutateResource()`](./src/prompt-resource/mutations.ts) 必须携带资源级 `expectedVersion`；不匹配返回 `prompt_resource.conflict`，没有自动合并或改用最新版本重试。一次 mutations 列表在同一事务内提交，Header/Node 修订与提交事实一起生效。
-- Agent Session 创建时固定 `agentPresetId`，`updateSession()` 拒绝改绑；换预设须创建另一 Session。固定身份不冻结预设内容，也不代表 Store 管理客户端的主写作选择。
+- 普通 Session 固定 `agentPresetId`；特殊 Timeline Session 可暂未配置，安全边界允许更新预设和正文模式，同一历史继续使用。`entryCount` 是全局单调写入计数；各分支保存采用的 Entry Head，回退不降低计数。
 - 各 Store 仅执行各自注册的连续版本 migration；数据库 namespace 高于当前支持版本时由 Engine 拒绝，不尝试降级或兼容读取。版本注册以各 `store.ts` 为准。
 
 ### 统一游标分页与数据保真底线

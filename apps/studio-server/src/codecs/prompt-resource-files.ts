@@ -1,5 +1,5 @@
 import type { JsonValue } from '@loom-studio/shared'
-import { isPromptResourceArtifact, type PromptResourceArtifact, type PromptResourceNode } from '@loom-studio/application-runtime'
+import { isPromptResourceArtifact, type PromptResourceArtifact, type PromptResourceNode } from '@loom-studio/application-runtime/artifacts'
 import { validateBundlePath } from './card-bundle-files.js'
 
 type FileNode = { metadata: Omit<PromptResourceNode, 'body' | 'children'>; body?: string; children?: FileNode[] }

@@ -3,7 +3,7 @@ import {
   normalizeKeywords,
   readActivationDraft,
   updateActivationDraft,
-} from '../../../apps/studio-client/src/features/context-assets/model/activation-editor.js'
+} from '../../../apps/studio-client/src/features/prompt-resources/model/activation-editor.js'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 

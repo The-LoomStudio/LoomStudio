@@ -10,7 +10,7 @@ import {
 } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createPromptResourceStore, createStatisticsStore } from '@loom-studio/application-data'
 import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -59,7 +59,8 @@ describe('AI Capability Profile Gateway', () => {
       providerAdapters: createOfficialProviderAdapterRegistry({ aiCapabilities: registry }),
     })
     const observations = createObservationStore()
-    const gateway = createDocumentBackedProfiledAiGateway({ documents, registry, secrets, observations })
+    const statistics = createStatisticsStore(engine, () => '2026-08-28T00:00:00.000Z')
+    const gateway = createDocumentBackedProfiledAiGateway({ documents, registry, secrets, observations, statistics })
 
     const account = await runtime.createProviderProfile({
       providerExtensionId: 'example.gateway.rerank',
@@ -106,6 +107,7 @@ describe('AI Capability Profile Gateway', () => {
     const run = gateway.createRun({ profileId: created.profile.id, input: { query: 'run' } })
     await expect(run.result).resolves.toMatchObject({ output: { query: 'run' } })
     expect(observations.list({ kind: 'api' }).records).toHaveLength(2)
+    expect((await statistics.usage({ to: '2026-08-29T00:00:00.000Z', timeZone: 'UTC' })).totals).toMatchObject({ requests: 2, total: 14 })
 
     registration.dispose()
     await expect(runtime.getAiCapabilityProfile({ profileId: created.profile.id }))
@@ -209,12 +211,15 @@ function providerRegistration(): AiGatewayProviderRegistration {
       }],
     },
     handlers: {
-      'text.rerank': ({ accountConfig, credential, profileConfig, input }) => ({
+      'text.rerank': ({ accountConfig, credential, profileConfig, input, reportUsage }) => {
+        reportUsage?.({ inputTokens: 7, totalTokens: 7 })
+        return {
         endpoint: accountConfig.endpoint,
         model: profileConfig.model,
         query: (input as { query: string }).query,
         authorized: credential.apiKey === 'super-secret-value',
-      }),
+        }
+      },
     },
   }
 }

@@ -1,0 +1,86 @@
+
+
+.inlineInput {
+  padding: 5px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--loom-color-text);
+  font-size: 12.5px;
+
+  &:focus {
+    outline: 0;
+    border-bottom-color: var(--loom-color-accent, #3b82f6);
+  }
+}
+
+.rawJsonTextarea {
+  flex: 1;
+  min-height: 240px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-subtle);
+  color: var(--loom-color-text);
+  font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  resize: none;
+  tab-size: 2;
+
+  &:focus {
+    outline: 1px solid var(--loom-color-accent, #3b82f6);
+    outline-offset: 1px;
+  }
+}
+
+.inspectionSection {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+
+  h4 {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--loom-color-text);
+  }
+}
+
+.ruleCard {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--loom-color-divider);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-subtle);
+
+  strong {
+    font-size: 12px;
+  }
+
+  small,
+  .metaLine {
+    color: var(--loom-color-text-subtle);
+    font-size: 11px;
+  }
+}
+
+.metaLine,
+.emptyState {
+  margin: 0;
+  color: var(--loom-color-text-subtle);
+  font-size: 12px;
+}
+
+.editor { min-width: 0; }
+.summary { display: grid; gap: var(--loom-page-header-padding); }
+.ruleHeading { display: flex; align-items: center; justify-content: space-between; gap: var(--loom-page-header-padding); }
+.ruleCard code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--loom-font-size-2); }
+.error { color: var(--loom-color-danger); font-size: var(--loom-font-size-2); overflow-wrap: anywhere; }
+.testing { border-top: 1px solid var(--loom-color-divider); padding-top: var(--loom-divider-space); }
+.testing summary { cursor: pointer; }
+.testing label { display: grid; gap: var(--loom-page-header-padding); margin-block: var(--loom-divider-space); }
+.testing .rawJsonTextarea { min-height: 120px; resize: vertical; }
+.output { padding: var(--loom-divider-space); background: var(--loom-color-surface-subtle); border-radius: var(--loom-radius-control); white-space: pre-wrap; overflow-wrap: anywhere; }

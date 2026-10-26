@@ -1,5 +1,5 @@
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
@@ -19,6 +19,101 @@ afterEach(async () => {
 })
 
 describe('Loom Script codec and store', () => {
+  it('resolves precedence before reading invalid obsolete settings and can browse disabled mounts', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const code = hostSource('client').replace('// ==/LoomScript==',
+        '// @setting {"key":"obsolete","label":"旧配置","type":"string","default":"old"}\n// ==/LoomScript==')
+      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'obsolete.loom.js', source: code })
+      const { mount: global } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 0 })
+      await runtime.updateLoomScriptMount({ mountId: global.id, expectedVersion: global.version, enabled: false,
+        orderIndex: 0, grantedCapabilities: [], settings: { obsolete: 'saved' } })
+      const { mount: role } = await runtime.createLoomScriptMount({ target: { kind: 'card', cardId: 'role' }, scriptDocumentId: script.id, orderIndex: 0 })
+      await runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: 'obsolete.loom.js', source: hostSource('client') })
+      expect((await runtime.resolveLoomScriptRendererMounts({ cardId: 'role' })).mounts).toEqual([
+        expect.objectContaining({ mountId: role.id, enabled: false, settings: {} }),
+      ])
+      expect((await runtime.resolveLoomScriptRendererMounts()).mounts).toEqual([
+        expect.objectContaining({ mountId: global.id, enabled: false, settings: {} }),
+      ])
+      expect((await runtime.getLoomScriptSettings({ mountId: global.id })).validationError).toContain('obsolete')
+    } finally { await fixture.dataEngine.close() }
+  })
+
+  it('preserves migrated preset inheritance on settings saves and clears it on explicit enabled changes', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'legacy.loom.js', source: source() })
+      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 0,
+        origin: { legacyPresetInheritance: true, legacyRuleId: 'old-rule' } })
+      const saved = (await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version,
+        enabled: false, orderIndex: 0, grantedCapabilities: [], settings: {} })).mount
+      expect(saved.origin).toEqual(mount.origin)
+      const enabled = (await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: saved.version,
+        enabled: true, orderIndex: 0, grantedCapabilities: ['state.read'] })).mount
+      expect(enabled.origin).toEqual({ legacyRuleId: 'old-rule' })
+      const disabled = (await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: enabled.version,
+        enabled: false, orderIndex: 0, grantedCapabilities: ['state.read'] })).mount
+      expect(disabled.origin).toEqual({ legacyRuleId: 'old-rule' })
+    } finally { await fixture.dataEngine.close() }
+  })
+
+  it('stores configuration separately, captures it only on activation/refresh, and lets explicit role OFF mask global', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const configuredSource = hostSource('client').replace('// ==/LoomScript==',
+        '// @setting {"key":"caption","label":"显示名称","type":"string","default":"旁白"}\n// @setting {"key":"size","label":"字号","type":"number","default":12,"min":8,"max":40}\n// ==/LoomScript==')
+      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'settings.loom.js', source: configuredSource })
+      const { mount: global } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 0 })
+      const enabledGlobal = (await runtime.updateLoomScriptMount({ mountId: global.id, expectedVersion: global.version,
+        enabled: true, orderIndex: 0, grantedCapabilities: ['state.read', 'runtime.client'], settings: { caption: '记录员' } })).mount
+      const globalBefore = (await runtime.resolveLoomScriptRendererMounts()).mounts[0]!
+      expect(globalBefore.settings).toEqual({ caption: '记录员', size: 12 })
+      const saved = (await runtime.updateLoomScriptMount({ mountId: global.id, expectedVersion: enabledGlobal.version,
+        enabled: true, orderIndex: 0, grantedCapabilities: enabledGlobal.grantedCapabilities, settings: { caption: '作者' } })).mount
+      const globalAfter = (await runtime.resolveLoomScriptRendererMounts()).mounts[0]!
+      expect(globalAfter.mountVersion).toBe(globalBefore.mountVersion)
+      expect(globalAfter.settings).toEqual(globalBefore.settings)
+      expect((await runtime.exportLoomScript({ scriptDocumentId: script.id })).artifact.source).toBe(configuredSource)
+      expect((await runtime.getLoomScript({ scriptDocumentId: script.id })).script.version).toBe(script.version)
+      await expect(runtime.updateLoomScriptMount({ mountId: global.id, expectedVersion: saved.version, enabled: true,
+        orderIndex: 0, grantedCapabilities: saved.grantedCapabilities, settings: { size: 100 } })).rejects.toThrow()
+
+      const { mount: role } = await runtime.createLoomScriptMount({ target: { kind: 'card', cardId: 'role' }, scriptDocumentId: script.id, orderIndex: 0 })
+      expect((await runtime.resolveLoomScriptRendererMounts({ cardId: 'role' })).mounts).toEqual([
+        expect.objectContaining({ mountId: role.id, enabled: false }),
+      ])
+      const roleEnabled = (await runtime.updateLoomScriptMount({ mountId: role.id, expectedVersion: role.version,
+        enabled: true, orderIndex: 0, grantedCapabilities: ['state.read', 'runtime.client'], settings: { size: 18 } })).mount
+      expect((await runtime.resolveLoomScriptRendererMounts({ cardId: 'role' })).mounts).toEqual([
+        expect.objectContaining({ mountId: role.id, settings: { caption: '记录员', size: 18 } }),
+      ])
+      await runtime.refreshLoomScriptMount({ mountId: global.id, expectedVersion: saved.version })
+      expect((await runtime.resolveLoomScriptRendererMounts({ cardId: 'role' })).mounts[0]?.settings).toEqual({ caption: '记录员', size: 18 })
+      const roleRefreshed = (await runtime.refreshLoomScriptMount({ mountId: role.id, expectedVersion: roleEnabled.version })).mount
+      expect((await runtime.resolveLoomScriptRendererMounts({ cardId: 'role' })).mounts[0]?.settings).toEqual({ caption: '作者', size: 18 })
+      expect((await runtime.resolveLoomScriptRendererMounts({ cardId: 'different-role' })).mounts[0]?.mountId).toBe(global.id)
+      expect(await runtime.getLoomScriptSettings({ mountId: role.id })).toMatchObject({
+        saved: { size: 18 }, adopted: { caption: '作者', size: 18 }, effective: { caption: '作者', size: 18 },
+      })
+      await runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: 'settings.loom.js',
+        source: configuredSource.split('\n').filter(line => !line.includes('"key":"size"')).join('\n') })
+      const obsolete = await runtime.getLoomScriptSettings({ mountId: role.id })
+      expect(obsolete.validationError).toContain('size')
+      expect(obsolete.saved).toEqual({ size: 18 })
+      expect(obsolete.effective).toBeUndefined()
+      const cleared = (await runtime.updateLoomScriptMount({ mountId: role.id, expectedVersion: roleRefreshed.version,
+        enabled: true, orderIndex: 0, grantedCapabilities: roleRefreshed.grantedCapabilities, settings: {} })).mount
+      expect((await runtime.getLoomScriptSettings({ mountId: role.id })).validationError).toBeUndefined()
+      await runtime.deleteLoomScriptMount({ mountId: role.id, expectedVersion: cleared.version })
+      expect((await runtime.resolveLoomScriptRendererMounts({ cardId: 'role' })).mounts[0]?.mountId).toBe(global.id)
+
+    } finally { await fixture.dataEngine.close() }
+  })
+
   it('freezes existing enabled mounts once on startup before source edits', async () => {
     const fixture = await createFixture()
     const runtime = createApplicationRuntime(fixture)
@@ -185,7 +280,7 @@ describe('Loom Script codec and store', () => {
 
   it('parses multiple contributions and serializes canonical Metadata', () => {
     const metadata = parseLoomScriptSource(source())
-    expect(metadata.contributions.map(item => item.renderer.id)).toEqual(['status-panel', 'status-tail'])
+    expect(metadata.contributions.map(item => item.kind === 'renderer' ? item.renderer.id : item.id)).toEqual(['status-panel', 'status-tail'])
     expect(parseLoomScriptSource(`${serializeLoomScriptMetadata(metadata)}\nexport const renderers = {}`)).toEqual(metadata)
   })
 

@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { createUnavailableClientExtensionDataApi } from '../../support/client/client-extension-data.js'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import type { ClientExtensionActivationContext, ClientRendererContext, RegisteredClientBackground } from '@loom-studio/extension-sdk'
@@ -86,7 +87,7 @@ describe('scene background script', () => {
   it('uses the extension background catalog, switches images, handles missing assets and removes UI on stop', async () => {
     const rendererHost = createClientRendererHost()
     rendererHost.setScopeSnapshot({ workspace: 'w', timelineId: 'story', branchId: 'main' })
-    const extensionHost = createClientExtensionHost({ rendererHost })
+    const extensionHost = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost })
     await extensionHost.reconcile([{
       packageId: 'official.backgrounds', version: '1.0.0', fileRevision: 'revision-2', displayName: '官方背景', available: true,
       tags: [], sourceKinds: ['repository'], modules: [], resources: { backgrounds: [

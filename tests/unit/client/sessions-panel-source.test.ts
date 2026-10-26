@@ -2,7 +2,7 @@ import { createStudioTrpcClient } from '../../../apps/studio-client/src/shared/a
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SessionsPanel } from '../../../apps/studio-client/src/widgets/sessions-panel/sessions-panel.js'
-import { AgentSessionCreateDialog } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-session-create-dialog.js'
+import { AgentSessionCreateDialog } from '../../../apps/studio-client/src/features/sessions/ui/agent-session-create-dialog.js'
 import { createStudioApi, type StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { AgentSession, AgentTranscriptEntry, NarrativeNode, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
@@ -57,20 +57,20 @@ const timestamp = '2026-09-23T00:00:00.000Z'
 const timeline: NarrativeTimeline = {
   id: 'same-timeline', activeBranchId: 'branch', promptResourceIds: [], createdAt: timestamp, updatedAt: timestamp,
 }
-const session: AgentSession = {
+const session: AgentSession = { kind: 'agent' as const,
   id: 'same-session', agentPresetId: 'profile', title: 'Preview session', entryCount: 1, createdAt: timestamp, updatedAt: timestamp,
 }
 
 function source(label: string) {
   const api = createStudioApi(createStudioTrpcClient({ fetch: async () => { throw new Error('Unexpected RPC in rendering test') } }))
   const nodes: Awaited<ReturnType<StudioApi['narratives']['getPage']>>['nodes'] = [{
-    id: label, timelineId: timeline.id, stateRevisionId: 'state', body: { format: 'loom-markdown.v1', raw: label }, createdAt: timestamp,
+    id: label, kind: 'narrative', floor: 1, timelineId: timeline.id, stateRevisionId: 'state', workspaceRevisionId: 'workspace', body: { format: 'loom-markdown.v1', raw: label }, createdAt: timestamp,
   }]
   const entries: Awaited<ReturnType<StudioApi['agentSessions']['getTranscript']>>['entries'] = [{
     id: label, agentSessionId: session.id, sequence: 1, createdAt: timestamp,
     entry: { kind: 'message', role: 'user', content: label },
   }]
-  const page = { timeline, branch: { id: 'branch', timelineId: timeline.id, stateHeadRevisionId: 'state', createdAt: timestamp, updatedAt: timestamp }, nodes }
+  const page = { timeline, branch: { id: 'branch', timelineId: timeline.id, stateHeadRevisionId: 'state', workspaceHeadRevisionId: 'workspace', createdAt: timestamp, updatedAt: timestamp }, nodes }
   const transcript = { session, entries }
   const getPage = vi.fn(async () => page)
   const getTranscript = vi.fn(async () => transcript)
@@ -194,7 +194,7 @@ describe('Session panel preview source isolation', () => {
     f.props.onArchiveImported = finish
     const imported = { timelineId: 'imported', unknownParticipantNamespaces: ['missing-extension'], participantFailures: [] }
     const importArchive = vi.spyOn(f.a.api.narratives, 'importArchive').mockResolvedValue(imported as never)
-    const create = vi.spyOn(f.a.api.narratives, 'create').mockResolvedValue({ timeline: { id: 'imported' } } as never)
+    const importHistory = vi.spyOn(f.a.api.narratives, 'importHistory').mockResolvedValue({ timeline: { id: 'imported' } } as never)
     vi.spyOn(f.a.api.extensionRuntime, 'call').mockResolvedValue({ title: 'Imported', messages: [{ content: 'Hello' }] })
     const detail = f.render().find(element => 'nodes' in element.props)!
     for (let i = 0; i < 4; i++) await Promise.resolve()
@@ -217,7 +217,7 @@ describe('Session panel preview source isolation', () => {
     await vi.waitFor(() => expect(finish).toHaveBeenCalledTimes(2))
     expect(finish.mock.calls[1]?.[0]).toBe('imported')
     expect(importArchive).toHaveBeenCalledTimes(kind === 'archive' ? 1 : 0)
-    expect(create).toHaveBeenCalledTimes(kind === 'chat' ? 1 : 0)
+    expect(importHistory).toHaveBeenCalledTimes(kind === 'chat' ? 1 : 0)
   })
 
   it.each(['timeline', 'session'] as const)('refreshes the same %s after its content revision changes', async kind => {

@@ -1,7 +1,7 @@
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import { handleTrpcRequest } from './trpc-request.js'
 import { readLogFailure, type Logger } from '@loom-studio/logging'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AssetStore } from '@loom-studio/asset-store'
 import type { ApplicationSession, ApplicationSessionAuth } from './application-session-auth.js'
@@ -121,7 +121,7 @@ export function createStudioHttpServer(options: {
 
     const cardPngExportId = readCardPngExportId(request.url)
     if (request.method === 'GET' && cardPngExportId && options.cardPng) {
-      await handleCardPngExport(response, options.cardPng, cardPngExportId)
+      await handleCardFileExport(response, () => options.cardPng!.export(cardPngExportId), 'image/png', 'loom-card.png')
       return
     }
 
@@ -274,25 +274,6 @@ async function handleCardFileImport(
   try {
     const source = await readBinaryRequestBody(request, 128 * 1024 * 1024)
     writeJson(response, 201, await importFile(source))
-  } catch (error) {
-    writeCardPngError(response, error)
-  }
-}
-
-async function handleCardPngExport(
-  response: ServerResponse,
-  cards: NonNullable<Parameters<typeof createStudioHttpServer>[0]['cardPng']>,
-  cardId: string,
-): Promise<void> {
-  try {
-    const bytes = await cards.export(cardId)
-    response.writeHead(200, {
-      'content-type': 'image/png',
-      'content-length': bytes.byteLength,
-      'content-disposition': 'attachment; filename="loom-card.png"',
-      'x-content-type-options': 'nosniff',
-    })
-    response.end(bytes)
   } catch (error) {
     writeCardPngError(response, error)
   }

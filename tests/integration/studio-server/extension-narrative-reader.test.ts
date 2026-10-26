@@ -17,13 +17,13 @@ it('binds source validity to its exact path and text, not later activity or call
     const target = { timelineId: timeline.id, branchId: branch.id }
     const activity: string[] = []
     runtime.subscribeNarrativeActivity(event => { activity.push(event.kind) })
-    const a = await runtime.appendNarrativeInput({ ...target, nodeId: 'a', content: '城池尚存', expectedHeadNodeId: branch.headNodeId })
+    const a = await runtime.appendNarrativeInput({ ...target, nodeId: 'a', content: '城池尚存', expectedHeadNodeId: branch.headNodeId ?? null })
     const reader = createExtensionNarrativeReader(runtime, narratives)
     const sample = await reader.read(target, { selection: { kind: 'tail', count: 1 },
       ...{ timelineId: 'foreign', branchId: 'foreign' } })
     expect(sample.nodes.map(node => node.id)).toEqual([a.node.id])
     const b = await runtime.appendNarrativeInput({ ...target, nodeId: 'b', content: '前往城池', expectedHeadNodeId: a.node.id })
-    expect(activity).toEqual(['input', 'input'])
+    expect(activity).toEqual(['changed', 'input', 'changed', 'input'])
     await expect(reader.validate(target, sample.source)).resolves.toBe(true)
     await expect(reader.validate({ ...target, branchId: 'other' }, sample.source)).resolves.toBe(false)
     await runtime.editNarrativeNode({ ...target, nodeId: a.node.id, expectedHeadNodeId: b.node.id,

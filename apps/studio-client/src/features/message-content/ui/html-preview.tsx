@@ -19,11 +19,13 @@ export function HtmlPreview(props: { value: string }) {
         getComputedStyle(html).colorScheme, window.matchMedia('(prefers-color-scheme: dark)').matches]
       return JSON.stringify([props.value, element.clientWidth, theme])
     }
-    let height = htmlHeightCache.read(cacheKey()) ?? 240
+    let height = htmlHeightCache.read(cacheKey()) ?? (element.getBoundingClientRect().height || 240)
     element.style.height = `${height}px`
     let instance: ReturnType<typeof mountIsolatedFrame> | undefined
     const applySize = () => {
       if (!instance) return
+      // Animate only the host reservation. Animating the iframe viewport would
+      // repeatedly reflow its document and feed intermediate sizes back here.
       instance.frame.style.height = `${height}px`
       element.style.height = `${height}px`
     }
@@ -64,7 +66,7 @@ export function HtmlPreview(props: { value: string }) {
   }, [props.value])
   return <div className={styles.previewShell} data-loom-html-preview="" data-ready={ready || undefined}>
     <div className={styles.previewViewport} aria-busy={!ready && !failure}>
-      <div ref={root} />
+      <div ref={root} className={styles.previewReservation} />
       {!ready && !failure ? <div className={styles.previewSkeleton}><SkeletonText lines={4} /></div> : null}
     </div>
     {failure?.value === props.value ? <p role="alert">{failure.message}</p> : null}

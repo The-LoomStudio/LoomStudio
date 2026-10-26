@@ -1,9 +1,11 @@
 import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
-import type { ExtensionInstallationContent, TextTransformRuleContent } from '../types.js'
+import { resolveLoomScriptSettings } from '@loom-studio/shared/loom-scripts'
+import type { ExtensionInstallationContent } from '../types.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments } from '../foundation/document-store.js'
+import { listScriptTextTransformRules } from './loom-script-text-migration.js'
 import type {
   LoomScriptContent,
   LoomScriptOwner,
@@ -17,9 +19,10 @@ import type {
 export async function snapshotLoomScriptMounts(
   ctx: Pick<ApplicationRuntimeContext, 'documents'>,
   target: LoomScriptMountTarget,
+  mountIds?: ReadonlySet<string>,
 ): Promise<{ snapshots: LoomScriptRuntimeMountSnapshot[]; unavailableMounts: UnavailableLoomScriptMount[] }> {
   const mounts = (await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount))
-    .filter(mount => sameTarget(mount.content.target, target))
+    .filter(mount => sameTarget(mount.content.target, target) && (!mountIds || mountIds.has(mount.id)))
   const unavailableMounts: UnavailableLoomScriptMount[] = []
   const snapshots = await Promise.all(mounts.map(async mount => {
     const script = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId,
@@ -34,14 +37,15 @@ export async function snapshotLoomScriptMounts(
     }
     return {
       mountId: mount.id,
-      mountVersion: mount.version,
+      mountVersion: mount.content.runtimeRevision ?? mount.version,
+      settings: structuredClone(mount.content.adoptedSettings ?? resolveLoomScriptSettings(script.content.settings ?? [], mount.content.enabled ? mount.content.settings ?? {} : {})),
       target: mount.content.target,
       enabled: mount.content.enabled,
       orderIndex: mount.content.orderIndex,
       scriptDocumentId: script.id,
       documentVersion: script.version,
       sourceDigest: script.content.sourceDigest,
-      contributionIds: script.content.contributions.map(contribution => contribution.renderer.id),
+      contributionIds: script.content.contributions.map(contribution => contribution.kind === 'renderer' ? contribution.renderer.id : contribution.id),
       requestedCapabilities: [...script.content.requestedCapabilities],
       grantedCapabilities: [...mount.content.grantedCapabilities],
     }
@@ -57,7 +61,9 @@ export async function resolveLoomScriptRendererMounts(
   },
 ): Promise<{ mounts: ResolvedLoomScriptRendererMount[]; unavailableMounts: UnavailableLoomScriptMount[] }> {
   if (!ctx.blobs) throw new Error('Blob Store is not configured')
-  const batches = await Promise.all(input.currentTargets.map(target => snapshotLoomScriptMounts(ctx, target)))
+  const effective = await selectEffectiveLoomScriptMounts(ctx.documents, input.currentTargets)
+  const effectiveIds = new Set(effective.map(mount => mount.id))
+  const batches = await Promise.all(input.currentTargets.map(target => snapshotLoomScriptMounts(ctx, target, effectiveIds)))
   const current = batches.flatMap(batch => batch.snapshots)
   const unavailableMounts = batches.flatMap(batch => batch.unavailableMounts)
   const snapshots = current.sort((left, right) => left.orderIndex - right.orderIndex || left.mountId.localeCompare(right.mountId))
@@ -86,14 +92,17 @@ export async function resolveLoomScriptRendererMounts(
     assertSnapshotMatchesScript(snapshot, script)
     const contributions = structuredClone(script.content.contributions)
     const owner = script.content.owner
-    if (owner.kind === 'extension' && contributions.some(contribution => contribution.inputs.some(value => value.kind === 'match'))) {
-      const rules = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
-      const localRules = new Map(rules.filter(rule => rule.content.origin?.packageId === owner.packageId
-        && rule.content.origin.installationId === owner.installationId)
-        .map(rule => [rule.content.origin!.contributionId, rule.id]))
-      for (const contribution of contributions) for (const input of contribution.inputs) {
-        if (input.kind === 'match') input.ruleId = localRules.get(input.ruleId) ?? input.ruleId
-      }
+    let packageRules = new Map<string, string>()
+    if (owner.kind === 'extension' && contributions.some(contribution => contribution.kind === 'renderer' && contribution.inputs.some(value => value.kind === 'match'))) {
+      const rules = await listScriptTextTransformRules(ctx.documents)
+      packageRules = new Map(rules.filter(rule => rule.origin?.packageId === owner.packageId
+        && rule.origin.installationId === owner.installationId)
+        .map(rule => [rule.origin!.contributionId, rule.id]))
+    }
+    const ownRules = new Map(script.content.contributions.filter(item => item.kind === 'text-transform')
+      .map(item => [item.id, script.content.textResourceIds?.[item.id] ?? `${script.id}:${item.id}`]))
+    for (const contribution of contributions) if (contribution.kind === 'renderer') for (const requested of contribution.inputs) {
+      if (requested.kind === 'match') requested.ruleId = ownRules.get(requested.ruleId) ?? script.content.textResourceReferences?.[requested.ruleId] ?? packageRules.get(requested.ruleId) ?? requested.ruleId
     }
     const bytes = await ctx.blobs!.read(script.content.source.blobId)
     return {
@@ -103,6 +112,7 @@ export async function resolveLoomScriptRendererMounts(
       target: snapshot.target,
       orderIndex: snapshot.orderIndex,
       grantedCapabilities: [...snapshot.grantedCapabilities],
+      settings: structuredClone(snapshot.settings ?? {}),
       script: {
         id: script.id,
         version: script.version,
@@ -163,7 +173,7 @@ export async function readLoomScriptRevision(
 }
 
 function assertSnapshotMatchesScript(snapshot: LoomScriptRuntimeMountSnapshot, script: DocumentRecord<LoomScriptContent>): void {
-  const contributionIds = script.content.contributions.map(contribution => contribution.renderer.id)
+  const contributionIds = script.content.contributions.map(contribution => contribution.kind === 'renderer' ? contribution.renderer.id : contribution.id)
   if (script.content.sourceDigest !== snapshot.sourceDigest
     || JSON.stringify(contributionIds) !== JSON.stringify(snapshot.contributionIds)
     || JSON.stringify(script.content.requestedCapabilities) !== JSON.stringify(snapshot.requestedCapabilities)) {
@@ -173,4 +183,18 @@ function assertSnapshotMatchesScript(snapshot: LoomScriptRuntimeMountSnapshot, s
 
 function sameTarget(left: LoomScriptMountTarget, right: LoomScriptMountTarget): boolean {
   return JSON.stringify(left) === JSON.stringify(right)
+}
+
+/** Resolve one adoption per document before checking enabled/availability: explicit OFF masks lower scopes. */
+export async function selectEffectiveLoomScriptMounts(
+  documents: DocumentTransaction, currentTargets: readonly LoomScriptMountTarget[],
+): Promise<Array<DocumentRecord<LoomScriptMountContent>>> {
+  const rank = { user: 0, workspace: 1, preset: 2, card: 3 }
+  const mounts = (await listDocuments<LoomScriptMountContent>(documents, applicationDocumentTypes.loomScriptMount))
+    .filter(mount => currentTargets.some(target => sameTarget(target, mount.content.target)))
+    .sort((a, b) => rank[b.content.target.kind] - rank[a.content.target.kind]
+      || b.content.updatedAt.localeCompare(a.content.updatedAt) || b.version - a.version || a.id.localeCompare(b.id))
+  const selected = new Map<string, DocumentRecord<LoomScriptMountContent>>()
+  for (const mount of mounts) if (!selected.has(mount.content.scriptDocumentId)) selected.set(mount.content.scriptDocumentId, mount)
+  return [...selected.values()]
 }

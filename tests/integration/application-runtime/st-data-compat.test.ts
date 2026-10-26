@@ -8,7 +8,7 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import {
   createApplicationRuntime, createPromptProcessorRegistry, createStateContributionRegistry,
-  createStateContentRegistry, type ApplicationRuntimeOptions,
+  createStateContentRegistry, type ApplicationRuntimeOptions, type RuntimeRequestContext,
 } from '@loom-studio/application-runtime'
 import type { ExtensionActivationContext } from '@loom-studio/extension-sdk'
 // This suite deliberately exercises the shipped worker, not an in-process parser substitute.
@@ -226,7 +226,7 @@ describe('STBridge complete data path', () => {
     })
     try {
       const { session, target } = await setup(fixture.runtime)
-      let checkpoint: NonNullable<Awaited<ReturnType<typeof fixture.runtime.prepareAgentRunRecovery>>>['continuation'] | undefined
+      let checkpoint: Parameters<NonNullable<NonNullable<RuntimeRequestContext['agentRun']>['onSuspended']>>[0] | undefined
       const create = vi.spyOn(fixture.promptProcessors, 'create')
       await expect(fixture.runtime.invokeAgentTurn({
         agentSessionId: session.id, input: 'Attack', narrativeTarget: target,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
-import { listRuntimeRendererRegistrations, listRuntimeScriptItems } from '../../../apps/studio-client/src/features/text-transforms/ui/text-transform-panel.js'
+import { listRuntimeRendererRegistrations, listRuntimeScriptItems } from '../../../apps/studio-client/src/widgets/text-transform-workbench/text-transform-panel.js'
 
 describe('text pipeline runtime catalog', () => {
   it('shows an enabled unavailable reference as degraded without treating it as executable', () => {

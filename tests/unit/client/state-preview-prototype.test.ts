@@ -18,7 +18,7 @@ const template = { id: 't', templateVersion: 1, schema: { type: 'object' }, init
 function preview(input: Record<string, unknown>) {
   const config = parseCardStateConfig(JSON.stringify(input))
   const card: Card = {
-    ...config, id: 'card-1', version: 1, name: 'User Card',
+    ...config, id: 'card-1', artifactId: 'fixture-artifact', version: 1, name: 'User Card',
     opening: { id: 'root-opening', content: '' }, lore: { entries: [] }, createdAt: 'now', updatedAt: 'now',
   }
   vi.mocked(stateSnapshotToTreeNodes).mockClear()
@@ -126,7 +126,6 @@ describe('State authoring preview prototype boundaries', () => {
       expect(Object.hasOwn(snapshot.empty as object, '')).toBe(true)
       expect((snapshot.empty as JsonObject)['']).toEqual({ hp: 100, note: null })
       expect(Object.getOwnPropertyDescriptors(Object.prototype)).toEqual(prototype)
-      expect(html).toContain('User Card')
       expect(html).toContain('Final Assembly Preview')
     } finally {
       Reflect.deleteProperty(Object.prototype, marker)

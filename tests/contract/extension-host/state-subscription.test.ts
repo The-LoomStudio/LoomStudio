@@ -3,7 +3,7 @@ import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { EventCapabilityCategory, ExtensionHostOptions } from '@loom-studio/extension-host'
 import type { ExtensionInstallationTarget, ExtensionStateChangeEvent } from '@loom-studio/extension-sdk'
 import { createEventBus } from '@loom-studio/kernel'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, onTestFinished } from 'vitest'
 import { createContext, createExtensionScope } from '../../../packages/extension-sdk/extension-host/src/instance.js'
 import type { ExtensionModuleRecord } from '../../../packages/extension-sdk/extension-host/src/types.js'
 import { registerBuiltinEventDefinitions } from '../../../packages/kernel/src/events.js'
@@ -17,7 +17,9 @@ const change = {
 } satisfies ExtensionStateChangeEvent
 
 afterEach(async () => {
-  await Promise.all(scopes.splice(0).map(scope => scope.dispose()))
+  const results = await Promise.allSettled(scopes.splice(0).map(scope => scope.dispose()))
+  const failure = results.find(result => result.status === 'rejected')
+  if (failure?.status === 'rejected') throw failure.reason
 })
 
 function createHarness(
@@ -37,6 +39,8 @@ function createHarness(
     entry: './index.js',
     capabilities: { 'events.subscribe': ['state'] },
   }
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const context = createContext({
     target: access?.target ?? { kind: 'global' },
     directory: '/unused/state-subscription',
@@ -61,7 +65,7 @@ function createHarness(
     grantedEventCapabilities,
     grantedAssetCapabilities: [],
   }, {
-    documents: createInMemoryDocumentStore(),
+    documents,
     diagnostics: createInMemoryDiagnosticsRegistry(),
     callRpc: vi.fn(),
     registerRpc: vi.fn(),

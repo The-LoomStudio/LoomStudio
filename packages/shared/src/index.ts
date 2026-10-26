@@ -16,6 +16,9 @@ export type {
   ListGlobalSearchScopesResult,
 } from './global-search.js'
 export {
+  promptAnchorOutput,
+  isPromptMessageSequence,
+  canPlacePromptNode,
   listLoreMountsInputSchema,
   listLoreMountsResultSchema,
   replaceLoreMountsInputSchema,

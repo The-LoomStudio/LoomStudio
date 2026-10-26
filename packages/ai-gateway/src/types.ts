@@ -27,6 +27,8 @@ export type AiToolChoice =
   'auto' | 'none' | 'required' | { type: 'tool'; toolName: string }
 
 export type AiGatewayRequest = {
+  /** Host-only cumulative usage observation; never sent to the provider. */
+  onUsage?: (usage: TokenUsage) => void
   provider: AiProviderConfig
   modelId: string
   messages: ChatMessage[]

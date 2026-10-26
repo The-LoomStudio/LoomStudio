@@ -1,3 +1,4 @@
+import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import { createOfficialFakeChatCompletion } from './fake-provider.js'
@@ -57,6 +58,8 @@ export type AiGatewayInvokeInput = {
 }
 
 export type AiGatewayRegisteredInvokeInput = {
+  /** Host-only standard usage observation; receives no credentials or response body. */
+  onUsage?: (usage: TokenUsage) => void
   /** Host-only observation after validation/defaults; never receives credentials. */
   onPrepared?: (evidence: { readonly providerCallId: string; readonly input: Readonly<JsonValue>; readonly profileConfig: Readonly<JsonObject> }) => void
   providerId: string
@@ -70,6 +73,7 @@ export type AiGatewayRegisteredInvokeInput = {
 }
 
 export type AiGatewayInvokeResult = {
+  usage?: TokenUsage
   profileId: string
   providerId: string
   capabilityId: string
@@ -78,6 +82,13 @@ export type AiGatewayInvokeResult = {
 }
 
 export type AiGatewayCapabilityHandler = (input: {
+  /**
+   * Report the provider's cumulative token counts for this invocation, never deltas.
+   * Later reports replace supplied fields and retain omitted fields. Report before
+   * response validation if a failed response still consumed tokens. Counts must be
+   * nonnegative safe integers; absent usage stays unknown. Output is unchanged.
+   */
+  reportUsage?: (usage: TokenUsage) => void
   providerCallId: string
   accountConfig: JsonObject
   credential: Record<string, string>
@@ -183,7 +194,23 @@ export function createAiGatewayCapabilityRegistry(): AiGatewayCapabilityRegistry
           input.onPrepared({ providerCallId, input: capabilityInput, profileConfig })
         } catch { /* Host observation cannot affect provider execution. */ }
       }
+      let usage: TokenUsage | undefined
+      const reportUsage = (value: TokenUsage) => {
+        const next: TokenUsage = { ...usage }
+        for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'cacheReadTokens', 'cacheWriteTokens', 'reasoningTokens'] as const) {
+          const count = value[key]
+          if (count !== undefined) {
+            if (!Number.isSafeInteger(count) || count < 0) throw new Error(`Invalid reported usage: ${key}`)
+            next[key] = count
+          }
+        }
+        if (Object.keys(next).length) {
+          usage = next
+          try { input.onUsage?.(next) } catch { /* Host statistics cannot affect provider execution. */ }
+        }
+      }
       const output = await handler({
+        reportUsage,
         providerCallId,
         accountConfig: structuredClone(accountConfig),
         credential: structuredClone(credential),
@@ -198,6 +225,7 @@ export function createAiGatewayCapabilityRegistry(): AiGatewayCapabilityRegistry
         capabilityId: input.capabilityId,
         providerCallId,
         output: structuredClone(output),
+        ...(usage ? { usage } : {}),
       }
     },
   }

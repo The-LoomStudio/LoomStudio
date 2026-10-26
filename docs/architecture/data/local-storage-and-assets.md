@@ -39,7 +39,7 @@ logs/
 
 ## 2. SQLite 与 Blob 的权威边界
 
-SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
+SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。两者的公共工厂 `createAssetStore` / `createBlobStore` 均由 `@loom-studio/asset-store` 导出；字节实现位于本包 `src/blobs/`，合包不改变文件路径、Blob 身份或 `platform.blob-store` migration namespace。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
 
 Blob 写入使用 Node stream、staging file、同步计算 SHA-256、按 hash 原子 finalize，再在调用者事务中提交 `stored_blobs` metadata。同 hash 的两个 prepared 写入中，一方失败/丢弃绝不删除另一方已提交或共用的 finalized 字节。公开 API 只接受 `blobId`，不返回物理路径。当前允许暂留无引用的孤儿文件，不实现全量物理 GC。
 

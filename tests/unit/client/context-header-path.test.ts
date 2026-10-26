@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildContextPathSegments } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-header/build-context-path-segments.js'
+import { buildContextPathSegments } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-header/build-context-path-segments.js'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
-import { findContextAssetByVirtualPath, findContextAssetPath, resolveContextAssetUri } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-tree.js'
+import { findContextAssetByVirtualPath, findContextAssetPath, resolveContextAssetUri } from '../../../apps/studio-client/src/features/prompt-resources/model/context-asset-tree.js'
 
 describe('workbench header path', () => {
   it('round trips full paths without falling back to a same-named leaf', () => {

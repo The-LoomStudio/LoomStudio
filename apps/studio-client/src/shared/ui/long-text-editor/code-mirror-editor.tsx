@@ -31,14 +31,17 @@ import {
   readSelectionBoundaryLines,
 } from './code-mirror-change-tracking.js'
 import { loomEditorTheme } from './code-mirror-theme.js'
+import { loomScriptMetadataHighlighting } from './loom-script-highlighting.js'
 import styles from './long-text-editor.module.scss'
 
 export type CodeMirrorEditorHandle = {
   focus(): void
   undo(): boolean
+  revealLine(line: number): void
 }
 
 type CodeMirrorEditorProps = {
+  language?: 'markdown' | 'javascript' | 'loom-script'
   autoFocus?: boolean
   hidden?: boolean
   disabled?: boolean
@@ -214,6 +217,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
   const readOnlyCompartmentRef = useRef(new Compartment())
   const placeholderCompartmentRef = useRef(new Compartment())
   const attributesCompartmentRef = useRef(new Compartment())
+  const languageCompartmentRef = useRef(new Compartment())
   const revealMatchCompartmentRef = useRef(new Compartment())
   const revealedRequestRef = useRef<string | undefined>(undefined)
   const revealedQueryRef = useRef<SearchQuery | undefined>(undefined)
@@ -228,6 +232,13 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
   useImperativeHandle(ref, () => ({
     focus: () => viewRef.current?.focus(),
     undo: () => viewRef.current ? undoChange(viewRef.current) : false,
+    revealLine: line => {
+      const view = viewRef.current
+      if (!view) return
+      const target = view.state.doc.line(Math.max(1, Math.min(line, view.state.doc.lines)))
+      view.dispatch({ selection: { anchor: target.from, head: target.to }, effects: EditorView.scrollIntoView(target.from, { y: 'center' }) })
+      view.focus()
+    },
   }), [])
 
   useLayoutEffect(() => {
@@ -264,7 +275,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           drawSelection(),
           search(),
           revealMatchCompartmentRef.current.of([]),
-          markdown({ codeLanguages }),
+          languageCompartmentRef.current.of(editorLanguage(props.language)),
           syntaxHighlighting(loomHighlightStyle),
           yamlScalarHighlighting,
           EditorView.lineWrapping,
@@ -347,6 +358,10 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
   }, [props.hidden, props.revealMatch?.query, props.revealMatch?.requestId])
 
   useEffect(() => {
+    viewRef.current?.dispatch({ effects: languageCompartmentRef.current.reconfigure(editorLanguage(props.language)) })
+  }, [props.language])
+
+  useEffect(() => {
     viewRef.current?.dispatch({
       effects: readOnlyCompartmentRef.current.reconfigure([
         EditorState.readOnly.of(Boolean(props.disabled)),
@@ -372,3 +387,9 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
 
   return <div hidden={props.hidden} className={styles.editorHost} data-loom-component="code-editor" ref={hostRef} />
 })
+
+function editorLanguage(language: CodeMirrorEditorProps['language']) {
+  if (language === 'loom-script') return [javascript(), loomScriptMetadataHighlighting]
+  if (language === 'javascript') return [javascript()]
+  return [markdown({ codeLanguages })]
+}

@@ -1,1 +1,0 @@
-{"name":"@loom-studio/client-bridge","version":"0.0.0","private":true,"type":"module","exports":{".":"./dist/index.js"},"types":"./dist/index.d.ts","scripts":{"build":"tsc -b","test":"vitest run --root ../.. tests/contract/client-bridge tests/integration/client-bridge","lint":"oxlint ."},"dependencies":{"@trpc/client":"11.19.0","@trpc/server":"11.19.0"}}

@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart TD
-    Client["Studio Client"] --> Bridge["Client Bridge"]
+    Client["Studio Client"] --> Bridge["Client 内部 API / Session Fetch"]
     Client --> Shared["Shared"]
     Server["Studio Server"] --> Runtime["Application Runtime"]
     Server --> Kernel["Kernel"]
@@ -16,14 +16,9 @@ flowchart TD
     Runtime --> Stores
     Runtime --> SDK["Extension SDK"]
     Runtime --> Gateway["AI Gateway"]
-    Runtime -. 声明依赖，当前 DFS 未调用 .-> Core["@loom/core"]
     Kernel --> Host["Extension Host"]
-    Kernel --> Runner["Loom Runner"]
     Kernel --> Documents["Document Store / Data Commit" ]
     Host --> SDK
-    SDK --> Transport["Transport"]
-    Transport --> Shared
-    Runner --> Core
     Official["extensions/st-data-compat"] --> SDK
     Fixtures["tests/fixtures/extensions"] --> SDK
 ```
@@ -34,12 +29,12 @@ flowchart TD
 - [Kernel manifest](../../../packages/kernel/package.json)
 - [Extension SDK manifest](../../../packages/extension-sdk/package.json)
 - [Extension Host manifest](../../../packages/extension-sdk/extension-host/package.json)
-- [Transport manifest](../../../packages/transport/package.json)
 
 ## 核心约束
 
-1. Core 直接依赖只允许在 Loom Runner 与 Application Runtime 中声明。当前 Loom Runner 实际执行 Core，Agent PromptBuild 使用 Application 内部 DFS；见 [集成事实](../../architecture/application/prompt-build/loom-core/studio-integration.md)。
+1. PromptBuild 由 Application 直接编译；Core / Runner / TraceAudit 原型已退役。
 2. Kernel 不依赖 Application Runtime，不拥有 Card、Agent 或 Prompt 业务语义。
 3. Host 实现依赖 SDK 作者合同，SDK 不反向依赖 Host；Host 物理目录嵌在 SDK 目录下不改变这个方向。
-4. Transport 可以依赖 Shared；共享基础设施不得反向依赖具体 Application 或 Client。
-5. 官方扩展与测试样本分别在 `official/extensions/` 和 `tests/fixtures/extensions/`，不再以根 `extensions/` 作为当前源码入口。
+4. EventMeta / StudioEvent 由 SDK 提供；共享基础设施不得反向依赖具体 Application 或 Client。
+5. 随主程序携带的轻量内容位于 `official/extensions/`，独立发行扩展的安装与本地开发位于根 `extensions/`，测试样本位于 `tests/fixtures/extensions/`；是否官方不改变安装位置。
+6. Blob 与 Asset 共用 `@loom-studio/asset-store` 包入口，仍分别负责不可变字节和资产元数据；Document 的文件与内存工厂共用 SQLite 实现，写入上下文字段由 Data Engine 统一定义。

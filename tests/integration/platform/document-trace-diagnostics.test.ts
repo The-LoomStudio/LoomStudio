@@ -1,4 +1,5 @@
-import { createClientBridge, type ClientBridge } from '@loom-studio/client-bridge'
+import { onTestFinished } from 'vitest'
+import { createClientBridge, type ClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createPromptResourceStore } from '@loom-studio/application-data'
@@ -6,17 +7,13 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
-import { createLoomRunner, createSamplePassFactories } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
-import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { describe, expect, it } from 'vitest'
 
 function createHarness() {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
-  const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit, factories: createSamplePassFactories() })
   let kernel: Kernel
   const extensionHost = createExtensionHost({
     documents,
@@ -38,12 +35,19 @@ function createHarness() {
     documents,
     dataCommits: documents,
     diagnostics,
-    traceAudit,
     extensionHost,
-    loomRunner,
   })
 
-  return { kernel, documents, diagnostics, traceAudit }
+  onTestFinished(async () => {
+    try {
+      await kernel.stop()
+      await extensionHost.disposeAll()
+    } finally {
+      await documents.close()
+    }
+  })
+
+  return { kernel, documents, diagnostics }
 }
 
 function createBridge(kernel: Kernel): ClientBridge {
@@ -70,7 +74,7 @@ function createKernelFetch(kernel: Kernel): typeof fetch {
   }) as typeof fetch
 }
 
-describe('document, trace, and diagnostics integration', () => {
+describe('document and diagnostics integration', () => {
   it('preserves document history, tombstones deletes, and emits docs.changed', async () => {
     const { kernel } = createHarness()
     const events: StudioEvent[] = []
@@ -201,40 +205,26 @@ describe('document, trace, and diagnostics integration', () => {
     expect(result.items[0]).toMatchObject({ id: 'owner:a', meta: { ownerExtensionId: 'example.ownerA' } })
   })
 
-  it('exposes loom.run traces through trace.list without storing them as normal documents', async () => {
+  it('makes event subscriber failures queryable through diagnostics.list', async () => {
     const { kernel } = createHarness()
     await kernel.start()
-    const bridge = createBridge(kernel)
-
-    const run = await bridge.call<{ traceId?: string }>('loom.run', {
-      fragments: [{ id: 'trace-scenario', content: 'trace visible', meta: { __owner: 'trace-scenario' } }],
-      passes: [{ name: 'uppercase' }],
-      trace: { enabled: true },
+    const subscription = kernel.getEventBus().subscribe(['docs.changed'], () => {
+      throw new Error('broken document subscriber')
     })
-    const traces = await bridge.call<{ items: Array<{ id: string }> }>('trace.list')
-    const docs = await bridge.call<{ items: Array<{ type: string }> }>('docs.list', { type: 'system.trace' })
-
-    expect(run.traceId).toBeDefined()
-    expect(traces.items).toHaveLength(1)
-    expect(docs.items).toHaveLength(0)
-  })
-
-  it('makes loom.run diagnostics queryable and emits diagnostics.updated', async () => {
-    const { kernel } = createHarness()
-    const events: StudioEvent[] = []
-    await kernel.start()
-    kernel.getEventBus().subscribe(['diagnostics.updated'], event => { events.push(event) })
     const bridge = createBridge(kernel)
+    try {
+      await bridge.call('docs.write', {
+        id: 'diagnostic-scenario:subscriber',
+        type: 'example.documentScenario.note',
+        content: { stable: true },
+        expectedVersion: 'new',
+      })
+      const diagnostics = await bridge.call<{ items: Array<{ code: string; source: string }> }>('diagnostics.list')
 
-    await bridge.call('loom.run', {
-      fragments: [{ id: 'diagnostic-scenario', content: 'diagnostic', meta: {} }],
-      passes: [{ name: 'missing' }],
-    })
-    const diagnostics = await bridge.call<{ items: Array<{ code: string; source: string }> }>('diagnostics.list')
-
-    expect(diagnostics.items).toContainEqual(expect.objectContaining({ code: 'loom/factory-missing', source: 'loom-runner' }))
-    expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({ name: 'diagnostics.updated' })
+      expect(diagnostics.items).toContainEqual(expect.objectContaining({ code: 'event.subscriber_failed', source: 'event-hub' }))
+    } finally {
+      subscription.dispose()
+    }
   })
 })
 

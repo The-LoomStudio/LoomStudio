@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { compareMessages } from '../../../apps/studio-client/src/widgets/observability-workbench/observation-message-diff.js'
-import { buildSourceTree } from '../../../apps/studio-client/src/widgets/observability-workbench/observation-source-tree.js'
+import { compareMessages } from '../../../apps/studio-client/src/features/observability/model/observation-message-diff.js'
+import { buildSourceTree } from '../../../apps/studio-client/src/features/observability/model/observation-source-tree.js'
 import { mapObservationStep } from '../../../apps/studio-client/src/features/observability/model/observation-mapping.js'
-import type { ObservationSource } from '../../../apps/studio-client/src/widgets/observability-workbench/observation-view.js'
+import type { ObservationSource } from '../../../apps/studio-client/src/features/observability/model/observation-view.js'
 import type { ObservationEntry } from '../../../apps/studio-client/src/entities/observation.js'
 
 const message = (content: string, role = 'user') => ({ role, content })

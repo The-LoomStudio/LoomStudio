@@ -1,3 +1,4 @@
+import { listScriptTextTransformRules } from '../scripts/loom-script-text-migration.js'
 import { isRecord, type JsonObject } from '@loom-studio/shared'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
@@ -32,9 +33,9 @@ export async function inspectTimelineExtensionResources(
   for (const resource of await listMappedResources(ctx.promptResources)) {
     add(resource.id, resource.resourceKind, resource.rootNode.label, resource.origin)
   }
+  for (const rule of await listScriptTextTransformRules(ctx.documents)) add(rule.id, 'text-rule', rule.name, rule.origin)
   for (const [kind, type] of [
     ['tool', applicationDocumentTypes.agentTool],
-    ['text-rule', applicationDocumentTypes.textTransformRule],
     ['text-extractor', applicationDocumentTypes.textExtractor],
     ['script', applicationDocumentTypes.loomScriptMount],
   ] as const) {

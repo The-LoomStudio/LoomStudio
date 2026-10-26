@@ -142,8 +142,8 @@ describe('extension prompt and model entrypoints', () => {
     await expect(session.render({ id: 'e', sourceId: 's', sourceNodeId: 'n', kind: 'preset', label: 'E', content: 'again' })).rejects.toThrow()
   })
   it('binds prompt identity to the host installation and model calls to the instance signal', async () => {
-    const buildPrompt = vi.fn(async () => ({ messages: [{ role: 'user' as const, content: 'built' }] }))
-    const invokeModel = vi.fn(async (input: { signal?: AbortSignal }) => {
+    const buildPrompt = vi.fn<NonNullable<ExtensionHostOptions['buildPrompt']>>(async () => ({ messages: [{ role: 'user' as const, content: 'built' }] }))
+    const invokeModel = vi.fn<NonNullable<ExtensionHostOptions['invokeModel']>>(async input => {
       expect(input.signal?.aborted).toBe(false)
       return { message: { role: 'assistant' as const, content: 'done' }, text: 'done', model: 'm', provider: 'test' }
     })

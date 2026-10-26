@@ -1,3 +1,5 @@
+export { officialDeclareNarrativeTool } from './declare-narrative.js'
+import { officialDeclareNarrativeTool, officialDeclareNarrativeRegistration } from './declare-narrative.js'
 export { createPromptToolExecutionScope } from './context-snapshot.js'
 export { officialReadContextTool } from './read-context.js'
 export { officialSearchContextTool } from './search-context.js'
@@ -28,6 +30,7 @@ export const officialAgentToolDefinitions = [
   officialReadStateTool,
   officialUpdateStateTool,
   officialAppendNarrativeTool,
+  officialDeclareNarrativeTool,
   officialEditNarrativeTool,
   officialSearchPromptResourcesTool,
   officialReadPromptResourceTool,
@@ -45,6 +48,7 @@ export function createOfficialAgentToolRegistry() {
       officialReadStateRegistration,
       officialUpdateStateRegistration,
       officialAppendNarrativeRegistration,
+      officialDeclareNarrativeRegistration,
       officialEditNarrativeRegistration,
       officialSearchPromptResourcesRegistration,
       officialReadPromptResourceRegistration,

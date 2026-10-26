@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ReactElement } from 'react'
 import { SearchField } from '@loom-studio/ui'
-import { useTextTransformController, type TextTransformProps } from '../../../apps/studio-client/src/features/text-transforms/ui/text-transform-panel.js'
+import { useTextTransformController, type TextTransformProps } from '../../../apps/studio-client/src/widgets/text-transform-workbench/text-transform-panel.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { HistorySource, TextPipelineInspection, TextPipelineOverride, TextTransformRule, TextExtractor } from '../../../apps/studio-client/src/entities/index.js'
 import { MacroAuthoringExplorer, useMacroAuthoring, type MacroAuthoringSource } from '../../../apps/studio-client/src/features/state-variables/ui/macro-authoring-panel.js'
 import { MacroInspectorPanel } from '../../../apps/studio-client/src/features/state-variables/ui/macro-inspector-panel.js'
-import { PresetAnchorPicker } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-detail/preset-anchor-picker.js'
+import { PresetAnchorPicker } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-detail/preset-anchor-picker.js'
 import type { PromptResource } from '../../../apps/studio-client/src/entities/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))

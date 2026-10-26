@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { TextTransformPanel, type OwnerScope, type TextTransformProps } from '../features/text-transforms/ui/text-transform-panel.js'
+import { TextTransformPanel, type OwnerScope, type TextTransformProps } from '../widgets/text-transform-workbench/text-transform-panel.js'
 import type { TextRuleOwner } from '../entities/index.js'
 import type { Translator } from '../shared/i18n/index.js'
 import { PanelTabs } from '../shared/ui/panel-tabs/index.js'

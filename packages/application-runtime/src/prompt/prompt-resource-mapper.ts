@@ -7,7 +7,7 @@ import type {
   PromptResourceTreeNode as StoredPromptResourceTreeNode,
 } from '@loom-studio/application-data'
 import type { JsonObject } from '@loom-studio/shared'
-import { normalizeMacroOptions } from '@loom-studio/shared'
+import { normalizeMacroOptions, canPlacePromptNode, promptAnchorOutput } from '@loom-studio/shared'
 import type {
   PromptResourceContent,
   PromptResourceNode,
@@ -41,6 +41,10 @@ export function toStoredResourceInput(input: {
   metadata: JsonObject
   rootNode: StoredPromptResourceTreeNode
 } {
+  for (const child of input.content.rootNode.children ?? []) {
+    if (!canPlacePromptNode(input.content.rootNode, input.content.rootNode.id, child))
+      throw new Error('Invalid Prompt tree: message sequences and Message blocks cannot be nested inside Message blocks')
+  }
   const metadata: PromptResourceMetadata = {}
   if (input.content.historyPolicy !== undefined) metadata.historyPolicy = input.content.historyPolicy
   if (input.content.useCardLore !== undefined) metadata.useCardLore = input.content.useCardLore
@@ -65,11 +69,14 @@ export function toStoredResourceInput(input: {
 }
 
 export function toStoredNode(node: PromptResourceNode): StoredPromptResourceTreeNode {
+  if (node.kind !== 'virtual' && node.capabilities?.targetAnchorId && promptAnchorOutput(node.capabilities.targetAnchorId) === 'messages')
+    throw new Error('Text contributions cannot target a message sequence')
   const extra: JsonObject = { ...(node.extra ?? {}) }
   delete extra.projection
-  const capabilities = node.capabilities?.projection
-    ? node.capabilities
-    : readCompositionCapabilities(node.capabilities, node.projection)
+  const normalizedCapabilities = normalizeAuthorCapabilities(node.capabilities)
+  const capabilities = normalizedCapabilities?.projection
+    ? normalizedCapabilities
+    : readCompositionCapabilities(normalizedCapabilities, node.projection)
   for (const key of legacyNodeKeys) {
     const value = node[key]
     if (value !== undefined) extra[key] = value
@@ -79,7 +86,7 @@ export function toStoredNode(node: PromptResourceNode): StoredPromptResourceTree
     kind: node.kind,
     label: node.label,
     ...(node.category === undefined ? {} : { category: node.category }),
-    ...(node.meta === undefined ? {} : { meta: node.meta }),
+    ...(node.meta === undefined ? {} : { meta: node.meta === 'message.developer' ? 'message.system' : node.meta }),
     ...(node.enabled === undefined ? {} : { enabled: node.enabled }),
     ...(node.body === undefined ? {} : { body: node.body }),
     ...(capabilities === undefined ? {} : { capabilities }),
@@ -117,7 +124,7 @@ function fromStoredNode(node: StoredPromptResourceTreeNode): PromptResourceNode 
   const known = new Set<string>([...legacyNodeKeys, 'projection'])
   const unknownExtra = Object.fromEntries(Object.entries(extra).filter(([key]) => !known.has(key))) as JsonObject
   const capabilities = readCompositionCapabilities(
-    node.capabilities as PromptResourceNode['capabilities'],
+    normalizeAuthorCapabilities(node.capabilities as PromptResourceNode['capabilities']),
     extra.projection as PromptResourceNode['projection'],
   )
   const result: PromptResourceNode = {
@@ -129,7 +136,7 @@ function fromStoredNode(node: StoredPromptResourceTreeNode): PromptResourceNode 
     kind: node.kind,
     label: node.label,
     ...(node.category === undefined || node.category === 'prompt' ? {} : { category: node.category }),
-    ...(node.meta === undefined ? {} : { meta: node.meta }),
+    ...(node.meta === undefined ? {} : { meta: node.meta === 'message.developer' ? 'message.system' : node.meta }),
     ...(node.enabled === undefined ? {} : { enabled: node.enabled }),
     ...(node.body === undefined ? {} : { body: node.body }),
     ...(capabilities === undefined ? {} : { capabilities }),
@@ -219,4 +226,9 @@ export async function listResourceCatalog(store: PromptResourceStore, resourceKi
   } while (cursor)
   resources.sort((a, b) => a.rootNode.label.localeCompare(b.rootNode.label))
   return { resources, ...(invalidResources.length ? { invalidResources } : {}) }
+}
+
+/** Legacy author roles keep their effective Provider behavior without rewriting run evidence. */
+export function normalizeAuthorCapabilities(capabilities: PromptResourceNode['capabilities']): PromptResourceNode['capabilities'] {
+  return capabilities?.roleHint === 'developer' ? { ...capabilities, roleHint: 'system' } : capabilities
 }

@@ -1,11 +1,10 @@
-import { createClientBridge, type ClientBridge } from '@loom-studio/client-bridge'
+import { onTestFinished } from 'vitest'
+import { createClientBridge, type ClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
-import { createLoomRunner, createSamplePassFactories } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
-import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -14,8 +13,6 @@ import { describe, expect, it } from 'vitest'
 function createHarness() {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
-  const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit, factories: createSamplePassFactories() })
   let kernel: Kernel
   const extensionHost = createExtensionHost({
     documents,
@@ -37,9 +34,16 @@ function createHarness() {
     documents,
     dataCommits: documents,
     diagnostics,
-    traceAudit,
     extensionHost,
-    loomRunner,
+  })
+
+  onTestFinished(async () => {
+    try {
+      await kernel.stop()
+      await extensionHost.disposeAll()
+    } finally {
+      await documents.close()
+    }
   })
 
   return { kernel, extensionHost }
@@ -98,25 +102,20 @@ describe('client bridge data-flow integration', () => {
       content: { visible: true },
       expectedVersion: 'new',
     })
-    await bridge.call('loom.run', {
-      fragments: [{ id: 'client-dashboard-trace', content: 'dashboard trace', meta: { __owner: 'dashboard' } }],
-      passes: [{ name: 'uppercase' }],
-      trace: { enabled: true },
-    })
+    await expect(bridge.call('example.clientDashboard.ping')).resolves.toEqual({ ok: true })
 
     const dashboard = await loadDashboardData(bridge)
 
     expect(dashboard.documents.items).toContainEqual(expect.objectContaining({ id: 'client-dashboard:doc' }))
     expect(dashboard.diagnostics.items).toContainEqual(expect.objectContaining({ code: 'example.clientDashboard.ready' }))
-    expect(dashboard.traces.items).toHaveLength(1)
     expect(dashboard.extensions.items).toContainEqual(expect.objectContaining({ packageId: 'example.clientDashboard', moduleId: 'server', state: 'active' }))
   })
 
-  it('surfaces missing method errors and remains usable afterward', async () => {
+  it.each(['missing.method', 'loom.run', 'trace.list', 'audit.list'])('surfaces unavailable method %s and remains usable afterward', async method => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await expect(bridge.call('missing.method')).rejects.toThrow('RPC method not found: missing.method')
+    await expect(bridge.call(method)).rejects.toThrow(`RPC method not found: ${method}`)
     const ping = await bridge.call<{ ok: boolean }>('system.ping')
 
     expect(ping.ok).toBe(true)
@@ -126,14 +125,12 @@ describe('client bridge data-flow integration', () => {
 async function loadDashboardData(bridge: ClientBridge): Promise<{
   documents: { items: unknown[] }
   diagnostics: { items: unknown[] }
-  traces: { items: unknown[] }
   extensions: { items: unknown[] }
 }> {
   const documents = await bridge.call<{ items: unknown[] }>('docs.list')
   const diagnostics = await bridge.call<{ items: unknown[] }>('diagnostics.list')
-  const traces = await bridge.call<{ items: unknown[] }>('trace.list')
   const extensions = await bridge.call<{ items: unknown[] }>('extensions.listPackages')
-  return { documents, diagnostics, traces, extensions }
+  return { documents, diagnostics, extensions }
 }
 
 function createExtensionFixture(name: string, input: { id: string; rpc: Array<{ name: string }>; source: string }): string {

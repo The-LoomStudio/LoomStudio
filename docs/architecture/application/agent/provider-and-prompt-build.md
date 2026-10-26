@@ -115,4 +115,4 @@ Agent Turn 的 `promptAddition` 仅对该次 Preview/Run 生效，附加 Lore ID
 - [`packages/ai-gateway/src/provider-registry.ts`](../../../../packages/ai-gateway/src/provider-registry.ts)
 - [`packages/application-runtime/src/agents/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agents/tool-prompt-build.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
-- [`apps/studio-client/src/features/context-assets/model/preset-tool-projection.ts`](../../../../apps/studio-client/src/features/context-assets/model/preset-tool-projection.ts)
+- [`apps/studio-client/src/features/prompt-resources/model/preset-tool-projection.ts`](../../../../apps/studio-client/src/features/prompt-resources/model/preset-tool-projection.ts)

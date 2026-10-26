@@ -4,7 +4,7 @@ import { readVisibleFileTreeNodes } from '../../../apps/studio-client/src/shared
 import { buildCardResourceTree, classifyCardPromptResources, readCardLoreTarget } from '../../../apps/studio-client/src/widgets/character-panel/card-resource-directory-model.js'
 
 const card: Card = {
-  id: 'card-a', version: 3, name: 'A', createdAt: '', updatedAt: '',
+  id: 'card-a', artifactId: 'fixture-artifact', version: 3, name: 'A', createdAt: '', updatedAt: '',
   opening: { id: 'root-opening', content: '' }, lore: { entries: [{ title: 'Inline setting', content: 'text' }] },
   promptResourceIds: ['owned', 'external', 'extension'],
   externalPromptResourceIds: ['external'],

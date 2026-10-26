@@ -78,3 +78,20 @@ describe('Deleted Timeline navigation', () => {
     harness.unmount()
   })
 })
+
+
+describe('Preset library navigation', () => {
+  it.each([true, false])('clears explicit or legacy node targets without losing the story or search: resource id %s', hasResourceId => {
+    const position = { ...workspace, panel: 'agent' as const, search: 'q=writer', resourceId: hasResourceId ? 'preset' : undefined, assetId: 'message' }
+    fixture.location.state = studioHistoryState('/rpc', position)
+    const harness = renderHook(() => useStudioNavigation({ endpoint: '/rpc', api: {} as StudioApi }))
+    harness.current.clearResourceTarget('unrelated-resource')
+    expect(fixture.navigate).not.toHaveBeenCalled()
+    harness.current.clearResourceTarget()
+    expect(fixture.navigate).toHaveBeenCalledExactlyOnceWith('/studio', {
+      replace: true,
+      state: studioHistoryState('/rpc', { ...position, resourceId: undefined, assetId: undefined, referenceUri: undefined, targetUri: undefined }),
+    })
+    harness.unmount()
+  })
+})

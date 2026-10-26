@@ -5,8 +5,6 @@ import { createExtensionHost } from '@loom-studio/extension-host'
 import type { ExtensionAssetCapability, ExtensionHostOptions } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
 import type { Logger } from '@loom-studio/logging'
-import { createLoomRunner, createSamplePassFactories } from '@loom-studio/loom-runner'
-import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -45,8 +43,6 @@ export function createExtensionHostHarness(options: {
 } = {}) {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
-  const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit, factories: createSamplePassFactories() })
   let kernel: Kernel
   const extensionHost = createExtensionHost({
     readExtensionNarrative: options.readExtensionNarrative,
@@ -100,9 +96,16 @@ export function createExtensionHostHarness(options: {
     documents,
     dataCommits: documents,
     diagnostics,
-    traceAudit,
     extensionHost,
-    loomRunner,
+  })
+
+  onTestFinished(async () => {
+    try {
+      await kernel.stop()
+      await extensionHost.disposeAll()
+    } finally {
+      await documents.close()
+    }
   })
 
   return { kernel, extensionHost, diagnostics, documents }

@@ -3,10 +3,8 @@ import { createInMemoryDocumentStore } from '../../packages/document-store/src/i
 import { createExtensionHost } from '../../packages/extension-sdk/extension-host/src/index.js'
 import { createKernel, type Kernel } from '../../packages/kernel/src/index.js'
 import { createMemoryLogSink, createRootLogger } from '../../packages/logging/src/index.js'
-import { createLoomRunner } from '../../packages/loom-runner/src/index.js'
 import type { JsonValue } from '../../packages/shared/src/index.js'
-import { createInMemoryTraceAuditStore } from '../../packages/trace-audit/src/index.js'
-import type { StudioEvent } from '../../packages/transport/src/index.js'
+import type { StudioEvent } from '../../packages/extension-sdk/src/index.js'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -29,8 +27,6 @@ type WeatherStatus = {
 
 const diagnostics = createInMemoryDiagnosticsRegistry()
 const documents = createInMemoryDocumentStore()
-const traceAudit = createInMemoryTraceAuditStore()
-const loomRunner = createLoomRunner({ traceAudit })
 const logs = createMemoryLogSink({ capacity: 200 })
 const rootLogger = createRootLogger({ service: 'extension-verifier', instanceId: 'verifier-1', sinks: [logs] })
 const observedEvents: StudioEvent[] = []
@@ -59,170 +55,179 @@ kernel = createKernel({
   documents,
   dataCommits: documents,
   diagnostics,
-  traceAudit,
   extensionHost,
-  loomRunner,
   environment: 'test',
 })
 
-await kernel.start()
-kernel.getEventBus().subscribe(['example.weatherStation.*', 'docs.changed'], event => observedEvents.push(event))
-
-const extensionDirectory = resolve('tests/fixtures/extensions/weather-station')
-const discovered = await extensionHost.discover(extensionDirectory)
-assert(discovered[0]?.state === 'manifestValidated', 'extension discovery validates the manifest')
-
-const firstActivation = await extensionHost.activate('example.weatherStation', 'server')
-assert(firstActivation.state === 'active', 'extension activates without degradation')
-const firstInstanceId = required(firstActivation.instance?.instanceId, 'first instanceId')
-
-await flushEventHandlers()
-const firstStatus = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
-assert(firstStatus.packageId === 'example.weatherStation' && firstStatus.moduleId === 'server', 'RPC receives trusted package and module identity')
-assert(firstStatus.instanceId === firstInstanceId, 'RPC receives current instance identity')
-assert(firstStatus.aborted === false, 'activation AbortSignal remains active')
-assert(firstStatus.grantedEventCapabilities.includes('documents'), 'manifest event capability is granted')
-assert(firstStatus.grantedEventCapabilities.includes('extension:example.weatherStation'), 'private extension event capability is granted')
-assert(firstStatus.state?.temperatureC === 20, 'extension initialized its owned document')
-assert(firstStatus.counters.documentChanges === 1, 'extension consumed the platform docs.changed event')
-
-const document = await documents.get('example.weatherStation:state')
-assert(document?.meta.ownerExtensionId === 'example.weatherStation', 'document owner is bound by the Host')
-assert(document?.meta.createdBy.kind === 'extension', 'document actor is bound by the Host')
-
-const update = await kernel.callRpc<{
-  state: { temperatureC: number; revision: number }
-  eventId: string
-  definitionVersion: number
-}>('example.weatherStation.update', { temperatureC: 24 })
-assert(update.state.temperatureC === 24 && update.state.revision === 2, 'extension RPC updates persisted state')
-assert(update.definitionVersion === 1, 'published event carries definition version')
-
-await flushEventHandlers()
-const updatedStatus = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
-assert(updatedStatus.counters.documentChanges === 2, 'platform event subscription remains active')
-assert(updatedStatus.counters.publicEvents === 1, 'extension consumes its public event')
-assert(updatedStatus.counters.privateEvents === 1, 'extension consumes its protected event with grant')
-assert(observedEvents.some(event => event.name === 'example.weatherStation.updated'), 'platform subscriber observes extension public event')
-assert(observedEvents.some(event => event.name === 'example.weatherStation.privateSnapshot'), 'platform subscriber observes extension protected event')
-
-await kernel.callRpc('example.weatherStation.failSubscriber')
-await Promise.resolve()
-assert(diagnostics.list().some(item => item.code === 'event.subscriber_failed'), 'subscriber failure is isolated and reported')
-const statusAfterFailure = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
-assert(statusAfterFailure.counters.publicEvents === 2, 'failed subscriber did not unregister the extension')
-
-expectThrow(
-  () => kernel.getEventBus().emit('example.weatherStation.updated', {
-    documentId: 'forged',
-    temperatureC: 1,
-    revision: 1,
-  }),
-  'platform cannot publish an extension-owned event',
-)
-expectThrow(
-  () => kernel.getEventBus().emit('missing.event', {}),
-  'unregistered event cannot be published',
-)
-expectThrow(
-  () => kernel.getEventBus().emit('example.weatherStation.updated', {
-    documentId: 'invalid-json',
-    temperatureC: Number.NaN,
-    revision: 1,
-  }, {
-    publisher: {
-      kind: 'extension',
-      packageId: 'example.weatherStation',
-      moduleId: 'server',
-      instanceId: firstInstanceId,
-    },
-  }),
-  'event payload validator rejects non-finite JSON numbers',
-)
-await expectReject(
-  () => kernel.callRpc('example.weatherStation.publishNote', { note: 'x'.repeat(256) }),
-  'extension event enforces maxPayloadBytes at publish boundary',
-)
-expectThrow(
-  () => kernel.getEventBus().subscribe(['docs.changed'], () => {}, {
-    subscriber: {
-      kind: 'extension',
-      packageId: 'example.untrusted',
-      moduleId: 'server',
-      instanceId: 'untrusted-1',
-      capabilities: [],
-    },
-  }),
-  'protected platform event rejects an ungranted extension',
-)
-
-const firstDefinitions = kernel.getEventBus().definitions().filter(item => item.registeredBy.kind === 'extension')
-assert(firstDefinitions.length === 3, 'runtime registry contains all extension event definitions')
-assert(firstDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.instanceId === firstInstanceId), 'definitions belong to the first instance')
-assert(firstDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.packageId === 'example.weatherStation' && item.registeredBy.moduleId === 'server'), 'definitions retain package and module owner')
-
-const failingExtensionDirectory = createFailingExtensionFixture()
-await extensionHost.discover(failingExtensionDirectory)
-const failedActivation = await extensionHost.activate('example.activationFailure', 'server')
-assert(failedActivation.instance?.state === 'activation_failed', 'activation failure preserves a dedicated instance state')
-await expectReject(() => kernel.callRpc('example.activationFailure.ping'), 'activation failure cleans partial RPC registration')
-assert(!kernel.getEventBus().eventNames().includes('example.activationFailure.ready'), 'activation failure cleans partial event definition')
-
-process.env.LOOM_WEATHER_TEST_FAIL_DISPOSE = '0'
-const reloaded = await extensionHost.reload('example.weatherStation', 'server')
-assert(reloaded.state === 'active', 'extension reload activates a fresh instance')
-const secondInstanceId = required(reloaded.instance?.instanceId, 'second instanceId')
-assert(secondInstanceId !== firstInstanceId, 'reload creates a new instanceId')
-
-const secondDefinitions = kernel.getEventBus().definitions().filter(item => item.registeredBy.kind === 'extension')
-assert(secondDefinitions.length === 3, 'reload does not duplicate event definitions')
-assert(secondDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.instanceId === secondInstanceId), 'old cleanup does not remove new definitions')
-
-const secondStatus = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
-assert(secondStatus.instanceId === secondInstanceId, 'RPC points at the reloaded instance')
-assert(secondStatus.counters.documentChanges === 0, 'reload does not recreate the existing document')
-
-process.env.LOOM_WEATHER_TEST_FAIL_DISPOSE = '1'
-const failingDisposeActivation = await extensionHost.reload('example.weatherStation', 'server')
-const failingDisposeInstanceId = required(failingDisposeActivation.instance?.instanceId, 'failing dispose instanceId')
-assert(failingDisposeInstanceId !== secondInstanceId, 'dispose-failure verification uses a fresh instance')
-
-const thirdActivation = await verifyKernelStopCleanup(extensionHost, kernel)
-assert(thirdActivation.instance?.instanceId !== failingDisposeInstanceId, 'kernel-stop verification creates a fresh recovery instance')
-
-const disposeDiagnostics = diagnostics.list({ packageId: 'example.weatherStation', moduleId: 'server' }).filter(item => (
-  item.instanceId === failingDisposeInstanceId
-  && item.code.startsWith('example.weatherStation.dispose.')
-))
-assert(disposeDiagnostics.map(item => item.code).slice(-3).join(',') === [
-  'example.weatherStation.dispose.last',
-  'example.weatherStation.dispose.failure',
-  'example.weatherStation.dispose.first',
-].join(','), 'disposers execute in reverse order and continue after failure')
-assert(disposeDiagnostics.every(item => item.instanceId === failingDisposeInstanceId), 'dispose diagnostics retain failing instance identity')
-assert(diagnostics.list().some(item => item.code === 'extension.dispose_failed' && item.instanceId === failingDisposeInstanceId), 'dispose failure is aggregated and reported')
-
-let finalDisposeRejected = false
 try {
+  await kernel.start()
+  kernel.getEventBus().subscribe(['example.weatherStation.*', 'docs.changed'], event => observedEvents.push(event))
+
+  const extensionDirectory = resolve('tests/fixtures/extensions/weather-station')
+  const discovered = await extensionHost.discover(extensionDirectory)
+  assert(discovered[0]?.state === 'manifestValidated', 'extension discovery validates the manifest')
+
+  const firstActivation = await extensionHost.activate('example.weatherStation', 'server')
+  assert(firstActivation.state === 'active', 'extension activates without degradation')
+  const firstInstanceId = required(firstActivation.instance?.instanceId, 'first instanceId')
+
+  await flushEventHandlers()
+  const firstStatus = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
+  assert(firstStatus.packageId === 'example.weatherStation' && firstStatus.moduleId === 'server', 'RPC receives trusted package and module identity')
+  assert(firstStatus.instanceId === firstInstanceId, 'RPC receives current instance identity')
+  assert(firstStatus.aborted === false, 'activation AbortSignal remains active')
+  assert(firstStatus.grantedEventCapabilities.includes('documents'), 'manifest event capability is granted')
+  assert(firstStatus.grantedEventCapabilities.includes('extension:example.weatherStation'), 'private extension event capability is granted')
+  assert(firstStatus.state?.temperatureC === 20, 'extension initialized its owned document')
+  assert(firstStatus.counters.documentChanges === 1, 'extension consumed the platform docs.changed event')
+
+  const document = await documents.get('example.weatherStation:state')
+  assert(document?.meta.ownerExtensionId === 'example.weatherStation', 'document owner is bound by the Host')
+  assert(document?.meta.createdBy.kind === 'extension', 'document actor is bound by the Host')
+
+  const update = await kernel.callRpc<{
+    state: { temperatureC: number; revision: number }
+    eventId: string
+    definitionVersion: number
+  }>('example.weatherStation.update', { temperatureC: 24 })
+  assert(update.state.temperatureC === 24 && update.state.revision === 2, 'extension RPC updates persisted state')
+  assert(update.definitionVersion === 1, 'published event carries definition version')
+
+  await flushEventHandlers()
+  const updatedStatus = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
+  assert(updatedStatus.counters.documentChanges === 2, 'platform event subscription remains active')
+  assert(updatedStatus.counters.publicEvents === 1, 'extension consumes its public event')
+  assert(updatedStatus.counters.privateEvents === 1, 'extension consumes its protected event with grant')
+  assert(observedEvents.some(event => event.name === 'example.weatherStation.updated'), 'platform subscriber observes extension public event')
+  assert(observedEvents.some(event => event.name === 'example.weatherStation.privateSnapshot'), 'platform subscriber observes extension protected event')
+
+  await kernel.callRpc('example.weatherStation.failSubscriber')
+  await Promise.resolve()
+  assert(diagnostics.list().some(item => item.code === 'event.subscriber_failed'), 'subscriber failure is isolated and reported')
+  const statusAfterFailure = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
+  assert(statusAfterFailure.counters.publicEvents === 2, 'failed subscriber did not unregister the extension')
+
+  expectThrow(
+    () => kernel.getEventBus().emit('example.weatherStation.updated', {
+      documentId: 'forged',
+      temperatureC: 1,
+      revision: 1,
+    }),
+    'platform cannot publish an extension-owned event',
+  )
+  expectThrow(
+    () => kernel.getEventBus().emit('missing.event', {}),
+    'unregistered event cannot be published',
+  )
+  expectThrow(
+    () => kernel.getEventBus().emit('example.weatherStation.updated', {
+      documentId: 'invalid-json',
+      temperatureC: Number.NaN,
+      revision: 1,
+    }, {
+      publisher: {
+        kind: 'extension',
+        packageId: 'example.weatherStation',
+        moduleId: 'server',
+        instanceId: firstInstanceId,
+      },
+    }),
+    'event payload validator rejects non-finite JSON numbers',
+  )
+  await expectReject(
+    () => kernel.callRpc('example.weatherStation.publishNote', { note: 'x'.repeat(256) }),
+    'extension event enforces maxPayloadBytes at publish boundary',
+  )
+  expectThrow(
+    () => kernel.getEventBus().subscribe(['docs.changed'], () => {}, {
+      subscriber: {
+        kind: 'extension',
+        packageId: 'example.untrusted',
+        moduleId: 'server',
+        instanceId: 'untrusted-1',
+        capabilities: [],
+      },
+    }),
+    'protected platform event rejects an ungranted extension',
+  )
+
+  const firstDefinitions = kernel.getEventBus().definitions().filter(item => item.registeredBy.kind === 'extension')
+  assert(firstDefinitions.length === 3, 'runtime registry contains all extension event definitions')
+  assert(firstDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.instanceId === firstInstanceId), 'definitions belong to the first instance')
+  assert(firstDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.packageId === 'example.weatherStation' && item.registeredBy.moduleId === 'server'), 'definitions retain package and module owner')
+
+  const failingExtensionDirectory = createFailingExtensionFixture()
+  await extensionHost.discover(failingExtensionDirectory)
+  const failedActivation = await extensionHost.activate('example.activationFailure', 'server')
+  assert(failedActivation.instance?.state === 'activation_failed', 'activation failure preserves a dedicated instance state')
+  await expectReject(() => kernel.callRpc('example.activationFailure.ping'), 'activation failure cleans partial RPC registration')
+  assert(!kernel.getEventBus().eventNames().includes('example.activationFailure.ready'), 'activation failure cleans partial event definition')
+
+  process.env.LOOM_WEATHER_TEST_FAIL_DISPOSE = '0'
+  const reloaded = await extensionHost.reload('example.weatherStation', 'server')
+  assert(reloaded.state === 'active', 'extension reload activates a fresh instance')
+  const secondInstanceId = required(reloaded.instance?.instanceId, 'second instanceId')
+  assert(secondInstanceId !== firstInstanceId, 'reload creates a new instanceId')
+
+  const secondDefinitions = kernel.getEventBus().definitions().filter(item => item.registeredBy.kind === 'extension')
+  assert(secondDefinitions.length === 3, 'reload does not duplicate event definitions')
+  assert(secondDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.instanceId === secondInstanceId), 'old cleanup does not remove new definitions')
+
+  const secondStatus = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
+  assert(secondStatus.instanceId === secondInstanceId, 'RPC points at the reloaded instance')
+  assert(secondStatus.counters.documentChanges === 0, 'reload does not recreate the existing document')
+
+  process.env.LOOM_WEATHER_TEST_FAIL_DISPOSE = '1'
+  const failingDisposeActivation = await extensionHost.reload('example.weatherStation', 'server')
+  const failingDisposeInstanceId = required(failingDisposeActivation.instance?.instanceId, 'failing dispose instanceId')
+  assert(failingDisposeInstanceId !== secondInstanceId, 'dispose-failure verification uses a fresh instance')
+
+  const thirdActivation = await verifyKernelStopCleanup(extensionHost, kernel)
+  assert(thirdActivation.instance?.instanceId !== failingDisposeInstanceId, 'kernel-stop verification creates a fresh recovery instance')
+
+  const disposeDiagnostics = diagnostics.list({ packageId: 'example.weatherStation', moduleId: 'server' }).filter(item => (
+    item.instanceId === failingDisposeInstanceId
+    && item.code.startsWith('example.weatherStation.dispose.')
+  ))
+  assert(disposeDiagnostics.map(item => item.code).slice(-3).join(',') === [
+    'example.weatherStation.dispose.last',
+    'example.weatherStation.dispose.failure',
+    'example.weatherStation.dispose.first',
+  ].join(','), 'disposers execute in reverse order and continue after failure')
+  assert(disposeDiagnostics.every(item => item.instanceId === failingDisposeInstanceId), 'dispose diagnostics retain failing instance identity')
+  assert(diagnostics.list().some(item => item.code === 'extension.dispose_failed' && item.instanceId === failingDisposeInstanceId), 'dispose failure is aggregated and reported')
+
+  let finalDisposeRejected = false
+  try {
+    await extensionHost.dispose('example.weatherStation', 'server')
+  } catch {
+    finalDisposeRejected = true
+  }
+  assert(finalDisposeRejected, 'explicit dispose reports aggregated cleanup failure')
+  await expectReject(() => kernel.callRpc('example.weatherStation.status'), 'disposed RPC is removed')
+  assert(kernel.getEventBus().definitions().every(item => item.registeredBy.kind !== 'extension'), 'disposed event definitions are removed')
+  assert(extensionHost.list().find(item => item.packageId === 'example.weatherStation' && item.moduleId === 'server')?.instance?.state === 'dispose_failed', 'instance state preserves cleanup failure')
+
   await extensionHost.dispose('example.weatherStation', 'server')
-} catch {
-  finalDisposeRejected = true
+  await kernel.stop()
+
+  const runtimeLogs = logs.list().filter(item => item.event === 'extension.runtime.log')
+  assert(runtimeLogs.some(item => item.data?.instanceId === firstInstanceId), 'extension logger includes first instance identity')
+  assert(runtimeLogs.some(item => item.data?.instanceId === secondInstanceId), 'extension logger includes reloaded instance identity')
+  assert(runtimeLogs.every(item => item.data?.packageId === 'example.weatherStation' && item.data?.moduleId === 'server'), 'extension logger includes package and module identity')
+
+  console.log(`Server extension verification passed: ${checks} checks`)
+} finally {
+  try {
+    await kernel.stop()
+  } finally {
+    try {
+      await rootLogger.close()
+    } finally {
+      await documents.close()
+    }
+  }
 }
-assert(finalDisposeRejected, 'explicit dispose reports aggregated cleanup failure')
-await expectReject(() => kernel.callRpc('example.weatherStation.status'), 'disposed RPC is removed')
-assert(kernel.getEventBus().definitions().every(item => item.registeredBy.kind !== 'extension'), 'disposed event definitions are removed')
-assert(extensionHost.list().find(item => item.packageId === 'example.weatherStation' && item.moduleId === 'server')?.instance?.state === 'dispose_failed', 'instance state preserves cleanup failure')
-
-await extensionHost.dispose('example.weatherStation', 'server')
-await kernel.stop()
-await rootLogger.close()
-
-const runtimeLogs = logs.list().filter(item => item.event === 'extension.runtime.log')
-assert(runtimeLogs.some(item => item.data?.instanceId === firstInstanceId), 'extension logger includes first instance identity')
-assert(runtimeLogs.some(item => item.data?.instanceId === secondInstanceId), 'extension logger includes reloaded instance identity')
-assert(runtimeLogs.every(item => item.data?.packageId === 'example.weatherStation' && item.data?.moduleId === 'server'), 'extension logger includes package and module identity')
-
-console.log(`Server extension verification passed: ${checks} checks`)
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Verification failed: ${message}`)

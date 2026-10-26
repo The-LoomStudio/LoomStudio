@@ -29,6 +29,7 @@ import type {
 } from '../cards/workspace-types.js'
 import { normalizeCardContent, toCardSource } from '../cards/card.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
+import { listScriptTextTransformRuleDocuments, prepareTextTransformScript, readPackagedTextRuleScript, writePreparedTextTransformScript } from '../scripts/loom-script-text-migration.js'
 import type { LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 import {
   listMappedResources,
@@ -580,6 +581,8 @@ function readExtensionTextTransformRule(
   value: JsonValue,
 ): TextTransformRuleDraft {
   if (!isObject(value)) throw new Error(`Extension Text Transform Rule artifact must be an object: ${contributionId}`)
+  const script = readPackagedTextRuleScript(value)
+  if (script) return { ...script.rule, owner: { kind: 'extension', packageId } }
   assertExtensionTextArtifactCannotOwnResource(value, 'Text Transform Rule', contributionId)
   const rule = {
     ...(structuredClone(value) as unknown as Omit<TextTransformRuleDraft, 'owner'>),
@@ -815,7 +818,7 @@ async function importExtensionPackageResourcesInternal(
     existingAgentTools.add(toolId)
   }
 
-  const storedRules = await listDocumentsIncludingTombstones<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
+  const storedRules = await listScriptTextTransformRuleDocuments(ctx.documents, true)
   const transformRuleIndex = indexExtensionResourceOrigins(
     storedRules,
     document => ({
@@ -926,7 +929,25 @@ async function importExtensionPackageResourcesInternal(
     }
   }
 
-  if (missingScripts.length > 0 && !ctx.blobs) throw new Error('Blob Store is required for extension Loom Scripts')
+  if ((missingScripts.length > 0 || missingTransformRules.length > 0) && !ctx.blobs) throw new Error('Blob Store is required for extension Loom Scripts')
+  const preparedTransformRules = await Promise.all(missingTransformRules.map(async item => {
+    const contributionId = item.contribution.id
+    const ruleId = transformRuleIds.get(contributionId)!
+    const existing = storedRules.find(rule => rule.id === ruleId)
+    const rule = { ...transformRuleDrafts.get(contributionId)!, origin: origin(contributionId), createdAt: existing?.content.createdAt ?? timestamp, updatedAt: timestamp }
+    const scriptId = existing?.scriptDocumentId ?? ctx.createId('loom-script')
+    const mountId = storedScriptMounts.find(mount => mount.content.scriptDocumentId === scriptId && mount.content.origin.legacyRuleId === ruleId)?.id ?? ctx.createId('loom-script-mount')
+    const packaged = readPackagedTextRuleScript(item.artifact)
+    const prepared = packaged ? { metadata: packaged.metadata,
+      prepared: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(packaged.source), mediaType: 'text/javascript' }),
+    } : await prepareTextTransformScript(ctx.blobs!, rule)
+    return { ruleId, scriptId, mountId, rule, expectedVersion: existing?.version,
+      ...prepared, ...(packaged ? { fileName: packaged.fileName, primaryContributionId: packaged.primaryContributionId, settings: packaged.settings } : {}) }
+  }))
+  for (const mount of storedScriptMounts) {
+    if (mount.content.origin.legacyRuleId && storedRules.some(rule => rule.id === mount.content.origin.legacyRuleId
+      && rule.content.origin && transformRuleDrafts.has(rule.content.origin.contributionId))) desiredScriptMountIds.add(mount.id)
+  }
   const preparation = await Promise.allSettled(missingScripts.map(async item => ({
     id: item.contribution.id,
     blob: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(item.source), mediaType: 'text/javascript' }),
@@ -963,6 +984,9 @@ async function importExtensionPackageResourcesInternal(
       }
       if (input.update) {
         const desiredScriptIds = new Set(scripts.map(item => scriptDocumentId(item.contribution.id)))
+        for (const rule of storedRules) {
+          if (rule.content.origin && owns(rule.content.origin) && transformRuleDrafts.has(rule.content.origin.contributionId)) desiredScriptIds.add(rule.scriptDocumentId)
+        }
         for (const script of storedScripts) {
           if (!script.meta.tombstone && !desiredScriptIds.has(script.id)) await documents.delete({ id: script.id, expectedVersion: script.version })
         }
@@ -980,7 +1004,7 @@ async function importExtensionPackageResourcesInternal(
             await documents.delete({ id: tool.id, expectedVersion: tool.version })
           }
         }
-        for (const [records, contributions] of [[storedRules, transformRuleDrafts], [storedExtractors, textExtractorDrafts]] as const) {
+        for (const [records, contributions] of [[storedExtractors, textExtractorDrafts]] as const) {
           for (const record of records) {
             if (!record.meta.tombstone && owns(record.content.origin) && record.content.origin
               && !contributions.has(record.content.origin.contributionId)) {
@@ -1049,22 +1073,14 @@ async function importExtensionPackageResourcesInternal(
           expectedVersion: (input.update ? agentToolVersions.get(definition.id) : restorableAgentToolVersions.get(definition.id)) ?? 'new',
         })
       }
-      for (const item of missingTransformRules) {
-        const contributionId = item.contribution.id
-        const draft = transformRuleDrafts.get(contributionId)!
-        const ruleId = transformRuleIds.get(contributionId) ?? ctx.createId('text-transform-rule')
-        await writeDocument<TextTransformRuleContent>(documents, {
-          id: ruleId,
-          type: applicationDocumentTypes.textTransformRule,
-          content: {
-            ...structuredClone(draft),
-            origin: origin(contributionId),
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-          expectedVersion: (input.update ? transformRuleIndex.versions.get(contributionId) : restorableTransformRuleVersions.get(contributionId)) ?? 'new',
+      for (const item of preparedTransformRules) {
+        await writePreparedTextTransformScript(documents, {
+          scriptId: item.scriptId, mountId: item.mountId, ruleId: item.ruleId, rule: item.rule,
+          blob: ctx.blobs!.participateWrite(dataTx, item.prepared).blob, metadata: item.metadata,
+          expectedVersion: item.expectedVersion,
+          mountTarget: target.kind === 'card' ? target : { kind: 'user' },
+          fileName: item.fileName, primaryContributionId: item.primaryContributionId, settings: item.settings,
         })
-        transformRuleIds.set(contributionId, ruleId)
       }
       for (const item of missingTextExtractors) {
         const contributionId = item.contribution.id
@@ -1214,7 +1230,7 @@ async function removeExtensionPackageResourcesInternal(
   const agentTools = (await listAgentToolEntries(ctx))
     .filter(tool => owns(tool.origin))
   const agentToolIds = new Set(agentTools.map(tool => tool.id))
-  const transformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+  const transformRules = (await listScriptTextTransformRuleDocuments(ctx.documents))
     .filter(rule => owns(rule.content.origin))
   const textTransformRuleIds = new Set(transformRules.map(rule => rule.id))
   const textExtractors = (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor))
@@ -1251,7 +1267,6 @@ async function removeExtensionPackageResourcesInternal(
         if (installation.version !== input.expectedInstallationVersion) throw new Error('Extension installation changed before resource removal')
       }
       for (const tool of agentTools) await documents.delete({ id: tool.id, expectedVersion: tool.version })
-      for (const rule of transformRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
       for (const extractor of textExtractors) await documents.delete({ id: extractor.id, expectedVersion: extractor.version })
       for (const mount of scriptMounts) await documents.delete({ id: mount.id, expectedVersion: mount.version })
       for (const script of scripts) await documents.delete({ id: script.id, expectedVersion: script.version })

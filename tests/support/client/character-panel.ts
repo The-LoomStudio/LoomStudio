@@ -12,6 +12,7 @@ export function characterPanelProps(overrides: Partial<Props> = {}): Props {
     active: true, busy: false, cards: [], endpoint: 'test',
     resourceApi: createStudioApi(createStudioTrpcClient({ fetch: async () => { throw new Error('Unexpected RPC in rendering test') } })),
     onCreateCard: async () => {},
+    onForkCard: async () => {},
     onCreateTimelineFromCard: async () => {},
     onExportCard: async () => {},
     onImportCards: async () => {},

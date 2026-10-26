@@ -1,4 +1,4 @@
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

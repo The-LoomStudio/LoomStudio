@@ -1,8 +1,12 @@
+import { PresetLibraryCatalog, type PresetCatalogSource } from '../../features/prompt-resources/ui/preset-library/preset-library-catalog.js'
+import { PresetConfigurationDialog } from '../../features/prompt-resources/ui/preset-library/preset-configuration-dialog.js'
+import { AgentModelSelection } from '../../features/provider-settings/ui/agent-model-selection.js'
+import { isPromptMessageSequence } from '@loom-studio/shared'
 import { ResourceUnavailable } from '../../shared/ui/resource-unavailable/resource-unavailable.js'
 import type { ResourceSearchReveal } from '../../shared/lib/search-match.js'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { BookOpen, Braces, Copy, Download, Folder, FolderOpen, Package, Regex, Star, ToggleLeft, ToggleRight, Trash2, Wrench } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
+import { ArrowLeft, SlidersHorizontal, BookOpen, Braces, Copy, Download, Folder, FolderOpen, Package, Regex, Star, ToggleLeft, ToggleRight, Trash2, Wrench } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, IconButton, SearchField, Textarea } from '@loom-studio/ui'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
@@ -10,30 +14,20 @@ import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
-import {
-  findContextNode,
-  flattenContextNodes,
-} from '../../features/context-assets/model/projection-order.js'
-import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
-import {
-  buildProjectionWorkbenchModel,
-  type ContextAssetUpdate,
-} from '../../features/context-assets/model/projection-workbench.js'
-import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { readContextAssetBadgeInfo, renderContextAssetTreeIcon } from '../../features/context-assets/ui/context-asset-tree.js'
-import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
-import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
-import { buildPresetTokenProjection } from '../../features/context-assets/model/preset-token-projection.js'
-import { useResourceTokenSnapshot } from '../../features/context-assets/model/use-resource-token-snapshot.js'
-import { presetAnchorDeclarations } from '../../features/context-assets/model/preset-declarations.js'
-import { createDefaultPresetToolMountInput, toPresetToolMountInput, togglePresetToolMount, validPresetToolMounts } from '../../features/context-assets/model/preset-tool-mounts.js'
+import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources/model/prompt-resource-view.js'
+import { ContextAssetEditor, ContextAssetExplorer } from '../../features/prompt-resources/ui/context-asset-workbench.js'
+import { readContextAssetBadgeInfo, renderContextAssetTreeIcon } from '../../features/prompt-resources/ui/context-asset-tree.js'
+import { flattenContextAssetNodes, findContextAssetNode, findContextAssetPath, findContextAssetByVirtualPath } from '../../features/prompt-resources/model/context-asset-tree.js'
+import { PromptResourceToolbar } from '../../features/prompt-resources/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
+import { buildPresetTokenProjection } from '../../features/prompt-resources/model/preset-token-projection.js'
+import { useResourceTokenSnapshot } from '../../features/prompt-resources/model/use-resource-token-snapshot.js'
+import { presetAnchorDeclarations } from '../../features/prompt-resources/model/preset-declarations.js'
+import { createDefaultPresetToolMountInput, toPresetToolMountInput, togglePresetToolMount, validPresetToolMounts } from '../../features/prompt-resources/model/preset-tool-mounts.js'
 import { FileTree, type FileTreeNode } from '../../shared/ui/file-tree/file-tree.js'
-import { buildPresetToolProjection } from '../../features/context-assets/model/preset-tool-projection.js'
-import { findCompositionItem } from '../../features/context-assets/model/composition-items.js'
-import type { AgentToolDefinition, Card, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, LoreMount, TextExtractor, TextTransformRule } from '../../entities/index.js'
+import { buildPresetToolProjection } from '../../features/prompt-resources/model/preset-tool-projection.js'
+import type { AgentToolDefinition, Card, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, LoreMount, TextExtractor, TextTransformRule } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
-import { AgentModelEditor } from '../agent-panel/agent-model-editor.js'
-import type { MacroAuthoringSource } from '../../features/state-variables/ui/macro-authoring-panel.js'
+import { AgentModelEditor } from '../../features/prompt-resources/ui/agent-model-editor.js'
 import { NarrativeRangePreview } from './narrative-range-preview.js'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 
@@ -64,14 +58,14 @@ function usageFolders(entries: Array<{ source: string; node: FileTreeNode }>, qu
 
 type PresetWorkbenchProps = {
   active: boolean
+  onReturnToLibrary?(): void
   modelProfiles: ModelProfile[]
   providerAccounts: ProviderAccount[]
   onCreateModel(accountId: string, modelId: string): Promise<void>
   onListModels(accountId: string): Promise<string[]>
   onSaveModel(input: Parameters<StudioApi['agentPresets']['update']>[0]): Promise<PromptResource>
-  resourceBindings?: import('../../features/context-assets/ui/prompt-resource-toolbar/resource-bindings.js').ResourceBindingsSource
+  resourceBindings?: import('../../features/prompt-resources/ui/prompt-resource-toolbar/resource-bindings.js').ResourceBindingsSource
   extensionInstallations?: import('../../entities/index.js').ListExtensionInstallationsResult['installations']
-  nodes: ContextAssetNode[]
   resources: PromptResource[]
   loreMounts: LoreMount[]
   tools: AgentToolDefinition[]
@@ -87,13 +81,12 @@ type PresetWorkbenchProps = {
   onRenameNode(id: string, label: string): Promise<void>
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onBatchToggleEnabled?: (ids: string[], enabled: boolean) => Promise<{ failedIds: string[]; error?: string }>
-  onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onAddNode: (parentId: string) => Promise<string | undefined>
   onAddFolderNode?: (parentId: string) => Promise<string | undefined>
   onAddAnchorNode?: (parentId: string) => Promise<string | undefined>
   onAddMessageBlockNode?: (parentId: string, role?: 'system' | 'user' | 'assistant') => Promise<string | undefined>
-  onAddNodeInZone?: (resourceId: string, zoneId: string) => Promise<string | undefined>
+  onAddMessageSequenceNode?: (parentId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
   onCreateResource: (resourceKind: PromptResource['resourceKind']) => Promise<string | undefined>
@@ -106,7 +99,6 @@ type PresetWorkbenchProps = {
   onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
   onReplaceLoreMounts: (source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { loreResourceId: string }>) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
-  onSaveMacros: (resourceId: string, input: Parameters<MacroAuthoringSource['onSave']>[0]) => ReturnType<MacroAuthoringSource['onSave']>
   routeAssetId?: string
   routeResourceId?: string
   globalSearchQuery?: string
@@ -123,13 +115,92 @@ type PresetWorkbenchProps = {
   workspaceId: string
   textTransformsApi: StudioApi['textTransforms']
   onOpenTextUse?: (kind: 'rule' | 'extractor', id: string) => void
-  loomScriptsApi: StudioApi['loomScripts']
-  onLoomScriptsChanged: () => void
 }
 
-type PresetZone = NonNullable<NonNullable<ContextAssetNode['skeletonPatch']>['zones']>[number]
-
 export function PresetWorkbench(props: PresetWorkbenchProps) {
+  const presets = props.resources.filter(resource => resource.resourceKind === 'preset')
+  const [configurationId, setConfigurationId] = useState<string>()
+  const [localEditingId, setLocalEditingId] = useState<string>()
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string>()
+  const pending = useRef(false)
+  const configured = presets.find(preset => preset.id === configurationId)
+  const editing = Boolean(props.routeResourceId || props.routeAssetId || localEditingId)
+  useEffect(() => { if (!props.active) setConfigurationId(undefined) }, [props.active])
+  const sourceOf = (preset: PromptResource): PresetCatalogSource => {
+    const origin = preset.origin
+    if (origin?.kind === 'extension-package') {
+      const installation = props.extensionInstallations?.find(item => item.id === origin.installationId && item.packageId === origin.packageId)
+      const target = installation?.target.kind === 'card' ? `角色 · ${props.card?.id === installation.target.cardId ? props.card.name : installation.target.cardId}` : installation?.target.kind === 'global' || !origin.installationId ? '全局' : '安装来源未解析'
+      return { id: `package:${origin.packageId}:${origin.installationId ?? ''}`, name: `${origin.packageId} · ${target}`, kind: 'package', description: `${target}${installation ? ` · v${installation.packageVersion}` : ''}` }
+    }
+    return origin?.kind === 'builtin' ? { id: 'official', name: 'Loom Studio', kind: 'official' }
+      : { id: 'personal', name: '我的预设', kind: 'personal' }
+  }
+  const sources = [...new Map(presets.map(preset => { const source = sourceOf(preset); return [source.id, source] })).values()]
+  async function configureOperation<T,>(operation: () => Promise<T>): Promise<T> {
+    if (pending.current) throw new Error('预设配置正在保存，请稍候。')
+    pending.current = true; setSaving(true); setSaveError(undefined)
+    try { return await operation() }
+    catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); throw cause }
+    finally { pending.current = false; setSaving(false) }
+  }
+  const configure = (id: string) => { setConfigurationId(id); setSaveError(undefined) }
+  const open = (id: string) => {
+    setConfigurationId(undefined)
+    if (props.onSelectResource) props.onSelectResource(id)
+    else setLocalEditingId(id)
+  }
+  const projection = buildPresetToolProjection({ mounts: props.toolMounts, presetId: configured?.id, tools: props.tools })
+  const toolbar = <PromptResourceToolbar hideSelect hideSingleResourceActions resourceKind="preset" resources={presets}
+    selectedResourceId={configured?.id} draftResourceIds={props.draftResourceIds} t={props.t}
+    onCreate={props.onCreateResource} onImport={props.onImportResource} onImportZip={props.onImportResourceZip}
+    onDuplicate={props.onDuplicateResource} onDelete={props.onDeleteResource} onExport={props.onExportResource}
+    onExportZip={props.onExportResourceZip} onDiscardDraft={props.onDiscardDraft} onRetryDraft={props.onRetryDraft} onSelect={configure} />
+  return <div className={styles.libraryHost}>
+    <div className={styles.libraryPane} hidden={editing}>
+      <PresetLibraryCatalog sources={sources} items={presets.map(preset => ({
+        id: preset.id, sourceId: sourceOf(preset).id, name: preset.rootNode.label,
+        modelLabel: preset.model?.modelId ?? props.t('agent.model.unbound'),
+        toolCount: props.toolMounts.filter(mount => mount.presetResourceId === preset.id && mount.defaultEnabled !== false).length,
+        resourceCount: props.loreMounts.filter(mount => mount.source.kind === 'preset' && mount.source.id === preset.id).length + (preset.textUses?.length ?? 0),
+        draft: props.draftResourceIds.includes(preset.id),
+      }))} actions={toolbar} onConfigure={configure} onOpen={open} />
+    </div>
+    {editing && <div className={styles.libraryPane}>
+      <PresetArrangementWorkbench {...props} selectedResourceId={localEditingId ?? props.selectedResourceId} onConfigure={configure}
+        onReturnToLibrary={() => { setLocalEditingId(undefined); props.onReturnToLibrary?.() }} />
+    </div>}
+    <PresetConfigurationDialog open={!!configured} title={configured?.rootNode.label ?? '预设配置'} source={configured ? sourceOf(configured).name : undefined}
+      busy={saving} onClose={() => setConfigurationId(undefined)} headerActions={configured && <>
+        <IconButton aria-label="复制预设" size="small" onClick={() => { void configureOperation(() => props.onDuplicateResource(configured.id)).catch(() => undefined) }}><Copy size={16} /></IconButton>
+        <IconButton aria-label="导出预设" size="small" onClick={() => { void configureOperation(() => props.onExportResource(configured.id)).catch(() => undefined) }}><Download size={16} /></IconButton>
+        <IconButton aria-label="删除预设" size="small" variant="danger" onClick={() => {
+          if (!window.confirm(`删除预设“${configured.rootNode.label}”？`)) return
+          void configureOperation(() => props.onDeleteResource(configured.id)).then(() => setConfigurationId(undefined)).catch(() => undefined)
+        }}><Trash2 size={16} /></IconButton>
+      </>}>
+      {configured && <div className={styles.configurationBody}>
+        {saving && <p role="status" className={styles.configurationStatus}>正在保存…</p>}
+        {saveError && <p role="alert" className={styles.configurationStatus}>{saveError}</p>}
+        <div className={styles.configurationContent} inert={saving}>
+          <AgentPresetOverview key={configured.id} {...props} preset={configured} installations={props.extensionInstallations}
+            unavailableMounts={projection.unavailableMounts} hideHeader
+            onSaveModel={input => configureOperation(() => props.onSaveModel(input))}
+            onReplaceMounts={(id, mounts) => configureOperation(() => props.onReplaceToolMounts(id, validPresetToolMounts(mounts, props.tools)))}
+            onReplaceLoreMounts={(source, mounts) => configureOperation(() => props.onReplaceLoreMounts(source, mounts))}
+            onDuplicate={async () => { await props.onDuplicateResource(configured.id) }}
+            onDelete={async () => { await props.onDeleteResource(configured.id); setConfigurationId(undefined) }}
+            onExport={() => props.onExportResource(configured.id)}
+            onOpenLore={(id, node) => { setConfigurationId(undefined); props.onOpenLore?.(id, node) }}
+            onOpenTextUse={(kind, id) => { setConfigurationId(undefined); props.onOpenTextUse?.(kind, id) }} />
+        </div>
+      </div>}
+    </PresetConfigurationDialog>
+  </div>
+}
+
+export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onConfigure(id: string): void }) {
   const activePresetView = useStudioLayoutStore(state => state.presetView)
   const metadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const textEditorMode = useStudioLayoutStore(state => state.textEditorMode)
@@ -146,7 +217,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.preset[props.workspaceId] ?? 'explorer')
   const legacyResource = props.routeAssetId && !props.routeResourceId
-    ? presetResources.find(resource => findContextNode([resource.rootNode], props.routeAssetId))
+    ? presetResources.find(resource => findContextAssetNode([resource.rootNode], props.routeAssetId))
     : undefined
   const selectedResourceId = props.routeResourceId ?? legacyResource?.id ?? props.selectedResourceId ?? internalSelectedResourceId
   const setSelectedResourceId = (id: string | undefined) => {
@@ -167,15 +238,28 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const mainOrderNodes = useMemo(() => selectedResource
     ? [readPromptResourceWorkbenchRoot(selectedResource)] : [], [selectedResource])
   const workbenchNodes = mainOrderNodes
+  const initializedExpansion = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!selectedResource) return
+    const key = JSON.stringify([props.workspaceId, selectedResource.id])
+    if (initializedExpansion.current === key) return
+    initializedExpansion.current = key
+    const expanded = new Set(useStudioLayoutStore.getState().assetLayouts.preset.views[props.workspaceId]?.expandedIds ?? [])
+    expanded.add(selectedResource.rootNode.id)
+    for (const node of flattenContextAssetNodes(mainOrderNodes)) {
+      if (node.kind === 'message') expanded.add(node.id)
+    }
+    setAssetExpandedIds('preset', props.workspaceId, [...expanded])
+  }, [selectedResource, mainOrderNodes, props.workspaceId, setAssetExpandedIds])
   const selectedId = explorerView.selectedId
   const tokenSnapshot = useResourceTokenSnapshot(selectedResource ? [selectedResource.rootNode] : [], `${props.workspaceId}:${selectedResource?.id ?? ''}`)
-  const selectedNode = findContextNode(workbenchNodes, selectedId)
+  const selectedNode = findContextAssetNode(workbenchNodes, selectedId)
   const detailNode = selectedNode
   const tokenProjection = useMemo(() => detailNode?.kind === 'virtual' && selectedResource ? buildPresetTokenProjection({
     preset: selectedResource, resources: props.resources, loreMounts: props.loreMounts,
     timelinePromptResourceIds: props.timelinePromptResourceIds,
   }) : undefined, [detailNode?.kind, selectedResource, props.resources, props.loreMounts, props.timelinePromptResourceIds])
-  const declarations = useMemo(() => detailNode?.kind === 'virtual' && selectedResource
+  const declarations = useMemo(() => detailNode?.kind === 'virtual' && !isPromptMessageSequence(detailNode) && selectedResource
     ? presetAnchorDeclarations({
       anchor: detailNode, presetId: selectedResource.id, resources: props.resources,
       loreMounts: props.loreMounts, timelinePromptResourceIds: props.timelinePromptResourceIds,
@@ -202,10 +286,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     openAssetDetail('preset', props.workspaceId, props.routeAssetId)
   }, [openAssetDetail, setActivePresetView, props.routeResourceId, props.routeAssetId, props.searchMatch?.requestId, props.workspaceId])
 
-  useEffect(() => {
-    if (props.routeResourceId) return
-    if (selectedResource && selectedResource.id !== selectedResourceId) setSelectedResourceId(selectedResource.id)
-  }, [props.routeResourceId, selectedResource?.id, selectedResourceId])
+
 
   useEffect(() => {
     setAssetPane('preset', props.workspaceId, props.routeResourceId ? 'detail' : 'explorer')
@@ -244,10 +325,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     return () => window.removeEventListener('loom:navigate', handleNavigate)
   }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setAssetExpandedIds, openAssetDetail, setActivePresetView])
 
-  const [isOverviewSelected, setIsOverviewSelected] = useState(true)
 
   const displayNodes: ContextAssetNode[] = useMemo(() => {
-    return presetResources.map(preset => {
+    return (selectedResource ? [selectedResource] : []).map(preset => {
       const isSelected = preset.id === selectedResource?.id
       const origin = preset.origin
       const isBuiltin = origin?.kind === 'builtin'
@@ -284,17 +364,15 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     const clickedPreset = presetResources.find(p => p.id === id || p.rootNode.id === id)
     if (clickedPreset) {
       setSelectedResourceId(clickedPreset.id)
-      setIsOverviewSelected(true)
       setActivePresetView('assets')
       openAssetDetail('preset', props.workspaceId, clickedPreset.rootNode.id)
       return
     }
 
-    const matchedPreset = presetResources.find(p => findContextNode([p.rootNode], id))
+    const matchedPreset = presetResources.find(p => findContextAssetNode([p.rootNode], id))
     if (matchedPreset && matchedPreset.id !== selectedResourceId) {
       setSelectedResourceId(matchedPreset.id)
     }
-    setIsOverviewSelected(false)
     setActivePresetView('assets')
 
     openAssetDetail('preset', props.workspaceId, id)
@@ -311,18 +389,24 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     await props.onRenameNode(targetId, label)
   }
 
-  if ((selectedResourceId || props.routeAssetId) && (!selectedResource || (props.routeAssetId && !findContextNode([selectedResource.rootNode], props.routeAssetId)))) {
+  if ((selectedResourceId || props.routeAssetId) && (!selectedResource || (props.routeAssetId && !findContextAssetNode([selectedResource.rootNode], props.routeAssetId)))) {
     return <ResourceUnavailable message={props.t('promptResource.referenceUnavailable')} />
   }
+
+  const configurationAction = <IconButton aria-label="配置预设" title="配置预设" size="small"
+    disabled={!selectedResource} onClick={() => { if (selectedResource) props.onConfigure(selectedResource.id) }}>
+    <SlidersHorizontal size={16} />
+  </IconButton>
 
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
-      hasSelection={hasDetailSelection || isOverviewSelected}
+      hasSelection={hasDetailSelection}
       mobilePane={mobilePane}
       onMobilePaneChange={pane => setAssetPane('preset', props.workspaceId, pane)}
       toolbar={activePresetView === 'assets' ? (
         <PromptResourceToolbar
+          trailingActions={configurationAction}
           tokenSnapshot={tokenSnapshot}
           resourceBindings={props.resourceBindings}
           bindingResources={props.resources}
@@ -345,9 +429,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onImportZip={props.onImportResourceZip}
           onSelect={setSelectedResourceId}
         />
-      ) : undefined}
+      ) : configurationAction}
       header={(
         <div>
+          {props.onReturnToLibrary && <Button className={styles.libraryBack} size="small" variant="ghost" onClick={props.onReturnToLibrary}>
+            <ArrowLeft size={15} />预设库
+          </Button>}
           <PanelTabs
             activeId={activePresetView}
             ariaLabel={props.t('preset.panel.views')}
@@ -397,6 +484,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onAddFolderNode={props.onAddFolderNode}
           onAddAnchorNode={props.onAddAnchorNode}
           onAddMessageBlockNode={props.onAddMessageBlockNode}
+          onAddMessageSequenceNode={props.onAddMessageSequenceNode}
           onDeleteNode={props.onDeleteNode}
             onBatchToggleEnabled={props.onBatchToggleEnabled}
           onDuplicateNode={props.onDuplicateNode}
@@ -430,34 +518,6 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onReplaceMounts={replaceToolMounts}
           onUpdateTool={props.onUpdateTool}
         />
-      ) : isOverviewSelected && selectedResource ? (
-        <AgentPresetOverview
-          key={selectedResource.id}
-          preset={selectedResource}
-          textTransformsApi={props.textTransformsApi}
-          onOpenTextUse={props.onOpenTextUse}
-          installations={props.extensionInstallations}
-          modelProfiles={props.modelProfiles}
-          providerAccounts={props.providerAccounts}
-          onCreateModel={props.onCreateModel}
-          onListModels={props.onListModels}
-          toolsReady={props.toolsReady}
-          providersReady={props.providersReady}
-          tools={props.tools}
-          toolMounts={props.toolMounts}
-          loreMounts={props.loreMounts}
-          card={props.card}
-          resources={props.resources}
-          unavailableMounts={toolProjection.unavailableMounts}
-          t={props.t}
-          onSaveModel={props.onSaveModel}
-          onReplaceMounts={replaceToolMounts}
-          onReplaceLoreMounts={props.onReplaceLoreMounts}
-          onDuplicate={() => props.onDuplicateResource(selectedResource.id).then(() => {})}
-          onDelete={() => handleDeleteResource(selectedResource.id)}
-          onExport={() => props.onExportResource(selectedResource.id)}
-          onOpenLore={props.onOpenLore}
-        />
       ) : (
         <div className={styles.detailStack}>
           <div className={`${styles.authorDetail} ${detailNode?.kind === 'virtual' ? styles.anchorDetail : ''}`}>
@@ -470,7 +530,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
               node={detailNode}
               revealMatch={props.searchMatch?.resourceId === selectedResource?.id && props.searchMatch?.nodeId === detailNode?.id
                 ? props.searchMatch : undefined}
-              tokenNode={detailNode?.kind === 'virtual' && tokenProjection ? findContextNode([tokenProjection.root], detailNode.id) : undefined}
+              tokenNode={detailNode?.kind === 'virtual' && tokenProjection ? findContextAssetNode([tokenProjection.root], detailNode.id) : undefined}
               tokenIncomplete={detailNode?.kind === 'virtual' ? tokenProjection?.incompleteIds.has(detailNode.id) : undefined}
               pathNodes={findContextAssetPath(workbenchNodes, detailNode?.id)}
               t={props.t}
@@ -520,8 +580,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
               />
             </section> : null}
             {detailNode?.kind === 'virtual'
-              && ((detailNode.capabilities?.targetAnchorId === '@chat.narrative' || detailNode.label === '@chat.narrative')
-                || (detailNode.capabilities?.targetAnchorId === '@memory.narrative' || detailNode.label === '@memory.narrative'))
+              && (detailNode.capabilities?.targetAnchorId === '@chat.narrative' || detailNode.label === '@chat.narrative')
               ? <NarrativeRangePreview key={detailNode.id} api={props.previewApi}
                   timelineId={props.previewTimelineId} branchId={props.previewBranchId} t={props.t} />
               : null}
@@ -533,6 +592,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 }
 
 export function AgentPresetOverview(props: {
+  hideHeader?: boolean
   preset: PromptResource
   textTransformsApi: StudioApi['textTransforms']
   onOpenTextUse?: (kind: 'rule' | 'extractor', id: string) => void
@@ -712,7 +772,7 @@ export function AgentPresetOverview(props: {
 
   return (
     <div className={styles.presetOverview}>
-      <header className={styles.presetOverviewHeader}>
+      <header className={styles.presetOverviewHeader} hidden={props.hideHeader}>
         <div className={styles.presetOverviewTitleGroup}>
           <h1>{props.preset.rootNode.label}</h1>
           <span className={styles.presetOverviewOrigin}>{originLabel}</span>
@@ -724,24 +784,20 @@ export function AgentPresetOverview(props: {
         </div>
       </header>
 
-      {/* 1. 顶部：模型配置 */}
-      <section className={styles.presetConfigSection} inert={props.providersReady === false}>
+      <PresetTextUses modelContent={<section className={styles.presetConfigSection} inert={props.providersReady === false}>
         <h2>
           <span>{props.t('agent.profile.model')}</span>
         </h2>
         <AgentModelEditor
           key={props.preset.id}
           preset={props.preset}
-          modelProfiles={props.modelProfiles}
-          providerAccounts={props.providerAccounts}
           onCreateModel={props.onCreateModel}
-          onListModels={props.onListModels}
           onSave={props.onSaveModel}
           t={props.t}
+          renderModelPicker={input => <AgentModelSelection {...input} modelProfiles={props.modelProfiles}
+            providerAccounts={props.providerAccounts} onListModels={props.onListModels} t={props.t} />}
         />
-      </section>
-
-      <PresetTextUses preset={props.preset} api={props.textTransformsApi} t={props.t}
+      </section>} preset={props.preset} api={props.textTransformsApi} t={props.t}
         onSave={props.onSaveModel} onOpen={props.onOpenTextUse}
         loreContent={(useCardLore, useGlobalLore) => {
           const inherited = (nodeId: string) => (isCardLore(nodeId) && useCardLore) || (isGlobalLore(nodeId) && useGlobalLore)
@@ -883,6 +939,7 @@ export function PresetTextUses(props: {
   onOpen?: (kind: 'rule' | 'extractor', id: string) => void
   loreContent?: ReactNode | ((useCardLore: boolean, useGlobalLore: boolean) => ReactNode)
   toolsContent?: ReactNode
+  modelContent?: ReactNode
 }) {
   type TextUse = NonNullable<PromptResource['textUses']>[number]
   const editableUses = (uses: PromptResource['textUses'] = []): TextUse[] => uses.map(use => ({
@@ -898,7 +955,7 @@ export function PresetTextUses(props: {
   }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const [activeTab, setActiveTab] = useState<'lore' | 'text' | 'tools'>('lore')
+  const [activeTab, setActiveTab] = useState<'model' | 'lore' | 'text' | 'tools'>(props.modelContent ? 'model' : 'lore')
   const [textQuery, setTextQuery] = useState('')
   const [collapsedTextSources, setCollapsedTextSources] = useState<string[]>([])
   const dirty = draft.useGlobalLore !== (props.preset.useGlobalLore ?? true)
@@ -919,30 +976,30 @@ export function PresetTextUses(props: {
   }, [props.api])
 
   function toggle(kind: TextUse['kind'], id: string, defaultEnabled: boolean) {
-    setDraft(current => {
-      const previous = current.textUses.find(use => use.kind === kind && use.id === id)
-      const enabled = !(previous?.enabled ?? defaultEnabled)
-      const textUses = current.textUses.filter(use => use.kind !== kind || use.id !== id)
-      if (enabled !== defaultEnabled) textUses.push({ ...previous, id, kind, enabled })
-      return { ...current, textUses }
-    })
+    const previous = draft.textUses.find(use => use.kind === kind && use.id === id)
+    const enabled = !(previous?.enabled ?? defaultEnabled)
+    const textUses = draft.textUses.filter(use => use.kind !== kind || use.id !== id)
+    if (enabled !== defaultEnabled) textUses.push({ ...previous, id, kind, enabled })
+    void save({ ...draft, textUses }).catch(() => undefined)
   }
 
-  async function save() {
-    if (busy || !dirty) return
+  async function save(next = draft) {
+    if (busy) return
+    setDraft(next)
     setBusy(true)
     setError(undefined)
     try {
       const saved = await props.onSave({
         agentPresetId: props.preset.id,
         expectedVersion: props.preset.version,
-        textUses: draft.textUses,
-        useCardLore: draft.useCardLore,
-        useGlobalLore: draft.useGlobalLore,
+        textUses: next.textUses,
+        useCardLore: next.useCardLore,
+        useGlobalLore: next.useGlobalLore,
       })
       setDraft({ textUses: editableUses(saved.textUses), useCardLore: saved.useCardLore ?? true, useGlobalLore: saved.useGlobalLore ?? true })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
+      throw cause
     } finally {
       setBusy(false)
     }
@@ -980,17 +1037,19 @@ export function PresetTextUses(props: {
 
   return <div className={styles.presetUsageConfig}>
     <PanelTabs items={[
+      ...(props.modelContent ? [{ id: 'model' as const, label: '模型与审批' }] : []),
       { id: 'lore', label: 'Lore' },
       { id: 'text', label: '正则 / 提取器' },
       { id: 'tools', label: '工具' },
     ]} activeId={activeTab} onChange={setActiveTab} ariaLabel="预设使用配置" size="compact" />
+    <section role="tabpanel" aria-label="模型与审批" hidden={activeTab !== 'model'} className={styles.presetUsagePanel}>{props.modelContent}</section>
     <section role="tabpanel" aria-label="Lore" hidden={activeTab !== 'lore'} className={styles.presetUsagePanel}>
       <div className={styles.presetUsageOption}>
         <span className={styles.presetResourceName}>使用全局世界书</span>
         <button type="button" className={styles.declarationToggle} aria-label="使用全局世界书"
           title={draft.useGlobalLore ? '停用全局世界书' : '启用全局世界书'}
           aria-pressed={draft.useGlobalLore} disabled={busy}
-          onClick={() => setDraft(current => ({ ...current, useGlobalLore: !current.useGlobalLore }))}>
+          onClick={() => void save({ ...draft, useGlobalLore: !draft.useGlobalLore }).catch(() => undefined)}>
           {draft.useGlobalLore ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
         </button>
       </div>
@@ -999,7 +1058,7 @@ export function PresetTextUses(props: {
         <button type="button" className={styles.declarationToggle} aria-label="使用角色世界书"
           title={draft.useCardLore ? '停用角色世界书' : '启用角色世界书'}
           aria-pressed={draft.useCardLore} disabled={busy}
-          onClick={() => setDraft(current => ({ ...current, useCardLore: !current.useCardLore }))}>
+          onClick={() => void save({ ...draft, useCardLore: !draft.useCardLore }).catch(() => undefined)}>
           {draft.useCardLore ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
         </button>
       </div>
@@ -1016,7 +1075,8 @@ export function PresetTextUses(props: {
           ...([true, false] as const).map(enabled => ({
             id: enabled ? 'enable' : 'disable', label: props.t(enabled ? 'common.batchEnable' : 'common.batchDisable'),
             disabled: selected.some(node => !candidatesById.has(node.id)),
-            run: (nodes: FileTreeNode[]) => setDraft(current => {
+            run: (nodes: FileTreeNode[]) => {
+              const current = draft
               const ids = new Set(nodes.map(node => node.id))
               const textUses = current.textUses.filter(use => !ids.has(`${use.kind}:${use.id}`))
               for (const node of nodes) {
@@ -1026,12 +1086,12 @@ export function PresetTextUses(props: {
                   textUses.push({ ...previous, kind: item.kind, id: item.id, enabled })
                 }
               }
-              return { ...current, textUses }
-            }),
+              return save({ ...current, textUses })
+            },
           })),
           { id: 'reset', label: props.t('common.batchReset'), run: nodes => {
             const ids = new Set(nodes.map(node => node.id))
-            setDraft(current => ({ ...current, textUses: current.textUses.filter(use => !ids.has(`${use.kind}:${use.id}`)) }))
+            return save({ ...draft, textUses: draft.textUses.filter(use => !ids.has(`${use.kind}:${use.id}`)) })
           } },
         ]}
         expandedIds={textNodes.filter(node => !collapsedTextSources.includes(node.id)).map(node => node.id)}
@@ -1052,7 +1112,7 @@ export function PresetTextUses(props: {
           if (node.kind === 'folder') return null
           const item = candidatesById.get(node.id)
           if (!item) return <IconButton aria-label={`移除不可用引用：${node.label}`} title="移除引用" size="small" disabled={busy}
-            onClick={() => setDraft(current => ({ ...current, textUses: current.textUses.filter(use => `${use.kind}:${use.id}` !== node.id) }))}>
+            onClick={() => void save({ ...draft, textUses: draft.textUses.filter(use => `${use.kind}:${use.id}` !== node.id) }).catch(() => undefined)}>
             <Trash2 size={14} aria-hidden="true" />
           </IconButton>
           const enabled = textEnabled(node.id)
@@ -1068,9 +1128,10 @@ export function PresetTextUses(props: {
     <section role="tabpanel" aria-label="工具" hidden={activeTab !== 'tools'} className={styles.presetUsagePanel}>
       {props.toolsContent}
     </section>
-    <div hidden={activeTab === 'tools'} className={styles.presetUsageSave}>
+    <div className={styles.presetUsageSave} hidden={!error && !busy}>
       {error ? <p role="alert">{error}</p> : null}
-      <Button disabled={!dirty || busy} onClick={() => void save()}>保存使用配置</Button>
+      {busy && <p role="status">正在保存…</p>}
+      {error && dirty && <Button disabled={busy} onClick={() => void save().catch(() => undefined)}>重试保存</Button>}
     </div>
   </div>
 }
@@ -1481,60 +1542,4 @@ function readOptionalFiniteNumber(value: string, label: string): number | undefi
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) throw new Error(`${label} must be a finite number`)
   return parsed
-}
-
-function ZoneDetail(props: {
-  zone: PresetZone
-  t: Translator
-}) {
-  const zone = props.zone
-  return (
-    <section className={styles.zoneDetail}>
-      <header>
-        <p>{props.t('promptResource.zoneDetail')}</p>
-        <h1>{zone.displayName}</h1>
-        <span>{zone.id}</span>
-      </header>
-      <dl>
-        <div><dt>{props.t('context.detail.band')}</dt><dd>{zone.band}</dd></div>
-        <div><dt>{props.t('context.detail.order')}</dt><dd>{zone.orderIndex}</dd></div>
-        <div><dt>{props.t('context.detail.accepts')}</dt><dd>{zone.accepts?.join(', ') || props.t('context.detail.any')}</dd></div>
-        <div><dt>{props.t('context.detail.providerRole')}</dt><dd>{zone.renderHint?.providerRoleHint || '—'}</dd></div>
-        <div><dt>{props.t('context.detail.wrapper')}</dt><dd>{zone.renderHint?.wrapper || '—'}</dd></div>
-      </dl>
-    </section>
-  )
-}
-
-function CompositionItemDetail(props: {
-  item: PromptCompositionItem
-  nodes: ContextAssetNode[]
-  t: Translator
-}) {
-  const sourceNodes = flattenContextNodes(props.nodes)
-  const item = props.item
-  let sourceLabel: string | undefined
-  if (item.kind === 'entry') {
-    const source = item.source
-    if (source.kind === 'preset') sourceLabel = sourceNodes.find(node => node.id === source.nodeId)?.label ?? source.nodeId
-    else sourceLabel = source.bindingId
-  }
-  return (
-    <section className={styles.zoneDetail}>
-      <header>
-        <p>{item.kind === 'message' ? props.t('context.messageBlockDetail') : props.t('context.compositionItemDetail')}</p>
-        <h1>{item.displayName}</h1>
-        <span>{item.id}</span>
-      </header>
-      <dl>
-        <div><dt>{props.t('context.detail.kind')}</dt><dd>{item.kind}</dd></div>
-        <div><dt>{props.t('context.detail.order')}</dt><dd>{item.orderIndex}</dd></div>
-        {item.kind === 'message' ? <div><dt>{props.t('context.detail.role')}</dt><dd>{item.role}</dd></div> : null}
-        {item.kind === 'zone' ? <div><dt>{props.t('context.detail.accepts')}</dt><dd>{item.accepts?.join(', ') || props.t('context.detail.any')}</dd></div> : null}
-        {item.kind === 'slot' ? <div><dt>{props.t('context.detail.binding')}</dt><dd>{item.bindingId}</dd></div> : null}
-        {item.kind === 'slot' ? <div><dt>{props.t('context.detail.mode')}</dt><dd>{item.messageMode || 'context'}</dd></div> : null}
-        {sourceLabel ? <div><dt>{props.t('context.detail.source')}</dt><dd>{sourceLabel}</dd></div> : null}
-      </dl>
-    </section>
-  )
 }

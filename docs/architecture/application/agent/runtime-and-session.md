@@ -13,13 +13,13 @@ AgentSession.agentPresetId
      -> Preset Tool Mount
 ```
 
-不存在独立 Profile 或 Profile → Preset 选择关系。Tool Mount 是唯一工具使用配置；模型绑定可空，但预览和执行需要模型时明确报错。
+不存在独立 Profile 或 Profile → Preset 选择关系。预设 Tool Mount 决定工具使用配置；特殊 Timeline Session 额外提供当前正文模式所需的声明工具，并隐藏追加正文工具；模型绑定可空，但预览和执行需要模型时明确报错。
 
-`agentPresetId` 创建后不可更换；`updateAgentSession` 和 Store 均拒绝改绑。使用另一预设应创建另一 Session，而非复用旧 Transcript。Session 固定的是预设身份，不是内容快照：后续调用读取当前预设配置及其引用的资源。
+普通 `kind: agent` Session 固定引用预设。特殊 `kind: timeline` Session 与 Timeline 同 ID，可暂未选择预设；执行前必须有可用预设及模型。它在无活动或暂停 Run 的安全边界通过 `updateAgentSession` 更新预设或 `narrativeMode`，继续消费同一工作历史。预设身份不冻结资源内容，后续调用仍读取当前配置。
 
-“主写作”是 Studio Client 选择的 Narrative 输入接收 Session，与当前查看的 Session 分离；选择按客户端存储范围和 Timeline 在本地持久化，不是后端全局主槽位或预设的新类型。生成期间不能切换主接收方；旧接收方有暂停 Run 时先显式 `abandon`，失败则不切换。被放弃的任务不能 Resume，需重新发消息；已提交 Transcript 和工具副作用仍保留。切换不会停用整个扩展，也不会启动预设独立脚本实例。
+故事不存在单独选择的主接收方。主输入框的扮演和讨论均投递同 ID Session；右侧选择、创建和观察普通副 Session 独立于故事执行。绑定 Timeline 不代表自动拥有全部故事数据或工具权限。普通 Session 列表默认排除特殊 Session；删除故事统一清理根会话，普通会话删除接口拒绝删除根会话。
 
-Session Header 保存 Session ID、Agent Preset ID、可选 `timelineId`、title、active head Entry ID、Entry count 和生命周期时间。`timelineId` 不代表领域所有权或权限。Header 不保存完整 Loop KV，也不把 Provider message array 作为权威状态。
+Header 保存 `kind`、可选预设、正文模式、可选 `timelineId`、title、采用的 Entry Head 和全局单调 Entry count。Branch 保存自己的 Entry Head；切换只改变采用位置，不降低写入计数，也不重放工具副作用。Header 不保存完整 Loop KV 或 Provider wire message array。
 
 Agent Store v6 只将旧引用列改名为 `agent_preset_id`，不重写 Transcript 或 State。按本轮开发数据迁移约定，不转换旧 Profile 配置或猜测重绑定；旧引用若找不到同 ID 的预设，执行明确失败，历史仍可读取。旧 Profile RPC 已移除。
 
@@ -29,7 +29,7 @@ Agent Transcript 是 append-only 运行事实序列。当前 Entry 包括：
 
 | Entry | 语义 |
 |---|---|
-| `message` | 用户或 Assistant 正文 |
+| `message` | 用户或 Assistant 内容；`purpose: narrative` 为正文，讨论及工作回复不进入正文投影；逻辑续段共享 `narrativeId` |
 | `reasoning` | 带来源、可见性与 replay 策略的推理内容 |
 | `request-measurement` | Provider 请求前尝试记录的输入 Token 估算，含请求摘要、Provider Step、计数基准与未计入项；估算和落库均为 best-effort，不同于供应商实际 Usage |
 | `provider-observation` | Provider、Model、Call ID、Stop Reason 与 Usage |
@@ -40,7 +40,7 @@ Agent Transcript 是 append-only 运行事实序列。当前 Entry 包括：
 
 Transcript 不绑定 OpenAI Chat Completions wire schema。Provider Replay 是 Runtime 根据 canonical Entry 和原始 Invocation Transport 生成的下一步输入投影。
 
-Turn Preparation 按 100 条分页选择与当前来源相容的 `work-summary`，按其显式压缩边界保留尾段；没有有效摘要时读取原工作段，不把分页当作静默裁剪。Narrative 若配置记忆来源则读取其明确发布范围；未配置来源的旧路径仍读最新 100 节点并产生诊断。Session 自动整理见下文；这些读取不等于剧情摘要、Provider 容量保证或未完成任务的跨进程恢复。
+Turn Preparation 按 100 条分页选择与当前来源相容的 `work-summary`，按其显式压缩边界保留尾段；没有有效摘要时读取原工作段，不把分页当作静默裁剪。副 Session 的 Narrative 输入读取记忆来源发布范围，未配置来源的旧路径读最新 100 节点并诊断；特殊 Session 按采用路径合并原生工作消息和未被剧情总结覆盖的 canonical 正文，按 Entry 身份去重。工作摘要退休不会隐藏未被剧情摘要覆盖的正文。正文与工作消息分别走各自文本规则，工具协议不被正则改写。Session 自动整理见下文；这些读取不等于剧情摘要、Provider 容量保证或未完成任务的跨进程恢复。
 
 每条 Entry 保存 `parentEntryId`、`sequence` 和可选 `runId`。当前 Store 沿 active parent chain 分页，并以 `expectedEntryCount` 防止并发追加覆盖。Tool Invocation / Result 的轻量配对索引保证 Invocation ID 不重复、Result 引用已知 Invocation、Tool ID 匹配，并且一个 Invocation 只有一个 Result。
 
@@ -81,7 +81,7 @@ Agent 主动读取与 ToolResult 的生命周期由 Runtime 管理，不等于 P
 
 `completeAgentSessionHandoff` 保存已生成的工作摘要，不负责生成摘要。计数 CAS 和 Store 内的安全边界校验保证不会在运行 / 暂停的 Run 或未完成工具组中提交交接。提交后旧段退出投影，摘要进入 `@memory.session`，原始记录仍可查询；后续 resume 不复活交接前的失败任务。剧情采用通知与失败收据见 [默认剧情上下文来源](../extension/narrative-context.md)。
 
-`session-summary.ts` 沿当前 Session 的固定上下文执行自我交接，仅任务期间开放提交工具；支持全文替换/patch、5000 Token 默认上限、可配置缓冲及同步/异步。来源与历史压缩边界由宿主确定，结果和共享 MEMORY 在安全边界通过同一事务采用；失败不清理历史。正常游玩在下一条正式正文输入持久化后触发；无楼层 Session 在下一输入前检查上轮 Token 压力。已采用版本持久化，未采用任务重启后丢弃。默认共享文件通过 `@memory.workspace` 注入，摘要通过 `@memory.session` 注入；自定义 Preset 需显式挂载锚点。具体接口、调度默认值和验证边界见 [实施记录](../../../workbench/plans/session-summary-implementation-plan.md)。
+`session-summary.ts` 沿当前 Session 的固定上下文执行自我交接，仅任务期间开放提交工具；支持全文替换/patch、5000 Token 默认上限、可配置缓冲及同步/异步。来源与历史压缩边界由宿主确定，结果和共享 MEMORY 在安全边界通过同一事务采用；失败不清理历史。正常游玩在下一条正式正文输入持久化后触发；无楼层 Session 在下一输入前检查上轮 Token 压力。已采用版本持久化，未采用任务重启后丢弃。默认共享文件通过 `@memory.workspace` 注入，摘要通过 `@memory.session` 注入；自定义 Preset 需显式挂载锚点。具体接口、调度默认值和验证边界见 [实施记录](../../../archive/plans/session-summary-implementation-plan.md)。
 
 
 ## 5. 持久化与恢复边界
@@ -109,19 +109,21 @@ Run 状态记录中的版本化 `recovery` 保存原请求、实际 Branch、Pro
 - 缺少完整检查点时，仅凭历史 Transcript 自动重建未完成 Provider Replay；
 - Permission 等待与恢复；
 - orphan Invocation / Result 自动修复；
-- Agent Session 的正式 fork、retry attempt tree 和 branch UI。
+- 普通副 Session 的独立 fork 和 retry attempt tree；故事特殊 Session 已通过 Branch / Swipe 恢复采用位置。
 
 `suspended`、parent Entry 和 synthetic reason 不表示这些额外流程已经实现。
 
 ## 6. Narrative 边界
 
-Agent Session 是工作树，Narrative Timeline 是故事权威树。两者互不拥有，也不因一方回滚而自动回滚另一方。
+特殊 Timeline Session 持有唯一内容历史。Narrative Header、分支、楼号、材料版本和 `entryId` 正文索引保留；索引不再保存第二份正文。副 Session 仍独立持有自己的过程，通过正文只读 API 采样不会获得主会话工具记录。
 
-游玩提交先通过 `application.appendNarrativeInput` 持久化用户正文，再将节点 ID 作为 `narrativeTarget.inputNodeId` 投递到 Session。Runtime 验证分支归属并读取节点正文；换 Session 时重投递同一节点，不重复写入用户正文。两次持久化有顺序，但不是一个跨领域原子事务；Session 投递失败保留已有节点。
+`application.appendNarrativeInput` 原子提交 canonical user message 与正文索引，并开启轮次；随后以 `narrativeTarget.inputNodeId` 启动 Run。Loop 复用已保存 user Entry，投递失败保留输入且不重复追加。讨论直接向同 Session 发消息，归当前轮次；首轮前属于准备阶段。
 
-Agent Loop 分阶段提交 Transcript，Agent 正文只能由授权工具写入 Timeline。Assistant 最终消息不会自动追加到正文；旧 `narrativeTarget.commit` 与 Turn 返回的自动 `narrative` 结果已移除。工具写入失败/Head 冲突通过 failed Tool Result 返回 Agent 并供用户查看，成功工具提交不因后续失败被回滚。Turn 的 mutation scope 仅描述 Session Transcript。
+声明式模式提供 `declare_narrative`，只声明下一条完整普通 Assistant 内容为正文，采用后允许继续调用工具，未声明的普通回复结束 Run。自动模式只在扮演执行中采用普通 Assistant 文本；讨论回复、工具 JSON 与 reasoning 不进入正文。partial / length 续段保存逻辑身份，完整消息与正文索引同事务采用，checkpoint 保存声明的消费状态。编辑仍使用已有正文编辑能力，不改写历史工具事实。
 
-客户端保留当前页面最近一次用户投递的节点身份，已有重试按钮显式重新投递到当前 Session；它不自动重跑，也不是完整的持久 retry attempt tree。Server 重启后的显式检查点恢复遵循上节合同，不重复追加用户正文。
+一轮包含扮演输入及下一次扮演前的所有 Run、指导和修订；Swipe 切换整段采用位置，同时恢复 State / Workspace。旧楼层 Fork 共享既有工作前缀。辅助执行携带固定来源与采用游标；候选或内容版本变化后拒绝过期写入。辅助会话的有效工作历史和工作摘要同样按来源过滤，原始事实保留。
+
+剧情总结和工作总结独立。特殊 Session 的工作缓冲按完整轮次保留，普通副 Session 沿用原正文楼层映射；退休边界与并发用全局计数分开。`loom-timeline-archive.v2` 保存所有根会话事实（含旁支）、采用 Heads、候选和恢复引用；导入仅重映射宿主引用，不执行工具，v1 仍可导入基本正文。旧开发故事升级只建立正文消息引用，不补造旧协作历史。
 
 ## 7. Narrative Sampling（叙事采样读取）
 

@@ -54,9 +54,7 @@ export function useStudioDerivedValues(input: {
   } : undefined
 
   const canSend = Boolean(input.timeline && input.branch)
-    && input.agentSessionReady
     && !input.sessionBusy
-    && !input.agentChatBusy
     && input.narrativeInput.trim().length > 0
   const canSendAgent = Boolean(input.agentSession || input.selectedAgentPreset)
     && input.agentSessionReady

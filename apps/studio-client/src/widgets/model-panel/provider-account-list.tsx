@@ -8,7 +8,7 @@ import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import { Button, Dialog, IconButton, Toggle } from '@loom-studio/ui'
 import { notify } from '../../shared/notifications/index.js'
 import styles from './model-panel.module.scss'
-import { ModelBrandIcon } from './model-brand-icon.js'
+import { ModelBrandIcon } from '../../features/provider-settings/ui/model-brand-icon.js'
 
 type ProviderAccountListProps = {
   selectedProviderId?: string

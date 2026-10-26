@@ -3,7 +3,6 @@ import type { GatewayChatResult } from '../types.js'
 import type { ToolDefinition, ToolInvocation, ToolResult } from './tool-registry.js'
 import type { CompiledToolExposure } from './tool-prompt-build.js'
 import { projectHistoryEntries, type TextTransformRuleEntry } from '../transforms/history-text.js'
-import { codeActToolIds } from './codeact/prompts.js'
 import { createLoomContentScannerState, finishLoomContentScan, pushLoomContentChunk, renderLoomContentToolResult } from './content-transport.js'
 import { renderToolResult } from './tool-result-text.js'
 
@@ -43,27 +42,24 @@ export function decodeToolResponse<T extends ResponseTool>({
     }
     return { call: recordedCall, invocation, resolved, validationError, transport: 'native-function' as const }
   })
-  const classified = classifyAssistantContent(
-    providerResult.message.content ?? '',
-    sessionId,
-    classificationRules,
-  )
-  const contentScan = classified.text
-    ? scanContentTools(
-        classified.text,
-        contentTools.map((tool) => tool.definition.name),
-      )
-    : { text: '', invocations: [] }
-  const codeActContentNames = new Set(contentTools
-    .filter(tool => codeActToolIds.has(tool.definition.id))
-    .map(tool => tool.definition.name))
-  const rawCodeActCalls = contentScan.invocations.some(call => codeActContentNames.has(call.name))
-    ? scanContentTools(
-        providerResult.message.content ?? '',
-        contentTools.map(tool => tool.definition.name),
-      ).invocations.filter(call => codeActContentNames.has(call.name))
-    : []
-  let codeActContentIndex = 0
+  // Parse and protect original envelopes before prose transforms. Reasoning may
+  // surround a quoted tool block; such blocks must never become invocations.
+  const rawContent = providerResult.message.content ?? ''
+  const rawScan = scanContentTools(rawContent, contentTools.map(tool => tool.definition.name))
+  const blocks = [...rawContent.matchAll(/<loom_tool name="[A-Za-z0-9_.:/-]+">[\s\S]*?<\/loom_tool>/g)]
+  const tokens = blocks.map((_, index) => `\u0000loom-protocol-${index}\u0000`)
+  let blockIndex = 0
+  const protectedContent = rawContent.replace(/<loom_tool name="[A-Za-z0-9_.:/-]+">[\s\S]*?<\/loom_tool>/g,
+    () => tokens[blockIndex++]!)
+  const promoted = classifyAssistantContent(protectedContent, sessionId,
+    classificationRules.filter(rule => rule.effect.kind === 'promote-reasoning'))
+  const restore = (text: string) => tokens.reduce((value, token, index) => value.replaceAll(token, blocks[index]![0]), text)
+  const prose = tokens.reduce((text, token) => text.replaceAll(token, ''), promoted.text)
+  const classified = classifyAssistantContent(prose, sessionId,
+    classificationRules.filter(rule => rule.effect.kind !== 'promote-reasoning'))
+  classified.reasoning = promoted.reasoning.map(part => ({ ...part, content: restore(part.content) }))
+  const contentScan = { ...rawScan, text: classified.text,
+    invocations: rawScan.invocations.filter((_, index) => promoted.text.includes(tokens[index]!)) }
   if (nativeInvocationPairs.length && contentScan.invocations.length)
     throw new Error(
       'Provider emitted native and content tool calls in the same Step',
@@ -88,8 +84,7 @@ export function decodeToolResponse<T extends ResponseTool>({
       resolved,
       exposedName: parsed.name,
       transport: 'content' as const,
-      sourceChanged: codeActContentNames.has(parsed.name)
-        && rawCodeActCalls[codeActContentIndex++]?.content !== parsed.content,
+      sourceChanged: false,
     }
   })
   const invocationPairs = [

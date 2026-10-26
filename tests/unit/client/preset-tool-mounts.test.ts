@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { togglePresetToolMount, validPresetToolMounts } from '../../../apps/studio-client/src/features/context-assets/model/preset-tool-mounts.js'
+import { togglePresetToolMount, validPresetToolMounts } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-tool-mounts.js'
 import type { AgentToolDefinition, PresetToolMount } from '../../../apps/studio-client/src/entities/index.js'
 
 const structured = {

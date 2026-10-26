@@ -1,18 +1,25 @@
+// @vitest-environment happy-dom
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { PresetWorkbench } from '../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.js'
+import { PresetWorkbench, PresetArrangementWorkbench } from '../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.js'
+import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { PromptResource } from '../../../apps/studio-client/src/entities/index.js'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
-vi.mock('../../../apps/studio-client/src/features/context-assets/model/use-resource-token-snapshot.js', () => ({
+vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-resource-token-snapshot.js', () => ({
   useResourceTokenSnapshot: () => ({ pending: false, refresh: vi.fn() }),
 }))
 vi.mock('react', async original => ({
   ...await original<typeof import('react')>(),
   useId: () => 'test-id',
   useMemo: (fn: () => unknown) => fn(),
+  useRef: (initial: unknown) => {
+    const index = hooks.cursor++
+    if (!(index in hooks.values)) hooks.values[index] = { current: initial }
+    return hooks.values[index]
+  },
   useState: (initial: unknown) => {
     const index = hooks.cursor++
     const values = hooks.values
@@ -49,7 +56,7 @@ vi.mock('../../../apps/studio-client/src/features/state-variables/ui/macro-autho
   MacroAuthoringDetail: () => null,
   MacroAuthoringExplorer: () => null,
 }))
-vi.mock('../../../apps/studio-client/src/features/text-transforms/ui/text-transform-panel.js', () => ({
+vi.mock('../../../apps/studio-client/src/widgets/text-transform-workbench/text-transform-panel.js', () => ({
   useTextTransformController: () => ({}),
   TextTransformExplorer: () => null,
   TextTransformDetail: () => null,
@@ -93,8 +100,7 @@ describe('PresetWorkbench tree and rename ID mapping', () => {
     const onRenameNode = vi.fn().mockResolvedValue(undefined)
     const props = {
       active: true,
-      resources: [presetResource],
-      nodes: [],
+      resources: [presetResource, { ...presetResource, id: 'other', rootNode: { id: 'other-root', kind: 'module', label: 'Other' } }],
       loreMounts: [],
       tools: [],
       toolMounts: [],
@@ -106,7 +112,6 @@ describe('PresetWorkbench tree and rename ID mapping', () => {
       onSaveModel: vi.fn(),
       onChangeNode: vi.fn(),
       onCommitNode: vi.fn(),
-      onChangeNodes: vi.fn(),
       onMoveNode: vi.fn(),
       onAddNode: vi.fn(),
       onDuplicateNode: vi.fn(),
@@ -119,16 +124,28 @@ describe('PresetWorkbench tree and rename ID mapping', () => {
       onReplaceToolMounts: vi.fn(),
       onReplaceLoreMounts: vi.fn(),
       onUpdateTool: vi.fn(),
-      onSaveMacros: vi.fn(),
       onDiscardDraft: vi.fn(),
       onRetryDraft: vi.fn(),
       modelProfiles: [],
       providerAccounts: [],
     } as unknown as ComponentProps<typeof PresetWorkbench>
 
-    const tree = PresetWorkbench(props)
+    const tree = PresetArrangementWorkbench({ ...props, onConfigure: vi.fn() })
     const explorer = child(tree, 'ContextAssetExplorer')
     const displayNodes = explorer.props.displayNodes as ContextAssetNode[]
+
+    expect(displayNodes).toHaveLength(1)
+
+    for (const effect of hooks.effects.splice(0)) effect()
+    expect(useStudioLayoutStore.getState().assetLayouts.preset.views['test-ws']?.expandedIds)
+      .toEqual(expect.arrayContaining(['preset-root-node-5678', 'child-message']))
+    // A later resource refresh must not reopen a message the user just collapsed.
+    useStudioLayoutStore.getState().setAssetExpandedIds('preset', 'test-ws', ['preset-root-node-5678'])
+    hooks.cursor = 0
+    PresetArrangementWorkbench({ ...props, resources: [{ ...presetResource, version: 2 }], onConfigure: vi.fn() })
+    for (const effect of hooks.effects.splice(0)) effect()
+    expect(useStudioLayoutStore.getState().assetLayouts.preset.views['test-ws']?.expandedIds)
+      .toEqual(['preset-root-node-5678'])
 
     // Verify root node uses AST rootNode.id instead of resource.id
     expect(displayNodes[0]?.id).toBe('preset-root-node-5678')
@@ -143,4 +160,34 @@ describe('PresetWorkbench tree and rename ID mapping', () => {
     await renameHandler('prompt-resource-uuid-1234', 'Another Name')
     expect(onRenameNode).toHaveBeenCalledWith('preset-root-node-5678', 'Another Name')
   })
+  it('opens configuration without navigating or changing the selected preset, and tracks persistence until completion', async () => {
+    const first = { id: 'one', version: 1, resourceKind: 'preset', rootNode: { id: 'root-one', kind: 'module', label: 'One' }, createdAt: '', updatedAt: '' } as PromptResource
+    const second = { ...first, id: 'two', rootNode: { ...first.rootNode, id: 'root-two', label: 'Two' } }
+    const commit = Promise.withResolvers<PromptResource>()
+    const onSaveModel = vi.fn(() => commit.promise)
+    const onSelectResource = vi.fn()
+    const props = { active: true, resources: [first, second], loreMounts: [], toolMounts: [], tools: [], draftResourceIds: [],
+      selectedResourceId: first.id, onSelectResource, onSaveModel, t: createTranslator('zh-CN') } as unknown as ComponentProps<typeof PresetWorkbench>
+    const render = () => { hooks.cursor = 0; return PresetWorkbench(props) }
+    const initial = render()
+    const catalog = child(initial, 'PresetLibraryCatalog')
+    ;(catalog.props.onConfigure as (id: string) => void)('two')
+    expect(onSelectResource).not.toHaveBeenCalled()
+    const overlay = child(render(), 'PresetConfigurationDialog')
+    expect(overlay.props.open).toBe(true)
+    const configuration = child(render(), 'AgentPresetOverview')
+    expect((configuration.props.preset as PromptResource).id).toBe('two')
+    const saving = (configuration.props.onSaveModel as (input: unknown) => Promise<PromptResource>)({ agentPresetId: 'two', expectedVersion: 1, delivery: 'complete' })
+    expect(child(render(), 'PresetConfigurationDialog').props.busy).toBe(true)
+    commit.resolve({ ...second, version: 2, delivery: 'complete' })
+    await saving
+    expect(child(render(), 'PresetConfigurationDialog').props.busy).toBe(false)
+    ;(overlay.props.onClose as () => void)()
+    expect(child(render(), 'PresetConfigurationDialog').props.open).toBe(false)
+    expect(props.selectedResourceId).toBe('one')
+    expect(onSelectResource).not.toHaveBeenCalled()
+    ;(child(render(), 'PresetLibraryCatalog').props.onOpen as (id: string) => void)('two')
+    expect(onSelectResource).toHaveBeenCalledExactlyOnceWith('two')
+  })
+
 })

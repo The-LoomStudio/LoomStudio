@@ -9,7 +9,7 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 [`src/index.ts`](./src/index.ts) 公开：
 
 - `createSqliteDataEngine()`、`SqliteDataEngine` 和 `DataEngineError`；
-- Migration、Transaction 与 Engine options 类型；
+- Migration、`DataTransactionInput`、Transaction 与 Engine options 类型；
 - `DataCommitFact`、operation、observer、source 和 notifier。
 
 源码集中在：
@@ -23,7 +23,7 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 ## 事务边界
 
 - 所有公开 `read()` / `transact()` 进入同一个 FIFO；
-- 写事务使用 `BEGIN IMMEDIATE`，失败时回滚；
+- 写事务使用 `BEGIN IMMEDIATE`，callback 必须返回 Promise，失败时回滚；
 - transaction 必须记录至少一个 operation；
 - 一次成功事务只写一份 Changeset/Commit Fact；多个 Store 必须参与同一个 transaction 才有跨 Store 原子性，连续调用多次 `transact()` 不构成整体事务；
 - `AsyncLocalStorage` 会拒绝 transaction 内重新进入 Engine API；
@@ -31,6 +31,8 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 - `close()` 后的读写会返回 `data.engine_closed`。
 
 本包不拥有 Document、Narrative、Agent、Asset 等业务 Schema，不提供 ORM/Repository，也不理解 Application 语义。领域 Store 在事务内直接使用 transaction 暴露的 SQLite connection，不重新进入公开排队方法。
+
+`DataTransactionInput` 是公共写入上下文的字段来源；领域 Store 的 `*WriteContext` 与 `DocumentTransactionInput` 保留各自名称并直接引用该类型。领域 API 的其他参数与可选 actor 合同仍由各 Store 定义。
 
 ## Schema 版本边界
 

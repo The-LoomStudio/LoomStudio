@@ -4,13 +4,15 @@
 日期：2026-10-13。  
 本轮授权：记录讨论、源码依据与后续实施边界；不修改业务实现、数据或公共契约。
 
+2026-10-24 更新：本计划中的独立主接收方与换预设新建 Session 方案，已由 [Timeline Session 融合](../../archive/plans/narrative-timeline-session-unification-plan.md) 取代。通用触发、输入投递和常驻资源采用仍是独立能力；下文保留原讨论，不作为融合后身份合同。
+
 ## 目标与承接关系
 
 用户新建 Timeline 后可以直接发送故事输入，后端按默认写作预设按需创建 Session，并持续使用指定的写作对话。更换预设或写作 Session 不应丢失用户选择的常驻资源；其他 Agent 只有明确采用时才消费同一份配置。
 
 触发执行是一项通用能力：业务功能可以继续已有 Session，或使用指定预设新建 Session。主写作使用这项能力，未来扩展调用、父子 Agent 协作也能复用；不将执行器、资源消费或权限绑定到永久的“主 Agent”类型。
 
-本计划承接 [Agent 预设使用配置、Session 与资源工作台](./agent-preset-resources-and-usage-plan.md) 和 [扩展的故事级采用与运行隔离](./extension-story-participation-plan.md)。实施后替换前者的“主写作仅由客户端保存”及“公共正则默认参与”语义；固定 Session 预设、资源平铺引用、权限与恢复边界继续保留。正式 Architecture 在实现完成后按实际结果更新，当前不得把本计划当作已实现行为。
+本计划承接 [Agent 预设使用配置、Session 与资源工作台](../../archive/plans/agent-preset-resources-and-usage-plan.md) 和 [扩展的故事级采用与运行隔离](../../archive/plans/extension-story-participation-plan.md)。实施后替换前者的“主写作仅由客户端保存”及“公共正则默认参与”语义；固定 Session 预设、资源平铺引用、权限与恢复边界继续保留。正式 Architecture 在实现完成后按实际结果更新，当前不得把本计划当作已实现行为。
 
 ## 当前事实与问题
 

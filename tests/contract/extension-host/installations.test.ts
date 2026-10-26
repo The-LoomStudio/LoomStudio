@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
@@ -95,8 +95,10 @@ export function activate(ctx) {
 `,
     })
     const handlers = new Map<string, ExtensionRpcHandler>()
+    const documents = createInMemoryDocumentStore()
+    onTestFinished(() => documents.close())
     const host = createExtensionHost({
-      documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(),
+      documents, diagnostics: createInMemoryDiagnosticsRegistry(),
       callRpc: async () => null,
       validateStorageScope: async () => {},
       registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
@@ -169,8 +171,10 @@ export async function activate(ctx) {
 `,
     })
     const probes: unknown[] = []
+    const documents = createInMemoryDocumentStore()
+    onTestFinished(() => documents.close())
     const host = createExtensionHost({
-      documents: createInMemoryDocumentStore(),
+      documents,
       diagnostics: createInMemoryDiagnosticsRegistry(),
       grantEventCapabilities: (_, __, target) => target.kind === 'global' ? ['state'] : [],
       grantAssetCapabilities: (_, __, target) => target.kind === 'card' && target.cardId === 'A' ? ['assets.read'] : [],

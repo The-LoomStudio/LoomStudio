@@ -1,4 +1,4 @@
-import { normalizeCardBundleArtifact, type CardBundleArtifact, type PromptResourceNode } from '@loom-studio/application-runtime'
+import { normalizeCardBundleArtifact, type CardBundleArtifact, type PromptResourceNode } from '@loom-studio/application-runtime/artifacts'
 
 type FileNode = {
   metadata: Omit<PromptResourceNode, 'body' | 'children'>

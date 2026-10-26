@@ -14,6 +14,7 @@ export type ServerScriptRun = {
   mountVersion?: number
   target?: ExtensionInstallationTarget
   grantedCapabilities: readonly string[]
+  settings?: Readonly<Record<string, string | number | boolean>>
   script: {
     id: string
     version: number
@@ -145,7 +146,7 @@ export function createServerScriptRuntime(options: { hostOptions: ExtensionHostO
           const url = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${instanceId}`
           const loaded = await import(/* @vite-ignore */ url) as Partial<ServerExtensionModule>
           if (typeof loaded.activate !== 'function') throw new Error('Server Script must export activate(ctx)')
-          return { activate: context => { assertCurrent(); return loaded.activate!(context) } }
+          return { activate: context => { assertCurrent(); return loaded.activate!({ ...context, scriptSettings: Object.freeze(structuredClone(run.settings ?? {})) }) } }
         },
       })
       const module = await host.activate(packageId(run), run.mountId, run.target)
@@ -202,18 +203,6 @@ export function createServerScriptRuntime(options: { hostOptions: ExtensionHostO
         return list()
       })
     },
-    refresh(mountId: string): Promise<ServerScriptInstanceSummary | undefined> {
-      loading.get(mountId)?.controller.abort(new DOMException('Script mount is refreshing', 'AbortError'))
-      return serialize(async () => {
-        if (closed) throw new Error('Server Script runtime is disposed')
-        const run = desired.get(mountId)
-        if (!run) return undefined
-        const previous = running.get(mountId)
-        if (previous) await stop(previous)
-        await start(run)
-        return list().find(entry => entry.mountId === mountId)
-      })
-    },
     list,
     dispose(): Promise<void> {
       closed = true
@@ -235,7 +224,7 @@ function packageId(run: ServerScriptRun): string {
 }
 
 function identity(run: ServerScriptRun): string {
-  // Saved source/version changes are adopted only by explicit refresh.
+  // Saving source/version alone does not restart an unchanged mount.
   return JSON.stringify([run.mountId, run.mountVersion, run.script.id, run.target ?? { kind: 'global' },
     [...new Set(run.grantedCapabilities)].sort()])
 }

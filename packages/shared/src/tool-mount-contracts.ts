@@ -1,7 +1,8 @@
 import { z } from 'zod'
+import { promptAnchorOutput } from './prompt-resource-contracts.js'
 
 export const toolContentPlacementSchema = z.strictObject({
-  targetAnchorId: z.string().trim().min(1).optional(),
+  targetAnchorId: z.string().trim().min(1).refine(id => promptAnchorOutput(id) === 'text', 'Tool descriptions require a text anchor').optional(),
   localDepth: z.number().finite().optional(),
 })
 export type ToolContentPlacement = z.infer<typeof toolContentPlacementSchema>

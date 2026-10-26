@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
-import { listTextTransformRuleDocuments } from '@loom-studio/application-data'
+import { listScriptTextTransformRules, getTextTransformRuleScript, upsertTextTransformRuleScript, deleteTextTransformRuleScript } from '../scripts/loom-script-text-migration.js'
+import { resolveScriptTextContributions } from '../scripts/loom-script-text-pipeline.js'
+import { parseLoomScriptSource, resolveLoomScriptSettings, resolveTextTransformContributionRule, resolveTextExtractorContribution, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { ExtensionInstallationTarget } from '../types.js'
@@ -13,7 +15,6 @@ import {
   extractHistory,
   projectHistoryEntries,
   validateTextExtractorDraft,
-  validateTextTransformRuleDraft,
 } from '../transforms/history-text.js'
 import { createNarrativeSampler, type NarrativeSampleRequest, type NarrativeSampleResult } from '../narrative/sampling.js'
 import { projectNarrativeSample } from '../narrative/projection.js'
@@ -36,7 +37,6 @@ import type {
   TextPipelineOverrideEntry,
   TextPipelineOverrideSource,
   TextTransformPhase,
-  TextTransformRuleContent,
   TextTransformRuleDraft,
   TextTransformRuleEntry,
 } from '../types.js'
@@ -84,56 +84,34 @@ export async function sampleRuntimeNarrative(
 
 type TransformsRuntimeContext = Pick<ApplicationRuntimeContext, 'agents' | 'documents' | 'narratives' | 'now' | 'promptResources'>
 
-export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext & Pick<ApplicationRuntimeContext, 'dataEngine'>) {
+export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext & Pick<ApplicationRuntimeContext, 'dataEngine' | 'blobs' | 'createId'>) {
   return {
     sampleNarrative: (input: SampleNarrativeInput, signal?: AbortSignal) => sampleRuntimeNarrative(ctx, input, signal),
-    listTextTransformRules: async (input?: { owner?: TextTransformRuleDraft['owner'] }): Promise<{ rules: TextTransformRuleEntry[] }> => ({
-      rules: input?.owner !== undefined
-        ? (await listTextTransformRuleDocuments<TextTransformRuleContent>(ctx.dataEngine, input.owner))
-          .map(document => ({ ...document.content, id: document.id, version: document.version }))
-        : (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
-          .map(document => toVersioned(document)),
-    }),
-
-    getTextTransformRule: async (input: { ruleId: string }): Promise<{ rule: TextTransformRuleEntry }> => ({
-      rule: toVersioned(await readDocument<TextTransformRuleContent>(ctx.documents, input.ruleId, applicationDocumentTypes.textTransformRule)),
-    }),
-
-    upsertTextTransformRule: async (
-      input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft },
-      requestContext?: RuntimeRequestContext,
-    ): Promise<{ rule: TextTransformRuleEntry; mutation: MutationReceipt }> => {
-      validateTextTransformRuleDraft(input.rule)
-      const existing = await ctx.documents.get(input.ruleId)
-      assertExpectedDocumentVersion(existing, input.expectedVersion, applicationDocumentTypes.textTransformRule, 'Text Transform Rule', input.ruleId)
-      const timestamp = ctx.now()
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.upsertTextTransformRule', async documents =>
-        writeDocument<TextTransformRuleContent>(documents, {
-          id: input.ruleId,
-          type: applicationDocumentTypes.textTransformRule,
-          content: {
-            ...structuredClone(input.rule),
-            createdAt: existing ? (existing.content as TextTransformRuleContent).createdAt : timestamp,
-            updatedAt: timestamp,
-          },
-          expectedVersion: existing ? existing.version : 'new',
-        }),
-      )
-      return { rule: toVersioned(mutation.value), mutation: mutation.mutation }
-    },
-
-    deleteTextTransformRule: async (
-      input: { ruleId: string; expectedVersion?: number },
-      requestContext?: RuntimeRequestContext,
-    ): Promise<{ deleted: true; mutation: MutationReceipt }> => {
-      const existing = await readDocument<TextTransformRuleContent>(ctx.documents, input.ruleId, applicationDocumentTypes.textTransformRule)
-      if (input.expectedVersion !== undefined && existing.version !== input.expectedVersion) throw new Error(`Text Transform Rule version conflict: ${input.ruleId}`)
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteTextTransformRule', async documents => {
-        await documents.delete({ id: existing.id, expectedVersion: existing.version })
-        return true as const
+    previewLoomScript: async (input: { source: string; text: string; phase?: TextTransformPhase; settings?: LoomScriptSettings }) => {
+      const metadata = parseLoomScriptSource(input.source)
+      const settings = resolveLoomScriptSettings(metadata.settings ?? [], input.settings ?? {})
+      const rules: TextTransformRuleEntry[] = metadata.contributions.flatMap(contribution => contribution.kind === 'text-transform'
+        ? [{ ...resolveTextTransformContributionRule(contribution, settings), id: contribution.id, version: 1,
+          owner: { kind: 'workspace' as const }, createdAt: '', updatedAt: '' }] : [])
+      const source = { kind: 'narrative' as const, timelineId: 'preview', branchId: 'preview' }
+      const snapshot = projectHistoryEntries({ source, phase: input.phase ?? 'display', rules,
+        entries: [{ id: 'sample', source, text: input.text, sequence: 0 }] })
+      const extractions = metadata.contributions.flatMap(contribution => {
+        if (contribution.kind !== 'text-extractor') return []
+        const extractor = { ...resolveTextExtractorContribution(contribution, settings), id: contribution.id, version: 1,
+          owner: { kind: 'workspace' as const }, createdAt: '', updatedAt: '' }
+        return [extractHistory({ snapshot, extractor })]
       })
-      return { deleted: mutation.value, mutation: mutation.mutation }
+      return { output: snapshot.entries[0]?.text ?? input.text, matches: snapshot.matches, extractions,
+        diagnostics: [...snapshot.diagnostics, ...metadata.contributions.flatMap(item => item.kind !== 'renderer' && item.requiresCode
+          ? [{ code: 'preview.code_not_executed', message: `Testing ${item.id} independently; preview does not execute JavaScript` }] : [])] }
     },
+    listTextTransformRules: async (input?: { owner?: TextTransformRuleDraft['owner'] }): Promise<{ rules: TextTransformRuleEntry[] }> => ({
+      rules: (await listScriptTextTransformRules(ctx.documents)).filter(rule => !input?.owner || JSON.stringify(rule.owner) === JSON.stringify(input.owner)),
+    }),
+    getTextTransformRule: (input: { ruleId: string }) => getTextTransformRuleScript(ctx, input),
+    upsertTextTransformRule: (input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft }, request?: RuntimeRequestContext) => upsertTextTransformRuleScript(ctx, input, request),
+    deleteTextTransformRule: (input: { ruleId: string; expectedVersion?: number }, request?: RuntimeRequestContext) => deleteTextTransformRuleScript(ctx, input, request),
 
     listTextExtractors: async (): Promise<{ extractors: TextExtractorEntry[] }> => ({
       extractors: (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor)).map(document => toVersioned(document)),
@@ -253,8 +231,8 @@ export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext & P
         const preset = await ctx.promptResources.getResource(input.presetId)
         if (!preset || preset.tombstoned || preset.resourceKind !== 'preset') throw new Error(`Preset not found: ${input.presetId}`)
       }
-      const documents = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
-      const rules = documents.map(document => toVersioned(document))
+      const effective = await resolveScriptTextContributions(ctx, { cardId: input.cardId, presetId: input.presetId })
+      const rules = effective.rules
         .filter(rule => isOwnerActive(rule.owner, input.presetId, input.cardId))
         .sort(compareTextEntries)
       const source = { kind: 'card-opening' as const, cardId: input.cardId }
@@ -324,7 +302,9 @@ async function projectRuntimeHistory(
 ) {
   const entries = await readRuntimeHistoryEntries(ctx, source)
   const effective = await resolveEffectiveTextPipeline(ctx, source, phase, consumerAgentSessionId)
-  return projectHistoryEntries({ source, phase, entries, entryIds, rules: effective.rules, preserveRuleOrder: true })
+  const snapshot = projectHistoryEntries({ source, phase, entries, entryIds, rules: effective.rules, preserveRuleOrder: true })
+  snapshot.diagnostics.push(...effective.diagnostics)
+  return snapshot
 }
 
 export async function resolveEffectiveTextPipeline(
@@ -343,10 +323,8 @@ export async function resolveEffectiveTextPipeline(
       throw new Error(`Narrative consumer Preset not found: ${consumerPresetId}`)
     }
   }
-  const ruleDocuments = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
   const extractorDocuments = await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor)
-  const rules = ruleDocuments.map(document => toVersioned(document))
-  const extractors = extractorDocuments.map(document => toVersioned(document))
+  const legacyExtractors = extractorDocuments.map(document => toVersioned(document))
   let presetId = consumerPresetId
   let cardId: string | undefined
   let timelineId: string | null = null
@@ -379,10 +357,13 @@ export async function resolveEffectiveTextPipeline(
     }
   }
 
+  const scriptContributions = await resolveScriptTextContributions(ctx, { cardId, presetId, timelineId })
+  const rules = scriptContributions.rules
+  const extractors = [...legacyExtractors, ...scriptContributions.extractors]
   const availableInstallations = await readAvailableExtensionInstallations(ctx.documents, cardId, timelineId)
   const preset = presetId ? await ctx.promptResources.getResource(presetId) : null
   const uses = Array.isArray(preset?.metadata.textUses)
-    ? preset.metadata.textUses as Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number; reference?: { kind: string; origin?: { packageId: string; contributionId: string } } }>
+    ? preset.metadata.textUses as Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number; reference?: { kind: string; resourceId?: string; origin?: { packageId: string; contributionId: string } } }>
     : []
   const presetOrigin = preset?.metadata.origin as { kind?: string; packageId?: string } | undefined
   const usable = (use: typeof uses[number], item: TextTransformRuleEntry | TextExtractorEntry) =>
@@ -390,9 +371,9 @@ export async function resolveEffectiveTextPipeline(
       ? Boolean(presetOrigin?.kind === 'extension-package'
         && item.origin?.packageId === presetOrigin.packageId
         && item.origin?.contributionId === (use.reference as { contributionId?: string }).contributionId)
-      : use.reference?.kind !== 'external' || Boolean(use.reference.origin
-        && item.origin?.packageId === use.reference.origin.packageId
-        && item.origin.contributionId === use.reference.origin.contributionId)
+      : use.reference?.kind !== 'external' || (use.reference.origin
+        ? item.origin?.packageId === use.reference.origin.packageId && item.origin.contributionId === use.reference.origin.contributionId
+        : use.reference.resourceId === item.id && !item.origin)
   const configured = (kind: 'rule' | 'extractor', item: TextTransformRuleEntry | TextExtractorEntry) =>
     uses.find(use => use.kind === kind && use.id === item.id && usable(use, item))
   const diagnostics = uses.filter(use => !(use.kind === 'rule' ? rules : extractors).some(item =>
@@ -412,7 +393,7 @@ export async function resolveEffectiveTextPipeline(
       - (configured('rule', right)?.orderIndex ?? right.orderIndex) || left.id.localeCompare(right.id))
   const override = await readTextPipelineOverride(ctx, source, phase, consumerAgentSessionId)
   return {
-    diagnostics,
+    diagnostics: [...scriptContributions.diagnostics, ...diagnostics],
     rules: applyTextPipelineOverride(defaultRules, override),
     extractors: extractors
       .filter(extractor => (extractor.owner.kind !== 'card' && extractor.owner.kind !== 'preset' || isOwnerActive(extractor.owner, presetId, cardId))

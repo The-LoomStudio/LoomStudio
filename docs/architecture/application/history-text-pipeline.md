@@ -1,6 +1,6 @@
 # History Text Pipeline
 
-> 状态：已实现；资源使用配置更新于 2026-10-02
+> 状态：已实现；Script 声明式贡献接入于 2026-10-26
 
 LoomStudio 只对 `Narrative History` 与 `Agent Session History` 提供统一文本管线。Canonical Narrative Node 与 Agent Transcript 始终保留原文；Prompt、Display、Extractor 和扩展消费冻结后的 `HistoryProjectionSnapshot`。
 
@@ -15,7 +15,7 @@ Active lineage
 
 ## Rule 与来源
 
-Rule 使用 `airp.textTransformRule` Document 持久化，资源定义与预设使用配置分离。Runtime 按 Session 直接引用的 Agent Preset、Timeline 关联 Card 的当前规则、可用扩展安装及公共默认解析有效 RuleSet；不再把创建 Timeline 时的规则快照作为运行来源。Preset metadata 的 `textUses` 按 `kind + id` 显式覆盖启用与可选 `orderIndex`，未配置项保持定义默认值，排序最终以稳定 ID 打破同序。显式禁用不会修改全局规则定义，显式启用也不会绕过 Card 归属与扩展安装可用性校验。
+Rule 以 `airp.loomScript` 中的 `text-transform` 声明持久化，源码是唯一可编辑定义；采用由 Script Mount 控制，预设继续保留单条规则的使用与顺序配置。旧 `airp.textTransformRule` 启动时事务迁移为脚本，原规则地址通过贡献映射保留。旧导入格式在边界转换；旧规则 upsert 仅用于新资源导入，已有规则须编辑完整脚本并刷新。Runtime 按 Session 直接引用的 Agent Preset、Timeline 关联 Card 的当前规则、可用扩展安装及公共默认解析有效 RuleSet；不再把创建 Timeline 时的规则快照作为运行来源。Preset metadata 的 `textUses` 按 `kind + id` 显式覆盖启用与可选 `orderIndex`，未配置项保持定义默认值，排序最终以稳定 ID 打破同序。显式禁用不会修改全局规则定义，显式启用也不会绕过 Card 归属与扩展安装可用性校验。
 
 Owner 表示声明来源与 provenance，不等于运行作用域。Workspace / User Override 是公共默认来源，Card 只对对应来源角色生效，Extension 贡献还需匹配当前可用安装。现存 `owner.kind: preset` 仍按匹配预设解析，但配置化不增加新的预设专属归属：扩展携带定义，预设以 `textUses` 引用和使用。Runtime 通过唯一的 Effective Pipeline 解析路径组合 Rule 与 Extractor，PromptBuild、History Projection 与 Inspector 不分别维护来源筛选逻辑。
 
@@ -72,3 +72,9 @@ Studio 将定义编辑、预设使用配置和运行检查分离：文本资源�
 - Node Render Mount 第一版限制为每个 Node 64 个 Mount、20 万字符；
 - Regex 使用 JavaScript 原生 `RegExp`，由输入、输出、Entry 和 Match 预算限制资源消耗，尚未进入可中断的独立执行进程。
 - Extension-owned Rule / Extractor 由 Package 声明并经显式资源导入进入 Application Store；Module 启停只控制运行时 Renderer，不反向改写声明式资源或既有 Timeline 快照。
+
+## Script 采用边界
+
+规则解析使用当前请求对应的角色/预设，按角色优先于全局去重；角色显式关闭不能被预设单条使用设置重新开启。迁移前禁用但经预设显式采用的旧规则保留原语义，用户主动切换脚本开关后按新采用设置生效。保存源码或配置不改变有效版本；显式刷新更新版本和配置快照。纯声明不启动 JS，独立规则不随未授权或失败的 JS 一起失效。需要代码的贡献必须显式声明依赖并由宿主验证已激活。
+
+静态 `text-extractor` 与现有 Extractor 共享定义、校验及提取执行器；存量 Extractor 文档本轮不强制迁移。详见 [Script 合同](../extensions/loom-script-runtime.md)。

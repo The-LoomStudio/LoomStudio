@@ -15,7 +15,6 @@ import type {
   ExtensionAssetCapability,
   ExtensionInstallationTarget,
 } from '@loom-studio/extension-sdk'
-import type { LoomRunInput } from '@loom-studio/loom-runner'
 import { isJsonObject, nowIso, serializeError, type JsonValue } from '@loom-studio/shared'
 import type {
   CreateKernelOptions,
@@ -332,26 +331,6 @@ export function createBuiltinHandlers(kernel: Kernel,
       const diagnostics = options.diagnostics.list(isRecord(params) ? params : undefined)
       return { items: diagnostics }
     },
-    'trace.list': () => {
-      return { items: options.traceAudit.listTraces() }
-    },
-    'audit.list': () => {
-      return { items: options.traceAudit.listAudit() }
-    },
-    'loom.run': async (params: JsonValue | undefined, context: KernelRpcContext) => {
-      if (!isRecord(params)) throw new Error('loom.run params must be an object')
-      rejectForbiddenLoomRunFields(params)
-
-      const result = await options.loomRunner.run(toLoomRunInput(params))
-      for (const diagnostic of result.diagnostics ?? []) {
-        options.diagnostics.add(diagnostic)
-      }
-      if ((result.diagnostics?.length ?? 0) > 0) {
-        eventBus.emit('diagnostics.updated', { count: result.diagnostics?.length ?? 0 }, context)
-      }
-
-      return result
-    },
   }
 }
 
@@ -472,33 +451,6 @@ function readSafeDocumentMeta(params: Record<string, JsonValue>): WriteDocumentI
 function readExpectedVersion(params: Record<string, JsonValue>): WriteDocumentInput['expectedVersion'] {
   if (params.expectedVersion === 'new' || typeof params.expectedVersion === 'number') return params.expectedVersion
   return undefined
-}
-
-function rejectForbiddenLoomRunFields(params: Record<string, JsonValue>): void {
-  const forbidden = ['messages', 'model', 'temperature', 'tools', 'toolChoice', 'chatId', 'sessionId', 'provider']
-  const found = forbidden.filter(field => field in params)
-  if (found.length > 0) {
-    throw new Error(`Forbidden loom.run fields: ${found.join(', ')}`)
-  }
-}
-
-function toLoomRunInput(params: Record<string, JsonValue>): LoomRunInput {
-  if (!Array.isArray(params.fragments)) throw new Error('loom.run fragments must be an array')
-  if (!Array.isArray(params.passes)) throw new Error('loom.run passes must be an array')
-  return {
-    fragments: params.fragments,
-    passes: params.passes,
-    options: params.options,
-    trace: readTraceOptions(params.trace),
-  }
-}
-
-function readTraceOptions(value: JsonValue | undefined): LoomRunInput['trace'] {
-  if (!isRecord(value)) return undefined
-  return {
-    enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
-    strictPersist: typeof value.strictPersist === 'boolean' ? value.strictPersist : undefined,
-  }
 }
 
 export function summarizeDataCommit(commit: DataCommitFact): JsonValue {

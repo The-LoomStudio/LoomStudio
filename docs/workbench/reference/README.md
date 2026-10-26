@@ -12,3 +12,5 @@
 - [`pulsarai-architecture-and-product-reference.md`](pulsarai-architecture-and-product-reference.md) — PulsarAI 与 LoomStudio 的生成流程、Plugin、记忆、产品和安全边界对照审计
 - [`plugin-ecosystem-architecture-reference.md`](plugin-ecosystem-architecture-reference.md) — oh-my-pi、PulsarAI 与 LoomStudio 的插件分发、Manifest、Prompt/CTX、权限、注册和卸载横向参考
 - [`ecosystem-audit-improvement-summary.md`](ecosystem-audit-improvement-summary.md) — 三方 Reference 审计提炼出的 LoomStudio 改进优先级、边界与后续 Workbench 课题
+
+- [审查工作指南](audit-playbook.md) — 可复用的审查经验与关闭方法，不是待修 Issue。

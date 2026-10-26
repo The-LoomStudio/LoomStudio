@@ -9,6 +9,8 @@
 | 类型 | 当前职责与来源 |
 |---|---|
 | Kernel / EventBus | 进程内 RPC、事件与平台服务协调；[Kernel](../../../packages/kernel/src/index.ts) |
+| DataTransactionInput | 公共写入上下文（actor、reason、关联 ID）；各领域 WriteContext 和 DocumentTransactionInput 直接使用此类型；[Data Engine](../../../packages/data-engine/src/sqlite.ts) |
+| StudioEvent / EventMeta | 平台事件 envelope；[Extension SDK](../../../packages/extension-sdk/src/events.ts)，不再有独立 transport 包 |
 | DocumentStore | 版本化 typed JSON 聚合、Revision 与 Document revert；不拥有所有领域状态；[Document Store](../../../packages/document-store/src/index.ts) |
 | ExtensionHost | Server Module 加载、Scope 清理和 capability gate；[Host](../../../packages/extension-sdk/extension-host/src/index.ts) |
 | ExtensionManifest / Activation Context | Manifest v2 的 Package / Module / Instance 及作者能力合同；[SDK](../../../packages/extension-sdk/src/index.ts) |
@@ -28,8 +30,8 @@
 
 [entities/](../../../apps/studio-client/src/entities/) 保存 Client DTO 与领域类型：[agent.ts](../../../apps/studio-client/src/entities/agent.ts)对应 Agent Session / Transcript / Tool，[narrative.ts](../../../apps/studio-client/src/entities/narrative.ts)对应 Timeline / Branch / Node，[card.ts](../../../apps/studio-client/src/entities/card.ts)对应 Card。Agent Profile 已取消；Agent Preset 使用 [prompt.ts](../../../apps/studio-client/src/entities/prompt.ts)的 Prompt Resource 身份。请求编排与派生 UI 状态由 Feature hooks 负责，不把实体类型文件描述成完整 UI 状态管理器。
 
-## Loom Core
+## 已退役原型
 
-[Core public API](../../../packages/core/src/index.ts) 公开 Fragment、同步 Pass / PassFactory / PassConfig、PassRegistry、Trace 与 run / runPasses。Pass 是同步 Fragment 变换，不是异步 LLM 调用入口。
+Core、Loom Runner 与 TraceAudit 已删除，`runPasses`、`loom.run`、`trace.list`、`audit.list` 不再是当前公共入口。Agent PromptBuild 直接使用 Application 编译器及异步正文处理器；其构建 trace、Observation 和模型日志仍然保留。
 
-[Loom Runner](../../../packages/loom-runner/src/index.ts) 为 Kernel 的 `loom.run` 适配 JSON 输入、Core 执行与 Trace Audit。当前 Agent PromptBuild 直接使用 Application DFS，未调用 Core；详见 [Studio 集成](../../architecture/application/prompt-build/loom-core/studio-integration.md)。
+Fragment / Pass / Registry 与原型 Trace 的历史设计见[退役 Core 归档](../../archive/loom-project/retired-core-2026-10-25/README.md)，不据此新增生产依赖。

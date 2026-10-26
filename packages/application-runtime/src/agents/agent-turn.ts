@@ -37,6 +37,7 @@ export async function composeAgentTurnPrompt(input: {
   availableExtensionInstallations?: ReadonlyMap<string, string>
   narrative?: {
     timeline: NarrativeTimeline
+    unified?: boolean
     nodes: NarrativeNode[]
     branchId: string
     context?: ResolvedNarrativeContext
@@ -242,6 +243,7 @@ function createRuntimePromptSources(input: {
   workspaceMemory?: string
   narrative?: {
     timeline: NarrativeTimeline
+    unified?: boolean
     nodes: NarrativeNode[]
     branchId: string
     context?: ResolvedNarrativeContext
@@ -254,6 +256,7 @@ function createRuntimePromptSources(input: {
 }): { sourceNodes: SourceNode[]; contributions: PromptContribution[] } {
   const sourceNodes: SourceNode[] = []
   const contributions: PromptContribution[] = []
+  const narrativeTextByEntry = new Map<string, string>()
   if (input.workspaceMemory !== undefined) {
     const id = 'runtime.workspace.memory'
     sourceNodes.push({ id, sourceId: input.narrative!.timeline.id, parentId: null,
@@ -264,7 +267,8 @@ function createRuntimePromptSources(input: {
   const summary = [...input.agentMessages].reverse().find(entry => entry.entry.kind === 'work-summary')
   if (summary?.entry.kind === 'work-summary') {
     input = { ...input, agentMessages: input.agentMessages.filter(entry =>
-      entry.entry.kind !== 'work-summary' && entry.sequence > summaryRetiredThrough(summary)) }
+      entry.entry.kind !== 'work-summary' && (entry.sequence > summaryRetiredThrough(summary)
+        || (input.narrative?.unified && entry.entry.kind === 'message' && entry.entry.purpose === 'narrative'))) }
     const id = `runtime.session.summary:${summary.id}`
     sourceNodes.push({
       id, sourceId: summary.agentSessionId, parentId: null,
@@ -315,37 +319,20 @@ function createRuntimePromptSources(input: {
     })
     recordHistoryProjection(input.observation, projectedNarrative)
     const narrativeEntries = new Map(projectedNarrative.entries.map(entry => [entry.id, entry]))
-    input.narrative.nodes.forEach((node, index) => {
-      const sourceNodeId = `runtime.timeline.node:${node.id}`
-      sourceNodes.push({
-        id: sourceNodeId,
-        sourceId: input.narrative!.timeline.id,
-        parentId: rootId,
-        evidence: { original: narrativeEntries.get(node.id)?.originalText },
-        displayName: `Narrative ${index + 1}`,
-        orderIndex: index + 1,
-        kind: 'entry',
-      })
-      const content = narrativeEntries.get(node.id)?.text
-      if (content === undefined) {
-        throw new Error(`Narrative entry is missing projected text content: ${node.id}`)
-      }
-      if (content.trim().length === 0) return
+    if (input.narrative.unified) for (const node of input.narrative.nodes) {
+      if (node.entryId) narrativeTextByEntry.set(node.entryId, narrativeEntries.get(node.id)!.text)
+    }
+    if (!input.narrative.unified && projectedNarrative.entries.length) {
+      const id = `${rootId}:text`
+      sourceNodes.push({ id, sourceId: input.narrative.timeline.id, parentId: rootId,
+        displayName: 'Story text', orderIndex: 0, kind: 'entry' })
       contributions.push({
-        id: `runtime.narrative:${node.id}`,
-        sourceRef: {
-          kind: 'narrativeHistory',
-          sourceId: input.narrative!.timeline.id,
-          sourceNodeId,
-        },
-        content,
-        capabilities: {
-          targetAnchorId: '@chat.narrative',
-          localDepth: index,
-          roleHint: 'developer',
-        },
+        id,
+        sourceRef: { kind: 'narrativeHistory', sourceId: input.narrative.timeline.id, sourceNodeId: id },
+        content: projectedNarrative.entries.map(entry => entry.text).filter(text => text.trim()).join('\n\n'),
+        capabilities: { targetAnchorId: '@chat.narrative' },
       })
-    })
+    }
   }
 
   const sessionRootId = 'runtime.session.history'
@@ -360,6 +347,7 @@ function createRuntimePromptSources(input: {
     source: { kind: 'agent-session', sessionId: input.agentMessages[0]?.agentSessionId ?? 'agent-session' },
     phase: 'prompt',
     entries: input.agentMessages.flatMap(agentMessage => agentMessage.entry.kind === 'message'
+      && !(input.narrative?.unified && agentMessage.entry.purpose === 'narrative')
       ? [{
           id: agentMessage.id,
           source: { kind: 'agent-session' as const, sessionId: agentMessage.agentSessionId },
@@ -374,6 +362,7 @@ function createRuntimePromptSources(input: {
   })
   recordHistoryProjection(input.observation, projectedSession)
   const sessionText = new Map(projectedSession.entries.map(entry => [entry.id, entry.text]))
+  for (const [id, text] of narrativeTextByEntry) sessionText.set(id, text)
   projectSessionHistory(input.agentMessages, sessionText).forEach(({ entry: agentMessage, messages }) => {
     const sourceNodeId = `runtime.session.${agentMessage.entry.kind}:${agentMessage.id}`
     sourceNodes.push({

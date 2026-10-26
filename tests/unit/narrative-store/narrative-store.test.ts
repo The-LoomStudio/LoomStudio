@@ -1,5 +1,5 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createNarrativeStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createStateStore } from '@loom-studio/application-data'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +17,132 @@ function createTestContext() {
   return { engine, store, actor }
 }
 
+
+function downgradeAuthority(database: DatabaseSync) {
+  database.exec(`DROP VIEW narrative_node_projection;
+    ALTER TABLE narrative_nodes ADD COLUMN body_format TEXT NOT NULL DEFAULT 'loom-markdown.v1';
+    ALTER TABLE narrative_nodes ADD COLUMN body_raw TEXT NOT NULL DEFAULT '';
+    UPDATE narrative_nodes SET body_raw = (SELECT json_extract(entry_json, '$.content') FROM agent_transcript_entries WHERE id = entry_id);
+    ALTER TABLE narrative_nodes DROP COLUMN entry_id;
+    ALTER TABLE narrative_branches DROP COLUMN head_entry_id;
+    ALTER TABLE narrative_recovery_points DROP COLUMN head_entry_id;
+    DELETE FROM agent_transcript_entries WHERE agent_session_id IN (SELECT id FROM agent_sessions WHERE kind = 'timeline');
+    DELETE FROM agent_sessions WHERE kind = 'timeline';`)
+}
+
 describe('narrative store', () => {
+  it('captures the previous body before the next logical message while retaining intervening tool facts', async () => {
+    const { engine, store, actor } = createTestContext()
+    const agents = createAgentStore({ engine })
+    const states = createStateStore({ engine })
+    try {
+      const initial = await states.createScopeWithInitialRevision({ actor, scope: { kind: 'timeline', ownerId: 'two-bodies' }, revision: { snapshot: {}, operations: [] } })
+      const story = await store.createTimeline({ actor, id: 'two-bodies', stateRevisionId: initial.snapshot.revision.id })
+      const first = (await engine.transact({ actor }, async tx => {
+        const saved = agents.transaction(tx).appendEntries({ agentSessionId: story.timeline.id, expectedEntryCount: 0, entries: [
+          { runId: 'one-run', entry: { kind: 'run-state', state: 'running' } },
+          { runId: 'one-run', entry: { kind: 'message', role: 'assistant', content: 'First body', purpose: 'narrative' } },
+        ] })
+        return store.transaction(tx).appendNode({ timelineId: story.timeline.id, branchId: story.branch.id, expectedHeadNodeId: null,
+          stateRevisionId: initial.snapshot.revision.id, body: { format: 'loom-markdown.v1', raw: 'First body' },
+          source: { agentSessionId: story.timeline.id, agentMessageId: saved.entries[1]!.id, runId: 'one-run' } })
+      })).value
+      const second = (await engine.transact({ actor }, async tx => {
+        const saved = agents.transaction(tx).appendEntries({ agentSessionId: story.timeline.id, expectedEntryCount: 2, entries: [
+          { runId: 'one-run', entry: { kind: 'tool-invocation', invocationId: 'between', toolId: 'test', exposedName: 'test', transport: 'native-function', status: 'completed' } },
+          { runId: 'one-run', entry: { kind: 'tool-result', invocationId: 'between', toolId: 'test', status: 'completed', content: [{ type: 'text', text: 'Complete tool block' }] } },
+          { id: 'second-partial', runId: 'one-run', entry: { kind: 'message', role: 'assistant', content: 'Second', state: 'partial', narrativeId: 'second-logical' } },
+          { runId: 'one-run', entry: { kind: 'message', role: 'assistant', content: 'Second body', state: 'complete', continuesEntryId: 'second-partial', narrativeId: 'second-logical' } },
+        ] })
+        const adopted = store.transaction(tx).appendNode({ timelineId: story.timeline.id, branchId: story.branch.id, expectedHeadNodeId: first.node.id,
+          stateRevisionId: initial.snapshot.revision.id, body: { format: 'loom-markdown.v1', raw: 'Second body' },
+          source: { agentSessionId: story.timeline.id, agentMessageId: saved.entries.at(-1)!.id, runId: 'one-run' } })
+        return { adopted, expectedHeadEntryId: saved.entries[1]!.id }
+      })).value
+      await agents.appendEntries({ actor, agentSessionId: story.timeline.id, expectedEntryCount: 6,
+        entries: [{ runId: 'one-run', entry: { kind: 'run-state', state: 'completed' } }] })
+      const point = await store.getRecoveryPoint(story.branch.id, first.node.id)
+      expect(point.headEntryId).toBe(second.expectedHeadEntryId)
+      const fork = await store.forkBranch({ actor, timelineId: story.timeline.id, fromBranchId: story.branch.id, fromNodeId: first.node.id })
+      await store.switchBranch({ actor, timelineId: story.timeline.id, branchId: fork.branch.id })
+      const assertHistory = async () => {
+        const entries = (await agents.getEntryPage({ agentSessionId: story.timeline.id })).entries
+        expect(entries.map(entry => entry.entry.kind)).toEqual(['run-state', 'message', 'tool-invocation', 'tool-result'])
+        expect(entries.filter(entry => entry.entry.kind === 'message').map(entry => entry.entry)).toMatchObject([{ content: 'First body' }])
+        expect(entries.at(-1)!.id).toBe(second.expectedHeadEntryId)
+        expect((await agents.getSession(story.timeline.id))!.entryCount).toBe(7)
+      }
+      await assertHistory()
+      await store.switchBranch({ actor, timelineId: story.timeline.id, branchId: story.branch.id })
+      await engine.transact({ actor }, async tx => store.transaction(tx).restoreBranch({ timelineId: story.timeline.id, branchId: story.branch.id,
+        expectedHeadNodeId: second.adopted.node.id, expectedStateHeadRevisionId: initial.snapshot.revision.id, headNodeId: first.node.id,
+        stateRevisionId: initial.snapshot.revision.id, workspaceRevisionId: first.branch.workspaceHeadRevisionId }))
+      await assertHistory()
+      expect((await agents.listEntries(story.timeline.id)).filter(entry => entry.entry.kind === 'tool-invocation' || entry.entry.kind === 'tool-result')).toHaveLength(2)
+    } finally { engine.close() }
+  })
+
+
+  it('preserves the active adopted head when appending and editing an inactive fork', async () => {
+    const { engine, store, actor } = createTestContext()
+    const agents = createAgentStore({ engine })
+    try {
+      const story = await store.createTimeline({ actor, stateRevisionId: 'initial',
+        openingNode: { body: { format: 'loom-markdown.v1', raw: 'Root' } } })
+      const work = await agents.appendEntries({ actor, agentSessionId: story.timeline.id, expectedEntryCount: 1, entries: [
+        { entry: { kind: 'tool-invocation', invocationId: 'call', toolId: 'test', exposedName: 'test', transport: 'native-function', status: 'completed' } },
+        { entry: { kind: 'tool-result', invocationId: 'call', toolId: 'test', status: 'completed', content: [{ type: 'text', text: 'Saved fact' }] } },
+      ] })
+      const fork = await store.forkBranch({ actor, timelineId: story.timeline.id, fromBranchId: story.branch.id, fromNodeId: story.nodes[0]!.id })
+      const active = await store.getBranch(story.branch.id)
+      const appended = await store.appendNode({ actor, timelineId: story.timeline.id, branchId: fork.branch.id,
+        expectedHeadNodeId: story.nodes[0]!.id, stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Fork' } })
+      expect(await store.getBranch(story.branch.id)).toEqual(active)
+      expect((await agents.getSession(story.timeline.id))!.headEntryId).toBe(work.entries.at(-1)!.id)
+      const edited = await store.editBranchNode({ actor, timelineId: story.timeline.id, branchId: fork.branch.id,
+        nodeId: story.nodes[0]!.id, expectedHeadNodeId: appended.node.id, expectedBody: story.nodes[0]!.body,
+        body: { format: 'loom-markdown.v1', raw: 'Edited fork root' } })
+      expect(await store.getBranch(story.branch.id)).toEqual(active)
+      expect((await agents.getSession(story.timeline.id))!.headEntryId).toBe(work.entries.at(-1)!.id)
+      expect((await agents.listEntries(story.timeline.id)).filter(entry => entry.entry.kind === 'tool-invocation' || entry.entry.kind === 'tool-result')).toHaveLength(2)
+      expect(edited.commit.operations.filter(operation => operation.entityType === 'narrative.branch').every(operation => operation.entityId === fork.branch.id)).toBe(true)
+      expect((await agents.getSession(story.timeline.id))!.entryCount).toBe(5)
+    } finally { engine.close() }
+  })
+
+
+  it('uses one message authority, adopts branch work heads, and keeps sequence monotonic', async () => {
+    const { engine, store, actor } = createTestContext()
+    const agents = createAgentStore({ engine })
+    try {
+      const story = await store.createTimeline({ actor, stateRevisionId: 'initial' })
+      expect(await agents.getSession(story.timeline.id)).toMatchObject({ id: story.timeline.id, kind: 'timeline', narrativeMode: 'declared' })
+      expect((await agents.listSessions()).sessions).toEqual([])
+      const saved = await agents.appendEntries({ actor, agentSessionId: story.timeline.id, expectedEntryCount: 0,
+        entries: [{ entry: { kind: 'message', role: 'assistant', content: 'Shared text' } }] })
+      const node = await store.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id, expectedHeadNodeId: null,
+        stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Shared text' }, source: { agentSessionId: story.timeline.id, agentMessageId: saved.entries[0]!.id } })
+      expect(node.node.entryId).toBe(saved.entries[0]!.id)
+      expect((await agents.getSession(story.timeline.id))!.entryCount).toBe(1)
+      expect(engine.database.prepare("PRAGMA table_info('narrative_nodes')").all().map(column => column.name)).not.toContain('body_raw')
+      const work = await agents.appendEntries({ actor, agentSessionId: story.timeline.id, expectedEntryCount: 1,
+        entries: [{ entry: { kind: 'message', role: 'user', content: 'Discuss', purpose: 'discussion' } }] })
+      expect((await store.getRecoveryPoint(story.branch.id, node.node.id)).headEntryId).toBe(work.entries[0]!.id)
+      const fork = await store.forkBranch({ actor, timelineId: story.timeline.id, fromBranchId: story.branch.id, fromNodeId: node.node.id })
+      const later = await agents.appendEntries({ actor, agentSessionId: story.timeline.id, expectedEntryCount: 2,
+        entries: [{ entry: { kind: 'message', role: 'assistant', content: 'Later work' } }] })
+      await store.switchBranch({ actor, timelineId: story.timeline.id, branchId: fork.branch.id })
+      expect((await agents.getSession(story.timeline.id))!.headEntryId).toBe(work.entries[0]!.id)
+      const next = await agents.appendEntries({ actor, agentSessionId: story.timeline.id, expectedEntryCount: 3,
+        entries: [{ entry: { kind: 'message', role: 'user', content: 'Fork work' } }] })
+      expect(next.entries[0]).toMatchObject({ sequence: 4, parentEntryId: work.entries[0]!.id })
+      await store.switchBranch({ actor, timelineId: story.timeline.id, branchId: story.branch.id })
+      expect((await agents.getSession(story.timeline.id))!.headEntryId).toBe(later.entries[0]!.id)
+      expect(engine.database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally { engine.close() }
+  })
+
+
   it('reads the active branch head for both single and listed Timeline previews after edits', async () => {
     const { engine, store, actor } = createTestContext()
     try {
@@ -40,6 +165,7 @@ describe('narrative store', () => {
       await store.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id, expectedHeadNodeId: story.nodes[0]!.id,
         stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Second' } })
       const ids = (await store.listNodes(story.timeline.id)).map(node => node.id)
+      downgradeAuthority(engine.database)
       engine.database.exec(`
         ALTER TABLE narrative_nodes DROP COLUMN kind;
         DROP TABLE narrative_recovery_points;
@@ -69,13 +195,15 @@ describe('narrative store', () => {
       const appended = await store.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id,
         expectedHeadNodeId: story.nodes[0]!.id, stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Existing input' } })
       const before = await store.getPage({ timelineId: story.timeline.id })
-      if (missing) engine.database.exec('DROP TABLE narrative_recovery_points')
       const points = missing ? [] : await store.listRecoveryPoints(story.timeline.id)
+      downgradeAuthority(engine.database)
+      if (missing) engine.database.exec('DROP TABLE narrative_recovery_points')
       engine.database.exec("ALTER TABLE narrative_nodes DROP COLUMN kind; UPDATE schema_migrations SET version = 6 WHERE namespace = 'application.narrative'")
 
       const migrated = createNarrativeStore({ engine })
-      expect(await migrated.getPage({ timelineId: story.timeline.id })).toEqual(before)
-      expect(await migrated.listRecoveryPoints(story.timeline.id)).toEqual(points)
+      const after = await migrated.getPage({ timelineId: story.timeline.id })
+      expect(after.nodes.map(({ entryId, ...node }) => node)).toEqual(before.nodes.map(({ entryId, ...node }) => node))
+      expect((await migrated.listRecoveryPoints(story.timeline.id)).map(({ headEntryId, ...point }) => point)).toEqual(points.map(({ headEntryId, ...point }) => point))
       await expect(migrated.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id,
         expectedHeadNodeId: appended.node.id, stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'New reply' } }))
         .resolves.toMatchObject({ node: { parentNodeId: appended.node.id } })
@@ -122,6 +250,7 @@ describe('narrative store', () => {
       engine.database.prepare('INSERT INTO narrative_swipe_groups (id, timeline_id, branch_id, metadata_json, revision) VALUES (?, ?, ?, ?, ?)')
         .run('legacy-group', story.timeline.id, story.branch.id, JSON.stringify({ inputNodeId: swipeInput.node.id,
           inputs: [{ nodeId: receiptInput.node.id }] }), 1)
+      downgradeAuthority(engine.database)
       engine.database.exec("ALTER TABLE narrative_nodes DROP COLUMN kind; UPDATE schema_migrations SET version = 7 WHERE namespace = 'application.narrative'")
       const migrated = createNarrativeStore({ engine })
       expect((await migrated.getNode(receiptInput.node.id))?.kind).toBe('user-input')
@@ -142,13 +271,13 @@ describe('narrative store', () => {
       const created = await create()
       const target = { timelineId: created.timeline.id, branchId: created.branch.id }
       const replace = (input: Parameters<ReturnType<typeof store.transaction>['replaceOpening']>[0]) =>
-        engine.transact({ actor }, tx => store.transaction(tx).replaceOpening(input))
+        engine.transact({ actor }, async tx => store.transaction(tx).replaceOpening(input))
       await store.setBranchStateHead({ ...target, actor, expectedStateHeadRevisionId: 'initial', stateRevisionId: 'configured' })
       await expect(replace({ ...target, expectedHeadNodeId: created.branch.headNodeId!, expectedStateHeadRevisionId: 'initial', openingNode: undefined }))
         .rejects.toMatchObject({ code: 'narrative.state_head_conflict' })
       expect((await store.getTimeline(target.timelineId))?.opening).toBeDefined()
       expect((await store.getPage(target)).nodes[0]?.body.raw).toBe('Opening')
-      await expect(engine.transact({ actor }, tx => {
+      await expect(engine.transact({ actor }, async tx => {
         store.transaction(tx).appendNode({
           ...target, expectedHeadNodeId: created.branch.headNodeId!, stateRevisionId: 'configured',
           body: { format: 'loom-markdown.v1', raw: 'rolled back' },
@@ -212,7 +341,7 @@ describe('narrative store', () => {
         ...target, actor, nodeId, expectedHeadNodeId: created.branch.headNodeId!,
         expectedBody: body, body,
       })).rejects.toMatchObject({ code: 'narrative.head_conflict' })
-      const replaced = await engine.transact({ actor }, tx => store.transaction(tx).replaceOpening({
+      const replaced = await engine.transact({ actor }, async tx => store.transaction(tx).replaceOpening({
         ...target, expectedHeadNodeId: edited.branch.headNodeId!, expectedStateHeadRevisionId: 'configured', openingNode: undefined,
       }))
       expect(replaced.value.timeline.opening).toEqual({ locked: false })
@@ -252,7 +381,10 @@ describe('narrative store', () => {
     expect(listed.timelines[0]?.openingPreview).toBe('Opening one')
     expect(listed.timelines[0]?.latestPreview).toBe('Opening one')
     expect(created.commit.operations.map(operation => operation.entityType)).toEqual([
+      'agent.session',
       'workspace.revision',
+      'agent.transcript-entry',
+      'agent.session',
       'narrative.timeline',
       'narrative.branch',
       'narrative.node',
@@ -304,7 +436,7 @@ describe('narrative store', () => {
     const commitsAfterConflict = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get() as { count: number }
     expect(commitsAfterConflict.count).toBe(commitsBeforeConflict.count)
     expect(await store.getNode(third.node.id)).toMatchObject({ body: { raw: 'three' } })
-    expect(engine.database.prepare("SELECT id FROM narrative_nodes WHERE body_raw = 'stale write'").get()).toBeUndefined()
+    expect(engine.database.prepare("SELECT id FROM narrative_node_projection WHERE body_raw = 'stale write'").get()).toBeUndefined()
     engine.close()
   })
 
@@ -491,7 +623,10 @@ describe('narrative store', () => {
     })
 
     expect(result.commit.operations.map(operation => operation.store)).toEqual([
+      'agent',
       'workspace',
+      'agent',
+      'agent',
       'narrative',
       'narrative',
       'narrative',
@@ -542,7 +677,7 @@ describe('narrative store', () => {
         .get('application.narrative')
       const changesets = database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
       database.close()
-      expect(migration).toEqual({ version: 8 })
+      expect(migration).toEqual({ version: 9 })
       expect(changesets).toEqual({ count: 1 })
     } finally {
       await rm(directory, { recursive: true, force: true })

@@ -11,5 +11,6 @@ export type MenuAction = {
   type?: 'item'
 } | {
   id: string
+  label?: string
   type: 'separator'
 }

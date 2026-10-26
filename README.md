@@ -207,7 +207,7 @@ LoomStudio/
 └── docs/                  # 使用说明与开发文档
 ```
 
-涉及提示词编译时，先看 [PromptBuild 文档](docs/architecture/application/prompt-build/README.md)：当前 Agent 使用 Application DFS 编译器，`packages/core` 中的 Loom Core 是独立编译能力。更详细的目录职责见[项目结构](docs/guide/project-structure.md)。
+涉及提示词编译时，先看 [PromptBuild 文档](docs/architecture/application/prompt-build/README.md)：当前 Agent 使用 Application 编译器及异步正文处理器；Core 原型已经退役。更详细的目录职责见[项目结构](docs/guide/project-structure.md)。
 
 ---
 

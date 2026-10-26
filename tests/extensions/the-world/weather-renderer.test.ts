@@ -1,7 +1,48 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
 import { createWeatherRenderer } from '../../../extensions/the-world/src/client/weather-renderer.js'
 
 describe('The World weather lifetime', () => {
+  it('updates rain density, speed and wind without leaking effects on cleanup', () => {
+    vi.useFakeTimers()
+    vi.spyOn(Math, 'random').mockReturnValue(.5)
+    const background = document.createElement('div')
+    const foreground = document.createElement('div')
+    const renderer = createWeatherRenderer({
+      backgroundLayer: background, foregroundLayer: foreground,
+      clouds: { activate() {}, deactivate() {}, setColor() {} },
+    })
+    try {
+      renderer.update({ weatherString: '小雨 微风', periodString: '白天' })
+      expect(foreground.querySelectorAll('.particle-rain')).toHaveLength(5)
+      expect(parseFloat(foreground.querySelector<HTMLElement>('.particle-rain')!.style.animationDuration)).toBeCloseTo(.75)
+      expect(parseFloat(foreground.style.getPropertyValue('--tw-gust-x'))).toBeCloseTo(9.6)
+
+      renderer.update({ weatherString: '暴雨 狂风', periodString: '白天' })
+      const heavyRain = foreground.querySelector<HTMLElement>('.particle-rain')!
+      expect(foreground.querySelectorAll('.particle-rain')).toHaveLength(8)
+      expect(parseFloat(heavyRain.style.animationDuration)).toBeCloseTo(.3)
+      expect(heavyRain.classList.contains('angled-strong')).toBe(true)
+      vi.advanceTimersByTime(130)
+      expect(foreground.querySelectorAll('.particle-rain')).toHaveLength(16)
+
+      renderer.update({ weatherString: '暴雨 狂风', periodString: '白天' })
+      expect(foreground.querySelector('.particle-rain')).toBe(heavyRain)
+      vi.advanceTimersByTime(2070)
+      expect(parseFloat(foreground.style.getPropertyValue('--tw-gust-x'))).toBeCloseTo(24)
+
+      renderer.clear()
+      expect(vi.getTimerCount()).toBe(0)
+      vi.advanceTimersByTime(30_000)
+      expect(foreground.childElementCount).toBe(0)
+      expect(foreground.style.getPropertyValue('--tw-gust-x')).toBe('')
+    } finally {
+      renderer.clear()
+      vi.restoreAllMocks()
+      vi.useRealTimers()
+    }
+  })
+
   it('cancels particle removal and wind callbacks as well as repeating effects', () => {
     vi.useFakeTimers()
     function node() {

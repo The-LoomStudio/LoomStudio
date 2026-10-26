@@ -9,13 +9,6 @@
   background: var(--loom-color-surface);
 }
 
-.characterScroller {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow: auto;
-}
-
 .characterWorkbench {
   width: 100%;
   height: 100%;
@@ -78,38 +71,9 @@
   stroke-width: var(--loom-page-header-icon-stroke);
 }
 
-.galleryEntering {
-  animation: gallery-enter var(--loom-motion-duration-standard) ease-out both;
-}
-
-.profileEntering {
-  animation: profile-enter var(--loom-motion-duration-standard) ease-out both;
-}
-
-.profileLeaving {
-  pointer-events: none;
-  animation: profile-leave var(--loom-motion-duration-standard) ease-in both;
-}
-
-@keyframes gallery-enter {
-  from { opacity: 0; transform: translateX(-1.5%); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes profile-enter {
-  from { opacity: 0; transform: translateX(1.5%); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes profile-leave {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(1.5%); }
-}
-
 .galleryToolbar,
 .profileToolbar,
 .profileIdentity,
-.editorActions,
 .sectionHeader,
 .sessionsHeader {
   display: flex;
@@ -150,10 +114,8 @@
   font-size: var(--loom-font-size-2);
 }
 
-.galleryModes,
 .galleryActions,
 .profileToolbar > div,
-.editorActions,
 .selectionToolbar,
 .selectionToolbar > div {
   display: flex;
@@ -162,10 +124,8 @@
 }
 
 .toolbarButton,
-.toolbarButtonActive,
 .galleryActions > button,
 .startActions > button,
-.editorActions > button,
 .sessionCard button,
 .selectionToolbar > div > button {
   border: 0;
@@ -173,8 +133,7 @@
   background: transparent;
 }
 
-.toolbarButton,
-.toolbarButtonActive {
+.toolbarButton {
   width: var(--loom-page-header-control-size);
   min-width: var(--loom-page-header-control-size);
   height: var(--loom-page-header-control-size);
@@ -185,7 +144,6 @@
 }
 
 .toolbarButton svg,
-.toolbarButtonActive svg,
 .galleryActions svg,
 .selectionToolbar svg {
   width: var(--loom-page-header-icon-size);
@@ -196,10 +154,6 @@
 .toolbarButton:hover:not(:disabled),
 .galleryActions > button:hover:not(:disabled),
 .sessionCard button:hover:not(:disabled) {
-  color: var(--loom-color-accent-strong);
-}
-
-.toolbarButtonActive {
   color: var(--loom-color-accent-strong);
 }
 
@@ -279,8 +233,7 @@
 }
 
 .galleryActions > button:last-child,
-.startActions > button,
-.editorActions > button:first-child {
+.startActions > button {
   min-height: 28px;
   display: inline-flex;
   align-items: center;
@@ -996,7 +949,6 @@
 }
 
 .profileContent,
-.profileEditor,
 .sessions {
   display: grid;
   gap: 14px;
@@ -1004,14 +956,12 @@
   padding: 14px 0;
 }
 
-.profileContent,
-.profileEditor {
+.profileContent {
   border-top: 1px solid var(--loom-color-divider);
 }
 
 .profileContent h3,
-.sessions h3,
-.profileEditor label > span {
+.sessions h3 {
   margin: 0;
   color: var(--loom-color-text-muted);
   font-size: var(--loom-font-size-2);
@@ -1031,12 +981,6 @@
   flex-direction: column;
   gap: 8px;
   padding-top: 6px;
-}
-
-.resourceCardsGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 8px;
 }
 
 .resourceCard {
@@ -1092,15 +1036,6 @@
   white-space: nowrap;
 }
 
-.resourceCardMeta {
-  font-size: 11px;
-  color: var(--loom-color-text-muted);
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .resourceCardArrow {
   width: 14px;
   height: 14px;
@@ -1136,59 +1071,10 @@
   }
 }
 
-.openingToggle {
-  border: 0;
-  background: transparent;
-  color: var(--loom-color-accent);
-  font-size: var(--loom-font-size-2);
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: var(--loom-radius-sm, 4px);
-  transition: opacity 0.15s ease;
-
-  &:hover {
-    opacity: 0.8;
-  }
-}
-
-.openingContentCollapsed {
-  margin: 0;
-  color: var(--loom-color-text);
-  font-size: var(--loom-font-size-3);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.currentSession,
 .sessionList small,
 .sessionList > p {
   color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-2);
-}
-
-.profileEditor label {
-  display: grid;
-  gap: 5px;
-}
-
-.profileEditor input,
-.profileEditor textarea {
-  padding: 6px 2px;
-  font-size: var(--loom-font-size-3);
-}
-
-.profileEditor textarea {
-  min-height: 7rem;
-  line-height: var(--loom-line-height-body);
-}
-
-.profileEditor textarea:focus {
-  outline: none;
 }
 
 .deleteButton {
@@ -1316,10 +1202,6 @@
     color: var(--loom-color-accent);
     background: var(--loom-color-surface-raised);
   }
-}
-
-.currentSession {
-  margin: -5px 0 0;
 }
 
 .sessionList {
@@ -1493,10 +1375,6 @@
   .gridCard img,
   .mediaLabel,
   .sessionCard summary > svg { transition: none; }
-
-  .galleryEntering,
-  .profileEntering,
-  .profileLeaving { animation: none; }
 }
 
 @container studio-panel (max-width: 360px) {
@@ -1545,7 +1423,6 @@
   }
 
   .profileContent,
-  .profileEditor,
   .sessions {
     margin-inline: 10px;
   }

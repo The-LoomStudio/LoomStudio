@@ -7,7 +7,7 @@
 知道问题后直接进入相关合同，不必遍历全部分类：
 
 - **输入、生成、正文落库、恢复**：[Runtime 与 Session](application/agent/runtime-and-session.md)。用户正文写入、Agent Transcript 与工具副作用不是一个原子事务。
-- **提示词顺序、世界书、宏、模型消息**：[PromptBuild](application/prompt-build/README.md)。Agent 使用 Application DFS；[Loom Core](application/prompt-build/loom-core/studio-integration.md)不是当前 Agent 编译主链。
+- **提示词顺序、世界书、宏、模型消息**：[PromptBuild](application/prompt-build/README.md)。Agent 使用 Application 编译器；Core 原型已退役。
 - **保存、版本冲突、删除、数据归属**：[Data](data/README.md)与[领域生命周期](application/data-capabilities-and-lifecycle.md)。Document Store 不拥有所有领域数据。
 - **界面导航、草稿、正文渲染**：[UI](ui/README.md)与[Application UI](application/ui/README.md)。页面状态、业务状态与持久化所有者分开。
 - **扩展安装、授权、执行、卸载**：[Extensions](extensions/README.md)。Package 声明、资源安装、Module 激活与某轮实际消费不同。

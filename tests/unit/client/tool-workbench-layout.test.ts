@@ -28,8 +28,8 @@ describe('Tool workbench local navigation', () => {
     try {
       act(() => root.render(createElement(MasterDetailWorkbench, {
         master: createElement('p', null, 'Categories'), mobilePane: 'detail',
-        onMobilePaneChange: changePane, navigationScope: 'local', backLabel: 'Back to list',
-      }, createElement('p', null, 'Details'))))
+        onMobilePaneChange: changePane, navigationScope: 'local', backLabel: 'Back to list', children: createElement('p', null, 'Details'),
+      })))
       expect(container.querySelector('[data-single-pane="true"]')).not.toBeNull()
       expect(useStudioLayoutStore.getState().workbenchNavigation).toBe(navigation)
       act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Back to list"]')!.click())

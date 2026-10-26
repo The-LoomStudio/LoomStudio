@@ -273,17 +273,17 @@ describe('SillyTavern Importer Extension', () => {
     expect(conversion.artifact.rootNode.label).toBe('MingYue Preset')
 
     const rootChildren = conversion.artifact.rootNode.children ?? []
-    // Official Message Blocks structure: System Message, Session Message, Post Session Message, User Input Message
+    // Session expands to native messages between the surrounding Message blocks.
     expect(rootChildren).toHaveLength(4)
-    expect(rootChildren.every((b: any) => b.kind === 'message')).toBe(true)
+    expect(rootChildren.map(node => node.kind)).toEqual(['message', 'virtual', 'message', 'message'])
 
     const systemBlock = rootChildren[0]
     expect(systemBlock?.label).toBe('System Message')
     expect(systemBlock?.children?.some((c: any) => c.label === 'Main System Prompt')).toBe(true)
 
     const sessionBlock = rootChildren[1]
-    expect(sessionBlock?.label).toBe('Session Message')
-    expect(sessionBlock?.children?.[0]?.capabilities?.targetAnchorId).toBe('@chat.session')
+    expect(sessionBlock?.capabilities?.targetAnchorId).toBe('@chat.session')
+    expect(sessionBlock?.children).toBeUndefined()
 
     const postSessionBlock = rootChildren[2]
     expect(postSessionBlock?.label).toBe('Post Session Message')

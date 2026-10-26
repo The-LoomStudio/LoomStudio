@@ -6,22 +6,44 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
-    { "path": "../../packages/ai-gateway" },
-    { "path": "../../packages/application-data" },
-    { "path": "../../packages/asset-store" },
-    { "path": "../../packages/application-runtime" },
-    { "path": "../../packages/blob-store" },
-    { "path": "../../packages/data-engine" },
-    { "path": "../../packages/diagnostics" },
-    { "path": "../../packages/document-store" },
-    { "path": "../../packages/extension-sdk/extension-host" },
-    { "path": "../../packages/extension-sdk" },
-    { "path": "../../packages/kernel" },
-    { "path": "../../packages/logging" },
-    { "path": "../../packages/loom-runner" },
-    { "path": "../../packages/shared" },
-    { "path": "../../packages/trace-audit" },
-    { "path": "../../packages/transport" }
+    {
+      "path": "../../packages/ai-gateway"
+    },
+    {
+      "path": "../../packages/application-data"
+    },
+    {
+      "path": "../../packages/asset-store"
+    },
+    {
+      "path": "../../packages/application-runtime"
+    },
+    {
+      "path": "../../packages/data-engine"
+    },
+    {
+      "path": "../../packages/diagnostics"
+    },
+    {
+      "path": "../../packages/document-store"
+    },
+    {
+      "path": "../../packages/extension-sdk/extension-host"
+    },
+    {
+      "path": "../../packages/extension-sdk"
+    },
+    {
+      "path": "../../packages/kernel"
+    },
+    {
+      "path": "../../packages/logging"
+    },
+    {
+      "path": "../../packages/shared"
+    }
   ],
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

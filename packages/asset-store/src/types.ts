@@ -1,4 +1,5 @@
-import type { BlobStore } from '@loom-studio/blob-store'
+import type { DataTransactionInput } from '@loom-studio/data-engine'
+import type { BlobStore } from './blobs/types.js'
 import type { DataActorRef, DataCommitFact } from '@loom-studio/data-engine'
 import type { Readable } from 'node:stream'
 
@@ -27,13 +28,7 @@ export type MediaAssetRecord = {
   createdAt: string
 }
 
-export type AssetWriteContext = {
-  actor: DataActorRef
-  reason?: string
-  correlationId?: string
-  callId?: string
-  parentCallId?: string
-}
+export type AssetWriteContext = DataTransactionInput
 
 export type PreserveSourceArtifactInput = AssetWriteContext & {
   source: Uint8Array | Readable

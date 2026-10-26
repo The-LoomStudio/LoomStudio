@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { normalizeMacroOptions } from '@loom-studio/shared'
+import { resolveLoomScriptSettings, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { PromptContribution, SourceNode } from '../prompt/prompt-builder.js'
 import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
 import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
@@ -233,16 +234,7 @@ function assertPromptResourceArtifact(value: unknown): asserts value is PromptRe
       || (reference.kind === 'external' && (typeof reference.resourceId !== 'string' || !reference.resourceId.trim()))))) {
     throw new Error('Invalid Preset Lore references')
   }
-  if (value.textUses !== undefined && (!Array.isArray(value.textUses) || value.textUses.some(use =>
-    !isObject(use) || typeof use.id !== 'string' || !use.id.trim()
-    || (use.kind !== 'rule' && use.kind !== 'extractor') || typeof use.enabled !== 'boolean'
-    || (use.orderIndex !== undefined && (!Number.isSafeInteger(use.orderIndex) || Number(use.orderIndex) < 0))
-    || (use.reference !== undefined && (!isObject(use.reference)
-      || (use.reference.kind !== 'package' && use.reference.kind !== 'external')
-      || (use.reference.kind === 'package' && (typeof use.reference.contributionId !== 'string' || !use.reference.contributionId.trim()))
-      || (use.reference.kind === 'external' && (typeof use.reference.resourceId !== 'string' || !use.reference.resourceId.trim()))))))) {
-    throw new Error('Invalid Preset Text use references')
-  }
+  assertTextUses(value.textUses)
   assertPromptResourceNode(value.rootNode, 'rootNode')
   assertUniquePromptResourceNodeIds(value.rootNode)
   assertLoomScriptAttachments(value.scriptAttachments)
@@ -287,11 +279,12 @@ export function assertCardBundleArtifact(value: unknown): asserts value is CardB
   if (value.contextAssetSettings !== undefined) {
     if (!isObject(value.contextAssetSettings)) throw new Error('Card bundle contextAssetSettings must be an object')
     const rootIds = new Set(value.contextAssets.map(node => (node as JsonObject).id))
-    const settingKeys = new Set(['macros', 'macroOptions', 'useCardLore', 'useGlobalLore', 'historyPolicy'])
+    const settingKeys = new Set(['macros', 'macroOptions', 'useCardLore', 'useGlobalLore', 'historyPolicy', 'textUses'])
     for (const [rootId, settings] of Object.entries(value.contextAssetSettings)) {
       if (!rootIds.has(rootId) || !isObject(settings) || Object.keys(settings).some(key => !settingKeys.has(key))) {
         throw new Error(`Invalid Card context asset settings: ${rootId}`)
       }
+      assertTextUses(settings.textUses)
       if (settings.macros !== undefined) validateBundleMacros(settings.macros)
       if (settings.macroOptions !== undefined) normalizeMacroOptions(settings.macroOptions)
       for (const key of ['useCardLore', 'useGlobalLore']) {
@@ -413,12 +406,32 @@ function assertResourceOrigin(value: unknown): void {
   if (value !== undefined && value !== 'card' && value !== 'external') throw new Error('Invalid resourceOrigin')
 }
 
+function assertTextUses(value: unknown): void {
+  if (value !== undefined && (!Array.isArray(value) || value.some(use =>
+    !isObject(use) || typeof use.id !== 'string' || !use.id.trim()
+    || (use.kind !== 'rule' && use.kind !== 'extractor') || typeof use.enabled !== 'boolean'
+    || (use.orderIndex !== undefined && (!Number.isSafeInteger(use.orderIndex) || Number(use.orderIndex) < 0))
+    || (use.reference !== undefined && (!isObject(use.reference)
+      || (use.reference.kind !== 'package' && use.reference.kind !== 'external')
+      || (use.reference.kind === 'package' && (typeof use.reference.contributionId !== 'string' || !use.reference.contributionId.trim()))
+      || (use.reference.kind === 'external' && (typeof use.reference.resourceId !== 'string' || !use.reference.resourceId.trim()))))))) {
+    throw new Error('Invalid Preset Text use references')
+  }
+}
+
 function assertLoomScriptAttachments(value: unknown): void {
   if (value === undefined) return
   if (!Array.isArray(value)) throw new Error('Loom Script attachments must be an array')
   for (const [index, attachment] of value.entries()) {
     if (!isObject(attachment) || !Number.isSafeInteger(attachment.orderIndex)) throw new Error(`Invalid Loom Script attachment: ${index}`)
     assertResourceOrigin(attachment.resourceOrigin)
+    if (attachment.settings !== undefined && (!isObject(attachment.settings) || Object.values(attachment.settings).some(value =>
+      typeof value !== 'string' && typeof value !== 'boolean' && (typeof value !== 'number' || !Number.isFinite(value))))) throw new Error(`Invalid Loom Script settings: ${index}`)
+    for (const key of ['textResourceIds', 'textResourceReferences'] as const) {
+      const references = attachment[key]
+      if (references !== undefined && (!isObject(references) || Object.entries(references).some(([id, address]) =>
+        !id.trim() || typeof address !== 'string' || !address.trim()))) throw new Error(`Invalid Loom Script ${key}: ${index}`)
+    }
     if (!isObject(attachment.script)
       || attachment.script.format !== 'loom.script'
       || attachment.script.schemaVersion !== 1
@@ -427,7 +440,8 @@ function assertLoomScriptAttachments(value: unknown): void {
       || typeof attachment.script.source !== 'string') {
       throw new Error(`Invalid Loom Script attachment artifact: ${index}`)
     }
-    parseLoomScriptSource(attachment.script.source)
+    const metadata = parseLoomScriptSource(attachment.script.source)
+    resolveLoomScriptSettings(metadata.settings, attachment.settings as LoomScriptSettings | undefined)
   }
 }
 

@@ -4,6 +4,7 @@ import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, writeDocument } from '../foundation/document-store.js'
 import {
   fromStoredResource,
+  normalizeAuthorCapabilities,
   listResourceCatalog,
   readMappedResource,
   toStoredNodeDraft,
@@ -12,7 +13,7 @@ import {
 import { applyDefaultPromptProjection, isPromptResourceArtifact, normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
 import defaultPresetTemplate from '../prompt/default-preset.json' with { type: 'json' }
 import type { PromptResourceNode } from '../cards/workspace-types.js'
-import { validateTextTransformRuleDraft, type TextTransformRuleDraft } from '../transforms/history-text.js'
+import type { TextTransformRuleDraft } from '../transforms/history-text.js'
 import { revertApplicationStateChangeset, revertApplicationStateDefinitionChangeset } from '../state/state.js'
 import type {
   GetPromptResourceBindingsResult,
@@ -40,7 +41,6 @@ import type {
   RevertPromptResourceChangesetInput,
   RevertPromptResourceChangesetResult,
   RuntimeRequestContext,
-  TextTransformRuleContent,
   UpdatePromptResourceAssetInput,
   UpdatePromptResourceAssetsInput,
   UpdatePromptResourceMacrosInput,
@@ -53,9 +53,10 @@ import {
   requireDocumentParticipant,
 } from './context.js'
 import { normalizeMacros } from '../cards/card.js'
-import { normalizeMacroOptions } from '@loom-studio/shared'
+import { normalizeMacroOptions, canPlacePromptNode, promptAnchorOutput } from '@loom-studio/shared'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
 import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
+import { allocateImportedTextResourceIds, exportScriptTextResourceIds, importedTextResourceReferences, prepareTextTransformScript, rebaseScriptTextResourceReferences, remapImportedTextUses, writePreparedTextTransformScript } from '../scripts/loom-script-text-migration.js'
 
 type PromptRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'agentTools'
@@ -174,9 +175,13 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
           mutation: { changesetId: result.commit.changesetId },
         }
       }
-      const ownedRules = resource.resourceKind === 'preset'
-        ? (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
-          .filter(rule => rule.content.owner.kind === 'preset' && rule.content.owner.presetId === input.resourceId)
+      const ownedScripts = resource.resourceKind === 'preset'
+        ? (await listDocuments<LoomScriptContent>(ctx.documents, applicationDocumentTypes.loomScript))
+          .filter(script => script.content.owner.kind === 'preset' && script.content.owner.presetId === input.resourceId)
+        : []
+      const adoptedScripts = resource.resourceKind === 'preset'
+        ? (await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount))
+          .filter(mount => mount.content.target.kind === 'preset' && mount.content.target.presetId === input.resourceId)
         : []
       const documentParticipant = requireDocumentParticipant(ctx)
       const transaction = await ctx.dataEngine.transact({
@@ -185,7 +190,8 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
       }, async dataTx => {
         const resourceTx = ctx.promptResources.transaction(dataTx)
         return await documentParticipant.participateTransaction(dataTx, async documents => {
-          for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+          for (const mount of adoptedScripts) await documents.delete({ id: mount.id, expectedVersion: mount.version })
+          for (const script of ownedScripts) await documents.delete({ id: script.id, expectedVersion: script.version })
           return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
         }, { allowEmpty: true })
       })
@@ -236,12 +242,30 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
       const mounts = resource.resourceKind === 'preset'
         ? await ctx.promptResources.listLoreMounts({ source: { kind: 'preset', id: resource.id } })
         : []
+      const scriptMounts = resource.resourceKind === 'preset'
+        ? (await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount))
+          .filter(mount => mount.content.target.kind === 'preset' && mount.content.target.presetId === resource.id)
+        : []
+      const scriptAttachments = await Promise.all(scriptMounts.map(async (mount): Promise<LoomScriptAttachmentArtifact> => {
+        if (!ctx.blobs) throw new Error('Blob Store is required to export Script attachments')
+        const document = await ctx.documents.get(mount.content.scriptDocumentId)
+        if (!document || document.type !== applicationDocumentTypes.loomScript) throw new Error(`Script not found: ${mount.content.scriptDocumentId}`)
+        const script = document.content as LoomScriptContent
+        return { orderIndex: mount.content.orderIndex,
+          ...(mount.content.settings ? { settings: mount.content.settings } : {}),
+          textResourceIds: exportScriptTextResourceIds(document.id, script),
+          ...(script.textResourceReferences ? { textResourceReferences: script.textResourceReferences } : {}),
+          script: { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName,
+            source: new TextDecoder('utf-8', { fatal: true }).decode(await ctx.blobs.read(script.source.blobId)) },
+        }
+      }))
       return {
         artifact: {
           format: 'loom.promptResource' as const,
           schemaVersion: 2 as const,
           resourceKind: resource.resourceKind,
           rootNode: resource.rootNode,
+          ...(scriptAttachments.length ? { scriptAttachments } : {}),
           ...(resource.macros !== undefined ? { macros: structuredClone(resource.macros) } : {}),
           ...(resource.macroOptions !== undefined ? { macroOptions: structuredClone(resource.macroOptions) } : {}),
           ...(resource.useCardLore !== undefined ? { useCardLore: resource.useCardLore } : {}),
@@ -296,6 +320,8 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
       const mapped = fromStoredResource(current)
       const placement = resolveAssetPlacement(mapped.rootNode, input.targetAssetId, input.position)
       const asset = applyDefaultPromptProjection(input.asset, mapped)
+      assertPromptAssetPlacement(mapped.rootNode, placement.parentId, asset)
+      assertTextContributionTarget(asset)
       const mutation: PromptResourceMutation = { kind: 'node.create', parentId: placement.parentId, node: toStoredNodeDraft(asset) }
       const result = await ctx.promptResources.mutateResource({
         ...promptResourceWriteContext(requestContext), reason: 'application.createPromptResourceAsset',
@@ -404,15 +430,15 @@ async function importPromptResourceContent(
   textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>,
   loreMounts?: NonNullable<import('../cards/workspace-types.js').PromptResourceArtifact['loreMounts']>,
 ): Promise<PromptResourceMutationResult> {
-  if (attachments.length > 0 && !ctx.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
-  const preparedResults = await Promise.allSettled(attachments.map(async attachment => ({
-    attachment,
-    metadata: parseLoomScriptSource(attachment.script.source),
-    blob: await ctx.blobs!.prepareWrite({
+  if ((attachments.length > 0 || textTransformRules?.length) && !ctx.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
+  const preparedResults = await Promise.allSettled(attachments.map(async attachment => {
+    const metadata = parseLoomScriptSource(attachment.script.source)
+    return { attachment, metadata, textResourceIds: allocateImportedTextResourceIds(metadata, attachment, ctx.createId),
+      blob: await ctx.blobs!.prepareWrite({
       source: new TextEncoder().encode(attachment.script.source),
       mediaType: 'text/javascript',
-    }),
-  })))
+    }) }
+  }))
   const prepared = preparedResults.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
   const failedPreparation = preparedResults.find(
     (result): result is PromiseRejectedResult => result.status === 'rejected',
@@ -420,12 +446,18 @@ async function importPromptResourceContent(
   if (failedPreparation) {
     throw failedPreparation.reason
   }
+  const references = importedTextResourceReferences(prepared)
+  const preparedRules = await Promise.all((textTransformRules ?? []).map(async rule => ({ rule,
+    ...await prepareTextTransformScript(ctx.blobs!, { ...rule, owner: { kind: 'workspace' }, createdAt: content.createdAt, updatedAt: content.updatedAt }),
+  })))
   const transaction = await ctx.dataEngine.transact({
     ...promptResourceWriteContext(requestContext),
     reason: 'application.importPromptResource',
   }, async dataTx => {
     const resourceTx = ctx.promptResources.transaction(dataTx)
-    const resource = resourceTx.createResource(toStoredResourceInput({ content }))
+    const resource = resourceTx.createResource(toStoredResourceInput({ content: { ...content,
+      ...(content.textUses ? { textUses: remapImportedTextUses(content.textUses, references) } : {}),
+    } }))
     for (const [orderIndex, reference] of (loreMounts ?? []).entries()) {
       resourceTx.addLoreMount({
         source: { kind: 'preset', id: resource.id },
@@ -434,18 +466,11 @@ async function importPromptResourceContent(
       })
     }
     if (content.resourceKind === 'preset' && (prepared.length > 0 || textTransformRules?.length)) await requireDocumentParticipant(ctx).participateTransaction(dataTx, async documentTx => {
-      for (const rule of textTransformRules ?? []) {
-        validateTextTransformRuleDraft({ ...rule, owner: { kind: 'preset', presetId: resource.id } })
-        await writeDocument<TextTransformRuleContent>(documentTx, {
-          id: ctx.createId('text-transform-rule'),
-          type: applicationDocumentTypes.textTransformRule,
-          content: {
-            ...structuredClone(rule),
-            owner: { kind: 'preset', presetId: resource.id },
-            createdAt: content.createdAt,
-            updatedAt: content.updatedAt,
-          },
-          expectedVersion: 'new',
+      for (const item of preparedRules) {
+        await writePreparedTextTransformScript(documentTx, {
+          scriptId: ctx.createId('loom-script'), mountId: ctx.createId('loom-script-mount'), ruleId: ctx.createId('text-transform-rule'),
+          rule: { ...structuredClone(item.rule), owner: { kind: 'preset', presetId: resource.id }, createdAt: content.createdAt, updatedAt: content.updatedAt },
+          blob: ctx.blobs!.participateWrite(dataTx, item.prepared).blob, metadata: item.metadata,
         })
       }
       for (const item of prepared) {
@@ -462,6 +487,8 @@ async function importPromptResourceContent(
               fileName: item.attachment.script.fileName,
             },
             sourceDigest: blob.sha256,
+            textResourceIds: item.textResourceIds,
+            textResourceReferences: rebaseScriptTextResourceReferences(item.attachment, references),
             createdAt: content.createdAt,
             updatedAt: content.updatedAt,
           },
@@ -476,6 +503,7 @@ async function importPromptResourceContent(
             enabled: false,
             orderIndex: item.attachment.orderIndex,
             grantedCapabilities: [],
+            ...(item.attachment.settings ? { settings: item.attachment.settings } : {}),
             origin: { kind: 'prompt-resource-import' },
             createdAt: content.createdAt,
             updatedAt: content.updatedAt,
@@ -593,7 +621,7 @@ function resolveAssetPlacement(
   const target = findPromptNode(root, targetId)
   if (!target) throw new Error(`Prompt asset target not found: ${targetId}`)
   if (position === 'inside') {
-    if (target.node.kind === 'entry' || target.node.kind === 'script') throw new Error(`Prompt asset target cannot contain children: ${targetId}`)
+    if (!['module', 'folder', 'message'].includes(target.node.kind)) throw new Error(`Prompt asset target cannot contain children: ${targetId}`)
     return { parentId: target.node.id, orderIndex: target.node.children?.length ?? 0 }
   }
   if (!target.parentId) throw new Error(`Prompt asset cannot be placed beside the root: ${targetId}`)
@@ -626,6 +654,7 @@ function buildMoveMutations(
   if (!source) throw new Error(`Prompt asset not found: ${nodeId}`)
   if (!source.parentId) throw new Error(`Prompt asset cannot be moved: ${nodeId}`)
   if (source.node.kind === 'module') throw new Error(`Prompt asset cannot be moved: ${nodeId}`)
+  assertPromptAssetPlacement(root, placement.parentId, source.node)
   if (findPromptNode(source.node, placement.parentId)) throw new Error('Cannot move prompt asset inside its own subtree')
 
   const sourceSiblings = (findPromptNode(root, source.parentId)!.node.children ?? []).map(child => child.id)
@@ -672,6 +701,22 @@ async function updatePromptResourceAssets(input: {
 }): Promise<UpdatePromptResourceResult> {
   const current = await input.ctx.promptResources.getResource(input.resourceId)
   if (!current) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+  const mapped = fromStoredResource(current)
+  const patches = new Map(input.updates.map(update => [update.assetId, update]))
+  function applyUpdates(node: PromptResourceNode): PromptResourceNode {
+    const update = patches.get(node.id)
+    return { ...node, ...(update ?? {}), ...(node.children ? { children: node.children.map(applyUpdates) } : {}) }
+  }
+  const nextRoot = applyUpdates(mapped.rootNode)
+  for (const update of input.updates) {
+    const target = findPromptNode(nextRoot, update.assetId)
+    const previous = findPromptNode(mapped.rootNode, update.assetId)?.node
+    if (target?.parentId && update.capabilities?.targetAnchorId !== undefined
+      && update.capabilities.targetAnchorId !== previous?.capabilities?.targetAnchorId) {
+      assertPromptAssetPlacement(nextRoot, target.parentId, target.node)
+    }
+    if (target) assertTextContributionTarget(target.node)
+  }
   const mutations: PromptResourceMutation[] = input.updates.map(update => {
     let extra: PromptResourceNode['extra']
     if (update.orderList !== undefined || update.capabilities?.projection !== undefined) {
@@ -685,7 +730,7 @@ async function updatePromptResourceAssets(input: {
       patch: {
         ...(update.label === undefined ? {} : { label: update.label }),
         ...(update.body === undefined ? {} : { body: update.body }),
-        ...(update.capabilities === undefined ? {} : { capabilities: update.capabilities }),
+        ...(update.capabilities === undefined ? {} : { capabilities: normalizeAuthorCapabilities(update.capabilities) }),
         ...(update.enabled === undefined ? {} : { enabled: update.enabled }),
         ...(update.meta === undefined ? {} : { meta: update.meta }),
         ...(extra === undefined ? {} : { extra }),
@@ -703,4 +748,16 @@ async function updatePromptResourceAssets(input: {
     resource: fromStoredResource(result.resource),
     mutation: { changesetId: result.commit.changesetId },
   }
+}
+
+function assertPromptAssetPlacement(root: PromptResourceNode, parentId: string, asset: PromptResourceNode): void {
+  if (!canPlacePromptNode(root, parentId, asset)) throw new Error('Invalid Prompt placement: Message blocks and message sequences must remain outside other Message blocks; inlets cannot contain children')
+}
+
+function assertTextContributionTarget(node: PromptResourceNode): void {
+  if (node.kind !== 'virtual' && node.capabilities?.targetAnchorId
+    && promptAnchorOutput(node.capabilities.targetAnchorId) === 'messages') {
+    throw new Error('Text contributions cannot target a message sequence')
+  }
+  for (const child of node.children ?? []) assertTextContributionTarget(child)
 }

@@ -1,5 +1,4 @@
 import type { JsonValue } from '@loom-studio/shared'
-import { createDataCommitNotifier } from '@loom-studio/data-engine'
 import { createId, nowIso } from '@loom-studio/shared'
 import { DocumentStoreError } from './types.js'
 import type {
@@ -7,9 +6,6 @@ import type {
   Changeset,
   ChangesetOperation,
   DeleteDocumentInput,
-  DocumentCommitFact,
-  DocumentCommitObserver,
-  DocumentCommitSubscription,
   DocumentRecord,
   DocumentTransactionInput,
   WriteDocumentInput,
@@ -99,43 +95,6 @@ export function finalizeChangeset(pending: PendingChangeset): Changeset {
   }
 }
 
-export function finalizeCommitFact(pending: PendingChangeset): DocumentCommitFact {
-  const changeset = finalizeChangeset(pending)
-
-  return {
-    changesetId: changeset.id,
-    createdAt: changeset.createdAt,
-    committedAt: nowIso(),
-    actor: changeset.createdBy,
-    reason: changeset.reason,
-    correlationId: changeset.correlationId,
-    callId: changeset.callId,
-    parentCallId: changeset.parentCallId,
-    operations: changeset.operations.map(operation => ({
-      store: 'documents',
-      kind: operation.kind,
-      entityId: operation.documentId,
-      entityType: operation.type,
-      fromVersion: operation.fromVersion,
-      toVersion: operation.toVersion,
-    })),
-    changeset,
-    documents: [...pending.changes.values()].map(change => ({
-      id: change.documentId,
-      type: change.type,
-      version: change.toVersion,
-      tombstoned: change.finalTombstoned,
-    })),
-  }
-}
-
-export function createCommitNotifier(): {
-  notify(commit: DocumentCommitFact): void
-  subscribe(observer: DocumentCommitObserver): DocumentCommitSubscription
-} {
-  return createDataCommitNotifier<DocumentCommitFact>()
-}
-
 export function transactionInputFromWrite(input: WriteDocumentInput | DeleteDocumentInput): DocumentTransactionInput {
   return {
     actor: input.actor ?? kernelActor,
@@ -196,10 +155,6 @@ export function restoredDocument(existing: DocumentRecord, target: DocumentRecor
 
 export function cloneDocument(document: DocumentRecord): DocumentRecord {
   return structuredClone(document) as DocumentRecord
-}
-
-export function cloneChangeset(changeset: Changeset): Changeset {
-  return structuredClone(changeset) as Changeset
 }
 
 function readFinalOperationKind(change: PendingDocumentChange): ChangesetOperation['kind'] {

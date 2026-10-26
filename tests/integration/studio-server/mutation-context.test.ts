@@ -1,7 +1,7 @@
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import type { AgentToolEntry } from '@loom-studio/application-runtime'
 import { createMemorySecretBackend } from '@loom-studio/secret-store'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

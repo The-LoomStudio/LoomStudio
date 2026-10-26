@@ -79,8 +79,7 @@ export function createStudioPanels(input: {
       branches={state.branches}
       cards={state.cards}
       narrativeAgentSession={state.narrativeAgentSession}
-      onCreateAgentSession={state.createAgentSession}
-      onSetPrimaryAgentSession={state.setPrimaryAgentSession}
+      onCreateAgentSession={presetId => state.createAgentSession(presetId, false)}
       selectedCardId={currentCardId}
       requestedSessionId={navigation.toolSearchParams.get('sessionId') ?? undefined}
       requestedSessionView={navigation.toolSearchParams.get('sessionView') === 'summary' ? 'summary' : 'transcript'}

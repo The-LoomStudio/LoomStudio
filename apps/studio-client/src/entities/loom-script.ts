@@ -1,12 +1,6 @@
 import type { LoomScriptOwner } from '@loom-studio/shared/loom-scripts'
 export type { LoomScriptOwner, LoomScriptMount } from '@loom-studio/shared/loom-scripts'
-import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
-
-type LoomScriptRendererContribution = {
-  kind: 'renderer'
-  renderer: Omit<RendererContributionDefinition, 'adapter' | 'artifactType'>
-  inputs: Array<{ kind: 'match'; ruleId: string } | { kind: 'artifact'; artifactType: string }>
-}
+import type { LoomScriptContributionDefinition, LoomScriptSettingDefinition, LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 
 export type LoomScript = {
   id: string
@@ -18,7 +12,9 @@ export type LoomScript = {
   name: string
   runtime: import('@loom-studio/shared/loom-scripts').LoomScriptRuntime
   requires?: string[]
-  contributions: LoomScriptRendererContribution[]
+  settings?: LoomScriptSettingDefinition[]
+  tags?: string[]
+  contributions: LoomScriptContributionDefinition[]
   requestedCapabilities: string[]
   source: { blobId: string; mediaType: 'text/javascript'; fileName: string }
   sourceDigest: string
@@ -29,6 +25,7 @@ export type LoomScript = {
 export type ResolvedLoomScriptRendererMount = {
   mountId: string
   mountVersion?: number
+  settings?: LoomScriptSettings
   target?: import('@loom-studio/shared/loom-scripts').LoomScriptMountTarget
   enabled: boolean
   orderIndex: number

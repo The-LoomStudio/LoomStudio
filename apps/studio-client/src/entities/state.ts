@@ -1,4 +1,4 @@
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { MutationReceipt } from './common.js'
 import type { StateContribution, StateEntityId, StateEntityRefAnnotation, StateEntityType } from '@loom-studio/shared'
 import type { ExtensionInstallationTarget } from '@loom-studio/extension-sdk'

@@ -2,19 +2,37 @@ import {
   addContextAssetAnchorNode,
   addContextAssetFolderNode,
   addContextAssetMessageBlockNode,
+  addContextAssetMessageSequenceNode,
+  canMoveContextAssetNode,
   addContextAssetNode,
   deleteContextAssetNode,
   duplicateContextAssetNode,
-} from '../../../apps/studio-client/src/features/context-assets/model/tree-ops.js'
-import { commitContextAssetMutation } from '../../../apps/studio-client/src/features/context-assets/model/use-context-assets.js'
-import { buildProjectionOrder } from '../../../apps/studio-client/src/features/context-assets/model/projection-order.js'
-import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/context-assets/model/prompt-resource-view.js'
-import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/context-assets/model/preset-build-context.js'
-import { resolveVirtualDisplayName, resolveVirtualExtension } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-tree.js'
+} from '../../../apps/studio-client/src/features/prompt-resources/model/tree-ops.js'
+import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/prompt-resources/model/prompt-resource-view.js'
+import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-build-context.js'
+import { resolveVirtualDisplayName, resolveVirtualExtension } from '../../../apps/studio-client/src/features/prompt-resources/model/context-asset-tree.js'
 import type { ContextAssetNode, PromptResource, LoreMount } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe('studio client context asset helpers', () => {
+  it('keeps native history beside Messages and rejects invalid drops, including folders hiding sequences', () => {
+    const nodes: ContextAssetNode[] = [{ id: 'root', kind: 'module', category: 'preset', label: 'Preset', children: [
+      { id: 'message', kind: 'message', label: 'System', children: [{ id: 'text', kind: 'entry', label: 'Text' }] },
+    ] }]
+    const created = addContextAssetMessageSequenceNode(nodes, 'text', () => 'history')!
+    expect(created).toMatchObject({ targetAssetId: 'message', position: 'after', asset: { id: 'history' } })
+    const withHistory = [{ ...nodes[0]!, children: [...nodes[0]!.children!, created.asset] }]
+    expect(addContextAssetMessageSequenceNode(withHistory, 'root')).toBeUndefined()
+    expect(canMoveContextAssetNode(withHistory, 'history', 'message', 'inside')).toBe(false)
+    expect(canMoveContextAssetNode(withHistory, 'text', 'history', 'inside')).toBe(false)
+    expect(canMoveContextAssetNode(withHistory, 'history', 'message', 'before')).toBe(true)
+    const hidden = [{ ...nodes[0]!, children: [nodes[0]!.children![0]!,
+      { id: 'folder', kind: 'folder', label: 'Folder', children: [created.asset] }] }]
+    expect(canMoveContextAssetNode(hidden, 'folder', 'message', 'inside')).toBe(false)
+    const sibling = addContextAssetMessageBlockNode(nodes, 'text', 'assistant', () => 'next')
+    expect(sibling).toMatchObject({ targetAssetId: 'message', position: 'after', asset: { id: 'next', kind: 'message' } })
+  })
+
   it('resolves virtual display names with correct file extensions for UI presentation', () => {
     expect(resolveVirtualDisplayName('爱丽丝人设', 'entry')).toBe('爱丽丝人设.md')
     expect(resolveVirtualDisplayName('爱丽丝人设.md', 'entry')).toBe('爱丽丝人设.md')
@@ -26,12 +44,10 @@ describe('studio client context asset helpers', () => {
     expect(resolveVirtualDisplayName('对话块', 'message')).toBe('对话块')
   })
   it('adds a setting entry with a backend-shaped projection', () => {
-    const result = addContextAssetNode(baseNodes(), 'setting-folder', idSequence('new-entry'))
-    const folder = findNode(result.nodes, 'setting-folder')
-    const added = findNode(result.nodes, 'new-entry')
+    const result = addContextAssetNode(baseNodes(), 'setting-folder', idSequence('new-entry'))!
+    const added = result.asset
 
-    expect(result.selectedId).toBe('new-entry')
-    expect(folder?.children?.map(node => node.id)).toEqual(['new-entry', 'setting-entry'])
+    expect(result).toMatchObject({ targetAssetId: 'setting-folder', position: 'inside', asset: { id: 'new-entry' } })
     expect(added?.projection).toMatchObject({
       zoneId: 'lore.stable',
       slotKey: 'lore:city-layers-main@lore.stable',
@@ -48,22 +64,20 @@ describe('studio client context asset helpers', () => {
 
   it('inserts new folders and anchors at the start of their parent, including preset trees', () => {
     const setting = addContextAssetFolderNode(baseNodes(), 'setting-folder', idSequence('new-folder'))
-    expect(findNode(setting.nodes, 'setting-folder')?.children?.map(node => node.id)).toEqual(['new-folder', 'setting-entry'])
+    expect(setting).toMatchObject({ targetAssetId: 'setting-folder', position: 'inside', asset: { id: 'new-folder', kind: 'folder' } })
 
     const preset = addContextAssetAnchorNode(baseNodes(), 'preset-folder', idSequence('new-anchor'))
-    expect(findNode(preset.nodes, 'preset-folder')?.children?.map(node => node.id)).toEqual(['new-anchor', 'preset-entry'])
+    expect(preset).toMatchObject({ targetAssetId: 'preset-folder', position: 'inside', asset: { id: 'new-anchor', kind: 'virtual' } })
 
     const block = addContextAssetMessageBlockNode(baseNodes(), 'preset-folder', 'system', idSequence('new-message'))
-    expect(findNode(block.nodes, 'preset-folder')?.children?.map(node => node.id)).toEqual(['new-message', 'preset-entry'])
+    expect(block).toMatchObject({ targetAssetId: 'preset-folder', position: 'inside', asset: { id: 'new-message', kind: 'message' } })
   })
 
   it('duplicates an editable entry beside the source node', () => {
-    const result = duplicateContextAssetNode(baseNodes(), 'setting-entry', idSequence('copy-entry'))
-    const folder = findNode(result.nodes, 'setting-folder')
-    const copy = findNode(result.nodes, 'copy-entry')
+    const result = duplicateContextAssetNode(baseNodes(), 'setting-entry', idSequence('copy-entry'))!
+    const copy = result.asset
 
-    expect(result.selectedId).toBe('copy-entry')
-    expect(folder?.children?.map(node => node.id)).toEqual(['setting-entry', 'copy-entry'])
+    expect(result).toMatchObject({ targetAssetId: 'setting-entry', position: 'after', asset: { id: 'copy-entry' } })
     expect(copy?.label).toBe('雾港 Copy')
     expect(copy?.body).toBe('雾港是一座潮湿安静的海港。')
     expect(copy?.projection?.entryOrder).toBe(11)
@@ -73,8 +87,13 @@ describe('studio client context asset helpers', () => {
   it('deletes editable nodes', () => {
     const result = deleteContextAssetNode(baseNodes(), 'preset-entry', 'preset-entry')
 
-    expect(findNode(result.nodes, 'preset-entry')).toBeUndefined()
-    expect(result.selectedId).toBe('preset-folder')
+    expect(result?.selectedId).toBe('preset-folder')
+  })
+
+  it('selects the next root when an editable top-level node is deleted', () => {
+    const nodes: ContextAssetNode[] = [{ id: 'first', kind: 'folder', label: 'First' }, { id: 'second', kind: 'folder', label: 'Second' }]
+    expect(deleteContextAssetNode(nodes, 'first', 'first')?.selectedId).toBe('second')
+    expect(deleteContextAssetNode(nodes, 'first', 'second')?.selectedId).toBe('second')
   })
 
   it('keeps inherited history nodes read-only for destructive helpers', () => {
@@ -96,23 +115,8 @@ describe('studio client context asset helpers', () => {
 
     const result = deleteContextAssetNode(nodes, 'history-turn', 'history-turn')
 
-    expect(result.nodes).toBe(nodes)
-    expect(findNode(result.nodes, 'history-turn')).toBeDefined()
-  })
-
-  it('does not apply or record a failed resource mutation', async () => {
-    const applied: string[] = []
-    const recorded: string[] = []
-
-    await expect(commitContextAssetMutation({
-      mutate: async () => { throw new Error('rpc failed') },
-      applyResource: resource => applied.push(resource.id),
-      recordEdit: entry => recorded.push(entry.changesetId),
-      entry: { label: 'Reorder Entries', anchor: { documentId: 'workspace-1' } },
-    })).rejects.toThrow('rpc failed')
-
-    expect(applied).toEqual([])
-    expect(recorded).toEqual([])
+    expect(result).toBeUndefined()
+    expect(findNode(nodes, 'history-turn')).toBeDefined()
   })
 
   it('projects backend capability fields into the Prompt Resource workbench view', () => {
@@ -146,13 +150,13 @@ describe('studio client context asset helpers', () => {
     }
 
     const root = readPromptResourceWorkbenchRoot(resource)
-    const entries = buildProjectionOrder([root])
-
-    expect(entries).toHaveLength(1)
-    expect(entries[0]).toMatchObject({
-      zoneId: 'preset.system',
-      slotKey: 'preset:preset-root@preset.system',
-      node: { id: 'assistant-entry' },
+    expect(root.children).toHaveLength(1)
+    expect(root.children![0]).toMatchObject({
+      id: 'assistant-entry',
+      projection: {
+        zoneId: 'preset.system',
+        slotKey: 'preset:preset-root@preset.system',
+      },
     })
   })
 

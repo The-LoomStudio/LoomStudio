@@ -164,7 +164,7 @@ type ClientConfigSubscription = {
 
 export function createClientExtensionHost(options: {
   rendererHost: ClientRendererHost
-  data?: ClientExtensionDataApi
+  data: ClientExtensionDataApi
   sessionHost?: RendererSessionHost
   loadModule?: (entryUrl: string, instanceId: string) => Promise<LoadedClientModule>
   logger?: ExtensionHostLogWriter
@@ -183,7 +183,7 @@ export function createClientExtensionHost(options: {
   const stateSubscriptions = new Set<() => Promise<void>>()
   const listeners = new Set<() => void>()
   const logger = options.logger ?? consoleClientExtensionLogger
-  const data = options.data ?? unavailableClientExtensionDataApi
+  const data = options.data
   const appearance = options.appearance
   let currentRevision = 0
   let nextConfigSubscriptionId = 1
@@ -1021,30 +1021,4 @@ const consoleClientExtensionLogger: ExtensionHostLogWriter = {
   info: (message, data) => console.info(message, data),
   warn: (message, data) => console.warn(message, data),
   error: (message, data) => console.error(message, data),
-}
-
-const unavailableClientExtensionDataApi: ClientExtensionDataApi = {
-  configs: {
-    list: () => Promise.reject(new Error('Client extension Config API is unavailable')),
-    get: () => Promise.reject(new Error('Client extension Config API is unavailable')),
-    upsert: () => Promise.reject(new Error('Client extension Config API is unavailable')),
-  },
-  records: {
-    list: () => Promise.reject(new Error('Client extension Record API is unavailable')),
-    get: () => Promise.reject(new Error('Client extension Record API is unavailable')),
-  },
-  state: {
-    get: () => Promise.reject(new Error('Client extension State API is unavailable')),
-  },
-  history: {
-    project: () => Promise.reject(new Error('Client extension History API is unavailable')),
-    extract: () => Promise.reject(new Error('Client extension History API is unavailable')),
-  },
-  imports: { commit: () => Promise.reject(new Error('Client extension Import API is unavailable')) },
-  rpc: {
-    call: () => Promise.reject(new Error('Client extension RPC API is unavailable')),
-  },
-  assets: {
-    url: assetId => `/assets/${encodeURIComponent(assetId)}`,
-  },
 }

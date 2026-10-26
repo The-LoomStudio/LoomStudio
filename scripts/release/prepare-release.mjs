@@ -50,7 +50,6 @@ for (const [name, { path, pkg }] of selected) {
     ...(pkg.main ? { main: pkg.main } : {}),
     ...(pkg.exports ? { exports: pkg.exports } : {}),
   }
-  if (name === '@loom/core') delete runtimeManifest.exports['.'].development
   await writeFile(join(destination, path, 'package.json'), `${JSON.stringify(runtimeManifest, null, 2)}\n`)
   dependencies[name] = `file:${path}`
   for (const [dependency, specifier] of Object.entries(pkg.dependencies ?? {})) {

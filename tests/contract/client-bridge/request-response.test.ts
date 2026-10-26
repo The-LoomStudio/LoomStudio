@@ -1,4 +1,4 @@
-import { createClientBridge } from '@loom-studio/client-bridge'
+import { createClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
 import { describe, expect, it } from 'vitest'
 
 function createFetch(response: unknown): typeof fetch {
@@ -24,16 +24,22 @@ describe('client bridge request-response contract', () => {
     controller.abort()
     await expect(request).rejects.toThrow()
   })
-  it('sends tRPC requests and returns result payloads', async () => {
+  it.each([
+    ['system.ping', 'system.ping'],
+    ['example.echo', 'kernel.invoke'],
+  ])('routes %s through %s and returns result payloads', async (method, route) => {
     const bridge = createClientBridge({
       endpoint: 'http://localhost/trpc',
-      fetch: createFetch({
-        result: { data: { ok: true } },
-        meta: { clientId: 'test', correlationId: 'corr-1', callId: 'call-1' },
-      }),
+      fetch: (async (input, init) => {
+        expect(new URL(String(input)).pathname).toBe(`/trpc/${route}`)
+        expect(JSON.parse(String(init?.body))).toEqual(route === 'kernel.invoke'
+          ? { method, params: { echo: 'hello' } } : { echo: 'hello' })
+        expect(init?.credentials).toBe('same-origin')
+        return createFetch({ result: { data: { ok: true } } })(input, init)
+      }) as typeof fetch,
     })
 
-    const result = await bridge.call('system.ping', { echo: 'hello' })
+    const result = await bridge.call(method, { echo: 'hello' })
 
     expect(result).toEqual({ ok: true })
   })

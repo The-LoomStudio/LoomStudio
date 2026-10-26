@@ -8,7 +8,7 @@ import type {
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 import type {
   CreateEventBusOptions,
   EventBus,

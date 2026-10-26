@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { expect, it } from 'vitest'
+import { expect, it, onTestFinished, vi } from 'vitest'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
@@ -36,9 +36,12 @@ it.each(['remove', 'dispose'] as const)('aborts a streaming dependency on %s wit
   }
   let mounts = [mount]
   // The resolver is the external boundary; service, downloader, ESM and Host remain real.
-  const runtime = { resolveLoomScriptRendererMounts: async () => ({ mounts, unavailableMounts: [] }) } as unknown as ApplicationRuntime
+  const setExecutionStates = vi.fn()
+  const runtime = { setLoomScriptExecutionStates: setExecutionStates, resolveLoomScriptRendererMounts: async () => ({ mounts, unavailableMounts: [] }) } as unknown as ApplicationRuntime
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const service = createScriptService({ runtime, hostOptions: {
-    documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(),
+    documents, diagnostics: createInMemoryDiagnosticsRegistry(),
     callRpc: async () => null, registerRpc: () => { throw new Error('Not used') },
   } })
   try {
@@ -53,12 +56,15 @@ it.each(['remove', 'dispose'] as const)('aborts a streaming dependency on %s wit
     await pending
     await disconnected.promise
     expect(effects).toEqual([])
+    expect(setExecutionStates).toHaveBeenLastCalledWith([])
     if (action === 'remove') {
       mounts = [{ ...mount, mountVersion: 2, script: { ...mount.script, requires: [] } }]
       expect((await service.resolve()).serverInstances[0]).toMatchObject({ mountId: mount.mountId, state: 'active', runningDocumentVersion: 1 })
       expect(effects).toEqual(['import', 'activate'])
+      expect(setExecutionStates).toHaveBeenLastCalledWith([{ mountId: mount.mountId, revision: 2, active: true }])
       await service.dispose()
       expect(effects).toEqual(['import', 'activate', 'dispose'])
+      expect(setExecutionStates).toHaveBeenLastCalledWith([])
     }
   } finally {
     await service.dispose()
@@ -66,4 +72,43 @@ it.each(['remove', 'dispose'] as const)('aborts a streaming dependency on %s wit
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
     Reflect.deleteProperty(globalThis, marker)
   }
+})
+
+it('retains readiness for unchanged adoption and revokes it before a replacement activates', async () => {
+  const documents = createInMemoryDocumentStore()
+  const setExecutionStates = vi.fn()
+  const started = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const marker = '__loom_script_ready_replacement__'
+  Object.defineProperty(globalThis, marker, { value: { started, release }, configurable: true })
+  const first = {
+    mountId: 'ready', mountVersion: 1, enabled: true, orderIndex: 0,
+    grantedCapabilities: ['runtime.server'], source: 'export function activate() {}',
+    script: { id: 'ready-doc', version: 1, name: 'Ready', metadataId: 'ready', scriptVersion: '1.0.0',
+      runtime: 'server' as const, requestedCapabilities: ['runtime.server'], contributions: [] },
+  }
+  let current = first
+  const runtime = { setLoomScriptExecutionStates: setExecutionStates,
+    resolveLoomScriptRendererMounts: async () => ({ mounts: [current], unavailableMounts: [] }),
+  } as unknown as ApplicationRuntime
+  const service = createScriptService({ runtime, hostOptions: {
+    documents, diagnostics: createInMemoryDiagnosticsRegistry(),
+    callRpc: async () => null, registerRpc: () => { throw new Error('Not used') },
+  } })
+  try {
+    await service.resolve()
+    setExecutionStates.mockClear()
+    await service.resolve()
+    expect(setExecutionStates.mock.calls.length).toBeGreaterThan(0)
+    for (const [states] of setExecutionStates.mock.calls) expect(states).toEqual([{ mountId: first.mountId, revision: 1, active: true }])
+    current = { ...first, mountVersion: 2,
+      source: `export async function activate() { const gate = globalThis[${JSON.stringify(marker)}]; gate.started.resolve(); await gate.release.promise; }`,
+    }
+    const replacing = service.resolve()
+    await started.promise
+    expect(setExecutionStates).toHaveBeenLastCalledWith([])
+    release.resolve()
+    await replacing
+    expect(setExecutionStates).toHaveBeenLastCalledWith([{ mountId: first.mountId, revision: 2, active: true }])
+  } finally { release.resolve(); await service.dispose(); await documents.close(); Reflect.deleteProperty(globalThis, marker) }
 })

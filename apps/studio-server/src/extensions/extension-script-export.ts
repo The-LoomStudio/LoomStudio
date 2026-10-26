@@ -1,5 +1,7 @@
-import { applicationDocumentTypes, type ApplicationRuntimeOptions, type BlobStorage, type ExtensionInstallationContent, type LoomScriptContent } from '@loom-studio/application-runtime'
-import type { DocumentStore } from '@loom-studio/document-store'
+import { applicationDocumentTypes, type ApplicationRuntimeOptions, type BlobStorage, type ExtensionInstallationContent, type LoomScriptContent, type LoomScriptMountContent } from '@loom-studio/application-runtime'
+import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import { parseLoomScriptSource } from '@loom-studio/shared/loom-scripts'
+import type { JsonValue } from '@loom-studio/shared'
 import { parseExtensionManifest } from '@loom-studio/extension-host'
 import { extensionInstallationId, installedExtensionContributionId } from '@loom-studio/extension-sdk'
 import { zipSync } from 'fflate'
@@ -39,6 +41,17 @@ export function createExtensionScriptArchiveExporter(options: {
     const replacements = new Map<string, Uint8Array>()
     let changed = false
     let totalBytes = Object.values(files).reduce((sum, bytes) => sum + bytes.byteLength, 0)
+    function replaceEntry(path: string, bytes: Uint8Array): void {
+      const previous = replacements.get(path)
+      if (previous && !Buffer.from(previous).equals(bytes)) throw new Error(`Extension Script contributions have conflicting saved content for: ${path}`)
+      replacements.set(path, bytes)
+      if (!Buffer.from(files[path]!).equals(bytes)) {
+        totalBytes += bytes.byteLength - files[path]!.byteLength
+        if (totalBytes > maxPackageBytes) throw new Error('Extension Package exceeds the local install size limit')
+        files[path] = bytes
+        changed = true
+      }
+    }
     for (const contribution of manifest.contributes?.loomScripts ?? []) {
       const relative = posix.normalize(contribution.source)
       if (relative === '..' || relative.startsWith('../') || contribution.source.includes('\\')) throw new Error(`Extension Script path escapes its package: ${contribution.source}`)
@@ -52,14 +65,47 @@ export function createExtensionScriptArchiveExporter(options: {
         throw new Error(`Installed Extension Script owner does not match its archive: ${scriptId}`)
       }
       const bytes = await options.blobs.read(script.source.blobId, { maxBytes: maxPackageBytes })
-      const previous = replacements.get(path)
-      if (previous && !Buffer.from(previous).equals(bytes)) throw new Error(`Extension Script contributions have conflicting saved content for: ${contribution.source}`)
-      replacements.set(path, bytes)
-      if (!Buffer.from(files[path]!).equals(bytes)) {
-        totalBytes += bytes.byteLength - files[path]!.byteLength
-        if (totalBytes > maxPackageBytes) throw new Error('Extension Package exceeds the local install size limit')
-        files[path] = bytes
-        changed = true
+      replaceEntry(path, bytes)
+    }
+    if (manifest.contributes?.transformRules?.length) {
+      async function listDocuments<T extends JsonValue>(type: string): Promise<Array<DocumentRecord<T>>> {
+        const records: Array<DocumentRecord<T>> = []
+        let cursor: string | undefined
+        do {
+          const page = await options.documents.list({ type, cursor, limit: 100 })
+          records.push(...page.items as Array<DocumentRecord<T>>)
+          cursor = page.nextCursor
+        } while (cursor)
+        return records
+      }
+      const [scripts, mounts] = await Promise.all([
+        listDocuments<LoomScriptContent>(applicationDocumentTypes.loomScript),
+        listDocuments<LoomScriptMountContent>(applicationDocumentTypes.loomScriptMount),
+      ])
+      for (const contribution of manifest.contributes.transformRules) {
+        const candidates = scripts.filter(document => document.content.owner.kind === 'extension'
+          && document.content.owner.installationId === input.installationId
+          && document.content.textResourceOrigin?.contributionId === contribution.id)
+        if (candidates.length !== 1) throw new Error(`Installed text-rule Script is missing or ambiguous: ${contribution.id}`)
+        const document = candidates[0]!
+        const script = document.content
+        const bytes = await options.blobs.read(script.source.blobId, { maxBytes: maxPackageBytes })
+        const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+        const metadata = parseLoomScriptSource(source)
+        const primaryContributionId = Object.keys(script.textResourceIds ?? {}).find(id => metadata.contributions.some(item => item.kind === 'text-transform' && item.id === id))
+        if (!primaryContributionId) throw new Error(`Packaged primary text rule was removed from Script: ${contribution.id}`)
+        const mount = mounts.find(item => item.content.scriptDocumentId === document.id
+          && item.content.origin.legacyRuleId === script.textResourceIds![primaryContributionId])
+        const relative = posix.normalize(contribution.source)
+        if (relative === '..' || relative.startsWith('../') || contribution.source.includes('\\')) throw new Error(`Extension text rule path escapes its package: ${contribution.source}`)
+        const path = paths.get(posix.join(root, relative))
+        if (!path || path.endsWith('/')) throw new Error(`Extension text rule archive entry is missing: ${contribution.source}`)
+        // The existing manifest slot keeps its address; the complete source is authoritative on reimport.
+        const artifact = { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName, source, primaryContributionId,
+          ...(mount ? { enabled: mount.content.enabled, orderIndex: mount.content.orderIndex } : {}),
+          ...(mount?.content.settings ? { settings: mount.content.settings } : {}),
+        }
+        replaceEntry(path, new TextEncoder().encode(JSON.stringify(artifact, null, 2)))
       }
     }
     if (!changed) return input.archive

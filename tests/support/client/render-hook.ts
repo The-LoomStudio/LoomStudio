@@ -1,10 +1,10 @@
-import { act, createElement } from 'react'
+import { act, createElement, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 // @ts-expect-error React act environment flag
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
-export function renderHook<T>(hook: () => T) {
+export function renderHook<T>(hook: () => T, wrapper: (child: ReactNode) => ReactNode = child => child) {
   let result!: T
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -15,11 +15,11 @@ export function renderHook<T>(hook: () => T) {
     return null
   }
 
-  act(() => {
-    root.render(createElement(TestComponent))
-  })
+  const rerender = () => act(() => root.render(wrapper(createElement(TestComponent))))
+  rerender()
 
   return {
+    rerender,
     get current() {
       return result
     },

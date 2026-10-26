@@ -2,7 +2,7 @@ import { createAgentStore, createNarrativeStore, createPromptResourceStore } fro
 import { applicationDocumentTypes, createApplicationRuntime, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { extensionInstallationId } from '@loom-studio/extension-sdk'
+import { extensionInstallationId, type ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
 import type { GlobalSearchHit, SearchResourcesInput } from '@loom-studio/shared'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -151,9 +151,10 @@ describe('global resource search', () => {
       const cardB = (await f.runtime.createCard({ name: '同名角色' })).card
       const packageId = 'example.world'
       const installations: string[] = []
-      for (const [index, target] of [
-        { kind: 'global' as const }, { kind: 'card' as const, cardId: cardA.id }, { kind: 'card' as const, cardId: cardB.id },
-      ].entries()) {
+      const targets: ExtensionInstallationTarget[] = [
+        { kind: 'global' }, { kind: 'card', cardId: cardA.id }, { kind: 'card', cardId: cardB.id },
+      ]
+      for (const [index, target] of targets.entries()) {
         const installationId = extensionInstallationId(packageId, target)
         installations.push(installationId)
         await f.documents.write({ id: installationId, type: applicationDocumentTypes.extensionInstallation,

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
-import { expect, it } from 'vitest'
+import { expect, it, onTestFinished } from 'vitest'
 import { createServerExtensionManager } from '../../../apps/studio-server/src/extensions/extension-manager.js'
 import { createExtensionStateStore } from '../../../apps/studio-server/src/extensions/extension-state-store.js'
 
@@ -13,8 +13,10 @@ it('installs the official theme package and serves its CSS and relative SVG asse
   const root = await mkdtemp(join(tmpdir(), 'loom-theme-package-'))
   const source = fileURLToPath(new URL('../../../official/extensions/themes/', import.meta.url))
   const diagnostics = createInMemoryDiagnosticsRegistry()
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const host = createExtensionHost({
-    documents: createInMemoryDocumentStore(), diagnostics,
+    documents, diagnostics,
     callRpc: async () => null,
     registerRpc: () => { throw new Error('A newly installed theme must not register server RPC') },
   })
@@ -71,8 +73,10 @@ it('installs a module-free static background package and exposes its catalog and
   const image = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><path fill="#123" d="M0 0h1v1H0z"/></svg>')
   const backgrounds = [{ id: 'scene', name: '场景', description: '静态背景', image: './Assets/scene.svg' }]
   const diagnostics = createInMemoryDiagnosticsRegistry()
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const host = createExtensionHost({
-    documents: createInMemoryDocumentStore(), diagnostics,
+    documents, diagnostics,
     callRpc: async () => null,
     registerRpc: () => { throw new Error('A static background must not register server RPC') },
   })

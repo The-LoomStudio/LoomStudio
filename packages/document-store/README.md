@@ -11,7 +11,7 @@
 - **`Document`**：由命名空间 ID 唯一标识的 JSON 文档；
 - **`Revision`**：递增的版本号与不可变内容快照；
 - **`Changeset`**：跨单文档或多文档写操作的原子变更集；
-- **双实现支持**：生产环境由 `@loom-studio/data-engine` 驱动的 SQLite 持久化实现，以及测试/沙箱专用的纯内存实现（`createInMemoryDocumentStore`）。
+- **单一实现**：由 `@loom-studio/data-engine` 驱动的 SQLite 实现；测试/沙箱工厂 `createInMemoryDocumentStore` 创建隔离的 SQLite `:memory:` 实例，创建方须等待 `close()`。
 
 ---
 
@@ -40,7 +40,7 @@ Store 本身提供 `subscribeCommits()`，可直接作为 Data Commit Source；�
 
 `revertChangeset()` 只撤销纯 Document Changeset，并校验当前版本后产生新的版本和 Changeset；包含其他 Store operation 的提交返回 `document.changeset_not_revertible`。它不是 Narrative、State、Prompt Resource、文件或外部副作用的通用撤销器。
 
-`list()` 按首次插入序号分页，更新、tombstone 和恢复保留行身份；SQLite 使用 UPSERT 而非 REPLACE，内存实现保留 Map 插入位置。默认页长 100，允许 1～1000 的安全整数。cursor 是绑定 type、ownerExtensionId、includeTombstone 的不透明边界，调用者只回传，不解析为 OFFSET；无效 cursor 或改变筛选会得到 `document.input_invalid`。
+`list()` 按首次插入序号分页，更新、tombstone 和恢复保留行身份；SQLite 使用 UPSERT 而非 REPLACE。默认页长 100，允许 1～1000 的安全整数。cursor 是绑定 type、ownerExtensionId、includeTombstone 的不透明边界，调用者只回传，不解析为 OFFSET；无效 cursor 或改变筛选会得到 `document.input_invalid`。
 
 这是动态集合遍历，不是跨请求快照：后插入项可在后续页出现，已越过边界的条目即使恢复或改为匹配筛选也不会重新返回。需要一致集合的导出、初始化与破坏性操作必须保留其事务/版本保护。游标不承诺跨数据库重建、离线 VACUUM 等维护操作继续有效。
 

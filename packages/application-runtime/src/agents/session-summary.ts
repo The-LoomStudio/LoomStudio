@@ -1,3 +1,4 @@
+import { isHistoricalRunPrefix } from './run-recovery.js'
 import { applyPatch, parsePatch } from 'diff'
 import { scanContentTools } from './tool-response-protocol.js'
 import { countText } from '@loom-studio/tokenizer'
@@ -17,6 +18,7 @@ type Context = Pick<ApplicationRuntimeContext, 'agents' | 'narratives' | 'worksp
 type Boundary = NonNullable<Extract<AgentTranscriptEntry['entry'], { kind: 'work-summary' }>['boundary']>
 export type SummaryPlan = {
   sessionId: string
+  expectedEntryCount: number
   previous: string
   boundary: Boundary
   policy: SessionSummaryPolicy
@@ -42,21 +44,60 @@ export async function planSessionSummary(ctx: Context, input: {
   const tail = input.entries.filter(entry => entry.entry.kind !== 'work-summary')
   if (!tail.length) return
   const latestState = [...tail].reverse().find(entry => entry.entry.kind === 'run-state')
-  if (latestState && latestState.entry.kind === 'run-state'
+  if (latestState && !(input.session.kind === 'timeline' && isHistoricalRunPrefix(latestState, input.branchId))
+    && latestState.entry.kind === 'run-state'
     && ['running', 'created', 'suspended'].includes(latestState.entry.state)) throw new Error('Cannot summarize an active Session')
   const measurement = [...tail].reverse().find(entry => entry.entry.kind === 'request-measurement')
   const tokenDue = measurement?.entry.kind === 'request-measurement'
     && measurement.entry.count.estimatedTokens >= policy.triggerTokens
-  let retiredThroughSequence = input.session.entryCount
+  const sourceThroughSequence = Math.max(...input.entries.map(entry => entry.sequence))
+  let retiredThroughSequence = sourceThroughSequence
   let narrative: Boundary['narrative']
   let memory: SummaryPlan['memory']
   let floorsDue = false
+  const retiredBefore = prior?.boundary?.retiredThroughSequence ?? previous?.sequence ?? 0
+  if (input.session.kind === 'timeline') {
+    // Root buffers retain whole story rounds, including every Run and discussion
+    // between successive roleplay inputs. Preparation has no round counter.
+    let starts = tail.flatMap((entry, index) => entry.entry.kind === 'message'
+      && entry.entry.role === 'user' && entry.entry.purpose === 'narrative' ? [index] : [])
+    if (!starts.length) {
+      const seen = new Set<string>()
+      starts = tail.flatMap((entry, index) => {
+        if (!entry.roundId || seen.has(entry.roundId)) return []
+        seen.add(entry.roundId)
+        return [index]
+      })
+    }
+    const rounds = starts.map((start, index) => {
+      const end = starts[index + 1] ?? tail.length
+      const entries = tail.slice(start, end)
+      const state = entries.findLast(entry => entry.entry.kind === 'run-state')
+      const complete = index < starts.length - 1 || Boolean(state && isHistoricalRunPrefix(state, input.branchId))
+        || state?.entry.kind === 'run-state'
+        && ['completed', 'failed', 'aborted', 'discarded'].includes(state.entry.state)
+      return { start, end, complete }
+    })
+    const completed = rounds.filter(round => round.complete)
+    floorsDue = completed.filter(round => tail[round.end - 1]!.sequence > retiredBefore).length >= policy.triggerFloors
+    if (!rounds.length) {
+      const lastCompleted = tail.findLast(entry => entry.entry.kind === 'run-state'
+        && ['completed', 'failed', 'aborted', 'discarded'].includes(entry.entry.state))
+      retiredThroughSequence = lastCompleted?.sequence ?? 0
+    } else {
+      const retained = completed.slice(-policy.bufferFloors)
+      const firstRetained = policy.bufferFloors ? retained[0] : undefined
+      const firstIncomplete = rounds.find(round => !round.complete)
+      const retainIndex = Math.min(firstRetained?.start ?? tail.length, firstIncomplete?.start ?? tail.length)
+      retiredThroughSequence = retainIndex ? tail[retainIndex - 1]!.sequence : 0
+    }
+  }
   if (input.session.timelineId && input.branchId && ctx.narratives) {
     const branch = await ctx.narratives.getBranch(input.branchId)
     if (!branch || branch.timelineId !== input.session.timelineId) throw new Error('Summary branch is unavailable')
     const sourceNodeId = input.sourceNodeId === undefined ? branch.headNodeId ?? null : input.sourceNodeId
     const nodes: NarrativeNode[] = []
-    let id = sourceNodeId
+    let id = input.session.kind === 'timeline' ? null : sourceNodeId
     while (id) {
       const node = await ctx.narratives.getNode(id)
       if (!node) throw new Error('Summary source is unavailable')
@@ -72,9 +113,9 @@ export async function planSessionSummary(ctx: Context, input: {
     const firstOwnNode = [...nodes].reverse().find(node => node.source?.runId && sessionRuns.has(node.source.runId))
     const priorFloor = nodes.find(node => node.id === prior?.boundary?.narrative?.nodeId)?.floor
       ?? (firstOwnNode ? Math.max(0, firstOwnNode.floor - 2) : sourceFloor)
-    floorsDue = input.allowFloorTrigger !== false && sourceFloor - priorFloor >= policy.triggerFloors
+    if (input.session.kind !== 'timeline') floorsDue = input.allowFloorTrigger !== false && sourceFloor - priorFloor >= policy.triggerFloors
     if (!input.force && !tokenDue && !floorsDue) return
-    if (policy.bufferFloors && nodes.length) {
+    if (input.session.kind !== 'timeline' && policy.bufferFloors && nodes.length) {
       const retainedRuns = new Set(nodes.filter(node => node.floor > sourceFloor - policy.bufferFloors)
         .flatMap(node => node.source?.runId ? [node.source.runId] : []))
       const firstRetained = tail.find(entry => entry.runId && retainedRuns.has(entry.runId))
@@ -88,10 +129,9 @@ export async function planSessionSummary(ctx: Context, input: {
     memory = { id: file.id, text: file.content.text }
   }
   if (!input.force && !tokenDue && !floorsDue) return
-  const retiredBefore = prior?.boundary?.retiredThroughSequence ?? previous?.sequence ?? 0
   if (retiredThroughSequence <= retiredBefore) return
-  return { sessionId: input.session.id, previous: prior?.content ?? '', policy,
-    boundary: { sourceThroughSequence: input.session.entryCount, retiredThroughSequence, ...(narrative ? { narrative } : {}) }, memory }
+  return { sessionId: input.session.id, expectedEntryCount: input.session.entryCount, previous: prior?.content ?? '', policy,
+    boundary: { sourceThroughSequence, retiredThroughSequence, ...(narrative ? { narrative } : {}) }, memory }
 }
 
 export function summaryInstruction(plan: SummaryPlan): string {
@@ -164,7 +204,8 @@ export function createSessionSummaryCoordinator(ctx: Context) {
     const signal = request?.abortSignal ? AbortSignal.any([request.abortSignal, task.controller.signal]) : task.controller.signal
     task.promise = (async () => {
       try {
-        if (source.entryCount !== plan.boundary.sourceThroughSequence) throw new Error('Session changed while preparing its summary snapshot')
+        if (source.entryCount !== plan.expectedEntryCount
+          || Math.max(...source.entries.map(entry => entry.sequence)) !== plan.boundary.sourceThroughSequence) throw new Error('Session changed while preparing its summary snapshot')
         await record(task, 'preparing', '正在整理此 Session 的工作交接。', request)
         const messages = markHistoryBoundary(plan, source.messages, source.entries)
         const profile = await ctx.documents.get(source.model.providerProfileId)

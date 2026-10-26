@@ -1,4 +1,4 @@
-import { createAgentStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeSwipeStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, createDocumentBackedAiGateway, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
@@ -342,13 +342,126 @@ describe('application agent session lifecycle', () => {
       expect(engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual(count)
     } finally { await engine.close() }
   })
+  it('round-trips v2 canonical facts across forks without replaying or sharing their IDs', async () => {
+    const { engine, runtime, narratives } = createTestRuntime()
+    const agents = createAgentStore({ engine })
+    const actor = { kind: 'system' as const, id: 'archive-test' }
+    try {
+      const card = await runtime.createCard({ name: 'Canonical archive', opening: 'Opening.' })
+      const story = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const timelineId = story.timeline.id
+      const input = await runtime.appendNarrativeInput({ timelineId, branchId: story.branch.id, nodeId: 'archive-input', expectedHeadNodeId: story.nodes[0]!.id, content: 'Act' })
+      const swipes = createNarrativeSwipeStore({ engine })
+      const group = (await engine.transact({ actor }, async tx => swipes.transaction(tx).save({
+        id: input.node.entryId!, timelineId, branchId: story.branch.id, inputNodeId: input.node.id, input: 'Act',
+        baselineStateRevisionId: story.branch.stateHeadRevisionId, baselineWorkspaceRevisionId: story.branch.workspaceHeadRevisionId,
+        agentSessionId: timelineId, baseEntryCount: 1, baseEntryId: story.nodes[0]!.entryId,
+        activeCandidateId: 'candidate-original', activeRunId: 'original-run',
+        candidates: [{ id: 'candidate-original', agentSessionId: timelineId, inputNodeId: input.node.id, runIds: ['original-run'],
+          stateRevisionId: story.branch.stateHeadRevisionId, workspaceRevisionId: story.branch.workspaceHeadRevisionId,
+          status: 'running', mode: 'initial', createdAt: story.timeline.createdAt }],
+        generation: 1, revision: 0, closed: false, createdAt: story.timeline.createdAt, updatedAt: story.timeline.updatedAt,
+      }))).value
+      const saved = await agents.appendEntries({ actor, agentSessionId: timelineId, expectedEntryCount: 2, entries: [
+        { runId: 'original-run', entry: { kind: 'message', role: 'user', content: 'Please keep this literal original-run', purpose: 'discussion' } },
+        { runId: 'original-run', entry: { kind: 'tool-invocation', invocationId: 'original-call', toolId: 'test', exposedName: 'test', transport: 'native-function', arguments: { nodeId: 'archive-input' }, status: 'completed' } },
+        { runId: 'original-run', entry: { kind: 'tool-result', invocationId: 'original-call', toolId: 'test', status: 'completed', content: [{ type: 'text', text: 'original-call' }] } },
+        { id: 'partial-original', runId: 'original-run', entry: { kind: 'message', role: 'assistant', content: 'Action', state: 'partial', narrativeId: 'logical-original' } },
+        { id: 'complete-original', runId: 'original-run', entry: { kind: 'message', role: 'assistant', content: 'Action.', state: 'complete', continuesEntryId: 'partial-original', narrativeId: 'logical-original' } },
+      ] })
+      const reply = await narratives.appendNode({ actor, timelineId, branchId: story.branch.id, expectedHeadNodeId: input.node.id,
+        stateRevisionId: story.branch.stateHeadRevisionId, body: { format: 'loom-markdown.v1', raw: 'Action.' },
+        source: { agentSessionId: timelineId, agentMessageId: saved.entries.at(-1)!.id, runId: 'original-run' } })
+      expect((await agents.getEntry(reply.node.entryId!))!.entry).toMatchObject({ narrativeId: 'logical-original' })
+      await engine.transact({ actor }, async tx => swipes.transaction(tx).save({ ...group, activeCandidateId: undefined, activeRunId: undefined,
+        selectedCandidateId: group.candidates[0]!.id, candidates: [{ ...group.candidates[0]!, status: 'completed', headNodeId: reply.node.id, headEntryId: reply.node.entryId }],
+      }, { expectedRevision: group.revision }))
+      const checkpoint = await agents.appendEntries({ actor, agentSessionId: timelineId, expectedEntryCount: 7,
+        entries: [{ runId: 'original-run', entry: { kind: 'run-state', state: 'completed', recovery: {
+          userEntryId: input.node.entryId!, partialEntryId: 'partial-original',
+          request: { agentSessionId: timelineId, input: 'Keep archive-input as user text', narrativeTarget: { timelineId, branchId: story.branch.id, inputNodeId: input.node.id } },
+          narrativeOutput: { logicalId: 'logical-original', consumedEntryId: 'complete-original' },
+        } } }] })
+      const fork = await narratives.forkBranch({ actor, timelineId, fromBranchId: story.branch.id, fromNodeId: reply.node.id })
+      const summary = await agents.appendEntries({ actor, agentSessionId: timelineId, expectedEntryCount: 8,
+        entries: [{ entry: { kind: 'work-summary', content: 'Work summary' } }] })
+      await narratives.switchBranch({ actor, timelineId, branchId: fork.branch.id })
+      await agents.appendEntries({ actor, agentSessionId: timelineId, expectedEntryCount: 9,
+        entries: [{ runId: 'fork-run', entry: { kind: 'message', role: 'assistant', content: 'Fork discussion', purpose: 'discussion' } }] })
+      await agents.updateSession({ actor, agentSessionId: timelineId, agentPresetId: 'missing-external-preset' })
+      const original = (await runtime.exportTimelineArchive({ timelineId })).archive
+      expect(original.agent!.entries).toHaveLength(10)
+      expect(original.agent!.entries.some(entry => entry.id === summary.entries[0]!.id)).toBe(true)
+      const imported = await runtime.importTimelineArchive({ source: JSON.stringify(original) })
+      const restored = (await runtime.exportTimelineArchive({ timelineId: imported.timelineId })).archive
+      expect(restored.agent!.session).toMatchObject({ kind: 'timeline', entryCount: 10 })
+      expect(restored.agent!.session.agentPresetId).toBeUndefined()
+      expect(restored.agent!.entries.map(entry => entry.sequence)).toEqual(original.agent!.entries.map(entry => entry.sequence))
+      expect(restored.agent!.entries.map(entry => entry.entry.kind)).toEqual(original.agent!.entries.map(entry => entry.entry.kind))
+      const oldIds = new Set(original.agent!.entries.map(entry => entry.id))
+      expect(restored.agent!.entries.every(entry => !oldIds.has(entry.id) && (!entry.parentEntryId || !oldIds.has(entry.parentEntryId)))).toBe(true)
+      const messages = restored.agent!.entries.filter(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant' && entry.entry.narrativeId)
+      const partial = messages.find(entry => entry.entry.kind === 'message' && entry.entry.state === 'partial')!
+      const complete = messages.find(entry => entry.entry.kind === 'message' && entry.entry.continuesEntryId)!
+      expect(partial.entry).toMatchObject({ narrativeId: expect.any(String) })
+      expect(complete.entry).toMatchObject({ narrativeId: (partial.entry as { narrativeId: string }).narrativeId, continuesEntryId: partial.id })
+      expect((partial.entry as { narrativeId: string }).narrativeId).not.toBe('logical-original')
+      const call = restored.agent!.entries.find(entry => entry.entry.kind === 'tool-invocation')!
+      expect(call.entry).toMatchObject({ invocationId: expect.not.stringMatching('original-call'), arguments: { nodeId: 'archive-input' } })
+      expect(restored.agent!.entries.find(entry => entry.entry.kind === 'tool-result')!.entry).toMatchObject({ content: [{ type: 'text', text: 'original-call' }] })
+      const restoredGroup = restored.agent!.swipeGroups[0]!
+      const restoredUser = restored.agent!.entries.find(entry => entry.entry.kind === 'message' && entry.entry.role === 'user' && entry.entry.purpose === 'narrative')!
+      expect(restoredGroup.id).toBe(restoredUser.roundId)
+      expect(restoredUser.roundId).toBe(restoredUser.id)
+      expect(restoredGroup.candidates[0]!.id).not.toBe('candidate-original')
+      expect(restored.agent!.entries.filter(entry => entry.candidateId).every(entry => entry.candidateId === restoredGroup.candidates[0]!.id)).toBe(true)
+      const restoredCheckpoint = restored.agent!.entries.find(entry => entry.entry.kind === 'run-state')!
+      expect(restoredCheckpoint.id).not.toBe(checkpoint.entries[0]!.id)
+      expect(restoredCheckpoint.entry).toMatchObject({ recovery: { userEntryId: restoredUser.id, partialEntryId: partial.id,
+        request: { agentSessionId: imported.timelineId, input: 'Keep archive-input as user text', narrativeTarget: { timelineId: imported.timelineId, inputNodeId: imported.idMap.nodeIds[input.node.id] } },
+        narrativeOutput: { logicalId: (partial.entry as { narrativeId: string }).narrativeId, consumedEntryId: complete.id },
+      } })
+      const page = await runtime.getNarrativePage({ timelineId: imported.timelineId })
+      expect(page.nodes.map(node => node.body.raw)).toEqual(['Opening.', 'Act', 'Action.'])
+      expect(page.branch.headEntryId).toBe(restored.agent!.session.headEntryId)
+      await runtime.switchNarrativeBranch({ timelineId: imported.timelineId, branchId: imported.idMap.branchIds[story.branch.id]! })
+      expect((await agents.getLatestWorkSummary(imported.timelineId))!.entry).toMatchObject({ kind: 'work-summary', content: 'Work summary' })
+      const broken = structuredClone(original)
+      broken.agent!.entries[1]!.parentEntryId = 'missing-entry'
+      const before = engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()
+      await expect(runtime.importTimelineArchive({ source: JSON.stringify(broken) })).rejects.toThrow('Entry reference')
+      expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()).toEqual(before)
+      const legacy = structuredClone(original)
+      legacy.format = 'loom-timeline-archive.v1'
+      delete legacy.agent
+      const oldImport = await runtime.importTimelineArchive({ source: JSON.stringify(legacy) })
+      expect((await agents.listEntries(oldImport.timelineId)).every(entry => entry.entry.kind === 'message')).toBe(true)
+      expect(engine.database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally { engine.close() }
+  })
+
+  it('preserves imported user roles in both Narrative and canonical messages', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Role import' })
+      const imported = await runtime.importNarrativeHistory({ cardId: card.card.id, messages: [
+        { role: 'user', content: 'User action' }, { role: 'assistant', content: 'Response' },
+      ] })
+      expect(imported.nodes.map(node => node.kind)).toEqual(['user-input', 'narrative'])
+      const agents = createAgentStore({ engine })
+      expect((await agents.listEntries(imported.timeline.id)).map(entry => entry.entry)).toMatchObject([
+        { kind: 'message', role: 'user', content: 'User action' }, { kind: 'message', role: 'assistant', content: 'Response' },
+      ])
+    } finally { engine.close() }
+  })
+
   it('exports and imports a Timeline archive with State history', async () => {
     const { engine, runtime } = createTestRuntime()
     try {
       const card = await runtime.createCard({ name: 'Archive Story', opening: 'Opening.' })
       const created = await runtime.createNarrativeTimeline({ cardId: card.card.id })
       const exportResult = await runtime.exportTimelineArchive({ timelineId: created.timeline.id })
-      expect(exportResult.archive.format).toBe('loom-timeline-archive.v1')
+      expect(exportResult.archive.format).toBe('loom-timeline-archive.v2')
       expect(exportResult.archive.branches).toHaveLength(1)
       expect(exportResult.archive.nodes.length).toBeGreaterThan(0)
       expect(exportResult.archive.state.revisions).toHaveLength(1)

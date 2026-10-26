@@ -1,0 +1,7 @@
+.configurationDialog[data-loom-ui-dialog][data-layout='workbench'] {
+  width: min(840px, calc(100vw - 32px));
+  height: min(780px, calc(var(--loom-viewport-height, 100dvh) - 48px));
+}
+@media (max-width: 640px) {
+  .configurationDialog[data-loom-ui-dialog][data-layout='workbench'] { width: calc(100vw - 24px); height: calc(var(--loom-viewport-height, 100dvh) - 32px); }
+}

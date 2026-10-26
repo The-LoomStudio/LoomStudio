@@ -38,7 +38,7 @@ export type CardBundleArtifact = {
   contextAssets: PromptResourceNode[]
   /** Portable resource settings keyed by the corresponding context asset root ID. */
   contextAssetSettings?: Record<string, Pick<PromptResourceContent,
-    'macros' | 'macroOptions' | 'useCardLore' | 'useGlobalLore' | 'historyPolicy'>>
+    'macros' | 'macroOptions' | 'useCardLore' | 'useGlobalLore' | 'historyPolicy' | 'textUses'>>
   externalContextAssetIds?: string[]
   state?: StateArtifact
   stateTemplates?: Array<{

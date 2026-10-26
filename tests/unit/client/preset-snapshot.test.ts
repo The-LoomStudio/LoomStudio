@@ -2,10 +2,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
-import { useAgentPresets } from '../../../apps/studio-client/src/features/agent-presets/model/use-agent-presets.js'
+import { useAgentPresets } from '../../../apps/studio-client/src/features/prompt-resources/model/use-agent-presets.js'
 import { usePromptResourceState } from '../../../apps/studio-client/src/features/prompt-resources/model/use-prompt-resource-state.js'
 import { usePromptResourceCommands } from '../../../apps/studio-client/src/features/prompt-resources/model/use-prompt-resource-commands.js'
-import { useContextAssets } from '../../../apps/studio-client/src/features/context-assets/model/use-context-assets.js'
+import { useContextAssets } from '../../../apps/studio-client/src/features/prompt-resources/model/use-context-assets.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { PromptResource } from '../../../apps/studio-client/src/entities/index.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
@@ -40,7 +40,7 @@ it('publishes macro, node and model edits to the Preset projection and uses thei
   let editor!: ReturnType<typeof useContextAssets>
   function Consumer() {
     state = usePromptResourceState({ api, endpoint: '/rpc' })
-    presets = useAgentPresets({ api, resources: state.promptResources, readResources: state.readResources, setResources: state.setPromptResources, runAction: action => action(), refreshDependents: async () => {} })
+    presets = useAgentPresets({ resources: state.promptResources })
     const t = createTranslator('en-US')
     commands = usePromptResourceCommands({ api, t, promptResources: state.promptResources, setPromptResources: state.setPromptResources, setLoreMounts: state.setLoreMounts, setPresetToolMounts: state.setPresetToolMounts, invalidatePromptResourceState: async () => {}, recordEdit: () => {}, runMutation: action => action(), refreshCards: async () => {}, refreshCardTimelines: async () => {} })
     editor = useContextAssets({ api, scope: '/rpc', resources: state.promptResources, onResourceChange: resource => state.setPromptResources(current => current.map(item => item.id === resource.id ? resource : item)), recordEdit: () => {}, runAction: action => action(), t })
@@ -49,15 +49,18 @@ it('publishes macro, node and model edits to the Preset projection and uses thei
   const render = () => renderToString(createElement(QueryClientProvider, { client }, createElement(Consumer)))
   render()
   await commands.updatePresetMacros('preset', { expectedVersion: 1, macros: { mood: 'happy' } })
-  // A retained handler must read current cache, even before React renders the updated list.
-  await presets.updateAgentPreset('preset', { name: 'After macro' })
+  // The actual root editor reads the published resource version before its next save.
+  render()
+  await editor.updateContextAsset('root', { label: 'After macro' })
   render()
   expect(presets.agentPresets[0]?.macros).toEqual({ mood: 'happy' })
   await editor.updateContextAsset('root', { label: 'Edited node' })
-  await presets.updateAgentPreset('preset', { name: 'After node' })
+  render()
+  await editor.updateContextAsset('root', { label: 'After node' })
   render()
   await commands.updatePresetModel({ agentPresetId: 'preset', expectedVersion: saved.version, delivery: 'complete' })
-  await presets.updateAgentPreset('preset', { name: 'After model' })
+  render()
+  await editor.updateContextAsset('root', { label: 'After model' })
   render()
   expect(presets.agentPresets[0]).toEqual(saved)
   expect(versions).toEqual([1, 2, 3, 4, 5, 6])

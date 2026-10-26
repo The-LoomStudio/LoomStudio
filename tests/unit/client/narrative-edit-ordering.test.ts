@@ -7,11 +7,12 @@ describe('Narrative edit and read ordering', () => {
   it.each(['older', 'terminal'] as const)('rejects a %s page crossing a successful local edit', async readKind => {
     vi.stubGlobal('EventSource', class {})
     const f = fixture()
-    const original = { id: 'original', timelineId: 'timeline', stateRevisionId: 'state',
+    const original = { id: 'original', kind: 'narrative' as const, floor: 1, timelineId: 'timeline', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw: 'Original' }, createdAt: '' }
     const page = { ...f.result.narrative, branch: { ...f.result.narrative.branch, headNodeId: original.id }, nodes: [original] }
     f.createTimeline.mockResolvedValue(page)
     await f.render().createTimelineFromCard()
+    await f.loadRoot()
     await f.render().createAgentSession('profile', true)
     if (readKind === 'older') {
       f.getPage.mockResolvedValueOnce({ ...page, nextCursor: 'older' })
@@ -26,7 +27,7 @@ describe('Narrative edit and read ordering', () => {
     const pending = readKind === 'older' ? f.render().loadOlderNodes() : f.render().submitTurn(f.event)
     await readStarted.promise
     const target = f.render().nodes.at(-1)!
-    const edited = { ...target, stateRevisionId: 'state', id: 'edited', body: { ...target.body, raw: 'Edited' } }
+    const edited = { ...target, stateRevisionId: 'state', workspaceRevisionId: 'workspace', id: 'edited', body: { ...target.body, raw: 'Edited' } }
     f.input.api.narratives.editNode = async () => ({
       timeline: page.timeline, branch: { ...page.branch, headNodeId: edited.id },
       replacements: [{ previousNodeId: target.id, node: edited }], mutation: { changesetId: 'edit' },
@@ -44,11 +45,12 @@ describe('Narrative edit and read ordering', () => {
   it('allows an authoritative pending read to publish after an edit conflict', async () => {
     vi.stubGlobal('EventSource', class {})
     const f = fixture()
-    const original = { id: 'original', timelineId: 'timeline', stateRevisionId: 'state',
+    const original = { id: 'original', kind: 'narrative' as const, floor: 1, timelineId: 'timeline', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw: 'Original' }, createdAt: '' }
     const page = { ...f.result.narrative, branch: { ...f.result.narrative.branch, headNodeId: original.id }, nodes: [original] }
     f.createTimeline.mockResolvedValue(page)
     await f.render().createTimelineFromCard()
+    await f.loadRoot()
     await f.render().createAgentSession('profile', true)
     const readResult = Promise.withResolvers<Awaited<ReturnType<StudioApi['narratives']['getPage']>>>()
     f.getPage.mockReturnValueOnce(readResult.promise)

@@ -36,22 +36,14 @@
       },
       {
         "id": "official.loom-assistant.extension.message-narrative",
-        "label": "Narrative Message",
-        "meta": "message.developer",
-        "category": "preset",
-        "kind": "message",
-        "capabilities": { "roleHint": "developer" },
-        "children": [{ "id": "official.loom-assistant.extension.virtual-narrative", "label": "@chat.narrative", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.narrative" } }]
-      },
-      {
-        "id": "official.loom-assistant.extension.message-session",
-        "label": "Session Message",
+        "label": "外部故事正文",
         "meta": "message.system",
         "category": "preset",
         "kind": "message",
         "capabilities": { "roleHint": "system" },
-        "children": [{ "id": "official.loom-assistant.extension.virtual-session", "label": "@chat.session", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.session" } }]
+        "children": [{ "id": "official.loom-assistant.extension.virtual-narrative", "label": "@chat.narrative", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.narrative" } }]
       },
+      { "id": "official.loom-assistant.extension.virtual-session", "label": "会话历史", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.session" } },
       {
         "id": "official.loom-assistant.extension.message-post-session",
         "label": "Post Session Message",

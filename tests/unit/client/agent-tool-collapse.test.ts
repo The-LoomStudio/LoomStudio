@@ -1,8 +1,10 @@
 import { AgentMutationApprovalDialog } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-mutation-approval-dialog.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import { isValidElement, type ReactElement } from 'react'
-import { AgentChatPanel, AgentToolActionItem, buildRenderItems, type AgentChatPanelProps } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-chat-panel.js'
+import { AgentChatPanel, type AgentChatPanelProps } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-chat-panel.js'
+import { AgentToolActionItem } from '../../../apps/studio-client/src/features/sessions/ui/agent-tool-blocks.js'
+import { buildRenderItems } from '../../../apps/studio-client/src/features/sessions/model/transcript-render-items.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[] }))
@@ -23,6 +25,7 @@ vi.mock('react', async importOriginal => ({
 }))
 vi.mock('../../../apps/studio-client/src/shared/ui/conversation-viewport/use-conversation-viewport.js', () => ({
   useConversationViewport: ({ items }: { items: { id: string }[] }) => ({
+    smooth: { following: true, pause: vi.fn(), resume: vi.fn() },
     scrollRef: { current: null }, listRef: { current: null }, headerRef: { current: null },
     scrollMargin: 0, onScroll: vi.fn(),
     virtualizer: {
@@ -41,7 +44,7 @@ function elements(value: unknown): Element[] {
 function render(element: Element): Element {
   return (element.type as (props: Record<string, unknown>) => Element)(element.props)
 }
-function panelElements(count: number, reply: boolean) {
+function panelElements(count: number, reply: boolean, completed = false) {
   hooks.cursor = 0
   const messages: AgentChatPanelProps['messages'] = Array.from({ length: count }, (_, i) => ({
     id: `tool-${i}`, agentSessionId: 'session', sequence: i, createdAt: '',
@@ -50,7 +53,10 @@ function panelElements(count: number, reply: boolean) {
   const props: AgentChatPanelProps = {
     runRecoveryBusy: false, canRestoreRunInput: false, reconnectAgentRun: vi.fn(async () => {}), restoreRunInput: vi.fn(),
     busy: false, input: '', profiles: [], providerAccounts: [],
-    messages: [...messages, ...(reply ? [{
+    messages: [...messages, ...(completed ? messages.map((message, i) => ({
+      id: `result-${i}`, agentSessionId: 'session', sequence: count + i, createdAt: '',
+      entry: { kind: 'tool-result' as const, invocationId: `call-${i}`, content: 'Done' },
+    })) : []), ...(reply ? [{
       id: 'answer', agentSessionId: 'session', sequence: count, createdAt: '',
       entry: { kind: 'message', role: 'assistant' as const, content: 'Done' },
     }] : [])],
@@ -190,9 +196,10 @@ describe('Agent tool group identity and collapse', () => {
   })
 
   it('keeps group identity as tools and the following reply arrive', () => {
-    const one = panel(1, false)
-    const many = panel(2, false)
-    const answered = panel(2, true)
+    const completedGroup = (count: number, reply: boolean) => panelElements(count, reply, true).find(element => Array.isArray(element.props.tools))!
+    const one = completedGroup(1, false)
+    const many = completedGroup(2, false)
+    const answered = completedGroup(2, true)
     expect(one.key).toBe(many.key)
     expect(many.key).toBe(answered.key)
     const singleCollapse = elements(render(one)).find(element => typeof element.props.open === 'boolean')!

@@ -6,17 +6,11 @@ import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/stu
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
-import {
-  findContextNode,
-} from '../../features/context-assets/model/projection-order.js'
-import {
-  type ContextAssetUpdate,
-} from '../../features/context-assets/model/projection-workbench.js'
-import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
-import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
-import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
-import { useResourceTokenSnapshot } from '../../features/context-assets/model/use-resource-token-snapshot.js'
+import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources/model/prompt-resource-view.js'
+import { ContextAssetEditor, ContextAssetExplorer } from '../../features/prompt-resources/ui/context-asset-workbench.js'
+import { findContextAssetNode, findContextAssetPath, findContextAssetByVirtualPath } from '../../features/prompt-resources/model/context-asset-tree.js'
+import { PromptResourceToolbar } from '../../features/prompt-resources/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
+import { useResourceTokenSnapshot } from '../../features/prompt-resources/model/use-resource-token-snapshot.js'
 import { Dialog, SearchField } from '@loom-studio/ui'
 import type { Card, ContextAssetNode, PromptResource, LoreMount, LoreMountSource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -24,12 +18,10 @@ import styles from './context-workbench.module.scss'
 import { readLoreTreeMeta, resolveLoreScope, resolveLoreTarget } from './lore-target.js'
 
 type ContextWorkbenchProps = {
-  resourceBindings?: import('../../features/context-assets/ui/prompt-resource-toolbar/resource-bindings.js').ResourceBindingsSource
   extensionInstallations?: import('../../entities/index.js').ListExtensionInstallationsResult['installations']
   view?: 'lore' | 'macros' | 'text'
   onViewChange?: (view: 'lore' | 'macros' | 'text') => void
   card?: Card
-  nodes: ContextAssetNode[]
   resources: PromptResource[]
   loreMounts: LoreMount[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
@@ -39,7 +31,6 @@ type ContextWorkbenchProps = {
   onRenameNode(id: string, label: string): Promise<void>
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onBatchToggleEnabled?: (ids: string[], enabled: boolean) => Promise<{ failedIds: string[]; error?: string }>
-  onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onAddNode: (parentId: string) => Promise<string | undefined>
   onAddFolderNode?: (parentId: string) => Promise<string | undefined>
@@ -100,7 +91,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const routeTargetResource = useMemo(() => {
     if (props.routeResourceId) return loreResources.find(resource => resource.id === props.routeResourceId)
     if (!props.routeAssetId) return undefined
-    return loreResources.find(r => r.id === props.routeAssetId || Boolean(findContextNode([r.rootNode], props.routeAssetId)))
+    return loreResources.find(r => r.id === props.routeAssetId || Boolean(findContextAssetNode([r.rootNode], props.routeAssetId)))
   }, [props.routeResourceId, props.routeAssetId, loreResources])
 
   const [scopeFilter, setScopeFilter] = useState<'current' | 'global'>('current')
@@ -126,7 +117,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       && temporarySelection.requestId === props.searchMatch?.requestId
       ? temporarySelection.nodeId : props.routeAssetId ?? target.target!.rootNode.id)
     : explorerView.selectedId
-  const selectedNodeResource = selectedId ? loreResources.find(r => r.id === selectedId || Boolean(findContextNode([r.rootNode], selectedId))) : undefined
+  const selectedNodeResource = selectedId ? loreResources.find(r => r.id === selectedId || Boolean(findContextAssetNode([r.rootNode], selectedId))) : undefined
   const selectedResourceId = selectedNodeResource?.id ?? props.routeResourceId ?? props.selectedResourceId
     ?? routeTargetResource?.id ?? internalSelectedResourceId
     ?? (loreResources.find(r => cardResourceIds.has(r.id))?.id ?? (unavailableBoundIds.length === 0 ? loreResources[0]?.id : undefined))
@@ -169,7 +160,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   }, [targetResources, globalMountIds, cardResourceIds, props.extensionInstallations, props.t])
 
   const workbenchNodes = displayNodes
-  const selectedNode = findContextNode(workbenchNodes, selectedId)
+  const selectedNode = findContextAssetNode(workbenchNodes, selectedId)
   const selectedLoreResource = targetResources.find(r => r.id === selectedId)
   const hasDetailSelection = Boolean(selectedNode || selectedLoreResource)
 
@@ -231,7 +222,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   useEffect(() => {
     if (target.temporary || target.unavailable) return
-    if (selectedId && findContextNode(workbenchNodes, selectedId)) return
+    if (selectedId && findContextAssetNode(workbenchNodes, selectedId)) return
     if (workbenchNodes[0]?.id) {
       setSelectedId('resources', props.workspaceId, workbenchNodes[0].id)
     }
@@ -274,7 +265,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     }
   }
 
-  if (props.routeResourceId && (target.unavailable || (props.routeAssetId && !findContextNode([routeTargetResource!.rootNode], props.routeAssetId)))) {
+  if (props.routeResourceId && (target.unavailable || (props.routeAssetId && !findContextAssetNode([routeTargetResource!.rootNode], props.routeAssetId)))) {
     return <ResourceUnavailable message={props.t('promptResource.referenceUnavailable')} />
   }
 

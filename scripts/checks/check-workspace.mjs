@@ -47,7 +47,6 @@ async function checkRuntimeExports() {
   const checks = [
     ['apps/studio-server', '@loom-studio/kernel', 'createKernel'],
     ['apps/studio-server', '@loom-studio/logging', 'createRootLogger'],
-    ['apps/studio-client', '@loom-studio/client-bridge', 'createClientBridge'],
     ['apps/studio-client', '@loom-studio/logging', 'createRootLogger'],
     ['tests/fixtures/extensions/echo', '@loom-studio/extension-sdk', 'defineServerExtension'],
   ]

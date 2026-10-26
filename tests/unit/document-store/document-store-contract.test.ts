@@ -1,23 +1,13 @@
 import {
   createInMemoryDocumentStore,
-  createSqliteDocumentStore,
   type DocumentStore,
+  type SqliteDocumentStore,
 } from '@loom-studio/document-store'
 import { describe, expect, it, vi } from 'vitest'
 
 const actor = { kind: 'system', id: 'document-store-contract' } as const
-const stores = [
-  {
-    name: 'in-memory',
-    create: () => createInMemoryDocumentStore(),
-  },
-  {
-    name: 'sqlite',
-    create: () => createSqliteDocumentStore({ filename: ':memory:' }),
-  },
-]
-
-describe.each(stores)('$name document store contract', ({ create }) => {
+describe('SQLite in-memory document store contract', () => {
+  const create = createInMemoryDocumentStore
   it('does not overwrite an existing document when an automatically generated ID collides', async () => {
     await withStore(create(), async store => {
       await store.write({ id: '00000000000', type: 'test.card', content: { name: 'Original' }, expectedVersion: 'new' })
@@ -502,10 +492,10 @@ describe.each(stores)('$name document store contract', ({ create }) => {
   })
 })
 
-async function withStore(store: DocumentStore, run: (store: DocumentStore) => Promise<void>): Promise<void> {
+async function withStore(store: SqliteDocumentStore, run: (store: DocumentStore) => Promise<void>): Promise<void> {
   try {
     await run(store)
   } finally {
-    if ('close' in store && typeof store.close === 'function') store.close()
+    await store.close()
   }
 }

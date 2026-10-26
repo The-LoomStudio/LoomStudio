@@ -1,3 +1,4 @@
+import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type {
   DataActorRef,
   DataCommitFact,
@@ -17,7 +18,9 @@ export type SessionSummaryPolicy = {
 
 export type AgentSession = {
   id: string
-  agentPresetId: string
+  kind: 'agent' | 'timeline'
+  agentPresetId?: string
+  narrativeMode?: 'declared' | 'automatic'
   timelineId?: string
   title?: string
   headEntryId?: string
@@ -61,6 +64,8 @@ export type AgentTranscriptEntryData =
     }
   | {
       kind: 'message'
+      purpose?: 'narrative' | 'discussion'
+      narrativeId?: string
       role: 'user' | 'assistant'
       content: string
       state?: AgentMessageState
@@ -151,19 +156,15 @@ export type AgentTranscriptEntry = {
   id: string
   agentSessionId: string
   parentEntryId?: string
+  roundId?: string
+  candidateId?: string
   sequence: number
   runId?: string
   entry: AgentTranscriptEntryData
   createdAt: string
 }
 
-export type AgentWriteContext = {
-  actor: DataActorRef
-  reason?: string
-  correlationId?: string
-  callId?: string
-  parentCallId?: string
-}
+export type AgentWriteContext = DataTransactionInput
 export type CreateAgentSessionInput = AgentWriteContext & {
   id?: string
   agentPresetId: string
@@ -176,6 +177,8 @@ export type AppendAgentTranscriptEntriesInput = AgentWriteContext & {
   entries: Array<{
     id?: string
     runId?: string
+    roundId?: string
+    candidateId?: string
     entry: AgentTranscriptEntryData
   }>
 }
@@ -187,6 +190,8 @@ export type UpdateAgentSessionInput = AgentWriteContext & {
   title?: string
   timelineId?: string | null
   summaryPolicy?: SessionSummaryPolicy
+  agentPresetId?: string
+  narrativeMode?: 'declared' | 'automatic'
 }
 export type AgentTranscriptPage = {
   session: AgentSession
@@ -195,6 +200,7 @@ export type AgentTranscriptPage = {
 }
 
 export type ListAgentSessionsInput = {
+  includeTimelines?: boolean
   agentPresetId?: string
   timelineId?: string
   standalone?: boolean
@@ -232,6 +238,10 @@ export type AgentSummaryTask = {
 }
 
 export type AgentTransaction = {
+  restoreTimelineEntries(input: { agentSessionId: string; entries: AgentTranscriptEntry[]; headEntryId?: string; entryCount: number }): AgentSession
+  getEntry(id: string): AgentTranscriptEntry | null
+  createTimelineSession(input: { id: string; title?: string; agentPresetId?: string }): AgentSession
+  setTimelineHead(input: { agentSessionId: string; headEntryId: string | null }): AgentSession
   writeSummaryTask(input: Omit<AgentSummaryTask, 'createdAt' | 'updatedAt'>): void
   getLatestWorkSummary(agentSessionId: string): AgentTranscriptEntry | null
   getSession(id: string): AgentSession | null
@@ -241,6 +251,7 @@ export type AgentTransaction = {
   listSessions(input?: ListAgentSessionsInput): AgentSessionPage
   appendEntries(
     input: Omit<AppendAgentTranscriptEntriesInput, keyof AgentWriteContext>,
+    options?: { timelineBranchId: string },
   ): { session: AgentSession; entries: AgentTranscriptEntry[] }
   deleteSession(
     input: Omit<DeleteAgentSessionInput, keyof AgentWriteContext>,
@@ -251,6 +262,7 @@ export type AgentTransaction = {
 }
 
 export type AgentStore = {
+  listEntries(agentSessionId: string): Promise<AgentTranscriptEntry[]>
   countSummaryMessages(agentSessionId: string, retiredThrough: number, sourceThrough: number): Promise<{ retired: number; source: number; total: number }>
   listSummaryTasks(agentSessionId: string): Promise<AgentSummaryTask[]>
   listRunStates(): Promise<AgentSessionRunSummary[]>

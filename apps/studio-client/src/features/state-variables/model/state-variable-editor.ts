@@ -1,5 +1,5 @@
 import YAML from 'yaml'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import { isJsonObject } from '@loom-studio/shared'
 import type { Card, StateSnapshot, StateTarget } from '../../../entities/index.js'
 import type { FileTreeNode } from '../../../shared/ui/file-tree/file-tree-model.js'

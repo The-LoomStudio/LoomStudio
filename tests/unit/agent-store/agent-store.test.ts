@@ -19,6 +19,43 @@ function createTestContext() {
 }
 
 describe('agent store', () => {
+  it('rejects tool results whose invocation only exists on another adopted path', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      await engine.transact({ actor }, async tx => { store.transaction(tx).createTimelineSession({ id: 'story' }) })
+      const saved = await store.appendEntries({ actor, agentSessionId: 'story', expectedEntryCount: 0, entries: [
+        { entry: { kind: 'message', role: 'user', content: 'Start' } },
+        { entry: { kind: 'tool-invocation', invocationId: 'call', toolId: 'test', exposedName: 'test', transport: 'native-function', status: 'running' } },
+      ] })
+      await engine.transact({ actor }, async tx => { store.transaction(tx).setTimelineHead({ agentSessionId: 'story', headEntryId: saved.entries[0]!.id }) })
+      await expect(store.appendEntries({ actor, agentSessionId: 'story', expectedEntryCount: 2,
+        entries: [{ entry: { kind: 'tool-result', invocationId: 'call', toolId: 'test', status: 'completed', content: [{ type: 'text', text: 'Stale' }] } }] })).rejects.toThrow()
+      expect((await store.getSession('story'))!.entryCount).toBe(2)
+    } finally { engine.close() }
+  })
+
+
+  it('restricts preset changes and adopted heads to Timeline Sessions at safe boundaries', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      await engine.transact({ actor }, async tx => { store.transaction(tx).createTimelineSession({ id: 'story' }) })
+      expect((await store.listSessions({ includeTimelines: true })).sessions).toHaveLength(1)
+      await store.updateSession({ actor, agentSessionId: 'story', agentPresetId: 'first', narrativeMode: 'automatic' })
+      const running = await store.appendEntries({ actor, agentSessionId: 'story', expectedEntryCount: 0,
+        entries: [{ runId: 'run', entry: { kind: 'run-state', state: 'suspended' } }] })
+      await expect(store.updateSession({ actor, agentSessionId: 'story', agentPresetId: 'second' })).rejects.toMatchObject({ code: 'agent.session_binding_active_run' })
+      await expect(store.updateSession({ actor, agentSessionId: 'story', timelineId: null })).rejects.toMatchObject({ code: 'agent.timeline_session_binding_immutable' })
+      await store.appendEntries({ actor, agentSessionId: 'story', expectedEntryCount: 1, entries: [{ runId: 'run', entry: { kind: 'run-state', state: 'completed' } }] })
+      await store.updateSession({ actor, agentSessionId: 'story', agentPresetId: 'second' })
+      await engine.transact({ actor }, async tx => { store.transaction(tx).setTimelineHead({ agentSessionId: 'story', headEntryId: running.entries[0]!.id }) })
+      expect(await store.getSession('story')).toMatchObject({ kind: 'timeline', agentPresetId: 'second', entryCount: 2 })
+      const ordinary = await store.createSession({ actor, agentPresetId: 'ordinary' })
+      await expect(store.updateSession({ actor, agentSessionId: ordinary.session.id, agentPresetId: 'second' })).rejects.toMatchObject({ code: 'agent.session_preset_immutable' })
+      await expect(engine.transact({ actor }, async tx => { store.transaction(tx).setTimelineHead({ agentSessionId: ordinary.session.id, headEntryId: null }) })).rejects.toMatchObject({ code: 'agent.timeline_session_required' })
+    } finally { engine.close() }
+  })
+
+
   it('reads current Session liveness inside a shared transaction and rolls it back atomically', async () => {
     const { engine, store, actor } = createTestContext()
     try {
@@ -81,6 +118,11 @@ describe('agent store', () => {
       engine.database.exec(`
         ALTER TABLE agent_sessions RENAME COLUMN agent_preset_id TO agent_profile_id;
         ALTER TABLE agent_sessions DROP COLUMN summary_policy_json;
+        DROP TABLE agent_summary_tasks;
+        ALTER TABLE agent_sessions DROP COLUMN kind;
+        ALTER TABLE agent_sessions DROP COLUMN narrative_mode;
+        ALTER TABLE agent_transcript_entries DROP COLUMN round_id;
+        ALTER TABLE agent_transcript_entries DROP COLUMN candidate_id;
         UPDATE schema_migrations SET version = 5 WHERE namespace = 'application.agent';
       `)
       const reopened = createAgentStore({ engine })
@@ -134,7 +176,7 @@ describe('agent store', () => {
       engine.database
         .prepare("SELECT version FROM schema_migrations WHERE namespace = 'application.agent'")
         .get(),
-    ).toEqual({ version: 7 })
+    ).toEqual({ version: 9 })
     engine.close()
   })
 
@@ -641,7 +683,7 @@ describe('agent store', () => {
         .prepare('SELECT version FROM schema_migrations WHERE namespace = ?')
         .get('application.agent')
       database.close()
-      expect(migration).toEqual({ version: 7 })
+      expect(migration).toEqual({ version: 9 })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

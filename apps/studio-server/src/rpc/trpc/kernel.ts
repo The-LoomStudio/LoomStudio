@@ -64,7 +64,7 @@ export const kernelRouter = t.router({
   invoke: procedure.input(z.object({ method: z.string(), params: z.json().optional() })).mutation(({ ctx, input }) => {
     // Only dynamically registered extension methods use the generic gateway.
     // Static platform namespaces have concrete procedures and must not bypass them.
-    if (['application', 'official', 'directories', 'settings', 'logs', 'ai', 'system', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit', 'events'].includes(input.method.split('.')[0]!)) throw new Error('Use the typed platform procedure')
+    if (['application', 'official', 'directories', 'settings', 'logs', 'ai', 'system', 'docs', 'extensions', 'diagnostics', 'events'].includes(input.method.split('.')[0]!)) throw new Error('Use the typed platform procedure')
     return ctx.services.kernel.callRpc(input.method, input.params, { clientId: ctx.request.clientId!, correlationId: ctx.request.correlationId!, callId: ctx.request.callId!, parentCallId: ctx.request.parentCallId })
   }),
 })
@@ -84,14 +84,5 @@ export const platformRouters = {
   }),
   diagnostics: t.router({
     list: procedure.input(z.record(z.string(), z.json()).optional()).query(({ ctx, input }) => callBuiltin(ctx, 'diagnostics.list', input)),
-  }),
-  trace: t.router({
-    list: procedure.query(({ ctx }) => callBuiltin(ctx, 'trace.list')),
-  }),
-  audit: t.router({
-    list: procedure.query(({ ctx }) => callBuiltin(ctx, 'audit.list')),
-  }),
-  loom: t.router({
-    run: procedure.input(z.object({ fragments: z.array(z.json()), passes: z.array(z.json()), options: z.json().optional(), trace: z.object({ enabled: z.boolean().optional(), strictPersist: z.boolean().optional() }).optional() }).strict()).mutation(({ ctx, input }) => callBuiltin(ctx, 'loom.run', input)),
   }),
 }

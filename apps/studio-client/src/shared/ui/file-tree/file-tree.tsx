@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal, X } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
 import { Button, Dialog, ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, type MenuAction } from '@loom-studio/ui'
 import { useEffectiveMotion } from '../../hooks/use-motion-preference.js'
 import { useSlidingHover } from '../../hooks/use-sliding-hover.js'
@@ -41,6 +41,7 @@ type FileTreeProps = {
   isMuted?: (node: FileTreeNode) => boolean
   moreActionsLabel: string
   nodes: FileTreeNode[]
+  canDrop?: (sourceId: string, targetId: string, position: 'before' | 'inside' | 'after') => boolean
   canDrag?: (node: FileTreeNode) => boolean
   onMoveNode?: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onEditCommit?: (id: string, newLabel: string) => void
@@ -316,8 +317,20 @@ export function FileTree(props: FileTreeProps) {
       || node.kind === 'slot'
   }
 
+  function dropPosition(sourceId: string, target: FileTreeNode): 'before' | 'inside' | 'after' | undefined {
+    if (isNodeContainer(target) && (props.canDrop?.(sourceId, target.id, 'inside') ?? true)) return 'inside'
+    const position = readDropPosition(props.nodes, sourceId, target.id)
+    return (props.canDrop?.(sourceId, target.id, position) ?? true) ? position : undefined
+  }
+
   function handleDragOver(event: DragEvent<HTMLElement>, node: FileTreeNode) {
     if (!draggedIdRef.current || draggedIdRef.current === node.id) return
+    if (!dropPosition(draggedIdRef.current, node)) {
+      event.dataTransfer.dropEffect = 'none'
+      dragOverElementRef.current?.classList.remove(styles.dragOver)
+      dragOverElementRef.current = undefined
+      return
+    }
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
     if (dragOverElementRef.current === event.currentTarget) return
@@ -333,8 +346,8 @@ export function FileTree(props: FileTreeProps) {
     clearDragState()
     if (!props.onMoveNode || !sourceId || sourceId === targetNode.id) return
 
-    const position = isNodeContainer(targetNode) ? 'inside' : readDropPosition(props.nodes, sourceId, targetNode.id)
-    props.onMoveNode(sourceId, targetNode.id, position)
+    const position = dropPosition(sourceId, targetNode)
+    if (position) props.onMoveNode(sourceId, targetNode.id, position)
   }
 
   function handleDragEnd() {
@@ -378,6 +391,7 @@ export function FileTree(props: FileTreeProps) {
         highlightMessages={props.highlightMessages}
         editingId={props.editingId}
         expandedIds={expandedIds}
+        hasDragGutter={Boolean(props.onMoveNode)}
         canDrag={Boolean(props.onMoveNode) && (props.canDrag?.(node) ?? true)}
         canDragNode={props.canDrag}
         renderLabel={props.renderLabel}
@@ -539,6 +553,7 @@ function FileTreeRow(props: {
   editingId?: string
   expandedIds: Set<string>
   canDrag: boolean
+  hasDragGutter: boolean
   canDragNode?: (node: FileTreeNode) => boolean
   renderLabel?: (node: FileTreeNode) => ReactNode
   formatLabel?: (node: FileTreeNode) => string
@@ -619,7 +634,7 @@ function FileTreeRow(props: {
   if (selected) rowClass += ` ${styles.selected}`
   if (props.highlightMessages && props.node.kind === 'message') rowClass += ` ${styles.messageHighlight}`
   if (props.isMuted?.(props.node)) rowClass += ` ${styles.muted}`
-  if (!props.canDrag) rowClass += ` ${styles.noDrag}`
+  if (!props.hasDragGutter) rowClass += ` ${styles.noDrag}`
 
   const iconElement = props.renderIcon?.(props.node, expanded)
 
@@ -670,7 +685,7 @@ function FileTreeRow(props: {
             >
               <GripVertical aria-hidden="true" />
             </button>
-          ) : null}
+          ) : props.hasDragGutter ? <span className={styles.dragSpacer} aria-hidden="true" /> : null}
 
           {hasChildren ? (
             <button
@@ -771,7 +786,8 @@ function FileTreeRow(props: {
         highlightMessages={props.highlightMessages}
         editingId={props.editingId}
       expandedIds={props.expandedIds}
-      canDrag={props.canDragNode?.(child) ?? props.canDrag}
+      hasDragGutter={props.hasDragGutter}
+      canDrag={props.hasDragGutter && (props.canDragNode?.(child) ?? props.canDrag)}
       canDragNode={props.canDragNode}
       renderLabel={props.renderLabel}
         formatLabel={props.formatLabel}
@@ -828,7 +844,7 @@ function FileTreeRow(props: {
           {rowElement}
           {expandedRowElement ? (
             <div
-              className={`${styles.expandedRow} ${!props.canDrag ? styles.noDrag : ''}`}
+              className={`${styles.expandedRow} ${!props.hasDragGutter ? styles.noDrag : ''}`}
               style={{ '--loom-tree-level': props.level } as CSSProperties}
             >
               {props.variant !== 'flat' && props.level > 1 ? (
@@ -858,8 +874,13 @@ function FileTreeRow(props: {
 }
 
 function renderMenuContent(actions: MenuAction[], Item: ElementType, CheckboxItem: ElementType, Separator: ElementType) {
-  return actions.map(action => {
-    if (action.type === 'separator') return <Separator key={action.id} />
+  return actions.map((action, index) => {
+    if (action.type === 'separator') return (
+      <Fragment key={action.id}>
+        {index > 0 ? <Separator /> : null}
+        {action.label ? <div className="loom-ui-menu-group-label">{action.label}</div> : null}
+      </Fragment>
+    )
     if (action.checked !== undefined) {
       return (
         <CheckboxItem key={action.id} checked={action.checked} onCheckedChange={() => action.onSelect()} disabled={action.disabled}>

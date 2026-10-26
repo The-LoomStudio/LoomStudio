@@ -44,7 +44,9 @@ export const timelineProcedures = {
       messages: params.messages.map(message => {
         const createdAt = readOptionalString(message, 'createdAt')
         if (createdAt !== undefined && !Number.isFinite(Date.parse(createdAt))) throw new Error('Invalid history message timestamp')
-        return { content: readString(message, 'content'), ...(createdAt !== undefined ? { createdAt } : {}) }
+        const role = readOptionalString(message, 'role')
+        if (role !== undefined && role !== 'user' && role !== 'assistant') throw new Error('Invalid history message role')
+        return { content: readString(message, 'content'), ...(role ? { role } : {}), ...(createdAt !== undefined ? { createdAt } : {}) }
       }),
     }
   })).mutation(({ ctx, input }) => ctx.runtime.importNarrativeHistory(input, ctx.request)),

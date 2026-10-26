@@ -71,11 +71,14 @@ export function createWorkspaceStore(options: { engine: SqliteDataEngine; create
     );
     CREATE INDEX workspace_revisions_timeline ON workspace_revisions(timeline_id);
   `) }] })
+  type RevisionRow = { id: string; timeline_id: string; parent_revision_id: string | null; entries_json: string; created_at: string }
+  const fromRow = (row: RevisionRow): WorkspaceRevision => ({
+    id: row.id, timelineId: row.timeline_id, parentRevisionId: row.parent_revision_id ?? undefined,
+    entries: JSON.parse(row.entries_json), createdAt: row.created_at,
+  })
   const read = (db: DatabaseSync, id: string): WorkspaceRevision | undefined => {
-    const row = db.prepare('SELECT * FROM workspace_revisions WHERE id = ?').get(id) as
-      { id: string; timeline_id: string; parent_revision_id: string | null; entries_json: string; created_at: string } | undefined
-    return row && { id: row.id, timelineId: row.timeline_id, parentRevisionId: row.parent_revision_id ?? undefined,
-      entries: JSON.parse(row.entries_json), createdAt: row.created_at }
+    const row = db.prepare('SELECT * FROM workspace_revisions WHERE id = ?').get(id) as RevisionRow | undefined
+    return row && fromRow(row)
   }
   function transaction(tx: SqliteDataTransaction) {
     return {
@@ -96,6 +99,6 @@ export function createWorkspaceStore(options: { engine: SqliteDataEngine; create
   return {
     transaction,
     get: (id: string) => engine.read(db => read(db, id)),
-    list: (timelineId: string) => engine.read(db => (db.prepare('SELECT id FROM workspace_revisions WHERE timeline_id = ?').all(timelineId) as { id: string }[]).map(row => read(db, row.id)!)),
+    list: (timelineId: string) => engine.read(db => (db.prepare('SELECT * FROM workspace_revisions WHERE timeline_id = ?').all(timelineId) as RevisionRow[]).map(fromRow)),
   }
 }

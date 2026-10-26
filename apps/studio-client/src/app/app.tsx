@@ -1,5 +1,7 @@
+import { StudioDashboard } from './studio-dashboard.js'
+import { AgentMutationApprovalDialog } from '../widgets/agent-chat-panel/agent-mutation-approval-dialog.js'
 import { useUserBackgrounds } from '../features/backgrounds/model/use-user-backgrounds.js'
-import { SessionSummaryActivity, type SummaryControl, type SummaryRow, type SummaryCoverage } from '../widgets/memory-panel/session-summary-activity.js'
+import { SessionSummaryActivity, type SummaryControl, type SummaryRow, type SummaryCoverage } from '../features/sessions/ui/session-summary-activity.js'
 import { useExtensionCardContext } from '../features/extension-renderers/model/use-extension-card-context.js'
 import { StartupReady } from './startup-curtain.js'
 import { useRecentCharacters } from '../features/recent-characters/model/use-recent-characters.js'
@@ -22,7 +24,7 @@ import { RecentPlayRail } from '../widgets/play-panel/recent-play-rail.js'
 import { PresetWorkbenchHeader } from '../widgets/preset-workbench/preset-workbench-header.js'
 import { ContextWorkbenchHeader } from '../widgets/context-workbench/context-workbench-header.js'
 import { AgentComposer } from '../widgets/agent-composer/agent-composer.js'
-import { AgentChatPanel } from '../widgets/agent-chat-panel/agent-chat-panel.js'
+import { AgentChatPanel, AgentPresetPicker } from '../widgets/agent-chat-panel/agent-chat-panel.js'
 import { NarrativeTimeline } from '../widgets/narrative-timeline/narrative-timeline.js'
 import { NarrativeSwipePicker } from '../features/narrative-runtime/ui/narrative-swipe-picker.js'
 import { AgentTaskMenu } from '../features/narrative-runtime/ui/agent-task-menu.js'
@@ -149,6 +151,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const uiState = useStudioUiState()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation({ endpoint: state.endpoint, api: state.api })
+  const [dashboardOpen, setDashboardOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchMatch, setSearchMatch] = useState<ResourceSearchReveal>()
   const [recentSearch, setRecentSearch] = useState<{ endpoint: string; items: GlobalSearchHit[] }>({ endpoint: state.endpoint, items: [] })
@@ -477,6 +480,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         />
       )}
       headerActions={headerActions}
+      onOpenDashboard={() => setDashboardOpen(true)}
       onOpenSearch={() => setSearchOpen(true)}
       searchQuery={globalSearch.query.trim()}
       onClearSearch={() => {
@@ -490,7 +494,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       agentSession={state.agentChatSession}
       agentSessionsCount={state.agentChatSessions?.length}
       isPrimarySession={Boolean(state.agentChatSession && state.narrativeAgentSession?.id === state.agentChatSession.id)}
-      agentPanel={<ContentErrorBoundary resetKey={state.agentChatSession?.id} fallback={error => <p role="alert">{error.message}</p>}><AgentChatPanel
+      agentPanel={<ContentErrorBoundary resetKey={state.agentChatSession?.id} fallback={error => <p role="alert">{error.message}</p>}><AgentChatPanel scrollRestorationScope={JSON.stringify([state.endpoint, state.agentChatSession?.id])}
         userIdentity={state.userIdentity}
         onboardingHint={assistantGuide ? <aside className={onboardingStyles.guide} role="status"><p>{onboardingCopy[state.locale].guide}</p><Button onClick={() => setAssistantGuide(false)}>{onboardingCopy[state.locale].dismiss}</Button></aside> : null}
         initialCreatePresetId={assistantGuide ? assistantPresetId : undefined}
@@ -530,15 +534,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       onSelectProfile={state.selectAgentPreset}
       onSelectSession={id => { void openAgentSession(id) }}
       onNewSession={state.newAgentSession}
-      onCreateSession={async (presetId, makeMain) => {
-        const session = await state.createAgentSession(presetId, makeMain)
+      onCreateSession={async presetId => {
+        const session = await state.createAgentSession(presetId, false)
         if (session) setAssistantGuide(false)
         return session
       }}
-      canMakePrimary={Boolean(state.narrativeTimeline)}
       primarySessionId={state.narrativeAgentSession?.id}
-      timelineId={state.narrativeTimeline?.id}
-      onSetPrimary={state.setPrimaryAgentSession}
       onRenameSession={state.renameAgentSession}
       onDeleteSession={id => { void state.deleteAgentSession(id) }}
       onSubmit={state.submitAgentTurn}
@@ -567,6 +568,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         character: <CharacterPanelHeader t={state.t} />,
         agent: (
           <PresetWorkbenchHeader
+            library={!navigation.route.resourceId && !navigation.route.assetId}
             resources={state.promptResources}
             selectedResourceId={navigation.route.panel === 'agent' ? navigation.route.resourceId ?? uiState.selectedPresetId : uiState.selectedPresetId}
             onSelectResource={resourceId => {
@@ -617,18 +619,24 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
           <SelectionToolbar key={JSON.stringify(['selection-toolbar', state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}
             containerRef={narrativeSelectionRef} inputRef={narrativeInputRef} t={state.t}
             onQuote={text => state.setInput(appendQuote(state.input, text))} />
-          <ContentErrorBoundary resetKey={state.branch?.id} fallback={error => <p role="alert">{error.message}</p>}><NarrativeTimeline
+          <ContentErrorBoundary resetKey={state.branch?.id} fallback={error => <p role="alert">{error.message}</p>}><NarrativeTimeline scrollRestorationScope={JSON.stringify([state.endpoint, state.narrativeTimeline?.id, state.branch?.id])} narrativeMode={state.narrativeAgentSession?.narrativeMode}
+            inputMode={state.narrativeInputMode}
+            onDiscuss={() => { state.setNarrativeInputMode('discussion'); narrativeInputRef.current?.focus() }}
+            onRetryDiscussionInput={state.retryDiscussionInput}
+            onContinueRun={state.resumeNarrativeRun}
+            workEntries={state.narrativeWorkEntries}
+            activeRun={state.narrativeActiveRun}
+            presetName={state.agentPresets.find(preset => preset.id === state.narrativeAgentSession?.agentPresetId)?.rootNode.label}
             userIdentity={state.userIdentity}
             displayProjection={narrativeDisplay}
             displayOnlyNodeId={state.displayOnlyNarrativeNodeId}
             key={JSON.stringify(['narrative-timeline', state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}
             anchorNodeId={navigation.nodeAnchorId}
             busy={sessionBusy || narrativeNavigating}
-            composerHeight={uiState.composerHeight}
             emptyTimelineText={state.emptyTimelineText}
             openingDraft={!state.narrativeTimeline && state.selectedCardDetails?.id === state.selectedCardId ? state.openingDraft : undefined}
             openingDisplay={openingDisplay}
-            inputSwipe={state.narrativeSwipe ? {
+            inputSwipe={state.narrativeSwipe && state.narrativeSwipe.inputKind !== 'communication' ? {
               swipe: state.narrativeSwipe,
               disabled: state.narrativeSwipeBusy || narrativeNavigating || !state.narrativeAgentSession,
               onSelect: id => { void state.selectNarrativeSwipe(id) },
@@ -642,7 +650,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
                 busy={state.narrativeSwipeBusy || narrativeNavigating}
                 primarySessionId={state.narrativeAgentSession?.id} t={state.t}
                 onSelect={id => { void state.selectNarrativeSwipe(id) }}
-                onOpenSession={() => { const swipe = state.narrativeSwipe; if (swipe) void openAgentSession(swipe.selectedAgentSessionId ?? swipe.sourceAgentSessionId) }}
                 onGenerate={(mode, allowSessionChange) => { void state.generateNarrativeSwipe(mode, allowSessionChange) }} />,
             } : undefined}
             openingControls={(!state.narrativeTimeline || (state.narrativeTimeline.opening && !state.narrativeTimeline.opening.locked)) && state.selectedCardDetails
@@ -685,22 +692,37 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
               />
             ) : undefined}
           /></ContentErrorBoundary>
+          {state.narrativeActiveRun?.approval && <AgentMutationApprovalDialog
+            key={state.narrativeActiveRun.approval.requestId} approval={state.narrativeActiveRun.approval}
+            onApprove={state.approveNarrativeMutation} onClose={() => {}} t={state.t} />}
           <AgentComposer
+            inputMode={state.narrativeInputMode}
+            onInputModeChange={state.setNarrativeInputMode}
+            sendLeadingAction={<AgentPresetPicker
+              disabled={!state.narrativeAgentSession || sessionBusy || state.narrativeActiveRun?.status === 'running' || state.narrativeActiveRun?.status === 'suspended'}
+              profiles={state.agentPresets}
+              providers={state.providerAccounts}
+              selectedId={state.narrativeAgentSession?.agentPresetId}
+              t={state.t}
+              onSelect={agentPresetId => { void state.configureNarrativeSession({ agentPresetId }) }}
+            />}
+            runStatus={state.narrativeActiveRun?.status === 'running' ? 'running' : state.narrativeActiveRun?.status === 'suspended' ? 'suspended' : 'idle'}
+            onPause={() => { void state.pauseNarrativeRun() }}
+            onResume={() => { void state.resumeNarrativeRun() }}
             inputRef={narrativeInputRef}
             canRetryNarrativeInput={state.canRetryNarrativeInput && !narrativeNavigating}
             onRetryNarrativeInput={() => { void state.retryNarrativeInput() }}
-            runRecovery={state.runRecovery}
+            runRecovery={state.narrativeRecovery}
             runRecoveryBusy={state.runRecoveryBusy}
-            abandonAgentRun={state.abandonAgentRun}
-            canRestoreRunInput={state.canRestoreRunInput}
-            reconnectAgentRun={state.reconnectAgentRun}
+            abandonAgentRun={state.abandonNarrativeRun}
+            canRestoreRunInput={false}
+            reconnectAgentRun={state.reconnectNarrativeRun}
             restoreRunInput={state.restoreRunInput}
-            agentPanelOpen={uiState.agentPanelOpen}
             canPreviewPrompt={state.canPreviewPrompt}
             canSendNarrative={state.canSend && !narrativeNavigating}
             taskCard={(
               <AgentTaskMenu key={JSON.stringify([state.endpoint, state.narrativeTimeline?.id])}
-                activeRun={state.agentActiveRun} messages={state.agentChatMessages}
+                activeRun={state.narrativeActiveRun} messages={state.narrativeWorkEntries}
                 api={state.api} endpoint={state.endpoint} timelineId={state.narrativeTimeline?.id} t={state.t}
                 onOpen={async (sessionId, runId) => { await openAgentSession(sessionId); if (runId) state.observeTaskRun(sessionId, runId) }}
                 onResumed={state.observeTaskRun} onAbandoned={state.refreshTaskSession} />
@@ -732,7 +754,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
             onSubmitNarrative={async event => {
               await state.submitTurn(event)
             }}
-            onToggleAgentPanel={() => uiState.setAgentPanelOpen(prev => !prev)}
           />
         </div>
       )}
@@ -777,6 +798,17 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         navigation.openResource(target.panel, target.resourceId, target.nodeId)
         if (target.panel === 'preset') useStudioLayoutStore.getState().openAssetDetail('preset', contextWorkspaceId, target.nodeId)
       }} />
+      <StudioDashboard api={state.api} endpoint={state.endpoint} open={dashboardOpen} onClose={() => setDashboardOpen(false)}
+        onAction={action => {
+          setDashboardOpen(false)
+          if (action.kind === 'story') { void navigation.openNarrative(action.id); return }
+          if (action.kind === 'card') { void navigation.openPanel('character', { cardId: action.id }); return }
+          if (action.kind === 'provider') { void navigation.openPanel('model'); return }
+          if (action.kind === 'calls') { void navigation.openPanel('logs'); return }
+          const targets = { character: 'character', cards: 'character', resource: 'resource', preset: 'preset', extensions: 'extensions', scripts: 'extensions', 'text-transform': 'text-transform', extractors: 'text-transform', timelines: 'recent', sessions: 'sessions', logs: 'logs' } as const
+          const target = targets[action.id as keyof typeof targets]
+          if (target) void navigation.openPanel(target)
+        }} />
       <GlobalSearchDialog open={searchOpen} search={globalSearch} recent={recentSearch.endpoint === state.endpoint ? recentSearch.items : []} t={state.t}
         onClose={() => setSearchOpen(false)} onOpenPanel={panel => { setSearchOpen(false); void navigation.openPanel(panel) }}
         onOpenResult={hit => { void openSearchResult(hit) }} />

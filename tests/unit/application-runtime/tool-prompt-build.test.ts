@@ -61,7 +61,7 @@ describe('Tool Prompt Compiler', () => {
   it('expands User macros only in model-visible template text', () => {
     const result = compileToolPromptSources({
       sources: [source(structuredTool)],
-      variables: createVariableRenderContext({ global: { user: { name: 'Mio' } } }),
+      variables: createVariableRenderContext({ computed: { user: { name: 'Mio', description: '' } } }),
     })
 
     expect(result.exposures[0]).toMatchObject({
@@ -280,5 +280,20 @@ describe('Tool Prompt Compiler', () => {
     expect(result.exposures[1]?.input).not.toBe(contentInput)
     expect(structuredTool.input).toEqual(structuredInput)
     expect(contentTool.input).toEqual(contentInput)
+  })
+
+  it('splits shared schema children before parameter descriptions can mutate one path', () => {
+    const child = { type: 'string' }
+    const schema = { type: 'object', properties: { a: child, b: child } }
+    const tool: ToolDefinition = { ...structuredTool, input: { kind: 'structured', schema } }
+    const result = compileToolPromptSources({
+      sources: [source(tool)], variables: createVariableRenderContext(),
+    })
+    const input = result.exposures[0]!.input as Extract<ToolDefinition['input'], { kind: 'structured' }>
+    const copied = input.schema as typeof schema
+    expect(copied.properties.a).not.toBe(copied.properties.b)
+    copied.properties.a.type = 'number'
+    expect(copied.properties.b.type).toBe('string')
+    expect(child.type).toBe('string')
   })
 })

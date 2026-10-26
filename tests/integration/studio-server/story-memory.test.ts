@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { assert, describe, expect, it, vi } from 'vitest'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
@@ -21,29 +22,35 @@ async function setup(policy: Record<string, number> = {}) {
   const storage = createExtensionStorageContext(
     { packageManifest: { id: 'official.story-memory', participation: 'timeline' }, target: { kind: 'global' } } as StorageArgs[0],
     { scope: { active: true } } as StorageArgs[1],
-    { documents, validateStorageScope: async candidate => {
-      if (candidate.kind !== 'timeline' || !await narratives.getTimeline(candidate.timelineId)) throw new Error('Invalid test Timeline')
-    } } as StorageArgs[2], { kind: 'extension', id: 'official.story-memory' })
+    { documents, diagnostics: createInMemoryDiagnosticsRegistry(),
+      callRpc: async () => { throw new Error('RPC is not used by this storage fixture') },
+      registerRpc: () => { throw new Error('RPC is not used by this storage fixture') },
+      validateStorageScope: async candidate => {
+        if (candidate.kind !== 'timeline' || !await narratives.getTimeline(candidate.timelineId)) throw new Error('Invalid test Timeline')
+    } }, { kind: 'extension', id: 'official.story-memory' })
   const reader = createExtensionNarrativeReader(runtime, narratives)
   const invoke = vi.fn(async (_input: { sessionId: string; input: string; activationFacts: unknown }) => ({ state: 'completed', text: '压缩后的事件记忆' }))
   const cancel = vi.fn(async (_sessionId: string) => undefined)
   const acknowledge = vi.fn(async (_sessionId: string) => undefined)
+  const dispose = vi.fn(async (_sessionId: string) => undefined)
+  const countText = vi.fn(async (_input: { text: string }) => ({ estimatedTokens: 60 }))
   const taskRead = vi.fn(async (_sessionId: string): Promise<any> => ({ state: 'failed' }))
   const service = createStoryMemory({ storage,
     narrative: { read: (input: Parameters<typeof reader.read>[1]) => reader.read(target, input), validate: (source: Parameters<typeof reader.validate>[1]) => reader.validate(target, source) },
-    agentTasks: { create: async () => ({ sessionId: crypto.randomUUID() }), invoke, cancel, read: taskRead, acknowledge, dispose: vi.fn(async () => undefined) },
-    tokens: { countText: async () => ({ estimatedTokens: 60 }) },
+    agentTasks: { create: async () => ({ sessionId: crypto.randomUUID() }), invoke, cancel, read: taskRead, acknowledge, dispose },
+    tokens: { countText },
   })
   await service.configure(target, { value: { batchFloors: 2, bufferFloors: 2, lv2Count: 2, lv2Tokens: 12000, ...policy }, expectedVersion: null })
   const append = async (content?: string) => {
     const branch = await narratives.getBranch(target.branchId)
-    return runtime.appendNarrativeInput({ ...target, nodeId: crypto.randomUUID(), content: content ?? '原始事件', expectedHeadNodeId: branch!.headNodeId })
+    assert.exists(branch)
+    return runtime.appendNarrativeInput({ ...target, nodeId: crypto.randomUUID(), content: content ?? '原始事件', expectedHeadNodeId: branch.headNodeId ?? null })
   }
   const appendMany = async (count: number) => { const nodes = []; for (let i = 0; i < count; i++) nodes.push((await append(`第${i + 1}段事实`)).node); return nodes }
   const activity = () => service.activity({ kind: 'input', ...target })
   const batches = async () => (await service.status(target)).batches
   const confirm = async (id: string) => { const batch = (await batches()).find((item: any) => item.id === id); return service.confirm(target, { id, version: batch.version }) }
-  return { engine, documents, narratives, runtime, target, storage, service, invoke, cancel, acknowledge, taskRead, append, appendMany, activity, batches, confirm }
+  return { engine, documents, narratives, runtime, target, storage, service, invoke, cancel, acknowledge, dispose, countText, taskRead, append, appendMany, activity, batches, confirm }
 }
 
 describe('Story Memory using Runtime Narrative and Extension Record storage', () => {
@@ -94,18 +101,25 @@ describe('Story Memory using Runtime Narrative and Extension Record storage', ()
       expect((await f.service.projection(f.target)).memory).toBeNull()
       await f.append('缓冲达到四楼')
       await f.service.activity({ kind: 'run-completed', ...f.target })
-      expect((await f.service.projection(f.target)).memory.entries).toHaveLength(1)
+      const bufferedMemory = (await f.service.projection(f.target)).memory
+      assert.isNotNull(bufferedMemory)
+      expect(bufferedMemory.entries).toHaveLength(1)
       const fork = await f.runtime.forkNarrativeBranch({ timelineId: f.target.timelineId, fromBranchId: f.target.branchId, fromNodeId: nodes[2]!.id })
       f.target.branchId = fork.branch.id
-      expect((await f.service.projection(f.target)).memory.entries).toHaveLength(1)
+      const retreatedMemory = (await f.service.projection(f.target)).memory
+      assert.isNotNull(retreatedMemory)
+      expect(retreatedMemory.entries).toHaveLength(1)
       await f.activity()
       expect(f.invoke).toHaveBeenCalledOnce()
-      const head = (await f.narratives.getBranch(f.target.branchId))!.headNodeId
+      const head = (await f.narratives.getBranch(f.target.branchId))?.headNodeId
+      assert.exists(head)
       await f.runtime.editNarrativeNode({ ...f.target, nodeId: nodes[2]!.id, expectedHeadNodeId: head, expectedRaw: nodes[2]!.body.raw, raw: '后段改写' })
       await f.service.activity({ kind: 'run-completed', ...f.target })
       expect(f.invoke).toHaveBeenCalledOnce()
       expect((await f.batches())[0].valid).toBe(true)
-      await f.runtime.editNarrativeNode({ ...f.target, nodeId: nodes[0]!.id, expectedHeadNodeId: (await f.narratives.getBranch(f.target.branchId))!.headNodeId, expectedRaw: nodes[0]!.body.raw, raw: '来源事实变化' })
+      const updatedHead = (await f.narratives.getBranch(f.target.branchId))?.headNodeId
+      assert.exists(updatedHead)
+      await f.runtime.editNarrativeNode({ ...f.target, nodeId: nodes[0]!.id, expectedHeadNodeId: updatedHead, expectedRaw: nodes[0]!.body.raw, raw: '来源事实变化' })
       expect((await f.batches())[0].valid).toBe(false)
       expect((await f.service.projection(f.target)).memory).toBeNull()
     } finally { f.engine.close() }
@@ -126,10 +140,14 @@ describe('Story Memory using Runtime Narrative and Extension Record storage', ()
       const higher = (await f.batches()).find((item: any) => item.level === 2)
       expect(higher.status).toBe('draft')
       expect(higher.inputs.map((ref: any) => ref.id)).toEqual([first.id, second.id])
-      expect((await f.service.projection(f.target)).memory.entries).toHaveLength(2)
+      const lowerMemory = (await f.service.projection(f.target)).memory
+      assert.isNotNull(lowerMemory)
+      expect(lowerMemory.entries).toHaveLength(2)
       expect(f.invoke.mock.calls.at(-1)![0].activationFacts).toEqual({ summary: { level: 2 } })
       await f.confirm(higher.id)
-      expect((await f.service.projection(f.target)).memory.entries.map((entry: any) => entry.id)).toEqual([higher.id])
+      const higherMemory = (await f.service.projection(f.target)).memory
+      assert.isNotNull(higherMemory)
+      expect(higherMemory.entries.map(entry => entry.id)).toEqual([higher.id])
       const files = await f.service.files(f.target)
       expect(files.map((file: any) => file.path)).toEqual(expect.arrayContaining(['/story-memory/LV1/1-2.md', '/story-memory/LV1/3-4.md', '/story-memory/LV2/1-4.md']))
       expect(files.find((file: any) => file.path === '/story-memory/LV2/1-4.md').content).toContain(first.id)
@@ -146,6 +164,31 @@ describe('Story Memory using Runtime Narrative and Extension Record storage', ()
       expect(restoredHigher.resident).toBe(true)
       expect(restoredHigher.inputs.every((ref: any) => restored.some((item: any) => item.id === ref.id && item.version === ref.version))).toBe(true)
       expect(restored.filter((item: any) => item.level === 1).every((item: any) => item.source.timelineId === imported.timelineId && item.valid)).toBe(true)
+    } finally { f.engine.close() }
+  })
+
+  it.each([120, 180])('retains both LV1 sources when LV2 has %i tokens, then adopts a shorter revision', async outputTokens => {
+    const f = await setup({ bufferFloors: 0 })
+    try {
+      await f.appendMany(3)
+      await f.activity()
+      const first = (await f.batches())[0]
+      await f.confirm(first.id)
+      await f.appendMany(2)
+      await f.activity()
+      const second = (await f.batches()).find((item: any) => item.status === 'draft')
+      await f.confirm(second.id)
+      f.countText.mockResolvedValue({ estimatedTokens: outputTokens })
+      await f.activity()
+      const higher = (await f.batches()).find((item: any) => item.level === 2)
+      await expect(f.confirm(higher.id)).rejects.toThrow('未短于来源 LV1 合计 120 Token')
+      const unchanged = await f.batches()
+      expect(unchanged.find((item: any) => item.id === higher.id)).toMatchObject({ status: 'draft', resident: false })
+      expect((await f.service.projection(f.target)).memory?.entries.map(entry => entry.id)).toEqual([first.id, second.id])
+      f.countText.mockResolvedValue({ estimatedTokens: 90 })
+      await f.service.revise(f.target, { id: higher.id, version: higher.version, input: '精简重复内容' })
+      await f.confirm(higher.id)
+      expect((await f.service.projection(f.target)).memory?.entries.map(entry => entry.id)).toEqual([higher.id])
     } finally { f.engine.close() }
   })
 
@@ -194,6 +237,41 @@ describe('Story Memory using Runtime Narrative and Extension Record storage', ()
       expect((await f.service.projection(f.target)).memory).toBeNull()
     } finally { f.engine.close() }
   })
+  it('disposes an unclaimed task before discarding, retaining retry state on cleanup failure', async () => {
+    const f = await setup({ bufferFloors: 0 })
+    try {
+      const nodes = await f.appendMany(3)
+      const update = f.storage.records.update.bind(f.storage.records)
+      let failDraft = true
+      vi.spyOn(f.storage.records, 'update').mockImplementation(async input => {
+        if (failDraft && (input.data as { status?: string }).status === 'draft') {
+          failDraft = false
+          throw new Error('Draft storage unavailable')
+        }
+        return update(input)
+      })
+      await f.activity()
+      const failed = (await f.batches())[0]
+      expect(failed).toMatchObject({ status: 'failed', sessionId: expect.any(String) })
+      const originalBranch = f.target.branchId
+      const fork = await f.runtime.forkNarrativeBranch({ timelineId: f.target.timelineId, fromBranchId: originalBranch, fromNodeId: nodes[2]!.id })
+      f.target.branchId = fork.branch.id
+      await expect(f.service.discard(f.target, { id: failed.id, version: failed.version })).rejects.toThrow('创建此任务的分支')
+      expect(f.dispose).not.toHaveBeenCalled()
+      f.target.branchId = originalBranch
+      f.dispose.mockRejectedValueOnce(new Error('Task cleanup unavailable'))
+      await expect(f.service.discard(f.target, { id: failed.id, version: failed.version })).rejects.toThrow('Task cleanup unavailable')
+      expect((await f.batches())[0]).toMatchObject({ status: 'failed', version: failed.version, sessionId: failed.sessionId })
+      const discarded = await f.service.discard(f.target, { id: failed.id, version: failed.version })
+      expect(f.dispose).toHaveBeenCalledWith(failed.sessionId)
+      expect(f.dispose).toHaveBeenCalledTimes(2)
+      expect(f.acknowledge).not.toHaveBeenCalled()
+      expect(discarded.data.status).toBe('discarded')
+      expect(discarded.data.sessionId).toBeUndefined()
+      expect(discarded.data.taskResultSaved).toBeUndefined()
+    } finally { f.engine.close() }
+  })
+
   it('does not acknowledge a result until draft storage succeeds and recovers it before revision', async () => {
     const f = await setup({ bufferFloors: 0 })
     try {

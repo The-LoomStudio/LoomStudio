@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type FormEvent, type ReactNode, type Ref } from 'react'
-import { ArrowUp, BringToFront, ChevronUp, Lock, Pause, Square, Play, Plus, RotateCcw, Unlock } from 'lucide-react'
+import { ArrowUp, Lock, MessageCircle, Swords, Pause, Square, Play, Plus, RotateCcw, Unlock } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,10 +17,11 @@ export type ChatComposerQuickAction = {
 }
 
 type ChatComposerProps = {
+  inputMode?: 'roleplay' | 'discussion'
+  onInputModeChange?(mode: 'roleplay' | 'discussion'): void
   inputRef?: Ref<HTMLTextAreaElement>
   canPreviewPrompt: boolean
   canSend: boolean
-  expanded?: boolean
   input: string
   onChangeInput: (value: string) => void
   onHeightChange?: (height: number) => void
@@ -38,12 +39,8 @@ type ChatComposerProps = {
   sheet?: ReactNode
   sendLabel: string
   sendLeadingAction?: ReactNode
-  targetActionLabel?: string
-  targetActive?: boolean
-  targetLabel?: string
   textareaDisabled: boolean
   textareaLabel: string
-  toggleExpandedLabel?: string
   unpinLabel?: string
   runStatus?: 'idle' | 'running' | 'suspended'
   stopAction?: boolean
@@ -52,8 +49,6 @@ type ChatComposerProps = {
   onResume?: () => void
   pauseLabel?: string
   resumeLabel?: string
-  onTargetAction?: () => void
-  onToggleExpanded?: () => void
   onTogglePinned?: () => void
 }
 
@@ -85,7 +80,7 @@ export function ChatComposer(props: ChatComposerProps) {
   }, [props.onHeightChange])
 
   return (
-    <form className={`${styles.composer} ${props.expanded ? styles.composerExpanded : ''}`} data-loom-component="chat-composer" ref={composerRef} onSubmit={props.onSubmit}>
+    <form className={styles.composer} data-loom-component="chat-composer" ref={composerRef} onSubmit={props.onSubmit}>
       <div className={styles.composerBody}>
         <div className={styles.inputSurface} data-loom-anchor="narrative-composer-surface">
           {props.sheet ? <div className={styles.sheet} data-loom-surface="composer.sheet">{props.sheet}</div> : null}
@@ -96,20 +91,29 @@ export function ChatComposer(props: ChatComposerProps) {
               placeholder={props.placeholder}
               value={props.input}
               onChange={event => props.onChangeInput(event.target.value)}
+              onKeyDown={props.inputMode ? event => {
+                if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return
+                event.preventDefault()
+                if (props.canSend && !props.textareaDisabled && props.runStatus !== 'running' && props.runStatus !== 'suspended') event.currentTarget.form?.requestSubmit()
+              } : undefined}
               disabled={props.textareaDisabled}
             />
             <div className={styles.composerFooter}>
               <div className={styles.quickActions}>
-                {props.onToggleExpanded && props.toggleExpandedLabel ? (
+                {props.inputMode ? (
                   <button
-                    aria-expanded={props.expanded}
-                    aria-label={props.toggleExpandedLabel}
-                    className={`${styles.utilityButton} ${styles.expansionToggle}`}
-                    title={props.toggleExpandedLabel}
+                    aria-label={props.inputMode === 'discussion' ? '当前沟通，切换到扮演' : '当前扮演，切换到沟通'}
+                    aria-pressed={props.inputMode === 'discussion'}
+                    className={styles.utilityButton}
+                    title={props.inputMode === 'discussion' ? '当前沟通，切换到扮演' : '当前扮演，切换到沟通'}
                     type="button"
-                    onClick={props.onToggleExpanded}
+                    disabled={!props.onInputModeChange}
+                    onClick={event => {
+                      props.onInputModeChange?.(props.inputMode === 'discussion' ? 'roleplay' : 'discussion')
+                      event.currentTarget.form?.querySelector('textarea')?.focus()
+                    }}
                   >
-                    <ChevronUp aria-hidden="true" strokeWidth={1.7} />
+                    {props.inputMode === 'discussion' ? <MessageCircle aria-hidden="true" strokeWidth={1.7} /> : <Swords aria-hidden="true" strokeWidth={1.7} />}
                   </button>
                 ) : null}
                 {props.quickActions?.length ? (
@@ -153,21 +157,7 @@ export function ChatComposer(props: ChatComposerProps) {
                 ) : null}
               </div>
               <div className={styles.composerActions}>
-                {props.targetLabel ? (
-                  props.onTargetAction && props.targetActionLabel ? (
-                    <button
-                      aria-label={props.targetActionLabel}
-                      aria-pressed={props.targetActive}
-                      className={styles.targetButton}
-                      title={props.targetActionLabel}
-                      type="button"
-                      onClick={props.onTargetAction}
-                    >
-                      <span>{props.targetLabel}</span>
-                      <BringToFront aria-hidden="true" />
-                    </button>
-                  ) : <span className={styles.targetLabel}>{props.targetLabel}</span>
-                ) : props.onPreviewPrompt ? (
+                {props.onPreviewPrompt ? (
                   <button
                     className={styles.previewButton}
                     onClick={props.onPreviewPrompt}

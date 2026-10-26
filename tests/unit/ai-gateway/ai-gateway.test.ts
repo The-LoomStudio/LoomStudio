@@ -232,3 +232,13 @@ function textResponse(content: string): Record<string, unknown> {
     usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
   }
 }
+
+it('retains standard SDK usage before rejecting an empty response body', async () => {
+  const usage: unknown[] = []
+  await expect(createAiGateway().invokeChat({
+    provider: { kind: 'openai-compatible', apiKey: 'test', fetch: stubFetch([], textResponse('')) },
+    modelId: 'test-model', messages: [{ role: 'user', content: 'Hello' }],
+    onUsage: value => { usage.push(value) },
+  })).rejects.toThrow()
+  expect(usage).toMatchObject([{ inputTokens: 4, outputTokens: 1, totalTokens: 5 }])
+})

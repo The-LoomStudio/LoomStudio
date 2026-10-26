@@ -1,3 +1,4 @@
+import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type {
   DataActorRef,
   DataCommitFact,
@@ -137,13 +138,7 @@ export type DocumentCommitResult = WriteDocumentResult & {
   commit: DocumentCommitFact
 }
 
-export type DocumentTransactionInput = {
-  actor: ActorRef
-  reason?: string
-  correlationId?: string
-  callId?: string
-  parentCallId?: string
-}
+export type DocumentTransactionInput = DataTransactionInput
 
 export type DocumentTransactionResult<T> = {
   value: T

@@ -54,7 +54,7 @@ Session 创建后固定 `agentPresetId`，不能通过 `updateAgentSession` 改�
 
 CodeAct QuickJS/VFS、官方正文写入工具及其独立 Changeset 已接入；它们不代表完整子智能体调度或 Memory / Session 生命周期均已完成，详见[Runtime 与 Session](runtime-and-session.md)。
 
-这些未完成方向继续保留在 [`../../../workbench/plans/agent-runtime-session-and-workspace-plan.md`](../../../workbench/plans/agent-runtime-session-and-workspace-plan.md) 及相邻 Workbench 文档中，不属于当前 Architecture 合同。
+[Agent Runtime 实施记录](../../../archive/plans/agent-runtime-session-and-workspace-plan.md)已由用户确认完成。以上原范围之外的扩展方向不属于本轮未完成工作，是否推进须按具体需求另行确认。
 
 ## 核心边界
 

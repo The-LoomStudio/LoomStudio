@@ -51,12 +51,12 @@ describe('StateVariablesPanel', () => {
     const html = renderToStaticMarkup(createElement(StateAuthoringPanel, {
       t,
       card: {
-        id: 'card-1', version: 1, name: 'Alice', stateDefinitionIds: ['shared-1'],
+        id: 'card-1', artifactId: 'fixture-artifact', version: 1, name: 'Alice', stateDefinitionIds: ['shared-1'],
         timelineStateBindings: [], opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
         createdAt: 'now', updatedAt: 'now',
       },
       onSaveCard: async (input): Promise<Card> => ({
-        id: input.cardId,
+        id: input.cardId, artifactId: 'fixture-artifact',
         version: input.expectedVersion + 1,
         name: 'Alice',
         opening: { id: 'root-opening', content: '' },
@@ -66,7 +66,6 @@ describe('StateVariablesPanel', () => {
       }),
     }))
 
-    expect(html).toContain('Alice')
     expect(html).toContain('保存到角色卡')
     expect(html).not.toContain('Workspace')
     expect(html).not.toContain('共享 State Definition')

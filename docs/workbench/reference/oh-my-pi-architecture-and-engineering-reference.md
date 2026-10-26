@@ -6,6 +6,8 @@
 > **范围**：Agent Runtime、会话、工具、Provider、扩展、上下文维护、多 Agent、可观测性、性能、测试、构建与发布，以及具体编码约束。
 > **说明**：本文是外部项目源码参考，不是 Architecture、ADR 或已批准实施计划。LoomStudio 快照存在未提交业务改动；涉及这些文件的判断只描述当前检出状态，不将其自动晋升为稳定合同。
 
+> **当前入口修正（2026-10-25）**：下文 LoomStudio 判断与源码行号保留上述对照快照，不是当前能力清单。Core / Runner / TraceAudit 已退役，Client 动态 RPC 与 session-fetch 已内收至 `apps/studio-client/src/shared/api/`；当前流式、恢复与模型日志合同见 [Agent Runtime](../../architecture/application/agent/runtime-and-session.md)与[Logging](../../architecture/platform/logging.md)。
+
 ---
 
 ## 1. 结论

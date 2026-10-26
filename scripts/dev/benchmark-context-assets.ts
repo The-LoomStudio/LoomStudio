@@ -1,9 +1,8 @@
 import { bench, run, summary } from 'mitata'
 
 import type { ContextAssetNode } from '../../apps/studio-client/src/entities/index.js'
-import { buildContextAssetSearchIndex, searchContextAssets } from '../../apps/studio-client/src/features/context-assets/model/context-asset-search.js'
-import { buildProjectionWorkbenchModel } from '../../apps/studio-client/src/features/context-assets/model/projection-workbench.js'
-import { moveContextAssetNode, updateContextAssetNode } from '../../apps/studio-client/src/features/context-assets/model/tree-ops.js'
+import { buildContextAssetSearchIndex, searchContextAssets } from '../../apps/studio-client/src/features/prompt-resources/model/context-asset-search.js'
+import { updateContextAssetNode } from '../../apps/studio-client/src/features/prompt-resources/model/tree-ops.js'
 
 const sizes = [500, 5_000, 50_000]
 const fixtures = new Map(sizes.map(size => [size, createContextAssetFixture(size)]))
@@ -17,7 +16,6 @@ summary(() => {
     const nodes = readFixture(size)
     const index = searchIndexes.get(size)!
     const lastId = `entry-${size - 1}`
-    const middleId = `entry-${Math.floor(size / 2)}`
 
     bench(`build search index / ${size.toLocaleString('en-US')} nodes`, () => {
       return buildContextAssetSearchIndex(nodes)
@@ -27,17 +25,11 @@ summary(() => {
       return searchContextAssets(index, 'district 42 maintenance')
     })
 
-    bench(`build projection model / ${size.toLocaleString('en-US')} nodes`, () => {
-      return buildProjectionWorkbenchModel(nodes)
-    })
-
     bench(`update final node / ${size.toLocaleString('en-US')} nodes`, () => {
       return updateContextAssetNode(nodes, lastId, { body: 'Updated benchmark body.' })
     })
 
-    bench(`move middle node / ${size.toLocaleString('en-US')} nodes`, () => {
-      return moveContextAssetNode(nodes, middleId, lastId, 'after')
-    })
+
   }
 })
 

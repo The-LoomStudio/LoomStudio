@@ -69,7 +69,7 @@ describe('PanelTabs component', () => {
     const handleChange = vi.fn()
     flushSync(() => {
       root.render(
-        React.createElement(Tabs, {
+        React.createElement(Tabs<'a' | 'b' | 'c'>, {
           activeId: 'a',
           items,
           onChange: handleChange,
@@ -102,7 +102,7 @@ describe('PanelTabs component', () => {
 
     flushSync(() => {
       root.render(
-        React.createElement(Tabs, {
+        React.createElement(Tabs<'a' | 'b' | 'c'>, {
           activeId: currentActive,
           items,
           onChange: handleChange,
@@ -118,7 +118,7 @@ describe('PanelTabs component', () => {
     // 重新渲染为 activeId = 'b'
     flushSync(() => {
       root.render(
-        React.createElement(Tabs, {
+        React.createElement(Tabs<'a' | 'b' | 'c'>, {
           activeId: 'b',
           items,
           onChange: handleChange,

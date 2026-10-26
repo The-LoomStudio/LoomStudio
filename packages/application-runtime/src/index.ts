@@ -252,3 +252,5 @@ export type { AgentApprovalPolicy, AgentApprovalMode, AgentApprovalScope } from 
 
 export { readUserBackgrounds, userBackgroundsDocumentId } from './profiles/user-backgrounds.js'
 export type { UserBackground, UserBackgroundsContent, UserBackgroundsConfig, AddUserBackgroundInput, RemoveUserBackgroundInput } from './profiles/user-backgrounds.js'
+
+export { officialDeclareNarrativeTool } from './agents/official-tools/index.js'

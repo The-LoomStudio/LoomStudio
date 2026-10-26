@@ -485,7 +485,7 @@ print(text);`
     }
   })
 
-  it('does not execute Content JavaScript altered by an assistant text transform', async () => {
+  it('preserves Content JavaScript before applying assistant text transforms', async () => {
     const f = await fixture('content', 'stop', 'print("BEFORE_TRANSFORM");')
     try {
       await f.runtime.upsertTextTransformRule({
@@ -500,7 +500,7 @@ print(text);`
       await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Run.' })
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
       expect(entries.find(entry => entry.entry.kind === 'tool-result')!.entry)
-        .toMatchObject({ status: 'failed', error: { code: 'codeact.source_transformed' } })
+        .toMatchObject({ status: 'completed', content: [{ type: 'text', text: 'BEFORE_TRANSFORM' }] })
     } finally {
       f.engine.close()
     }
@@ -523,6 +523,10 @@ print(text);`
       const updated = (await f.runtime.listAgentTools()).tools.find(item => item.id === f.toolId)!
       expect(updated.prompt?.guidance).toContain('### ctx.appendNarrative')
       expect(updated.description).toBe(tool.description)
+      expect(updated.version).toBe(tool.version + 2)
+      const stableTools = await f.runtime.listAgentTools()
+      await f.runtime.initialize()
+      expect(await f.runtime.listAgentTools()).toEqual(stableTools)
       const preview = await f.runtime.previewAgentTurn({ agentSessionId: f.session.id, input: 'Inspect.' })
       const text = preview.messages.map(message => message.content).join('\n')
       expect(text).not.toContain('CUSTOM_CODEACT_GUIDE')

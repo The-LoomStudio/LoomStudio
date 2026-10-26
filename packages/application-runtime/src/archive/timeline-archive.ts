@@ -1,11 +1,12 @@
 import { validateWorkspaceEntries, type WorkspaceRevision } from '@loom-studio/application-data'
 import { isRecord, normalizeMacroSelections, type JsonValue, type MacroSelectionMap } from '@loom-studio/shared'
-import type { NarrativeBranch, NarrativeNode, NarrativeTimeline, NarrativeRecoveryPoint } from '@loom-studio/application-data'
+import type { AgentSession, AgentTranscriptEntry, NarrativeSwipeGroup, NarrativeBranch, NarrativeNode, NarrativeTimeline, NarrativeRecoveryPoint } from '@loom-studio/application-data'
 import type { StateRevision, StateScope } from '@loom-studio/application-data'
 
 export type TimelineArchive = {
-  format: 'loom-timeline-archive.v1'
+  format: 'loom-timeline-archive.v1' | 'loom-timeline-archive.v2'
   exportedAt: string
+  agent?: { session: AgentSession; entries: AgentTranscriptEntry[]; swipeGroups: NarrativeSwipeGroup[] }
   timeline: NarrativeTimeline
   branches: NarrativeBranch[]
   nodes: NarrativeNode[]
@@ -36,7 +37,7 @@ export function parseTimelineArchive(source: string): TimelineArchive {
 }
 
 function validateTimelineArchive(value: unknown): asserts value is TimelineArchive {
-  if (!isRecord(value) || value.format !== 'loom-timeline-archive.v1') {
+  if (!isRecord(value) || !['loom-timeline-archive.v1', 'loom-timeline-archive.v2'].includes(String(value.format))) {
     throw new Error('Unsupported Timeline archive format')
   }
   if (!isRecord(value.timeline) || !Array.isArray(value.branches) || !Array.isArray(value.nodes)
@@ -100,6 +101,7 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
     }
   }
   const archive = value as unknown as TimelineArchive
+  if (archive.format === 'loom-timeline-archive.v2') validateAgentArchive(archive)
   if (value.macroConfigurations !== undefined) {
     if (!Array.isArray(value.macroConfigurations)) throw new Error('Invalid archived macro configurations')
     const presets = new Set<string>()
@@ -346,4 +348,72 @@ export function composeTimelineArchiveIdMap(previous: TimelineArchiveIdMap | und
   }))
   return { timelineId: next.timelineId, branchIds: remap(previous.branchIds, next.branchIds),
     nodeIds: remap(previous.nodeIds, next.nodeIds), stateRevisionIds: remap(previous.stateRevisionIds, next.stateRevisionIds) }
+}
+
+function validateAgentArchive(archive: TimelineArchive) {
+  const agent = archive.agent
+  if (!agent || !isRecord(agent.session) || !Array.isArray(agent.entries) || !Array.isArray(agent.swipeGroups))
+    throw new Error('Timeline archive Agent history is missing')
+  const session = agent.session
+  recordHeader(session)
+  if (session.id !== archive.timeline.id || session.timelineId !== archive.timeline.id || session.kind !== 'timeline' || session.deletedAt !== undefined)
+    throw new Error('Timeline archive root Session identity is invalid')
+  optionalIdentifier(session.agentPresetId)
+  if (session.narrativeMode !== 'declared' && session.narrativeMode !== 'automatic') throw new Error('Invalid archived Narrative mode')
+  const entries = new Map<string, AgentTranscriptEntry>()
+  const sequences = new Set<number>()
+  for (const entry of agent.entries) {
+    if (!isRecord(entry) || !isRecord(entry.entry)) throw new Error('Invalid archived Agent Entry')
+    identifier(entry.id); timestamp(entry.createdAt); optionalIdentifier(entry.runId)
+    optionalIdentifier(entry.parentEntryId); optionalIdentifier(entry.roundId); optionalIdentifier(entry.candidateId)
+    if (entry.agentSessionId !== session.id || entries.has(entry.id) || !Number.isSafeInteger(entry.sequence)
+      || entry.sequence < 1 || sequences.has(entry.sequence)) throw new Error('Invalid archived Agent Entry identity or sequence')
+    entries.set(entry.id, entry); sequences.add(entry.sequence)
+  }
+  const reference = (id: string | undefined) => { if (id !== undefined && !entries.has(id)) throw new Error('Timeline archive Entry reference is missing') }
+  reference(session.headEntryId)
+  if (!Number.isSafeInteger(session.entryCount) || session.entryCount < agent.entries.reduce((maximum, entry) => Math.max(maximum, entry.sequence), 0)) throw new Error('Invalid archived Session write count')
+  for (const entry of entries.values()) {
+    reference(entry.parentEntryId)
+    if (entry.parentEntryId && entries.get(entry.parentEntryId)!.sequence >= entry.sequence) throw new Error('Invalid archived Entry parent order')
+    if (entry.entry.kind === 'message') {
+      reference(entry.entry.continuesEntryId)
+
+    }
+  }
+  for (const node of archive.nodes) {
+    reference(node.entryId)
+    const entry = node.entryId ? entries.get(node.entryId)?.entry : undefined
+    if (!entry || entry.kind !== 'message' || entry.content !== node.body.raw) throw new Error('Timeline archive Narrative projection differs from its message')
+    if (node.source?.agentSessionId === session.id && node.source.agentMessageId) reference(node.source.agentMessageId)
+  }
+  for (const branch of archive.branches) reference(branch.headEntryId)
+  for (const point of archive.recoveryPoints ?? []) reference(point.headEntryId)
+  const active = archive.branches.find(branch => branch.id === archive.timeline.activeBranchId)
+  if (active?.headEntryId !== session.headEntryId) throw new Error('Timeline archive active Entry head differs from its root Session')
+  const groups = new Set<string>()
+  const candidates = new Set<string>()
+  for (const group of agent.swipeGroups) {
+    if (!isRecord(group) || !Array.isArray(group.candidates)) throw new Error('Invalid archived Swipe group')
+    identifier(group.id)
+    if (group.inputKind !== undefined && group.inputKind !== 'communication') throw new Error('Invalid archived Swipe input kind')
+    if (groups.has(group.id) || group.timelineId !== session.id || group.agentSessionId !== session.id
+      || !archive.branches.some(branch => branch.id === group.branchId)
+      || (group.inputNodeId === undefined ? group.inputKind !== 'communication'
+        : !archive.nodes.some(node => node.id === group.inputNodeId))) throw new Error('Invalid archived Swipe ownership')
+    groups.add(group.id); reference(group.baseEntryId)
+    for (const candidate of group.candidates) {
+      identifier(candidate.id)
+      if (candidates.has(candidate.id) || candidate.agentSessionId !== session.id || !Array.isArray(candidate.runIds)) throw new Error('Invalid archived Swipe candidate')
+      candidates.add(candidate.id); reference(candidate.headEntryId)
+      if (candidate.inputNodeId && !archive.nodes.some(node => node.id === candidate.inputNodeId)
+        || candidate.headNodeId && !archive.nodes.some(node => node.id === candidate.headNodeId)) throw new Error('Archived Swipe node reference is missing')
+      if (!archive.state.revisions.some(revision => revision.id === candidate.stateRevisionId)
+        || candidate.workspaceRevisionId && !archive.workspace?.revisions.some(revision => revision.id === candidate.workspaceRevisionId)) throw new Error('Archived Swipe material revision is missing')
+    }
+    for (const id of [group.activeCandidateId, group.selectedCandidateId]) if (id && !group.candidates.some(candidate => candidate.id === id)) throw new Error('Archived Swipe selection is missing')
+  }
+  for (const entry of entries.values()) {
+    if (entry.roundId && !groups.has(entry.roundId) && !agent.entries.some(input => input.id === entry.roundId && input.entry.kind === 'message' && input.entry.role === 'user' && input.entry.purpose === 'narrative') || entry.candidateId && !candidates.has(entry.candidateId)) throw new Error('Archived Entry round or candidate reference is missing')
+  }
 }

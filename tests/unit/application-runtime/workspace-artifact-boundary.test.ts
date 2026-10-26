@@ -9,7 +9,7 @@ import {
 } from '@loom-studio/application-runtime'
 import { isPromptResourceArtifact, normalizePromptResourceArtifact } from '../../../packages/application-runtime/src/cards/workspace.js'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'

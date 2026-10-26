@@ -6,7 +6,7 @@ Application Runtime 是 Studio 第一方 AIRP Application 的领域编排层。�
 
 ## 公共入口
 
-Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产物是 `dist/index.js` 与 `dist/index.d.ts`。主要入口包括：
+Package 根入口通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产物是 `dist/index.js` 与 `dist/index.d.ts`。离线 Card/Prompt Resource 编解码与扩展导入校验使用 [`@loom-studio/application-runtime/artifacts`](./src/artifacts.ts) 公共子入口，避免加载 Runtime 组合根及 Agent 执行器；类型同样可从该入口导入。根入口保持兼容。主要能力包括：
 
 - `createApplicationRuntime()` 与 `ApplicationRuntime` 合同；
 - Application Document Types 与各领域输入输出类型；

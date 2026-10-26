@@ -1,0 +1,18 @@
+.shell { min-width: 0; }
+.viewport {
+  max-height: min(320px, 40dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+  scroll-behavior: auto;
+  &:focus-visible { outline: 1px solid var(--loom-color-accent); outline-offset: 3px; }
+}
+.latest {
+  display: flex; align-items: center; gap: 4px;
+  margin: 4px 0 4px auto; padding: 3px 6px;
+  border: 0; border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface); color: var(--loom-color-accent);
+  font: inherit; font-size: 11px; cursor: pointer;
+  svg { width: 12px; height: 12px; }
+}

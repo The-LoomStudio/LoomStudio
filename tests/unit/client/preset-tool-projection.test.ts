@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentToolDefinition, PresetToolMount } from '../../../apps/studio-client/src/entities/index.js'
-import { buildPresetToolProjection } from '../../../apps/studio-client/src/features/context-assets/model/preset-tool-projection.js'
+import { buildPresetToolProjection } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-tool-projection.js'
 
 function tool(id: string, kind: AgentToolDefinition['input']['kind'], namespace = 'official'): AgentToolDefinition {
   return {

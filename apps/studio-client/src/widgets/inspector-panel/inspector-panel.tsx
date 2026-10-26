@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { buildInspectorJsonPreview } from './inspector-json-preview.js'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import { formatNumber, type Translator } from '../../shared/i18n/index.js'
 import type {
   AiCapabilityProfile,

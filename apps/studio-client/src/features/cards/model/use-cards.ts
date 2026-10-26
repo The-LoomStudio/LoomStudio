@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
 import { notify } from '../../../shared/notifications/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -20,15 +20,12 @@ type UseCardsInput = {
   t: Translator
 }
 
-type CardDraft = { name: string; userName: string; description: string }
 type CardEditor = {
   selectedCardId?: string
   selectedCardDetails?: Card
-  cardDraft: CardDraft
-  draftBaseline?: { cardId: string; version: number; draft: CardDraft }
 }
 
-const emptyCardEditor: CardEditor = { cardDraft: { name: '', userName: '', description: '' } }
+const emptyCardEditor: CardEditor = {}
 
 export function useCards(input: UseCardsInput) {
   const selectionSourceRef = useRef({ api: input.api, request: 0, collectionWrite: 0, disposed: false })
@@ -36,9 +33,6 @@ export function useCards(input: UseCardsInput) {
     selectionSourceRef.current = { api: input.api, request: 0, collectionWrite: 0, disposed: false }
   }
   const selectionSource = selectionSourceRef.current
-  const pendingSelectionRef = useRef<{
-    source: typeof selectionSource; request: number; cardId: string
-  } | undefined>(undefined)
   useEffect(() => {
     selectionSource.disposed = false
     return () => {
@@ -52,7 +46,7 @@ export function useCards(input: UseCardsInput) {
   const [cardCollection, setCardCollection] = useState<{ source: typeof selectionSource; cards: CardSummary[] }>()
   const cards = cardCollection?.source === selectionSource ? cardCollection.cards : []
   const [editorState, setEditorState] = useState<{ source: typeof selectionSource; editor: CardEditor }>()
-  const { selectedCardId, selectedCardDetails, cardDraft, draftBaseline } = editorState?.source === selectionSource
+  const { selectedCardId, selectedCardDetails } = editorState?.source === selectionSource
     ? editorState.editor : emptyCardEditor
   const updateEditor = useCallback((update: (editor: CardEditor) => CardEditor) => {
     if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
@@ -68,28 +62,12 @@ export function useCards(input: UseCardsInput) {
   const setSelectedCardDetails = useCallback((value: SetStateAction<Card | undefined>) => {
     updateEditor(editor => ({ ...editor, selectedCardDetails: typeof value === 'function' ? value(editor.selectedCardDetails) : value }))
   }, [updateEditor])
-  const setCardDraft = useCallback((value: SetStateAction<CardEditor['cardDraft']>) => {
-    updateEditor(editor => ({ ...editor, cardDraft: typeof value === 'function' ? value(editor.cardDraft) : value }))
-  }, [updateEditor])
   const setSelectedCardIdFromNavigation = useCallback((cardId: string | undefined) => {
     if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
     selectionSource.request += 1
     setSelectedCardId(cardId)
   }, [selectionSource, setSelectedCardId])
   const selectedCard = cards.find(card => card.id === selectedCardId)
-  useEffect(() => {
-    updateEditor(editor => {
-      const previous = editor.draftBaseline
-      if (previous && previous.cardId === selectedCardId && !sameCardDraft(editor.cardDraft, previous.draft)) return editor
-      if (previous && previous.cardId === selectedCardId && selectedCard && previous.version > selectedCard.version) return editor
-      const draft = readCardDraft(selectedCard)
-      return {
-        ...editor, cardDraft: draft,
-        draftBaseline: selectedCard ? { cardId: selectedCard.id, version: selectedCard.version, draft } : undefined,
-      }
-    })
-  }, [selectedCardId, selectedCard?.id, selectedCard?.version, selectedCard?.name, selectedCard?.userName, selectedCard?.description, updateEditor])
-
   useEffect(() => {
     if (!selectedCardId || selectedCard?.validationError !== undefined) {
       setSelectedCardDetails(undefined)
@@ -157,26 +135,6 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
-  async function selectCard(cardId: string) {
-    if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
-    const request = ++selectionSource.request
-    if (cards.find(card => card.id === cardId)?.validationError !== undefined) {
-      updateEditor(editor => ({ ...editor, selectedCardId: cardId, selectedCardDetails: undefined }))
-      return
-    }
-    const pending = { source: selectionSource, request, cardId }
-    pendingSelectionRef.current = pending
-    try {
-      await input.runAction(async () => {
-        const result = await input.api.cards.get(cardId)
-        if (selectionSourceRef.current !== selectionSource || selectionSource.disposed || request !== selectionSource.request) return
-        publishSelectedCard(result.card)
-      })
-    } finally {
-      if (pendingSelectionRef.current === pending) pendingSelectionRef.current = undefined
-    }
-  }
-
   async function forkCard(cardId: string, expectedVersion: number) {
     if (forking.current) return
     forking.current = true
@@ -208,40 +166,6 @@ export function useCards(input: UseCardsInput) {
         anchor: { documentId: result.card.id },
       })
       applyUpdatedCard(result.card)
-    })
-  }
-
-  async function updateCard(event: FormEvent) {
-    event.preventDefault()
-    if (!selectedCardId) return
-
-    await input.runAction(async () => {
-      if (draftBaseline?.cardId !== selectedCardId) throw new Error('Card edit baseline is not loaded')
-      const request = selectionSource.request
-      const result = await input.api.cards.update({
-        cardId: selectedCardId,
-        expectedVersion: draftBaseline.version,
-        name: cardDraft.name,
-        userName: cardDraft.userName,
-        description: cardDraft.description,
-      })
-      recordCardEdit({
-        label: input.t('history.card.update'),
-        changesetId: result.mutation.changesetId,
-        anchor: { documentId: result.card.id },
-      })
-      applyUpdatedCard(result.card)
-      updateEditor(editor => {
-        if (editor.selectedCardId !== result.card.id || request !== selectionSource.request
-          || (editor.draftBaseline?.version ?? 0) > result.card.version) return editor
-        const draft = readCardDraft(result.card)
-        return {
-          ...editor,
-          cardDraft: sameCardDraft(editor.cardDraft, cardDraft) ? draft : editor.cardDraft,
-          draftBaseline: { cardId: result.card.id, version: result.card.version, draft },
-        }
-      })
-      await refreshCards()
     })
   }
 
@@ -355,12 +279,6 @@ export function useCards(input: UseCardsInput) {
         anchor: { documentId: ids[0]! },
       })
       const deletedIds = new Set(deleted.cardIds)
-      const pendingSelection = pendingSelectionRef.current
-      if (pendingSelection?.source === selectionSource && pendingSelection.request === selectionSource.request
-        && deletedIds.has(pendingSelection.cardId)) {
-        selectionSource.request += 1
-        pendingSelectionRef.current = undefined
-      }
       setCards(current => current.filter(card => !deletedIds.has(card.id)))
       setSelectedCardId(current => current && deletedIds.has(current) ? undefined : current)
       setSelectedCardDetails(current => current && deletedIds.has(current.id) ? undefined : current)
@@ -504,11 +422,7 @@ export function useCards(input: UseCardsInput) {
   }
 
   function publishSelectedCard(card: Card): void {
-    const draft = readCardDraft(card)
-    updateEditor(() => ({
-      selectedCardId: card.id, selectedCardDetails: card, cardDraft: draft,
-      draftBaseline: { cardId: card.id, version: card.version, draft },
-    }))
+    updateEditor(() => ({ selectedCardId: card.id, selectedCardDetails: card }))
   }
 
   function recordCardEdit(entry: Parameters<UseCardsInput['recordEdit']>[0]): void {
@@ -537,14 +451,10 @@ export function useCards(input: UseCardsInput) {
     cards,
     selectedCardId,
     setSelectedCardId: setSelectedCardIdFromNavigation,
-    cardDraft,
-    setCardDraft,
     selectedCard,
     selectedCardDetails,
     refreshCards,
-    selectCard,
     createCard,
-    updateCard,
     updateCardProfile,
     replaceCardPromptResources,
     attachExtensionPackage,
@@ -562,12 +472,8 @@ export function useCards(input: UseCardsInput) {
   }
 }
 
-function readCardDraft(card?: Pick<Card, 'name' | 'userName' | 'description'>): CardDraft {
+function readCardDraft(card?: Pick<Card, 'name' | 'userName' | 'description'>) {
   return { name: card?.name ?? '', userName: card?.userName ?? '', description: card?.description ?? '' }
-}
-
-function sameCardDraft(left: CardDraft, right: CardDraft): boolean {
-  return left.name === right.name && left.userName === right.userName && left.description === right.description
 }
 
 function readAssetUploadResponse(value: string): { asset?: { id?: unknown }; error?: { message?: unknown } } {

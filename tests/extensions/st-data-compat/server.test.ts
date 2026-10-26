@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, onTestFinished } from 'vitest'
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -38,8 +38,10 @@ async function withMigrationHost(run: (fixture: {
   const processors = createPromptProcessorRegistry()
   const contributions = createStateContributionRegistry()
   const content = createStateContentRegistry()
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const host = createExtensionHost({
-    documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(),
+    documents, diagnostics: createInMemoryDiagnosticsRegistry(),
     callRpc: async () => null,
     registerPromptProcessor: (processor, owner) => processors.register(processor, owner.target),
     registerStateContribution: (contribution, owner, initialize) => contributions.register({ contribution, ...owner, initialize }),
@@ -429,7 +431,7 @@ describe('studio server SillyTavern silent import pipeline', () => {
         resource: {
           id: string
           resourceKind: string
-          rootNode: { label: string; children: Array<{ label: string; kind?: string }> }
+          rootNode: { label: string; children: Array<{ label: string; kind?: string; capabilities?: { targetAnchorId?: string }; children?: unknown[] }> }
         }
       }>(port, 'application.importPromptResource', {
         artifact: stPreset,
@@ -439,6 +441,10 @@ describe('studio server SillyTavern silent import pipeline', () => {
       expect(result.resource.resourceKind).toBe('preset')
       expect(result.resource.rootNode.label).toBe('ST Custom Preset')
       expect(result.resource.rootNode.children).toHaveLength(4)
+      expect(result.resource.rootNode.children[1]).toMatchObject({
+        kind: 'virtual', capabilities: { targetAnchorId: '@chat.session' },
+      })
+      expect(result.resource.rootNode.children[1]?.children ?? []).toHaveLength(0)
       expect(result.resource.rootNode.children.some(c => c.label.includes('Post Session'))).toBe(true)
     })
   })

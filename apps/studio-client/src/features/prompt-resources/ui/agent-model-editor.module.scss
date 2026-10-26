@@ -1,0 +1,54 @@
+
+
+.toolCheckbox {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 7px;
+}
+
+.toolForm,
+.toolForm fieldset {
+  display: grid;
+  gap: 10px;
+}
+
+.toolForm label {
+  display: grid;
+  gap: 4px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.toolForm fieldset {
+  margin: 0;
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-control);
+  padding: 10px;
+}
+
+.toolForm button {
+  justify-self: start;
+}
+
+.toolError {
+  color: var(--loom-color-danger) !important;
+}
+
+.presetModelForm {
+  padding: 0;
+  min-width: 0;
+}
+
+.approvals {
+  min-width: 0;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 10px;
+  legend { margin-bottom: 8px; font-weight: 600; font-size: 14px; }
+  p { margin: 0 0 4px; color: var(--loom-color-text-muted); font-size: 12px; line-height: 1.6; }
+  label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+  label > span { flex: 1; min-width: 120px; }
+  select { max-width: 100%; }
+}

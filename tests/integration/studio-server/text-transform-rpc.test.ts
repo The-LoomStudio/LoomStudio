@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parseLoomScriptSource, serializeLoomScriptMetadata } from '@loom-studio/shared/loom-scripts'
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('Studio Server text transform RPC', () => {
@@ -92,10 +93,19 @@ describe('Studio Server text transform RPC', () => {
       expect(await callRpc(port, 'docs.list', { limit: 100 })).toEqual(before)
       expect(await callRpc(port, 'application.listNarrativeTimelines', {})).toEqual(timelines)
 
-      await callRpc(port, 'application.upsertTextTransformRule', {
-        ruleId: 'preview-1', expectedVersion: 1,
-        rule: { ...rules[1], effect: { kind: 'replace', replacement: '<html><body>$1</body></html>' } },
-      })
+      const { rule: savedRule } = await callRpc<{ rule: { scriptDocumentId: string; version: number } }>(port, 'application.getTextTransformRule', { ruleId: 'preview-1' })
+      const { artifact } = await callRpc<{ artifact: { source: string; fileName: string } }>(port, 'application.exportLoomScript', { scriptDocumentId: savedRule.scriptDocumentId })
+      const metadata = parseLoomScriptSource(artifact.source)
+      const contribution = metadata.contributions[0]!
+      if (contribution.kind !== 'text-transform') throw new Error('Expected a text rule')
+      contribution.rule.effect = { kind: 'replace', replacement: '<html><body>$1</body></html>' }
+      await callRpc(port, 'application.updateLoomScript', { scriptDocumentId: savedRule.scriptDocumentId,
+        expectedVersion: savedRule.version, fileName: artifact.fileName, source: serializeLoomScriptMetadata(metadata) })
+      // Saving source does not adopt it; the old projection remains visible until refresh.
+      await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: card.id, text }))
+        .resolves.toMatchObject({ text: '```html\n<html><body>Done</body></html>\n```' })
+      const { mounts } = await callRpc<{ mounts: Array<{ id: string; version: number }> }>(port, 'application.listLoomScriptMounts', { scriptDocumentId: savedRule.scriptDocumentId })
+      await callRpc(port, 'application.refreshLoomScriptMount', { mountId: mounts[0]!.id, expectedVersion: mounts[0]!.version })
       const afterSave = await callRpc(port, 'docs.list', { limit: 100 })
       await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: card.id, text }))
         .resolves.toMatchObject({ originalText: text, text: '<html><body>Done</body></html>', diagnostics: [] })

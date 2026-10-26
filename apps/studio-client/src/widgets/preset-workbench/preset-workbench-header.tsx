@@ -1,14 +1,15 @@
 import { useMemo } from 'react'
 import type { PromptResource } from '../../entities/index.js'
-import { findContextAssetPath } from '../../features/context-assets/model/context-asset-tree.js'
-import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
-import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { buildContextPathSegments } from '../../features/context-assets/ui/context-asset-header/build-context-path-segments.js'
+import { findContextAssetPath } from '../../features/prompt-resources/model/context-asset-tree.js'
+import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources/model/prompt-resource-view.js'
+import { ContextAssetHeader } from '../../features/prompt-resources/ui/context-asset-header/context-asset-header.js'
+import { buildContextPathSegments } from '../../features/prompt-resources/ui/context-asset-header/build-context-path-segments.js'
 import { useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
 import type { Translator } from '../../shared/i18n/index.js'
 
 export function PresetWorkbenchHeader(props: {
+  library?: boolean
   resources: PromptResource[]
   selectedResourceId?: string
   t: Translator
@@ -26,7 +27,7 @@ export function PresetWorkbenchHeader(props: {
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
 
   // 工具视图下不显示资产路径面包屑
-  const breadcrumbs = activePresetView === 'tools' || !selectedResource || !selectedId
+  const breadcrumbs = props.library ? [] : activePresetView === 'tools' || !selectedResource || !selectedId
     ? []
     : buildContextPathSegments(
       findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId),
@@ -39,10 +40,10 @@ export function PresetWorkbenchHeader(props: {
   return (
     <ContextAssetHeader
       Icon={definition.Icon}
-      title={props.t(definition.labelKey)}
+      title={props.library ? '预设库' : props.t(definition.labelKey)}
       breadcrumbs={breadcrumbs}
-      resources={presetResources}
-      selectedResourceId={props.selectedResourceId ?? selectedResource?.id}
+      resources={props.library ? [] : presetResources}
+      selectedResourceId={props.library ? undefined : props.selectedResourceId ?? selectedResource?.id}
       t={props.t}
       onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
     />

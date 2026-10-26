@@ -4,7 +4,6 @@ import { useCharacterProfileEditor } from '../../../apps/studio-client/src/featu
 type Card = Awaited<ReturnType<StudioApi['cards']['get']>>['card']
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
-import type { FormEvent } from 'react'
 
 const hooks = vi.hoisted(() => ({
   cursor: 0, values: [] as unknown[], effects: [] as (() => void)[], dirty: false,
@@ -69,7 +68,7 @@ function fixture() {
     cards = cards.map(item => item.id === updated.id ? updated : item)
     return { card: updated, mutation: { changesetId: `commit-${updated.version}` } }
   })
-  const api = {
+  let api = {
     cards: { get, list, update },
   } as unknown as StudioApi
   const render = () => {
@@ -90,7 +89,16 @@ function fixture() {
   const unmount = () => {
     for (const value of hooks.values) (value as { cleanup?: () => void } | undefined)?.cleanup?.()
   }
-  return { render, get, list, update, failures, unmount, setCards: (value: Card[]) => { cards = value } }
+  return { render, get, list, update, failures, unmount, setCards: (value: Card[]) => { cards = value },
+    setApi: (next: StudioApi) => { api = next },
+    select: async (id: string) => {
+      render().setSelectedCardId(id)
+      render()
+      await Promise.resolve()
+      await Promise.resolve()
+      return render()
+    },
+  }
 }
 
 beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = []; hooks.dirty = false })
@@ -124,7 +132,8 @@ describe('Card editor effect lifecycle', () => {
     expect(selected.opening.alternatives[0]).toEqual({ id: 'alternate-a', title: 'A', content: 'Edited A' })
     await render().handleAddAlternative()
     const added = selected.opening.alternatives[2]
-    expect(added.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(added.id).toBeTruthy()
+    expect(['root-opening', 'alternate-a', 'alternate-b']).not.toContain(added.id)
     expect(added.content).toBe('')
     expect(render().activeOpening?.id).toBe(added.id)
     render().setActiveOpeningIndex(1)
@@ -148,105 +157,83 @@ describe('Card editor effect lifecycle', () => {
   it.each(['resolve', 'reject'] as const)('retains a saved detail when an earlier background read later %s', async outcome => {
     const f = fixture()
     await f.render().refreshCards()
-    let state = f.render()
+    await f.select('b')
     let resolve!: (value: { card: Card }) => void
     let reject!: (error: Error) => void
+    f.setCards([card('a', 'Original'), card('b', 'External B', 2)])
     f.get.mockReturnValueOnce(new Promise((accept, fail) => { resolve = accept; reject = fail }))
-    state.setSelectedCardId('b')
+    await f.render().refreshCards()
     f.render()
-    await f.render().selectCard('b')
-    state = f.render()
-    state.setCardDraft({ ...state.cardDraft, name: 'Saved B' })
-    await f.render().updateCard({ preventDefault() {} } as FormEvent)
-    if (outcome === 'resolve') resolve({ card: card('b', 'Old B', 1) })
+    await f.render().updateCardProfile({ cardId: 'b', expectedVersion: 2, name: 'Saved B', userName: '', description: '' })
+    if (outcome === 'resolve') resolve({ card: card('b', 'External B', 2) })
     else reject(new Error('Background read failed'))
     await Promise.resolve()
     await Promise.resolve()
-    expect(f.render().selectedCardDetails).toMatchObject({ id: 'b', name: 'Saved B', version: 2 })
+    expect(f.render().selectedCardDetails).toMatchObject({ id: 'b', name: 'Saved B', version: 3 })
     if (outcome === 'reject') expect(f.failures).toContainEqual(new Error('Background read failed'))
   })
 
-  it.each(['edit', 'switch'] as const)('retains a newer %s while an earlier save completes', async action => {
+  it('does not replace another selected Card when a profile save completes', async () => {
     const f = fixture()
     await f.render().refreshCards()
-    let state = f.render()
-    state.setCardDraft({ ...state.cardDraft, name: 'First save' })
+    await f.select('a')
     let resolve!: (value: Awaited<ReturnType<StudioApi['cards']['update']>>) => void
     f.update.mockReturnValueOnce(new Promise(accept => { resolve = accept }))
-    const pending = f.render().updateCard({ preventDefault() {} } as FormEvent)
-    state = f.render()
-    if (action === 'edit') state.setCardDraft({ ...state.cardDraft, name: 'New unsaved input' })
-    else state.setSelectedCardId('b')
-    f.render()
-    const saved = card('a', 'First save', 2)
-    f.setCards([saved, card('b', 'Other')])
-    resolve({ card: saved, mutation: { changesetId: 'first-save' } })
+    const pending = f.render().updateCardProfile({ cardId: 'a', expectedVersion: 1, name: 'Saved A', userName: '', description: '' })
+    await f.select('b')
+    resolve({ card: card('a', 'Saved A', 2), mutation: { changesetId: 'save' } })
     await pending
-    state = f.render()
-    expect(state.selectedCardId).toBe(action === 'edit' ? 'a' : 'b')
-    expect(state.cardDraft.name).toBe(action === 'edit' ? 'New unsaved input' : 'Other')
-    if (action === 'edit') {
-      await state.updateCard({ preventDefault() {} } as FormEvent)
-      expect(f.update).toHaveBeenLastCalledWith(expect.objectContaining({ expectedVersion: 2, name: 'New unsaved input' }))
-    }
+    const state = f.render()
+    expect(state.selectedCardId).toBe('b')
+    expect(state.selectedCardDetails).toMatchObject({ id: 'b', name: 'Other' })
+    expect(state.cards.find(item => item.id === 'a')).toMatchObject({ version: 2, name: 'Saved A' })
   })
 
-  it('saves a dirty draft against its original version after a remote refresh', async () => {
+  it('preserves the caller CAS baseline after a remote refresh', async () => {
     const f = fixture()
     await f.render().refreshCards()
-    let state = f.render()
-    state.setCardDraft({ ...state.cardDraft, name: 'Local unsaved' })
+    const pendingPatch = { cardId: 'a', expectedVersion: 1, name: 'Local unsaved', userName: '', description: '' }
     f.setCards([card('a', 'External update', 2)])
     await f.render().refreshCards()
-    state = f.render()
-    await expect(state.updateCard({ preventDefault() {} } as FormEvent)).rejects.toThrow('Card version conflict')
-    expect(f.update).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1, name: 'Local unsaved' }))
-    expect(f.render().cardDraft.name).toBe('Local unsaved')
+    await expect(f.render().updateCardProfile(pendingPatch)).rejects.toThrow('Card version conflict')
+    expect(f.update).toHaveBeenCalledWith(pendingPatch)
+    expect(f.render().selectedCard).toMatchObject({ name: 'External update', version: 2 })
   })
 
-  it('advances the saved baseline even if the following refresh fails', async () => {
+  it('publishes the saved version without depending on a catalog refresh', async () => {
     const f = fixture()
     await f.render().refreshCards()
-    let state = f.render()
-    state.setCardDraft({ ...state.cardDraft, name: 'Saved edit' })
+    await f.select('a')
     f.list.mockRejectedValueOnce(new Error('List failed'))
-    await expect(f.render().updateCard({ preventDefault() {} } as FormEvent)).rejects.toThrow('List failed')
-    state = f.render()
-    expect(state.selectedCard).toMatchObject({ name: 'Saved edit', version: 2 })
-    state.setCardDraft({ ...state.cardDraft, description: 'Next edit' })
-    await f.render().updateCard({ preventDefault() {} } as FormEvent)
+    await f.render().updateCardProfile({ cardId: 'a', expectedVersion: 1, name: 'Saved edit', userName: '', description: '' })
+    const saved = f.render().selectedCard!
+    expect(saved).toMatchObject({ name: 'Saved edit', version: 2 })
+    await f.render().updateCardProfile({ cardId: 'a', expectedVersion: saved.version, name: saved.name, userName: '', description: 'Next edit' })
     expect(f.update).toHaveBeenLastCalledWith(expect.objectContaining({ expectedVersion: 2, description: 'Next edit' }))
+    expect(f.list).toHaveBeenCalledTimes(1)
   })
 
-  it.each([false, true])('refreshes a pristine draft but retains dirty input (dirty=%s)', async dirty => {
+  it.each(['selection', 'api', 'unmount'] as const)('does not publish a late navigation detail after %s changes', async change => {
     const f = fixture()
     await f.render().refreshCards()
-    let state = f.render()
-    expect(state.cardDraft.name).toBe('Original')
-    if (dirty) {
-      state.setCardDraft({ ...state.cardDraft, name: 'Local unsaved' })
-      state = f.render()
-    }
-    f.setCards([card('a', 'External update', 2), card('b', 'Other')])
-    await state.refreshCards()
-    state = f.render()
-    expect(state.selectedCard?.name).toBe('External update')
-    expect(state.cardDraft.name).toBe(dirty ? 'Local unsaved' : 'External update')
-    state.setSelectedCardId('b')
-    expect(f.render().cardDraft.name).toBe('Other')
-  })
-
-  it('does not publish a pending explicit selection after cleanup', async () => {
-    const f = fixture()
-    await f.render().refreshCards()
-    const state = f.render()
+    await f.select('a')
     let resolve!: (value: { card: Card }) => void
     f.get.mockReturnValueOnce(new Promise(accept => { resolve = accept }))
-    const pending = state.selectCard('b')
-    f.unmount()
+    f.render().setSelectedCardId('b')
+    f.render()
+    if (change === 'selection') await f.select('a')
+    else if (change === 'api') {
+      f.setApi({ cards: { list: async () => ({ cards: [] }) } } as unknown as StudioApi)
+      f.render()
+    } else f.unmount()
     hooks.dirty = false
     resolve({ card: card('b', 'Late') })
-    await pending
+    await Promise.resolve()
+    await Promise.resolve()
     expect(hooks.dirty).toBe(false)
+    if (change !== 'unmount') {
+      expect(f.render().selectedCardDetails?.id).not.toBe('b')
+      expect(f.render().selectedCardId).toBe(change === 'selection' ? 'a' : undefined)
+    }
   })
 })

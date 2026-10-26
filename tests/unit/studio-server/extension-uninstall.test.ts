@@ -7,7 +7,7 @@ import { createExtensionHost, type ExtensionHost, type ExtensionRpcRegistration 
 import { extensionInstallationId, type ExtensionInstallationTarget, type ListExtensionInstallationsResult } from '@loom-studio/application-runtime'
 import type { ManagedExtensionModule } from '@loom-studio/kernel'
 import { zipSync } from 'fflate'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { createServerExtensionManager } from '../../../apps/studio-server/src/extensions/extension-manager.js'
 import { createExtensionStateStore } from '../../../apps/studio-server/src/extensions/extension-state-store.js'
 
@@ -18,7 +18,9 @@ const hosts: ExtensionHost[] = []
 
 afterEach(async () => {
   try {
-    await Promise.all(hosts.splice(0).map(host => host.disposeAll()))
+    const results = await Promise.allSettled(hosts.splice(0).map(host => host.disposeAll()))
+    const failure = results.find(result => result.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
   } finally {
     await Promise.all(temporaryDirectories.splice(0).map(directory => rm(directory, { recursive: true, force: true })))
   }
@@ -64,8 +66,10 @@ function createRuntime(paths: Awaited<ReturnType<typeof createFixture>>, cardArc
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const stateStore = createExtensionStateStore({ filename: paths.stateFile, now: () => '2026-09-22T00:00:00.000Z' })
   const registrations = new Map<string, ExtensionRpcRegistration>()
+  const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   const host = createExtensionHost({
-    documents: createInMemoryDocumentStore(),
+    documents,
     diagnostics,
     grantEventCapabilities: (_, module) => stateStore.get(packageId, module.id)?.grantedEventCapabilities ?? [],
     grantAssetCapabilities: (_, module) => stateStore.get(packageId, module.id)?.grantedAssetCapabilities ?? [],

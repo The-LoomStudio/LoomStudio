@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
-import { buildContextAssetSearchIndex, searchContextAssets } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-search.js'
+import { buildContextAssetSearchIndex, searchContextAssets } from '../../../apps/studio-client/src/features/prompt-resources/model/context-asset-search.js'
 
 const nodes: ContextAssetNode[] = [{
   id: 'root',

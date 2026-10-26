@@ -403,19 +403,6 @@
   }
 }
 
-.brandIcon,
-.brandIconFallback {
-  width: var(--loom-icon-size-4);
-  height: var(--loom-icon-size-4);
-  flex: 0 0 var(--loom-icon-size-4);
-  object-fit: contain;
-}
-
-.brandIconFallback {
-  color: var(--loom-color-text-muted);
-  stroke-width: 1.25;
-}
-
 .providerForm,
 .accountBody {
   min-width: 0;

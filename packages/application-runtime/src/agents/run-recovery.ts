@@ -11,6 +11,7 @@ export type AgentRunRecoveryCheckpoint = {
   request: InvokeAgentTurnInput
   sendRequestDigest?: string
   narrativeSource?: NarrativeExecutionSource
+  materialBaseline?: AgentRunMaterialBaseline
   model: ProviderModelSelection
   toolContract: string
   messages: ChatMessage[]
@@ -19,6 +20,7 @@ export type AgentRunRecoveryCheckpoint = {
   partialEntryId?: string
   processedPrompt?: ProcessedPromptSnapshot
   promptExtensionLeases: TimelineExtensionLease[]
+  narrativeOutput?: { declared: boolean; logicalId?: string; consumedEntryId?: string }
   pendingAssistantContent?: string
   acceptedContent?: {
     mutation: ApplyStateMutationInput
@@ -26,7 +28,24 @@ export type AgentRunRecoveryCheckpoint = {
     entries: AgentTranscriptEntryData[]
     providerResult: GatewayChatResult
     diagnostics?: string[]
+    continueAfter?: boolean
   }
+}
+
+export type AgentRunMaterialBaseline = {
+  timelineId: string
+  branchId: string
+  headNodeId: string | null
+  headEntryId: string | null
+  stateRevisionId: string
+  workspaceRevisionId: string
+}
+
+export function parseAgentRunMaterialBaseline(value: unknown): AgentRunMaterialBaseline {
+  if (!isRecord(value) || !['timelineId', 'branchId', 'stateRevisionId', 'workspaceRevisionId'].every(key => typeof value[key] === 'string' && value[key])
+    || !['headNodeId', 'headEntryId'].every(key => value[key] === null || typeof value[key] === 'string' && value[key]))
+    throw recoveryError('checkpoint_invalid', 'Agent material baseline is invalid')
+  return value as AgentRunMaterialBaseline
 }
 
 export type AgentRunRecovery = {
@@ -87,6 +106,11 @@ function parseCheckpoint(value: JsonObject): AgentRunRecoveryCheckpoint {
     throw recoveryError('checkpoint_invalid', 'Agent recovery checkpoint is incomplete or unsupported')
   }
   const target = value.request.narrativeTarget
+  if (value.materialBaseline !== undefined) {
+    const baseline = parseAgentRunMaterialBaseline(value.materialBaseline)
+    if (!isRecord(target) || baseline.timelineId !== target.timelineId || baseline.branchId !== target.branchId)
+      throw recoveryError('checkpoint_invalid', 'Agent material baseline does not match its target')
+  }
   if (value.narrativeSource !== undefined) {
     const source = value.narrativeSource
     if (!isRecord(source) || typeof source.timelineId !== 'string' || typeof source.branchId !== 'string'
@@ -103,6 +127,11 @@ function parseCheckpoint(value: JsonObject): AgentRunRecoveryCheckpoint {
     && Number.isSafeInteger(lease.installationVersion) && Number(lease.installationVersion) > 0)) {
     throw recoveryError('checkpoint_invalid', 'Invalid Prompt extension dependencies')
   }
+  if (value.narrativeOutput !== undefined && (!isRecord(value.narrativeOutput)
+    || typeof value.narrativeOutput.declared !== 'boolean'
+    || value.narrativeOutput.logicalId !== undefined && typeof value.narrativeOutput.logicalId !== 'string'
+    || value.narrativeOutput.consumedEntryId !== undefined && typeof value.narrativeOutput.consumedEntryId !== 'string'))
+    throw recoveryError('checkpoint_invalid', 'Narrative output checkpoint is invalid')
   if (value.pendingAssistantContent !== undefined && typeof value.pendingAssistantContent !== 'string')
     throw recoveryError('checkpoint_invalid', 'Pending assistant content must be text')
   if (value.phase === 'content') {
@@ -124,6 +153,7 @@ function parseCheckpoint(value: JsonObject): AgentRunRecoveryCheckpoint {
       || !Array.isArray(accepted.entries) || !accepted.entries.some(entry => isRecord(entry) && entry.kind === 'message')
       || !accepted.entries.every(entry => isRecord(entry) && typeof entry.content === 'string'
         && (entry.kind === 'reasoning' || entry.kind === 'message' && entry.role === 'assistant'))
+      || (accepted.continueAfter !== undefined && typeof accepted.continueAfter !== 'boolean')
       || !isRecord(accepted.providerResult) || !isRecord(accepted.providerResult.message)
       || (accepted.diagnostics !== undefined && (!Array.isArray(accepted.diagnostics)
         || !accepted.diagnostics.every(message => typeof message === 'string')))
@@ -170,7 +200,7 @@ async function readRecoveryTranscript(agents: AgentStore, agentSessionId: string
   return { entries, entryCount }
 }
 
-export async function readAgentRunState(agents: AgentStore, input: { agentSessionId: string; runId: string }): Promise<{
+export async function readAgentRunState(agents: AgentStore, input: { agentSessionId: string; runId: string; adoptedBranchId?: string }): Promise<{
   runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; entryCount: number; reason?: string
 }> {
   const { entries, entryCount } = await readRecoveryTranscript(agents, input.agentSessionId)
@@ -180,9 +210,14 @@ export async function readAgentRunState(agents: AgentStore, input: { agentSessio
     throw recoveryError('superseded', 'This is no longer the latest Agent Run')
   if (activeExecutors.has(input.runId)) return { runId: input.runId, state: 'running', entryCount }
   const state = latest.entry.state
-  if (state === 'completed' || state === 'failed') return { runId: input.runId, state, entryCount, ...(latest.entry.reason ? { reason: latest.entry.reason } : {}) }
-  if (state === 'discarded' || state === 'aborted') return { runId: input.runId, state: 'cancelled', entryCount }
+  const source = newest.find(item => item.runId === input.runId && item.entry.kind === 'run-state' && item.entry.recovery)?.entry
+  if (source && isHistoricalRunPrefix({ ...latest, entry: source }, input.adoptedBranchId)) return {
+    runId: input.runId, state: 'cancelled', entryCount,
+    reason: 'The adopted branch contains a historical execution prefix, not a resumable Run',
+  }
   const checkpoint = newest.find(item => item.runId === input.runId && item.entry.kind === 'run-state' && item.entry.recovery)?.entry
+  if (state === 'completed' || state === 'failed' && !checkpoint) return { runId: input.runId, state, entryCount, ...(latest.entry.reason ? { reason: latest.entry.reason } : {}) }
+  if (state === 'discarded' || state === 'aborted') return { runId: input.runId, state: 'cancelled', entryCount }
   const executor = checkpoint?.kind === 'run-state' && isRecord(checkpoint.recovery) ? checkpoint.recovery.executor : undefined
   if (isRecord(executor) && Number.isSafeInteger(executor.pid) && typeof executor.id === 'string') {
     try { assertExecutorStopped({ pid: Number(executor.pid), id: executor.id }) }
@@ -235,4 +270,11 @@ export async function readAgentRunRecovery(
       recovery: checkpoint, expectedEntryCount: entryCount,
     },
   }
+}
+
+/** A branch cut keeps facts without reviving the executor from the original branch. */
+export function isHistoricalRunPrefix(entry: AgentTranscriptEntry, adoptedBranchId?: string): boolean {
+  if (!adoptedBranchId || entry.entry.kind !== 'run-state') return false
+  const source = entry.entry.recovery?.narrativeSource
+  return isRecord(source) && typeof source.branchId === 'string' && source.branchId !== adoptedBranchId
 }

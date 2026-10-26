@@ -1,6 +1,6 @@
 # Loom Script Runtime
 
-> 状态：现有宿主与原生 Worker 已接通（2026-10-23）；Workspace 文件执行及其余运行环境见[实施计划](../../workbench/plans/loom-script-distribution-and-runtime-plan.md)
+> 状态：声明式文本贡献、托管配置与脚本编辑器已接通（2026-10-26）；Workspace 文件执行及其余运行环境见[实施计划](../../workbench/plans/loom-script-distribution-and-runtime-plan.md)
 
 Loom Script 是带头部 Metadata 的单文件代码分发格式，不要求独立 Manifest。渲染只是其中一项能力。持久化身份为 Script Document 与 Mount；Client / Server 脚本在内存中适配为 Extension Host 模块和实例，不创建伪造的安装文档。Renderer 继续共用现有 Host、Surface、Scope、冲突仲裁和诊断。
 
@@ -10,6 +10,7 @@ Loom Script 是带头部 Metadata 的单文件代码分发格式，不要求独�
   -> airp.loomScript + Blob source
   -> airp.loomScriptMount
   -> Runtime mount resolution
+  -> declarative: text pipeline rules / extractors (no code execution)
   -> client-sandbox: isolated Renderer registration
   -> client / server: Extension Host activate(ctx)
   -> client-worker: Dedicated module Worker activate(ctx)
@@ -17,9 +18,9 @@ Loom Script 是带头部 Metadata 的单文件代码分发格式，不要求独�
 
 ## Metadata 与身份
 
-Metadata 必须从文件首行开始，并由 `// ==LoomScript==` 与 `// ==/LoomScript==` 包围。Host 静态解析 `format`、`id`、`name`、`version`、`runtime`、可重复的 `capability`、`contribution` 与 `require`，不会为了建立索引而执行脚本。
+Metadata 必须从文件首行开始，并由 `// ==LoomScript==` 与 `// ==/LoomScript==` 包围。Host 静态解析 `format`、`id`、`name`、`version`、`runtime`、可重复的 `capability`、`contribution`、`require`、`setting` 与 `tag`，以及 `text` 多行正文，不会为了建立索引而执行脚本。
 
-当前接受 `format: 1`，运行环境声明为 `client-sandbox`、`client`、`client-worker` 或 `server`。`client-sandbox` 仍要求一个或多个 Renderer Contribution，支持 `match:<ruleId>` / `artifact:<artifactType>` 输入及 `state.read`、`ui.notify` 请求。其余环境不要求 Renderer，导出 `activate(ctx)`，Metadata 自动加入对应的 `runtime.<环境>` 信任请求；Server 和 Worker 不接受 Client Renderer 声明。
+当前接受 `format: 1`，运行环境声明为 `declarative`、`client-sandbox`、`client`、`client-worker` 或 `server`。省略 runtime 等同于 `declarative`，只解析声明，不接受执行代码或代码依赖。`client-sandbox` 仍要求一个或多个 Renderer Contribution，支持 `match:<ruleId>` / `artifact:<artifactType>` 输入及 `state.read`、`ui.notify` 请求。其余代码环境不要求 Renderer，导出 `activate(ctx)`，Metadata 自动加入对应的 `runtime.<环境>` 信任请求；Server 和 Worker 不接受 Client Renderer 声明。
 
 Metadata ID 不作为本地唯一键。同 ID、同名或同版本再次导入创建新文档，不替换原件、不复用授权，不执行自动更新检测。
 
@@ -29,16 +30,40 @@ Metadata ID 不作为本地唯一键。同 ID、同名或同版本再次导入�
 
 `airp.loomScript` 保存 Owner、解析后的 Metadata、源码 Blob 引用、文件名与 SHA-256 digest。源码以 UTF-8 字节进入 Blob Store，导出和 Runtime 解析读取相同 Document Revision 的 byte-exact 内容。
 
-`airp.loomScriptMount` 保存目标 Owner、Script Document ID、顺序、可选固定版本、启用状态、`adoptedDocumentVersion` 和用户授予的 capability。新 Mount 固定为禁用且无 Grant；请求 capability 不等于获得 capability。
+`airp.loomScriptMount` 保存目标 Owner、Script Document ID、顺序、可选固定版本、启用状态、`adoptedDocumentVersion`、配置 overrides、`adoptedSettings`、`runtimeRevision` 和用户授予的 capability。新 Mount 固定为禁用且无 Grant；请求 capability 不等于获得 capability。
 
-- User、Workspace 与当前 Preset 在解析时读取当前 Mount；
+- 同一处理上下文中按 User < Workspace < Preset < Card 选择同一脚本的一个 Mount；显式关闭也覆盖低优先级启用，移除范围才恢复继承。独立导入副本不合并；
 - Narrative Timeline 通过来源 Card 读取当前 Mount；启用 Mount 解析已采用的版本，保存源码不更新运行实例，显式刷新才采用新版。移除的 Mount 不从旧 Timeline 快照恢复；
-- Mount 显式固定版本仍表示用户当前选择；刷新校验目标版本与运行环境信任，成功后更新采用版本及 Mount 版本。已有启用 Mount 在服务初始化时补齐采用版本。Grant 取当前 Mount 的授权，代码更新不增加权限。
+- Mount 显式固定版本仍表示用户当前选择；刷新校验目标版本与运行环境信任，成功后更新采用版本、配置快照及运行修订；只保存配置不会改变运行修订。已有启用 Mount 在服务初始化时补齐采用版本。Grant 取当前 Mount 的授权，代码更新不增加权限。
 - Script 或所属 Extension Installation 缺失时保留 Mount 引用、启用选择及 Grant。Runtime 返回正常 `mounts` 和单独的 `unavailableMounts`；不可用项包含引用身份、原因和 warning，不执行，也不阻断其他正常项。原引用再次可解析后恢复正常解析，不自动寻找同名替代资源。文档类型/所有者不匹配、存储及源码 Blob 错误仍作为真实错误处理，不统一降级。
 
-Card / Preset Artifact 可以携带 `.loom.js` Attachment。导入建立新 Script 与禁用、无授权的 Mount；导出不携带本机启用状态或 Grant。Card 对跨 Owner 的采用导出独立附件快照，不改变活跃原件归属。若包与采用附件同时携带同一源码，导入分别保留，不按 Metadata ID 合并。
+Card / Preset Artifact 可以携带 `.loom.js` Attachment。导入建立新 Script 与禁用、无授权的 Mount；导出携带用户配置 overrides 和贡献引用映射，不携带本机启用状态或 Grant；导入重新分配本地地址。单独 `.loom.js` 导出只携带作者定义，不包含本机用户配置。Card 对跨 Owner 的采用导出独立附件快照，不改变活跃原件归属。若包与采用附件同时携带同一源码，导入分别保留，不按 Metadata ID 合并。
 
 UI 保存包内脚本直接更新原文档。Server 导出扩展 ZIP 或角色包时，将保存的字节覆盖到 Manifest 中该贡献的原始路径；因此导出包含编辑结果。目录 Apply 通过捕获时的附件位置映射文档 ID，不使用 Metadata ID 匹配。
+
+## 声明式规则、配置与标签
+
+`@contribution` 支持 `text-transform`（`id` + `rule`）与 `text-extractor`（`id` + `extractor`）。字段结构复用平台规则/提取器定义，去掉 owner、文档 ID 与时间戳。一份脚本可携带多条贡献及可选 JS；规则输出文本，提取器输出数据，二者都不自动写 State 或触发剧情操作。
+
+声明由平台按请求的 Timeline/Session/预设解析已采用版本，不依赖当前浏览器页面。独立声明不要求 JS 执行授权；混合脚本无代码授权时仍可采用独立声明，但代码不会启动。贡献 `requiresCode: true` 要求相应 Server 实例在匹配的运行修订上成功激活，否则跳过该贡献并报告诊断。浏览器实例不能满足后台流水线的常驻依赖；需要此依赖的文本贡献应使用 Server 运行环境。动态注册/按次调用 SDK 不在本次静态贡献交付范围。
+
+`@setting` 声明 `key`、`label`、`type`、`default`，可加 `description`；类型为 `string`、`number`、`boolean`、`select`。数字可声明 min/max，枚举通过 `options: [{label,value}]` 声明字符串选项。key 是稳定身份，显示名称可修改。平台生成配置控件，单独保存用户值，既不改源码也不自动刷新。启用/刷新时以全局已采用值、当前范围 overrides、作者默认值解析快照；代码通过 `ctx.scriptSettings` 读取。删除/改变配置声明导致旧 overrides 无法校验时，界面报告问题并允许清除旧值，不悄悄丢弃。
+
+声明式规则使用 `{"$config":"key"}` 引用配置。matcher.pattern 默认按正则字面量转义，effect.replacement 默认转义 `$` 替换语法；作者确实需要正则或 `$1` 等替换表达式时，显式增加 `"as":"raw"`。普通字段按类型取值，不执行模板 JS，也不对整份源码做文本替换。
+
+Metadata 的 JSON 可拆为多行，每行仍以 `//` 开头。多行正文可声明：
+
+```js
+// @text body <<END
+// <section>
+//   多行替换正文
+// </section>
+// END
+```
+
+贡献中的 `{"$text":"body"}` 引用该正文。原始源码按字节保存，不因解析重排。`@tag` 每行一个作者标签，索引按 NFKC、去除两端空格及小写规范化；界面支持名称/标识/标签搜索及标签筛选。标签不影响权限与执行。
+
+编辑器提供 JavaScript/Metadata 高亮、声明说明、只读贡献摘要、源码定位与样本测试。`previewLoomScript` 仅运行平台规则/提取器，绝不执行脚本 JS、不写业务数据。可导入示例：[可配置旁白规则](./examples/configurable-text-rule.loom.js)。
 
 ## Client Sandbox
 
@@ -56,7 +81,7 @@ Host 与 Frame 使用专用 `MessageChannel` 交换 bootstrap、update、dispose
 
 Client 使用现有状态读取、History、Renderer、通知、信号及清理能力；Server 使用现有状态、事件订阅、宏、Prompt Processor、资产等能力。没有安装身份或 Timeline lease 的 API 明确不可用，不能通过合成脚本包名借用其他扩展权限。运行器对不支持的授权能力给出诊断。
 
-全局实例不随角色切换停止；角色实例随角色切换，切换同角色 Timeline 保持实例。Client 的 `ctx.timeline.target` 读取当前目标；显式 State 订阅保留原目标，不自动改写。已经发出的读操作前后检查目标，旧目标结果不作为新 Timeline 数据返回。服务重启按全局启用配置重新启动 Server 脚本，不恢复闭包或补放旧事件。
+未被更高优先级采用遮蔽的全局实例不随角色切换停止；角色实例随角色切换，切换同角色 Timeline 保持实例。Client 的 `ctx.timeline.target` 读取当前目标；显式 State 订阅保留原目标，不自动改写。已经发出的读操作前后检查目标，旧目标结果不作为新 Timeline 数据返回。服务重启按全局启用配置重新启动 Server 脚本，不恢复闭包或补放旧事件。
 
 `@require` 使用绝对 HTTP(S) URL，按顺序下载经典 JS 并拼接入口，在实际运行环境中执行。Client 受浏览器 CORS 约束；Server 每项 4 MiB、15 秒超时。停用、刷新会取消下载，迟到结果不执行；下载失败有诊断。缓存仅随当前实例/采用版本存活，不做自动更新或远端 ESM 依赖图解析。iframe 路径的依赖也只在 iframe 执行，原有 CSP 不因此放宽。
 
@@ -95,7 +120,7 @@ Inline Mount 只替换渲染投影中的目标范围，不修改 Canonical Narra
 ## API 与界面
 
 - Script：`importLoomScript`、`updateLoomScript`、`getLoomScript`、`listLoomScripts`、`exportLoomScript`
-- Mount：`createLoomScriptMount`、`updateLoomScriptMount`、`refreshLoomScriptMount`、`listLoomScriptMounts`
+- Mount：`createLoomScriptMount`、`updateLoomScriptMount`、`refreshLoomScriptMount`、`listLoomScriptMounts`、`deleteLoomScriptMount`、`getLoomScriptSettings`
 - Runtime：`resolveLoomScriptRendererMounts` 只读解析；`reconcileLoomScriptRuntime` 根据实际工作台上下文同步运行实例并返回 Server 状态。检查面板不调用后者。
 
 脚本总管理位于扩展面板的“脚本”页，支持全局/当前角色创建和采用、原位保存、导出、逐项授权、启停与单 Mount 刷新。角色 / Preset 编辑入口沿用同一 Script 身份。保存只更新源码，不启动或重启。Text Pipeline 专门面板展示当前 Runtime Context 的启用 Mount、不可用引用警告，以及 Client Renderer Host 中实际注册的 Extension / Loom Script Renderer。Client 加载正常项时，对启用的不可用项显示 warning，而不是把整个解析当作失败。

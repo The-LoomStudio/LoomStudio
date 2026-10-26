@@ -6,7 +6,7 @@ import { formatDateTime, type Translator } from '../../shared/i18n/index.js'
 import { sessionPresetName, sessionSourceLabel } from '../../entities/session-identification.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
 import { useSlidingHover } from '../../shared/hooks/use-sliding-hover.js'
-import styles from './agent-session-picker.module.scss'
+import styles from '../../features/sessions/ui/agent-session-picker.module.scss'
 
 type RenameSession = (id: string, title: string) => Promise<AgentSession | undefined>
 
@@ -81,38 +81,25 @@ export function AgentSessionPicker(props: {
   cards?: CardSummary[]
   timelines?: NarrativeTimeline[]
   primarySessionId?: string
-  timelineId?: string
   disabled: boolean
   sessionReady?: boolean
   onSelect?(id: string): void
   onRename?: RenameSession
-  onSetPrimary?(session: AgentSession): Promise<void>
   t: Translator
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [editingId, setEditingId] = useState<string>()
-  const [pendingPrimaryId, setPendingPrimaryId] = useState<string>()
-  const [error, setError] = useState('')
   const [renaming, setRenaming] = useState(false)
   const presetName = (session: AgentSession) =>
     sessionPresetName(session, props.presets, props.t)
   const sourceLabel = (session: AgentSession) => sessionSourceLabel(session, props.timelines ?? [], props.cards ?? [], props.t)
   const title = (session: AgentSession) => session.title ?? props.t('sessions.untitledAgentSession')
   const search = normalizeSearchText(query)
-  const sessions = props.sessions.filter(session =>
+  const sessions = props.sessions.filter(session => session.kind !== 'timeline' &&
     normalizeSearchText(`${title(session)} ${presetName(session)} ${sourceLabel(session)}`).includes(search))
-  const locked = props.disabled || Boolean(pendingPrimaryId) || renaming
+  const locked = props.disabled || renaming
   const slidingHover = useSlidingHover<HTMLDivElement>()
-
-  async function makePrimary(session: AgentSession) {
-    if (locked || !props.onSetPrimary) return
-    setPendingPrimaryId(session.id)
-    setError('')
-    try { await props.onSetPrimary(session) }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
-    finally { setPendingPrimaryId(undefined) }
-  }
 
   return <>
     <div className={styles.selector}>
@@ -126,7 +113,7 @@ export function AgentSessionPicker(props: {
           placeholder={props.t('agent.sessionPending')} />}
       {props.onSelect && <IconButton aria-label={props.t('agent.selectSession')} title={props.t('agent.selectSession')} disabled={locked}
         className={styles.pickerTrigger}
-        onClick={() => { setQuery(''); setError(''); setEditingId(undefined); setOpen(true) }}>
+        onClick={() => { setQuery(''); setEditingId(undefined); setOpen(true) }}>
         <MessagesSquare size={16} aria-hidden="true" />
       </IconButton>}
     </div>
@@ -138,7 +125,6 @@ export function AgentSessionPicker(props: {
       <div className={styles.pickerBody}>
         <SearchField aria-label={props.t('agent.searchSessions')} placeholder={props.t('agent.searchSessionPlaceholder')} value={query}
           onChange={event => setQuery(event.target.value)} clearLabel={props.t('agent.clearSearch')} onClear={() => setQuery('')} />
-        {error ? <p className={styles.error} role="alert">{error}</p> : null}
         <div
           ref={slidingHover.containerRef}
           className={styles.pickerList}
@@ -149,7 +135,6 @@ export function AgentSessionPicker(props: {
         >
           <div className={styles.hoverIndicator} style={slidingHover.indicatorStyle} aria-hidden="true" />
           {sessions.map(session => {
-            const primary = session.id === props.primarySessionId
             const selected = session.id === props.session?.id
             return <div key={session.id} data-hover-item className={styles.sessionRow} role="listitem"
               data-selected={selected}>
@@ -172,13 +157,7 @@ export function AgentSessionPicker(props: {
                 {props.onRename ? <IconButton size="small" aria-label={props.t('agent.renameSessionNamed', { name: title(session) })}
                   title={props.t('sessions.rename')} disabled={locked || editingId === session.id}
                   onClick={() => setEditingId(session.id)}><Pencil size={14} aria-hidden="true" /></IconButton> : null}
-                <IconButton size="small" aria-label={props.t(primary ? 'agent.primarySessionNamed' : 'agent.makePrimaryNamed', { name: title(session) })}
-                  title={props.t(primary ? 'agent.primarySession' : 'agent.makePrimary')}
-                  className={primary ? styles.primaryIcon : undefined} aria-pressed={primary}
-                  disabled={locked || primary || !props.onSetPrimary || !props.timelineId || session.timelineId !== props.timelineId}
-                  onClick={() => void makePrimary(session)}>
-                  <Star size={15} fill={primary ? 'currentColor' : 'none'} aria-hidden="true" />
-                </IconButton>
+
               </div>
             </div>
           })}

@@ -1,3 +1,4 @@
+import { assertAgentSessionNotExecuting } from './agents-runtime.js'
 import { readUserProfiles, resolveCurrentUserProfile } from '../profiles/user-profiles.js'
 import { workspaceBinaryLimit } from './workspace-runtime.js'
 import type { DocumentRecord } from '@loom-studio/document-store'
@@ -18,7 +19,8 @@ import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { timelineExtensionParticipationId } from '../extensions/timeline-participation.js'
 import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
 import { deleteTimelinePresetConfigs, listTimelinePresetConfigs, timelinePresetConfigId } from '../prompt/timeline-preset-config.js'
-import { normalizeMacroSelections } from '@loom-studio/shared'
+import { isRecord, normalizeMacroSelections } from '@loom-studio/shared'
+import { createAgentStore, type AgentTranscriptEntryData, type NarrativeSwipeGroup } from '@loom-studio/application-data'
 import type { NarrativeNode, NarrativePage } from '@loom-studio/application-data'
 import { createNarrativeSampler } from '../narrative/sampling.js'
 import { composeTimelineArchiveIdMap, parseTimelineArchive, timelineArchivePendingId, type TimelineArchive, type TimelineArchiveIdMap, type TimelineArchivePendingContent } from '../archive/timeline-archive.js'
@@ -60,10 +62,11 @@ import {
 import { executeDocumentMutation } from '../foundation/mutation.js'
 
 type NarrativeRuntimeContext = Pick<ApplicationRuntimeContext,
-  'workspaces' | 'blobs' | 'agents' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'narrativeActivity' | 'narrativeContext' | 'now' | 'promptResources' | 'stateContributions' | 'states' | 'timelineArchiveParticipants'
+  'swipes' | 'workspaces' | 'blobs' | 'agents' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'narrativeActivity' | 'narrativeContext' | 'now' | 'promptResources' | 'stateContributions' | 'states' | 'timelineArchiveParticipants'
 >
 
 export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
+  const agents = ctx.agents ?? createAgentStore({ engine: ctx.dataEngine, createId: ctx.createId, now: ctx.now })
   return {
     createNarrativeTimeline: (input: CreateNarrativeTimelineInput, requestContext?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult> =>
       createTimelineFromCard(ctx, input, requestContext, 'application.createNarrativeTimeline'),
@@ -147,7 +150,8 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         participants.push(block)
       }
       return { archive: {
-        format: 'loom-timeline-archive.v1',
+        format: 'loom-timeline-archive.v2',
+        agent: { session: (await agents.getSession(timeline.id))!, entries: await agents.listEntries(timeline.id), swipeGroups: await ctx.swipes.listForSession(timeline.id) },
         exportedAt: ctx.now(),
         timeline,
         branches,
@@ -164,6 +168,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
 
     importTimelineArchive: async (input: { source: string }) => {
       const archive = parseTimelineArchive(input.source)
+      const archivedAgent = archive.format === 'loom-timeline-archive.v2' ? archive.agent : undefined
       const narratives = requireNarratives(ctx)
       const timelineId = ctx.createId('timeline')
       const idMap: TimelineArchiveIdMap = {
@@ -172,7 +177,47 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         nodeIds: Object.fromEntries(archive.nodes.map(node => [node.id, ctx.createId('node')])),
         stateRevisionIds: Object.fromEntries(archive.state.revisions.map(revision => [revision.id, ctx.createId('state-revision')])),
       }
+      const entryIds = Object.fromEntries((archivedAgent?.entries ?? []).map(entry => [entry.id, ctx.createId('agent-entry')]))
+      const narrativeIds: Record<string, string> = {}
+      const runIds: Record<string, string> = {}
+      const invocationIds: Record<string, string> = {}
+      const groupIds = Object.fromEntries((archivedAgent?.swipeGroups ?? []).map(group => [group.id, entryIds[group.id] ?? ctx.createId('swipe-group')]))
+      const candidateIds = Object.fromEntries((archivedAgent?.swipeGroups ?? []).flatMap(group => group.candidates.map(candidate => [candidate.id, ctx.createId('swipe-candidate')])))
+      for (const entry of archivedAgent?.entries ?? []) {
+        if (entry.entry.kind === 'message' && entry.entry.narrativeId) narrativeIds[entry.entry.narrativeId] ??= idMap.nodeIds[entry.entry.narrativeId] ?? ctx.createId('narrative-message')
+        if (entry.runId) runIds[entry.runId] ??= ctx.createId('agent-run')
+        if (entry.entry.kind === 'run-state' && entry.entry.sourceRunId) runIds[entry.entry.sourceRunId] ??= ctx.createId('agent-run')
+        if (entry.entry.kind === 'tool-invocation') invocationIds[entry.entry.invocationId] ??= ctx.createId('tool-invocation')
+      }
+      for (const group of archivedAgent?.swipeGroups ?? []) {
+        for (const id of [...group.candidates.flatMap(candidate => candidate.runIds), ...(group.excludedRunIds ?? []), ...(group.activeRunId ? [group.activeRunId] : [])])
+          runIds[id] ??= ctx.createId('agent-run')
+      }
+      const archivedPresetId = archivedAgent?.session.agentPresetId
+      const preset = archivedPresetId ? await ctx.promptResources.getResource(archivedPresetId) : undefined
       const workspaceIds = Object.fromEntries((archive.workspace?.revisions ?? []).map(revision => [revision.id, ctx.createId('workspace-revision')]))
+      const remapReference = (value: string, field: string): string => {
+        if (['narrativeId', 'logicalId'].includes(field)) return narrativeIds[value] ?? value
+        if (['timelineId', 'agentSessionId'].includes(field) && value === archive.timeline.id) return timelineId
+        if (['branchId', 'fromBranchId', 'parentBranchId', 'activeBranchId'].includes(field)) return idMap.branchIds[value] ?? value
+        if (['nodeId', 'inputNodeId', 'headNodeId', 'cursorNodeId', 'rawThroughNodeId', 'coveredThroughNodeId', 'forkedFromNodeId', 'narrativeId'].includes(field)) return idMap.nodeIds[value] ?? value
+        if (['entryId', 'headEntryId', 'baseEntryId', 'parentEntryId', 'userEntryId', 'partialEntryId', 'consumedEntryId', 'continuesEntryId', 'agentMessageId'].includes(field)) return entryIds[value] ?? value
+        if (['runId', 'sourceRunId', 'activeRunId', 'runIds', 'excludedRunIds'].includes(field)) return runIds[value] ?? value
+        if (['groupId', 'roundId'].includes(field)) return groupIds[value] ?? entryIds[value] ?? value
+        if (['candidateId', 'activeCandidateId', 'selectedCandidateId', 'replacesCandidateId'].includes(field)) return candidateIds[value] ?? value
+        if (['stateRevisionId', 'stateHeadRevisionId', 'baselineStateRevisionId'].includes(field)) return idMap.stateRevisionIds[value] ?? value
+        if (['workspaceRevisionId', 'workspaceHeadRevisionId', 'baselineWorkspaceRevisionId', 'adoptedWorkspaceRevisionId'].includes(field)) return workspaceIds[value] ?? value
+        if (field === 'invocationId') return invocationIds[value] ?? value
+        return value
+      }
+      // Only host-owned reference fields change; tool arguments, text and provider evidence remain original facts.
+      const remap = <T>(value: T, field = ''): T => {
+        if (typeof value === 'string') return remapReference(value, field) as T
+        if (Array.isArray(value)) return value.map(item => remap(item, field)) as T
+        if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) =>
+          [key, ['arguments', 'rawInput', 'content', 'messages', 'processedPrompt', 'providerResult', 'toolContract'].includes(key) ? item : remap(item, key)])) as T
+        return value
+      }
       const workspaceBlobs = new Map(await Promise.all((archive.workspace?.blobs ?? []).map(async blob => {
         if (!ctx.blobs) throw new Error('Blob Storage is required to import Workspace files')
         return [blob.id, await ctx.blobs.prepareWrite({ source: Buffer.from(blob.base64, 'base64'), mediaType: blob.mediaType, maxBytes: workspaceBinaryLimit })] as const
@@ -205,21 +250,35 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
           const initial = narrativeTx.createTimeline({
             // Imported histories stay locked, even when the archive carries an opening window.
             id: timelineId, primaryBranchId: idMap.branchIds[root.id], title: archive.timeline.title,
+            promptResourceIds: archive.timeline.promptResourceIds,
             primaryBranchTitle: root.title, stateRevisionId: idMap.stateRevisionIds[root.stateHeadRevisionId]!,
             opening: archive.timeline.opening ? { ...archive.timeline.opening, locked: true,
               nodeId: archive.timeline.opening.nodeId ? idMap.nodeIds[archive.timeline.opening.nodeId] : undefined } : undefined,
           })
+          const agentTx = agents.transaction(dataTx)
+          if (archivedAgent) {
+            agentTx.updateSession({ agentSessionId: timelineId, ...(preset?.resourceKind === 'preset' ? { agentPresetId: preset.id } : {}),
+              narrativeMode: archivedAgent.session.narrativeMode, summaryPolicy: archivedAgent.session.summaryPolicy })
+            agentTx.restoreTimelineEntries({ agentSessionId: timelineId, entryCount: archivedAgent.session.entryCount,
+              headEntryId: archivedAgent.session.headEntryId ? entryIds[archivedAgent.session.headEntryId] : undefined,
+              entries: archivedAgent.entries.map(entry => ({ ...remap(entry), id: entryIds[entry.id]!, agentSessionId: timelineId,
+                entry: remap(entry.entry) as AgentTranscriptEntryData })),
+            })
+          }
           narrativeTx.restoreArchivePaths({
             timelineId,
-            recoveryPoints: archive.recoveryPoints?.map(point => ({ branchId: idMap.branchIds[point.branchId]!, nodeId: idMap.nodeIds[point.nodeId]!, stateRevisionId: idMap.stateRevisionIds[point.stateRevisionId]!, workspaceRevisionId: workspaceIds[point.workspaceRevisionId]! })),
+            recoveryPoints: archive.recoveryPoints?.map(point => ({ headEntryId: point.headEntryId ? entryIds[point.headEntryId] : undefined, branchId: idMap.branchIds[point.branchId]!, nodeId: idMap.nodeIds[point.nodeId]!, stateRevisionId: idMap.stateRevisionIds[point.stateRevisionId]!, workspaceRevisionId: workspaceIds[point.workspaceRevisionId]! })),
             nodes: nodes.map(node => ({
               id: idMap.nodeIds[node.id]!, timelineId,
+              entryId: node.entryId ? entryIds[node.entryId] : undefined,
+              source: node.source ? { ...remap(node.source), changesetId: dataTx.changesetId } : undefined,
               parentNodeId: node.parentNodeId ? idMap.nodeIds[node.parentNodeId] : undefined,
               kind: node.kind, floor: node.floor, workspaceRevisionId: workspaceIds[node.workspaceRevisionId] ?? initial.branch.workspaceHeadRevisionId, body: node.body, stateRevisionId: idMap.stateRevisionIds[node.stateRevisionId]!,
               createdAt: node.createdAt,
             })),
             branches: branches.map(branch => ({
               ...branch, id: idMap.branchIds[branch.id]!, timelineId,
+              headEntryId: branch.headEntryId ? entryIds[branch.headEntryId] : undefined,
               headNodeId: branch.headNodeId ? idMap.nodeIds[branch.headNodeId] : undefined,
               parentBranchId: branch.parentBranchId ? idMap.branchIds[branch.parentBranchId] : undefined,
               forkedFromNodeId: branch.forkedFromNodeId ? idMap.nodeIds[branch.forkedFromNodeId] : undefined,
@@ -227,6 +286,11 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
               workspaceHeadRevisionId: workspaceIds[branch.workspaceHeadRevisionId] ?? initial.branch.workspaceHeadRevisionId,
             })),
           })
+          for (const group of archivedAgent?.swipeGroups ?? []) {
+            ctx.swipes.transaction(dataTx).save({ ...remap(group), id: groupIds[group.id]!, timelineId, agentSessionId: timelineId,
+              candidates: group.candidates.map(candidate => ({ ...remap(candidate), id: candidateIds[candidate.id]!, agentSessionId: timelineId })),
+            } as NarrativeSwipeGroup)
+          }
           narrativeTx.switchBranch({ timelineId, branchId: idMap.branchIds[archive.timeline.activeBranchId]! })
           for (const config of archive.macroConfigurations ?? []) {
             await documents.write({
@@ -342,10 +406,27 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
     },
 
     switchNarrativeBranch: async (input: SwitchNarrativeBranchInput, requestContext?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult> => {
-      const result = await requireNarratives(ctx).switchBranch({
+      const result = await ctx.dataEngine.withTransactionGuard(async tx => {
+        assertAgentSessionNotExecuting(ctx, input.timelineId)
+        const session = ctx.agents?.transaction(tx).getSession(input.timelineId)
+        const activeBranchId = requireNarratives(ctx).transaction(tx).getTimeline(input.timelineId)?.activeBranchId
+        let cursor = session?.headEntryId
+        while (cursor) {
+          const entry = ctx.agents!.transaction(tx).getEntry(cursor)!
+          if (entry.entry.kind === 'run-state') {
+            const source = entry.entry.recovery?.narrativeSource
+            const belongs = !isRecord(source) || source.branchId === activeBranchId
+            if (belongs && (['created', 'running', 'suspended'].includes(entry.entry.state)
+              || entry.entry.state === 'failed' && entry.entry.recovery))
+              throw new Error('Continue or abandon the suspended Timeline Run before switching branches')
+            break
+          }
+          cursor = entry.parentEntryId
+        }
+      }, () => requireNarratives(ctx).switchBranch({
         ...narrativeWriteContext(requestContext, 'application.switchNarrativeBranch'),
         ...input,
-      })
+      }))
       return { timeline: result.timeline, mutation: { changesetId: result.commit.changesetId } }
     },
 
@@ -357,6 +438,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         narrativeWriteContext(requestContext, 'application.deleteNarrativeTimeline'),
         async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
           const timeline = narratives.transaction(dataTx).deleteTimeline(input)
+          await tombstoneExtensionStorageScope(documents, { kind: 'agent-session', agentSessionId: input.timelineId })
           if (ctx.agents) {
             const agents = ctx.agents.transaction(dataTx)
             let page
@@ -608,14 +690,14 @@ async function createTimelineFromCard(
       const nodes: NarrativeNode[] = []
       for (const message of history) {
         nodes.push({
-          id: ctx.createId('node'), kind: 'narrative', timelineId, floor: nodes.length + 1, parentNodeId: nodes.at(-1)?.id,
+          id: ctx.createId('node'), kind: message.role === 'user' ? 'user-input' : 'narrative', timelineId, floor: nodes.length + 1, parentNodeId: nodes.at(-1)?.id,
           stateRevisionId, workspaceRevisionId: created.branch.workspaceHeadRevisionId, body: { format: 'loom-markdown.v1', raw: message.content },
           createdAt: message.createdAt ?? ctx.now(),
         })
       }
       const branch = { ...created.branch, headNodeId: nodes.at(-1)?.id }
       narrativeTx.restoreArchivePaths({ timelineId, nodes, branches: [branch] })
-      return { timeline: narrativeTx.getTimeline(timelineId)!, nodes, branch }
+      return { timeline: narrativeTx.getTimeline(timelineId)!, nodes: nodes.map(node => narrativeTx.getNode(node.id)!), branch: narrativeTx.getBranch(branchId)! }
     }),
   )
   return {

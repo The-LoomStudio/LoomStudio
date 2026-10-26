@@ -1,4 +1,5 @@
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { useProviderSettings } from '../../features/provider-settings/model/use-provider-settings.js'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type {
   AiCapabilityProfile,
@@ -17,30 +18,10 @@ type AiCapabilityLabProps = {
   providers: RegisteredAiGatewayProvider[]
   providerAccounts: ProviderAccount[]
   profiles: AiCapabilityProfile[]
-  onCreateProviderAccount(input: {
-    providerExtensionId: string
-    displayName: string
-    config: Record<string, ClientJsonValue>
-    credential?: Record<string, string>
-  }): Promise<string | undefined>
-  onCreateProfile(input: {
-    providerProfileId: string
-    capabilityId: string
-    displayName: string
-    config: Record<string, ClientJsonValue>
-  }): Promise<string | undefined>
-  onUpdateProviderAccount(input: {
-    providerProfileId: string
-    displayName: string
-    config: Record<string, ClientJsonValue>
-    credential?: Record<string, string>
-  }): Promise<void>
-  onUpdateProfile(input: {
-    profileId: string
-    providerProfileId?: string
-    displayName: string
-    config: Record<string, ClientJsonValue>
-  }): Promise<void>
+  onCreateProviderAccount: ReturnType<typeof useProviderSettings>['createAiProviderAccount']
+  onCreateProfile: ReturnType<typeof useProviderSettings>['createAiCapabilityProfile']
+  onUpdateProviderAccount: ReturnType<typeof useProviderSettings>['updateAiProviderAccount']
+  onUpdateProfile: ReturnType<typeof useProviderSettings>['updateAiCapabilityProfile']
   onInvoke(input: Omit<AiGatewayInvokeInput, 'signal' | 'caller'>): Promise<AiGatewayInvokeResult>
   onRefresh(): Promise<void>
   t: Translator

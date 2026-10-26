@@ -31,8 +31,9 @@ async function setup() {
       if (edit) await scope!.narrative!.editNode({ nodeId: scope!.narrativeSource!.nodeId!, content })
       else await scope!.narrative!.appendNode({ content })
       const target = scope!.state!.defaultTarget
+      if (!target) throw new Error('Missing default state target')
       const snapshot = await scope!.state!.read(target)
-      await scope!.state!.update({ target, expectedRevisionId: snapshot.revisionId, operations: [{ op: 'set', path: '/coins', value: coins }] })
+      await scope!.state!.update({ target, idempotencyKey: `${invocation.id}:coins`, expectedRevisionId: snapshot.revisionId, operations: [{ op: 'set', path: '/coins', value: coins }] })
       const files = await scope!.workspace!.snapshot()
       const memory = files.find(file => file.path === '/workspace/MEMORY.md')!
       if (memory.binding?.kind !== 'workspace') throw new Error('Workspace binding missing')
@@ -152,7 +153,7 @@ describe('runtime Narrative Swipe', () => {
       expect(await f.read()).toMatchObject({ suspended: true })
       expect((await f.narratives.getBranch(f.target.branchId))!.headNodeId).toBe(head)
       const store = createNarrativeSwipeStore({ engine: f.engine })
-      await f.engine.transact({ actor: { kind: 'kernel', id: 'simulate-stopped-process' } }, tx => {
+      await f.engine.transact({ actor: { kind: 'kernel', id: 'simulate-stopped-process' } }, async tx => {
         const group = store.transaction(tx).getLatest(f.target.branchId)!
         group.candidates.find(candidate => candidate.id === group.activeCandidateId)!.status = 'running'
         store.transaction(tx).save(group, { expectedRevision: group.revision })

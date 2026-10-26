@@ -29,7 +29,7 @@
             "id": "default.narrative-writing-sop",
             "kind": "entry",
             "label": "剧情写入 SOP",
-            "body": "设定资源、结构化 State 与剧情 Narrative 是不同目标。仅在用户明确要求创作并写入剧情且实际有可用追加能力时追加；以成功返回的节点回执为入库依据，普通答复不等于新增楼层。没有可用工具或当前剧情绑定时明确报告不能执行，绝不修改世界书代替剧情。"
+            "body": "设定资源、结构化 State 与剧情 Narrative 是不同目标。仅在用户要求创作或扮演时推进剧情。若提供 declare_narrative，先调用它，再用下一条普通 Assistant 消息输出正文；之后可继续调用工具，最后用未声明的普通回复结束本轮工作。自动正文模式由本次运行说明决定，工具及工具结果始终不是正文。独立辅助 Session 使用实际提供的追加工具，并以成功回执为写入依据。讨论与指导不自动成为剧情。没有可用工具或当前剧情绑定时明确报告不能执行，绝不修改世界书代替剧情。"
           },
           {
             "id": "default.writing",
@@ -83,15 +83,23 @@
         ]
       },
       {
+        "id": "default.plot-memory.block",
+        "kind": "message",
+        "label": "剧情记忆",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.memory.narrative", "kind": "virtual", "label": "剧情总结", "capabilities": { "targetAnchorId": "@memory.narrative" } }
+        ]
+      },
+      {
         "id": "default.narrative.block",
         "kind": "message",
-        "label": "剧情基线",
-        "capabilities": { "roleHint": "developer" },
+        "label": "外部故事正文",
+        "capabilities": { "roleHint": "system" },
         "children": [
-          { "id": "default.narrative.before", "kind": "virtual", "label": "剧情前补充", "capabilities": { "targetAnchorId": "@narrative.before" } },
-          { "id": "default.memory.narrative", "kind": "virtual", "label": "剧情记忆", "capabilities": { "targetAnchorId": "@memory.narrative" } },
-          { "id": "default.narrative", "kind": "virtual", "label": "采样后的剧情正文", "capabilities": { "targetAnchorId": "@chat.narrative" } },
-          { "id": "default.narrative.after", "kind": "virtual", "label": "剧情后补充", "capabilities": { "targetAnchorId": "@narrative.after" } }
+          { "id": "default.narrative.before", "kind": "virtual", "label": "正文前补充", "capabilities": { "targetAnchorId": "@narrative.before" } },
+          { "id": "default.narrative", "kind": "virtual", "label": "故事正文（长文本）", "capabilities": { "targetAnchorId": "@chat.narrative" } },
+          { "id": "default.narrative.after", "kind": "virtual", "label": "正文后补充", "capabilities": { "targetAnchorId": "@narrative.after" } }
         ]
       },
       {
@@ -107,7 +115,7 @@
       {
         "id": "default.session",
         "kind": "virtual",
-        "label": "Session 原生消息",
+        "label": "会话历史",
         "capabilities": { "targetAnchorId": "@chat.session" }
       },
       {

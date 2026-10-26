@@ -3,8 +3,8 @@ import type { PromptResource } from '@loom-studio/application-data'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
 import { isPromptResourceArtifact } from '../../../packages/application-runtime/src/cards/workspace-codec.js'
 import { fromStoredResource, toStoredNode } from '../../../packages/application-runtime/src/prompt/prompt-resource-mapper.js'
-import { normalizeContextAssets } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-normalization.js'
-import { buildActivationUpdate } from '../../../apps/studio-client/src/features/context-assets/model/activation-editor.js'
+import { normalizeContextAssets } from '../../../apps/studio-client/src/features/prompt-resources/model/context-asset-normalization.js'
+import { buildActivationUpdate } from '../../../apps/studio-client/src/features/prompt-resources/model/activation-editor.js'
 
 describe('Prompt resource composition authority', () => {
   it('preserves the effective legacy projection on read and writes only capabilities', () => {

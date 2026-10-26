@@ -398,7 +398,9 @@ describe('durable Agent Run recovery', () => {
       })
       await expect(fixture.runtime.prepareAgentRunRecovery({ agentSessionId: session.id })).rejects.toMatchObject({ code: 'agent.recovery_tool_outcome_unknown' })
       const interrupted = await fixture.agents.getEntryPage({ agentSessionId: session.id })
-      const checkpoint = interrupted.entries.find(item => item.entry.kind === 'run-state' && item.entry.recovery)!.entry.recovery!
+      const checkpointEntry = interrupted.entries.find(item => item.entry.kind === 'run-state' && item.entry.recovery)?.entry
+      if (checkpointEntry?.kind !== 'run-state' || !checkpointEntry.recovery) throw new Error('Missing recovery checkpoint')
+      const checkpoint = checkpointEntry.recovery
       await fixture.agents.appendEntries({ actor: { kind: 'kernel', id: 'fixture' }, agentSessionId: session.id,
         expectedEntryCount: interrupted.session.entryCount,
         entries: [{ runId: 'live-run', entry: { kind: 'run-state', state: 'running', recovery: { ...checkpoint, phase: 'tools' } } }],

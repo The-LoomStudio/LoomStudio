@@ -7,6 +7,13 @@ import type { AgentSession, AgentTranscriptEntry, InvokeAgentTurnResult } from '
 
 const hooks = vi.hoisted(() => ({
   cursor: 0,
+  rootEffectSeen: false,
+  swipeEffect: undefined as (() => void) | undefined,
+  swipeDeps: undefined as unknown[] | undefined,
+  nextSwipeDeps: undefined as unknown[] | undefined,
+  rootDeps: undefined as unknown[] | undefined,
+  rootDispose: undefined as (() => void) | undefined,
+  rootEffect: undefined as (() => void | (() => void)) | undefined,
   values: [] as unknown[],
   commitEffect: undefined as (() => void | (() => void)) | undefined,
   onCommit: undefined as ((operations: Array<{ entityType: string; entityId: string }>) => void) | undefined,
@@ -34,8 +41,15 @@ vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
   useEffect: (effect: () => void, deps?: unknown[]) => {
     if (deps?.length === 0) hooks.mountEffects.push(effect)
-    if (deps?.length === 3 && typeof deps[1] === 'string' && typeof deps[2] === 'string') hooks.commitEffect = effect
+    if (deps?.length === 3) {
+      if (!hooks.rootEffectSeen) { hooks.rootEffectSeen = true; hooks.rootEffect = effect }
+      else if (typeof deps[1] === 'string' && typeof deps[2] === 'string') hooks.commitEffect = effect
+    }
     if (deps?.length === 2 && deps[1] === 'timeline') hooks.sessionEffect = effect
+    if (deps?.length === 2 && (deps[0] === undefined || typeof deps[0] === 'string')) {
+      hooks.swipeEffect = effect
+      hooks.nextSwipeDeps = deps
+    }
   },
   useState: (initial: unknown) => {
     const index = hooks.cursor++
@@ -51,7 +65,7 @@ vi.mock('react', async importOriginal => ({
   },
 }))
 
-beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.commitEffect = undefined; hooks.onCommit = undefined
+beforeEach(() => { hooks.swipeEffect = undefined; hooks.swipeDeps = undefined; hooks.nextSwipeDeps = undefined; hooks.rootDispose?.(); hooks.rootDispose = undefined; hooks.rootDeps = undefined; hooks.rootEffect = undefined; hooks.rootEffectSeen = false; hooks.cursor = 0; hooks.values = []; hooks.commitEffect = undefined; hooks.onCommit = undefined
   hooks.narrativeConnected = undefined
   hooks.sessionEffect = undefined; hooks.sessionCommit = undefined; hooks.connected = undefined; hooks.subscribingSessions = false })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
@@ -62,11 +76,11 @@ export function fixture() {
     createdAt: '2026-09-23', updatedAt: '2026-09-23',
   }
   const branch = {
-    id: 'branch', timelineId: timeline.id, stateHeadRevisionId: 'state',
+    id: 'branch', timelineId: timeline.id, stateHeadRevisionId: 'state', workspaceHeadRevisionId: 'workspace',
     createdAt: timeline.createdAt, updatedAt: timeline.updatedAt,
   }
   const session: AgentSession = {
-    id: 'session', timelineId: timeline.id, agentPresetId: 'profile',
+    id: 'session', kind: 'agent', timelineId: timeline.id, agentPresetId: 'profile',
     entryCount: 0, createdAt: timeline.createdAt, updatedAt: timeline.updatedAt,
   }
   const narrative: Awaited<ReturnType<StudioApi['narratives']['getPage']>> = { timeline, branch, nodes: [] }
@@ -89,7 +103,7 @@ export function fixture() {
   } satisfies InvokeAgentTurnResult & { narrative: typeof narrative }
   const createTimeline = vi.fn(async () => narrative)
   const appendInput = vi.fn<StudioApi['narratives']['appendInput']>(async input => {
-    const node = { id: input.nodeId, timelineId: timeline.id, stateRevisionId: 'state',
+    const node = { id: input.nodeId, kind: 'user-input' as const, floor: 1, timelineId: timeline.id, stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw: input.content }, createdAt: timeline.createdAt }
     Object.assign(branch, { headNodeId: node.id })
     Object.assign(narrative, { nodes: [node] })
@@ -99,12 +113,18 @@ export function fixture() {
     session, mutation: { changesetId: 'create-session' },
   }))
   const createRun = vi.fn<StudioApi['agentSessions']['createRun']>(async () => ({ runId: 'run' }))
-  const subscribeRun = vi.fn<StudioApi['agentSessions']['subscribeRun']>(async () => ({
-    events: [{ type: 'completed', runId: 'run', result }], nextCursor: 1, done: true, state: 'completed',
+  const subscribeRun = vi.fn<StudioApi['agentSessions']['subscribeRun']>(async (_runId, _cursor, sessionId) => ({
+    events: [{ type: 'completed', runId: 'run', result: sessionId === timeline.id ? rootResult : result }], nextCursor: 1, done: true, state: 'completed',
   }))
-  const getTranscript = vi.fn<StudioApi['agentSessions']['getTranscript']>(async () => ({
-    session, entries: [result.entries.user, result.entries.assistant],
-  }))
+  const rootSession: AgentSession = { ...session, id: timeline.id, kind: 'timeline' }
+  const rootResult = { ...result, agentSession: rootSession, entries: {
+    user: { ...result.entries.user, agentSessionId: timeline.id, entry: { ...result.entries.user.entry, purpose: 'narrative' as const } },
+    assistant: { ...result.entries.assistant, agentSessionId: timeline.id },
+  } } satisfies InvokeAgentTurnResult & { narrative: typeof narrative }
+  const rootEntries = [rootResult.entries.user, rootResult.entries.assistant]
+  const rootGetTranscript = vi.fn<StudioApi['agentSessions']['getTranscript']>(async () => ({ session: rootSession, entries: [] }))
+  const getTranscript = vi.fn<StudioApi['agentSessions']['getTranscript']>(async request => request.agentSessionId === timeline.id
+    ? rootGetTranscript(request) : ({ session, entries: [result.entries.user, result.entries.assistant] }))
   const getPage = vi.fn<StudioApi['narratives']['getPage']>(async () => narrative)
   const resumeRun = vi.fn(async () => ({ runId: 'continued', accepted: true }))
   const acknowledgeRunCompletion = vi.fn(async (runId: string) => ({ runId, accepted: true }))
@@ -118,6 +138,8 @@ export function fixture() {
       },
       agentSessions: {
         create: createSession, createRun, subscribeRun, getTranscript, resumeRun, acknowledgeRunCompletion,
+        update: vi.fn(async patch => { Object.assign(rootSession, patch); return { session: rootSession, mutation: { changesetId: 'configure-root' } } }),
+        runState: vi.fn(async () => ({ runId: 'run', state: 'suspended' })),
       },
     } as unknown as StudioApi,
     storageScope: 'test', initialInput: '  Draft\n', selectedCardId: 'card', selectedAgentPresetId: 'profile',
@@ -129,14 +151,32 @@ export function fixture() {
     },
     runLatestAction: action => action({ isCurrent: () => true } as never),
   }
-  const render = () => { hooks.cursor = 0; hooks.mountEffects = []; return useNarrativeRuntime(input) }
+  const render = () => {
+    hooks.cursor = 0; hooks.mountEffects = []; hooks.rootEffectSeen = false
+    const current = useNarrativeRuntime(input)
+    const deps = [input.api, current.timeline?.id, current.branch?.id]
+    if (!hooks.rootDeps || deps.some((value, index) => value !== hooks.rootDeps![index])) {
+      hooks.rootDispose?.()
+      hooks.rootDeps = deps
+      hooks.rootDispose = hooks.rootEffect?.() || undefined
+    }
+    const swipeDeps = hooks.nextSwipeDeps
+    if (swipeDeps && (!hooks.swipeDeps || swipeDeps.some((value, index) => value !== hooks.swipeDeps![index]))) {
+      hooks.swipeDeps = swipeDeps
+      hooks.swipeEffect?.()
+    }
+    return current
+  }
+  const loadRoot = async () => { render(); for (let i = 0; i < 12; i++) await Promise.resolve(); return render() }
   const event = { preventDefault: vi.fn() } as unknown as FormEvent
-  return { render, event, input, result, appendInput, createTimeline, createSession, createRun, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
+  return { render, loadRoot, rootSession, rootEntries, rootGetTranscript, event, input, result, rootResult, appendInput, createTimeline, createSession, createRun, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
 }
 
 export async function primaryFixture() {
   const f = fixture()
   await f.render().createTimelineFromCard()
+  await f.loadRoot()
+  f.rootGetTranscript.mockResolvedValue({ session: f.rootSession, entries: f.rootEntries })
   const primary = await f.render().createAgentSession('profile', true)
   f.input.api.agentSessions.list = vi.fn(async () => ({ sessions: [primary!] }))
   f.getTranscript.mockResolvedValueOnce({ session: primary!, entries: [] })

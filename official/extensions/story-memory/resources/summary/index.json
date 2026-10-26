@@ -117,27 +117,12 @@
       },
       {
         "metadata": {
-          "id": "official.story-memory.summary.session",
-          "kind": "message",
+          "id": "official.story-memory.summary.session.anchor",
+          "kind": "virtual",
           "category": "preset",
           "label": "任务会话历史",
-          "capabilities": {
-            "roleHint": "system"
-          }
-        },
-        "children": [
-          {
-            "metadata": {
-              "id": "official.story-memory.summary.session.anchor",
-              "kind": "virtual",
-              "category": "preset",
-              "label": "@chat.session",
-              "capabilities": {
-                "targetAnchorId": "@chat.session"
-              }
-            }
-          }
-        ]
+          "capabilities": { "targetAnchorId": "@chat.session" }
+        }
       },
       {
         "metadata": {

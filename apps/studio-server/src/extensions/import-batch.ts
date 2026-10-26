@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { assertCardBundleArtifact, isPromptResourceArtifact, type ApplicationRuntime, type RuntimeRequestContext, type ExtensionInstallationTarget } from '@loom-studio/application-runtime'
+import { assertCardBundleArtifact, isPromptResourceArtifact } from '@loom-studio/application-runtime/artifacts'
+import type { ApplicationRuntime, RuntimeRequestContext, ExtensionInstallationTarget } from '@loom-studio/application-runtime'
 import type { AssetStore } from '@loom-studio/asset-store'
 import type { Kernel } from '@loom-studio/kernel'
 

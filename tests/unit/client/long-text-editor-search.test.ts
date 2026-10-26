@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CodeMirrorEditor, type CodeMirrorEditorHandle } from '../../../apps/studio-client/src/shared/ui/long-text-editor/code-mirror-editor.js'
 import { LongTextEditor } from '../../../apps/studio-client/src/shared/ui/long-text-editor/long-text-editor.js'
-import { ContextAssetDetail } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-detail/context-asset-detail.js'
+import { ContextAssetDetail } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-detail/context-asset-detail.js'
 
 let root: Root | undefined
 let container: HTMLDivElement | undefined

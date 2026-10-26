@@ -1,5 +1,5 @@
 import type { ExtensionBackgroundContribution, ExtensionStyleContribution } from '@loom-studio/extension-sdk'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type {
   ClientActionPlacement,
   ClientCommandDeclaration,

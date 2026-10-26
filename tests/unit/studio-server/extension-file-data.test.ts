@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -13,6 +13,7 @@ async function setup() {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'loom-extension-data-')))
   roots.push(root)
   const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   return { root, documents, files: createExtensionFileData(root, documents) }
 }
 

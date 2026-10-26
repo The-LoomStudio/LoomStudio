@@ -143,8 +143,6 @@ export function createKernel(options: CreateKernelOptions): Kernel {
     getExtensionHost: () => options.extensionHost,
     getDiagnostics: () => options.diagnostics,
     getEventBus: () => eventBus,
-    getTraceAudit: () => options.traceAudit,
-    getLoomRunner: () => options.loomRunner,
   }
 
   return kernel

@@ -3,7 +3,7 @@ import { Button, Checkbox, Dialog } from '@loom-studio/ui'
 import { BookOpen, RefreshCw, Settings2, Sparkles, X } from 'lucide-react'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-editor.js'
-import { useSessionSummaryStatus } from '../memory-panel/session-summary-activity.js'
+import { useSessionSummaryStatus } from '../../features/sessions/model/use-session-summary-status.js'
 import styles from './session-memory.module.scss'
 import { useTokenCounts } from '../../shared/tokenizer/use-token-counts.js'
 

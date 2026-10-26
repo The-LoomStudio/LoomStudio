@@ -160,10 +160,11 @@ describe('local Extension Package installer', () => {
 
   it('rejects ambiguous or deeply nested package roots with an actionable error', async () => {
     const root = await temporaryRoot()
-    for (const files of [
+    const archives: Record<string, Uint8Array>[] = [
       { 'one/manifest.json': new Uint8Array(), 'two/manifest.json': new Uint8Array() },
       { 'one/two/manifest.json': new Uint8Array() },
-    ]) {
+    ]
+    for (const files of archives) {
       await expect(installExtensionPackageFromZip({
         source: zipSync(files),
         installedDirectory: join(root, 'installed'),

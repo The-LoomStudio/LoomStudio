@@ -1,6 +1,7 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'dashboard.open': 'Dashboard',
   'promptResource.processingWarning': 'Prompt processing reported warnings; some Lore may have been skipped. See build diagnostics.',
   'promptResource.invalidResources': 'These resources cannot be read; other resources remain available.',
   'promptResource.invalidResourcesHelp': 'Original data is preserved. Check source files or backups using the resource ID, then reload after repair.',
@@ -172,6 +173,10 @@ export const messages = {
   'context.actionAdd': 'New Item',
   'context.actionAddFolder': 'New Folder',
   'context.actionAddAnchor': 'New Anchor',
+  'context.menuGroupAdd': 'Add',
+  'context.menuGroupRole': 'Message role',
+  'context.menuGroupEdit': 'Edit',
+  'context.menuGroupDelete': 'Delete',
   'context.actionRename': 'Rename',
   'context.actionDuplicate': 'Duplicate entry',
   'context.actionDelete': 'Delete entry',
@@ -192,6 +197,12 @@ export const messages = {
   'context.actionHideMessageView': 'Hide composition blocks',
   'context.compositionItems': 'items',
   'context.nativeMessageSlot': 'native messages',
+  'context.metadata.messageSource': 'Message source',
+  'context.kind.messageSequence': 'Message sequence',
+  'context.actionAddMessageSequence': 'Add Session History',
+  'context.actionAddMessageAfter': 'Add Message After This Message',
+  'context.messageSequence.description': 'Expands native session messages here, preserving roles, tool calls and results. Story sessions include narrative and work history.',
+  'context.messageSequence.placement': 'This message sequence sits beside Message blocks. It cannot contain entries or anchors, or receive text contributions.',
   'context.actionAddMessageBlock': 'New Message Block',
   'context.actionAddZoneToMessageBlock': 'Add Zone to Composition Block',
   'context.actionAddSlotToMessageBlock': 'Add Context Slot',

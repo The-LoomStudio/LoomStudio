@@ -152,6 +152,10 @@ function buildGatewayResult(input: AiGatewayRequest, result: {
   response: { id?: string; modelId?: string; headers?: Record<string, string> }
   raw: JsonValue
 }): AiGatewayResult {
+  const measuredUsage = normalizeUsage(result.usage)
+  if (measuredUsage) {
+    try { input.onUsage?.(measuredUsage) } catch { /* Metering must not change provider execution. */ }
+  }
   const toolCalls = result.toolCalls.map(call => ({
     id: call.toolCallId,
     type: 'function' as const,
@@ -177,16 +181,7 @@ function buildGatewayResult(input: AiGatewayRequest, result: {
     model: result.response.modelId ?? input.modelId,
     finishReason: normalizeFinishReason(result.finishReason),
     ...(result.rawFinishReason ? { rawFinishReason: result.rawFinishReason } : {}),
-    ...(([result.usage.inputTokens, result.usage.outputTokens, result.usage.totalTokens,
-      result.usage.inputTokenDetails?.cacheReadTokens, result.usage.inputTokenDetails?.cacheWriteTokens,
-      result.usage.outputTokenDetails?.reasoningTokens].some(value => typeof value === 'number')) ? { usage: {
-      ...(typeof result.usage.inputTokens === 'number' ? { inputTokens: result.usage.inputTokens } : {}),
-      ...(typeof result.usage.outputTokens === 'number' ? { outputTokens: result.usage.outputTokens } : {}),
-      ...(result.usage.totalTokens !== undefined ? { totalTokens: result.usage.totalTokens } : {}),
-      ...(result.usage.inputTokenDetails?.cacheReadTokens !== undefined ? { cacheReadTokens: result.usage.inputTokenDetails.cacheReadTokens } : {}),
-      ...(result.usage.inputTokenDetails?.cacheWriteTokens !== undefined ? { cacheWriteTokens: result.usage.inputTokenDetails.cacheWriteTokens } : {}),
-      ...(result.usage.outputTokenDetails?.reasoningTokens !== undefined ? { reasoningTokens: result.usage.outputTokenDetails.reasoningTokens } : {}),
-    } } : {}),
+    ...(measuredUsage ? { usage: measuredUsage } : {}),
     ...(result.response.id ? { providerCallId: result.response.id } : {}),
     ...(readRequestId(result.response.headers) ? { requestId: readRequestId(result.response.headers) } : {}),
     raw: result.raw,
@@ -424,4 +419,15 @@ function toJsonValue(value: unknown): JsonValue {
   return JSON.parse(
     JSON.stringify(value, (_key, item) => (item === undefined ? null : item)),
   ) as JsonValue
+}
+
+function normalizeUsage(value: Parameters<typeof buildGatewayResult>[1]['usage']): AiGatewayResult['usage'] {
+  const result = {
+    inputTokens: value.inputTokens, outputTokens: value.outputTokens, totalTokens: value.totalTokens,
+    cacheReadTokens: value.inputTokenDetails?.cacheReadTokens,
+    cacheWriteTokens: value.inputTokenDetails?.cacheWriteTokens,
+    reasoningTokens: value.outputTokenDetails?.reasoningTokens,
+  }
+  const entries = Object.entries(result).filter(([, count]) => typeof count === 'number' && Number.isSafeInteger(count) && count >= 0)
+  return entries.length ? Object.fromEntries(entries) : undefined
 }

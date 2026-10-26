@@ -21,10 +21,8 @@ export function StudioResourcePanels(props: {
   const { state, uiState, navigation, assetWorkspaceId } = props
   const contextAssetEditorProps = {
     globalSearchQuery: props.globalSearchQuery,
-    nodes: state.contextAssets,
     resources: state.promptResourceDrafts,
     extensionInstallations: state.extensionInstallations,
-    resourceBindings: { api: state.api.promptResources, endpoint: state.endpoint },
     draftResourceIds: state.draftResourceIds,
     onDiscardDraft: state.discardContextAssetDraft,
     onRetryDraft: state.retryContextAssetDraft,
@@ -42,9 +40,6 @@ export function StudioResourcePanels(props: {
     onCommitNode: (...args: Parameters<StudioState['updateContextAsset']>) => {
       void state.updateContextAsset(...args).catch(() => undefined)
     },
-    onChangeNodes: (...args: Parameters<StudioState['updateContextAssets']>) => {
-      void state.updateContextAssets(...args).catch(() => undefined)
-    },
     onMoveNode: (...args: Parameters<StudioState['moveContextAsset']>) => {
       void state.moveContextAsset(...args).catch(() => undefined)
     },
@@ -57,7 +52,7 @@ export function StudioResourcePanels(props: {
     onAddFolderNode: state.addContextAssetFolder,
     onAddAnchorNode: state.addContextAssetAnchor,
     onAddMessageBlockNode: state.addContextAssetMessageBlock,
-    onAddNodeInZone: state.addContextAssetInZone,
+    onAddMessageSequenceNode: state.addContextAssetMessageSequence,
     onDuplicateNode: state.duplicateContextAsset,
     onDeleteNode: state.deleteContextAsset,
     onCreateResource: state.createPromptResource,
@@ -81,17 +76,16 @@ export function StudioResourcePanels(props: {
         active={active}
         key={state.endpoint}
         {...contextAssetEditorProps}
+        resourceBindings={{ api: state.api.promptResources, endpoint: state.endpoint }}
         searchMatch={props.searchMatch}
         textTransformsApi={state.textTransformsApi}
         onOpenTextUse={(kind, id) => navigation.openPath(`/studio/text-transforms?${kind === 'rule' ? 'ruleId' : 'extractorId'}=${encodeURIComponent(id)}&temporary=1`)}
-        loomScriptsApi={state.api.loomScripts}
-        onLoomScriptsChanged={uiState.bumpLoomScriptRefreshToken}
-        onSaveMacros={state.updatePresetMacros}
         modelProfiles={state.modelProfiles}
         onCreateModel={state.createModelProfile}
         onListModels={state.listProviderModels}
         providerAccounts={state.providerAccounts}
         onSaveModel={state.updatePresetModel}
+        onReturnToLibrary={() => navigation.clearResourceTarget()}
         selectedResourceId={uiState.selectedPresetId}
         onSelectResource={id => {
           if (!navigation.isCurrent()) return

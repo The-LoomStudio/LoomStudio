@@ -1,6 +1,6 @@
 # Data Architecture
 
-本分类用于收录 Loom Studio 已实现并稳定的数据基础语义，包括 Document、Revision、Changeset、持久化、Workspace 同步边界以及 Trace/Audit 数据。
+本分类用于收录 Loom Studio 已实现并稳定的数据基础语义，包括 Document、Revision、Changeset、持久化、Workspace 同步边界以及提交事实。
 
 ## 资源身份与消费者地址
 
@@ -52,7 +52,9 @@ Studio Server 当前创建一个 `@loom-studio/data-engine` SQLite Engine，并�
 
 这些数字是持久化 Schema 的内部序号，不是应用发布版本；不能为减少版本名而调低已存在数据库的支持上限。拒绝更高 Schema 不代表自动降级、重建或清空数据，也不保证任意旧数据库都能被当前注册的迁移识别。
 
-`migrate()` 只用于组合根创建 Store 的启动阶段；运行时读写统一进入 Engine FIFO。transaction callback 直接使用当前 transaction 暴露的 SQLite connection，不能重新进入排队中的 Engine 方法。
+`migrate()` 只用于组合根创建 Store 的启动阶段；运行时读写统一进入 Engine FIFO。transaction callback 必须返回 Promise，并直接使用当前 transaction 暴露的 SQLite connection，不能重新进入排队中的 Engine 方法。
+
+公共写入上下文的字段由 Engine 的 `DataTransactionInput` 统一定义。Agent、Narrative、State、Prompt Resource、Secret、Asset、Blob 的 `*WriteContext` 以及 `DocumentTransactionInput` 保留领域名称并直接别名该类型；Document 单次 `write()` 的可选 actor 合同不因此变为必填。
 
 ## 当前 Document Store 持久化基线
 
@@ -72,7 +74,7 @@ Document Store 不再自行打开第二条 SQLite connection，也不再写第�
 - **Prompt Resource 双模游标**：`listResources` 默认按更新时间降序（`updated_at DESC, id DESC`），游标记录读取时的时间与 ID 边界；同时支持按稳定 ID 降序（`order: 'id'`），供 Runtime 全量加载、导出与导入冲突扫描使用。
 - **动态集合与一致性边界**：Keyset 游标属于动态集合遍历，不是跨请求只读快照。条目在请求间更新可能越过游标边界；需要全局一致集合的导出、初始化检测与级联清理，必须依赖领域事务、版本校验或提交事实保护。Client 的 Provider、Capability Profile 与 Agent Preset 选择列表用 `collectPages` 完整收集后发布；Narrative 历史仍按需加载旧页，不要求一次读完。
 
-InMemory DocumentStore 的公开读写与 transaction 同样经过串行队列；事务失败不会用旧快照覆盖排队中的其他成功操作。事务内部只使用传入的 transaction 对象，重入外层 Store 会明确失败，而不是排队等待自身。
+`createInMemoryDocumentStore()` 直接创建独立的 SQLite `:memory:` Store，与文件实例共用 CRUD、JSON、Revision、分页和事务实现，不再维护 Map Store。创建方须在消费者停止后等待 `close()`；外部注入的 Engine 则由组合根关闭。事务内部只使用传入的 transaction 对象，重入外层 Store 会明确失败，而不是排队等待自身。
 
 ## 数据保真底线（JSON Fidelity）
 

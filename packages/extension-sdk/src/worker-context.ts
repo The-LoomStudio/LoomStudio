@@ -10,7 +10,7 @@ import type { ExtensionTimelineTarget } from './timeline.js'
 
 /** Dedicated Worker context. Thread isolation is not a security sandbox: native network/storage remain available. */
 export type WorkerExtensionActivationContext = Pick<ClientExtensionActivationContext,
-  'extension' | 'signal' | 'logger' | 'notifications' | 'tokens' | 'logs' | 'records' | 'history' | 'rpc'
+  'extension' | 'scriptSettings' | 'signal' | 'logger' | 'notifications' | 'tokens' | 'logs' | 'records' | 'history' | 'rpc'
 > & {
   timeline: { getTarget(): Promise<Readonly<ExtensionTimelineTarget> | undefined> }
   assets: { url(assetId: string): Promise<string> }

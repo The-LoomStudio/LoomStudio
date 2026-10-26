@@ -1,7 +1,7 @@
-import { compareMessages } from '../../../widgets/observability-workbench/observation-message-diff.js'
+import { compareMessages } from './observation-message-diff.js'
 import { t as defaultTranslator, type Translator } from '../../../shared/i18n/index.js'
 import type { ObservationEntry, ObservationSummary } from '../../../entities/observation.js'
-import type { ObservationRecord, ObservationStep } from '../../../widgets/observability-workbench/observation-view.js'
+import type { ObservationRecord, ObservationStep } from './observation-view.js'
 
 export function formatEvidence(value: unknown, t: Translator = defaultTranslator): string {
   return value === undefined ? t('observation.missing') : typeof value === 'string' ? value : JSON.stringify(value, null, 2)

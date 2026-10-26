@@ -18,10 +18,8 @@ import type {
   ExtensionInstallationTarget,
   RegisteredEventDefinition,
 } from '@loom-studio/extension-sdk'
-import type { LoomRunner } from '@loom-studio/loom-runner'
 import type { JsonValue } from '@loom-studio/shared'
-import type { TraceAuditStore } from '@loom-studio/trace-audit'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 
 export type KernelRpcContext = {
   expectedExtensionPackageId?: string
@@ -73,8 +71,6 @@ export type Kernel = {
   getExtensionHost(): ExtensionHost
   getDiagnostics(): DiagnosticsRegistry
   getEventBus(): EventBus
-  getTraceAudit(): TraceAuditStore
-  getLoomRunner(): LoomRunner
 }
 
 export type KernelPublicSurface = {
@@ -207,16 +203,14 @@ export type CreateKernelOptions = {
   documents: DocumentStore
   dataCommits: DataCommitSource
   diagnostics: DiagnosticsRegistry
-  traceAudit: TraceAuditStore
   extensionHost: ExtensionHost
   extensionManager?: ExtensionManagementService
-  loomRunner: LoomRunner
   studioVersion?: string
   kernelVersion?: string
   protocolVersion?: string
 }
 
-export const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit']
+export const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics']
 
 export type RpcRegistryEntry = {
   handler: KernelRpcHandler

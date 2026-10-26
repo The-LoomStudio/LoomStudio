@@ -1,6 +1,6 @@
 import { createApplicationRuntime, type ExtensionInstallationContent, type LoomScriptContent } from '@loom-studio/application-runtime'
 import { createPromptResourceStore } from '@loom-studio/application-data'
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'

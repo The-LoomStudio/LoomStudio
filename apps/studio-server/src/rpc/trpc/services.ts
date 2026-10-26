@@ -1,6 +1,6 @@
 import { readLogQuery, type LogQuery } from '@loom-studio/logging'
 import { z } from 'zod'
-import { createAiGatewayOperations } from './ai-operations.js'
+import { retainAiGatewayRun, requireAiGatewayRun } from './ai-operations.js'
 import { jsonInput, serviceProcedure as procedure, t } from './context.js'
 
 const confirmedContent = z.object({ packageId: z.string(), digest: z.string() })
@@ -92,17 +92,31 @@ export const directoriesRouter = t.router({
 
 const aiProcedure = procedure.use(({ ctx, next }) => {
   if (!ctx.services.aiCapabilities || !ctx.services.aiGateway) throw new Error('AI Gateway unavailable')
-  return next({ ctx: { ...ctx, ai: createAiGatewayOperations({ registry: ctx.services.aiCapabilities, gateway: ctx.services.aiGateway }) } })
+  return next({ ctx: { ...ctx, ai: { registry: ctx.services.aiCapabilities, gateway: ctx.services.aiGateway } } })
 })
 const aiInput = z.object({ profileId: z.string(), input: z.json() })
 const runInput = z.object({ runId: z.string() })
 export const aiRouter = t.router({
-  providers: t.router({ list: aiProcedure.query(({ ctx }) => ctx.ai['providers.list'](undefined)) }),
-  invoke: aiProcedure.input(aiInput).mutation(({ ctx, input }) => ctx.ai.invoke(input)),
+  providers: t.router({ list: aiProcedure.query(({ ctx }) => ({ providers: ctx.ai.registry.list() })) }),
+  invoke: aiProcedure.input(aiInput).mutation(({ ctx, input }) => ctx.ai.gateway.invoke({ ...input, caller: { kind: 'studio-client' } })),
   run: t.router({
-    create: aiProcedure.input(aiInput).mutation(({ ctx, input }) => ctx.ai['run.create'](input)),
-    subscribe: aiProcedure.input(runInput.extend({ cursor: z.number().int().nonnegative().optional() })).query(({ ctx, input }) => ctx.ai['run.subscribe'](input)),
-    cancel: aiProcedure.input(runInput.extend({ reason: z.string().optional() })).mutation(({ ctx, input }) => ctx.ai['run.cancel'](input)),
-    state: aiProcedure.input(runInput).query(({ ctx, input }) => ctx.ai['run.state'](input)),
+    create: aiProcedure.input(aiInput).mutation(({ ctx, input }) => {
+      const run = ctx.ai.gateway.createRun({ ...input, caller: { kind: 'studio-client' } })
+      retainAiGatewayRun(ctx.ai.gateway, run)
+      return { runId: run.id }
+    }),
+    subscribe: aiProcedure.input(runInput.extend({ cursor: z.number().int().nonnegative().optional() })).query(({ ctx, input }) => {
+      const run = requireAiGatewayRun(ctx.ai.gateway, input.runId)
+      return { ...run.readEvents(input.cursor ?? 0), state: run.getState() }
+    }),
+    cancel: aiProcedure.input(runInput.extend({ reason: z.string().optional() })).mutation(({ ctx, input }) => {
+      const run = requireAiGatewayRun(ctx.ai.gateway, input.runId)
+      run.cancel(input.reason)
+      return { runId: run.id, state: run.getState() }
+    }),
+    state: aiProcedure.input(runInput).query(({ ctx, input }) => {
+      const run = requireAiGatewayRun(ctx.ai.gateway, input.runId)
+      return { runId: run.id, state: run.getState() }
+    }),
   }),
 })

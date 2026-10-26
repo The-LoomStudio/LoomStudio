@@ -13,7 +13,6 @@
     "lint": "oxlint ."
   },
   "dependencies": {
-    "@loom-studio/blob-store": "workspace:*",
     "@loom-studio/data-engine": "workspace:*"
   }
 }

@@ -1,3 +1,4 @@
+import { createUnavailableClientExtensionDataApi } from '../../support/client/client-extension-data.js'
 import { extensionInstallationId, type ClientExtensionActivationContext, type ClientExtensionModule, type ClientStateSnapshot, type ExtensionConfigEntry } from '@loom-studio/extension-sdk'
 import { createMemoryLogSink, createRootLogger, queryExtensionLogs } from '@loom-studio/logging'
 import { describe, expect, it, vi } from 'vitest'
@@ -66,7 +67,7 @@ describe('Client Extension Host', () => {
       value.renderers.register(pkg.modules[0]!.contributions.renderers![0]!, { mount() {} })
       return { dispose: cleanup }
     } }))
-    const host = createClientExtensionHost({ rendererHost, loadModule })
+    const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost, loadModule })
     const timeline: ClientTimelineParticipation = {
       target,
       leases: [{ timelineId: 'story', installationId: extensionInstallationId(pkg.packageId, { kind: 'global' }), installationVersion: 1, generation: 'a' }],
@@ -159,6 +160,7 @@ describe('Client Extension Host', () => {
     const dispose = vi.fn()
     let activations = 0
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost: createClientRendererHost(),
       loadModule: async () => ({ activate: async context => {
         activations += 1
@@ -187,6 +189,7 @@ describe('Client Extension Host', () => {
   it('allows cooperative activation to reject on cancellation without reporting a failure', async () => {
     const entered = Promise.withResolvers<void>()
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost: createClientRendererHost(),
       loadModule: async () => ({ activate: context => new Promise<void>((_resolve, reject) => {
         context.signal.addEventListener('abort', () => reject(context.signal.reason), { once: true })
@@ -205,6 +208,7 @@ describe('Client Extension Host', () => {
     const loaded = Promise.withResolvers<ClientExtensionModule>()
     const activate = vi.fn()
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost: createClientRendererHost(),
       loadModule: () => { loading.resolve(); return loaded.promise },
     })
@@ -219,7 +223,7 @@ describe('Client Extension Host', () => {
 
   it('skips an activation queued before disposal', async () => {
     const loadModule = vi.fn(async () => ({ activate: vi.fn() }))
-    const host = createClientExtensionHost({ rendererHost: createClientRendererHost(), loadModule })
+    const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost: createClientRendererHost(), loadModule })
     await Promise.all([host.reconcile([extensionPackage()]), host.dispose()])
     expect(loadModule).not.toHaveBeenCalled()
   })
@@ -231,7 +235,7 @@ describe('Client Extension Host', () => {
       actions: [{ commandId: 'run', surface: 'extension.workbench.actions' }],
     }
     const loadModule = vi.fn(async () => ({ activate: vi.fn() }))
-    const host = createClientExtensionHost({ rendererHost: createClientRendererHost(), loadModule })
+    const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost: createClientRendererHost(), loadModule })
     await host.reconcile([installed])
     const command = host.executeCommand({
       packageId: installed.packageId, moduleId: 'client', commandId: 'run', sourceSurface: 'extension.workbench.actions',
@@ -289,6 +293,7 @@ describe('Client Extension Host', () => {
   it('uses the installed file revision for package files without changing the manifest version', async () => {
     let context!: Parameters<ClientExtensionModule['activate']>[0]
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost: createClientRendererHost(),
       loadModule: async () => ({ activate: ctx => { context = ctx } }),
     })
@@ -324,6 +329,7 @@ describe('Client Extension Host', () => {
     }
     vi.stubGlobal('Worker', WorkerFixture)
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost: createClientRendererHost(),
       loadModule: async () => ({ activate: ctx => { context = ctx } }),
     })
@@ -433,6 +439,7 @@ describe('Client Extension Host', () => {
     const installed = { ...extensionPackage(), target: { kind: 'card' as const, cardId: 'a' }, archiveDigest: 'a'.repeat(64) }
     installed.modules[0]!.contributions = {}
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost,
       loadModule: async () => ({ activate: context => context.backgrounds.register({
         id: 'scene', name: 'Scene', description: 'Scene', image: context.files.url('scene.png'),
@@ -449,6 +456,7 @@ describe('Client Extension Host', () => {
     const notify = vi.fn()
     const contexts: Parameters<ClientExtensionModule['activate']>[0][] = []
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost: createClientRendererHost(),
       notify,
       loadModule: async () => ({ activate: context => { contexts.push(context) } }),
@@ -474,6 +482,7 @@ describe('Client Extension Host', () => {
     const root = createRootLogger({ service: 'studio-client', instanceId: 'client-test', sinks: [memory] })
     let context!: Parameters<ClientExtensionModule['activate']>[0]
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost: createClientRendererHost(),
       logger: root.child('extension.loader'),
       queryLogs: (packageId, input) => queryExtensionLogs({ current: memory }, packageId, input, 'client'),
@@ -516,7 +525,7 @@ describe('Client Extension Host', () => {
         { mount: vi.fn() },
       ),
     }
-    const host = createClientExtensionHost({ rendererHost, loadModule: async () => module })
+    const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost, loadModule: async () => module })
     await host.reconcile([extensionPackage()])
     expect(rendererHost.list('narrative.timeline.tail')).toHaveLength(1)
     expect(host.summaries()).toEqual([expect.objectContaining({ state: 'active' })])
@@ -608,6 +617,7 @@ describe('Client Extension Host', () => {
       } }
     })
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost,
       loadModule: async () => ({
         activate: context => {
@@ -648,6 +658,7 @@ describe('Client Extension Host', () => {
     }
     const lateRenderer = commandPackage.modules[0]!.contributions.renderers![1]!
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost,
       loadModule: async () => ({
         activate: context => {
@@ -700,7 +711,7 @@ describe('Client Extension Host', () => {
       { id: 'tail', name: 'Tail', surface: 'narrative.timeline.tail', instanceScope: 'timeline' },
       { mount: vi.fn() },
     ))
-    const host = createClientExtensionHost({ rendererHost, loadModule: async () => ({ activate }) })
+    const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost, loadModule: async () => ({ activate }) })
     await host.reconcile([extensionPackage()])
     const firstInstanceId = host.summaries()[0]?.instanceId
     await host.reconcile([extensionPackage()], { reload: ['example.client/client'] })
@@ -713,6 +724,7 @@ describe('Client Extension Host', () => {
     const rendererHost = createClientRendererHost()
     let shouldFail = true
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost,
       loadModule: async () => ({
         activate: context => {
@@ -738,6 +750,7 @@ describe('Client Extension Host', () => {
   it('degrades only the failing module and reports undeclared runtime registration', async () => {
     const rendererHost = createClientRendererHost()
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost,
       loadModule: async () => ({
         activate: context => context.renderers.register(
@@ -858,6 +871,7 @@ describe('Client Extension Host', () => {
       }],
     }
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost,
       loadModule: async () => ({
         activate: context => {
@@ -886,6 +900,7 @@ describe('Client Extension Host', () => {
       }],
     }
     const host = createClientExtensionHost({
+      data: createUnavailableClientExtensionDataApi(),
       rendererHost,
       loadModule: async () => ({
         activate: context => {
@@ -922,7 +937,7 @@ describe('Client Extension Host', () => {
         },
       }],
     }
-    const host = createClientExtensionHost({ rendererHost, loadModule })
+    const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost, loadModule })
 
     await host.reconcile([commandPackage])
     expect(loadModule).not.toHaveBeenCalled()
@@ -978,7 +993,7 @@ describe('Client Extension Host', () => {
         },
       }],
     }
-    const host = createClientExtensionHost({ rendererHost, loadModule: async () => ({ activate: () => undefined }) })
+    const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost, loadModule: async () => ({ activate: () => undefined }) })
     await host.reconcile([commandPackage])
 
     await expect(host.executeCommand({
@@ -995,7 +1010,7 @@ describe('Client Extension Host', () => {
 
 it('loads static backgrounds without executing modules and removes stale catalog entries', async () => {
   const loadModule = vi.fn()
-  const host = createClientExtensionHost({ rendererHost: createClientRendererHost(), loadModule })
+  const host = createClientExtensionHost({ data: createUnavailableClientExtensionDataApi(), rendererHost: createClientRendererHost(), loadModule })
   const pkg: ManagedClientExtensionPackage = {
     ...extensionPackage(), packageId: 'example.backgrounds', displayName: 'Backgrounds', modules: [],
     resources: { backgrounds: [{ id: 'scene', name: 'Scene', description: 'A scene', image: './Assets/scene one.png' }] },

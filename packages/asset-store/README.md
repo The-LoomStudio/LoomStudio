@@ -2,7 +2,7 @@
 
 > **状态**：Active Package Guide / Current Source Is Authority
 
-`@loom-studio/asset-store` 是 Loom Studio 的媒体资产与导入产物元数据管理层。它在共享 SQLite 中维护业务资产关系，并通过稳定 ID 与 `@loom-studio/blob-store` 协同管理底层不可变字节。
+`@loom-studio/asset-store` 是 Loom Studio 的媒体资产与导入产物元数据管理层。它在共享 SQLite 中维护业务资产关系，并通过稳定 ID 与本包 `blobs/` 模块协同管理底层不可变字节。
 
 ## 业务使命与双轨资产模型
 
@@ -22,7 +22,7 @@
 
 1. **绝对禁止数据库内联大二进制（No Inline Blobs in SQLite）**：
    - SQLite 只保存轻量级的资产元数据；
-   - **所有实际二进制字节必须通过 `this.blobs`（即 `@loom-studio/blob-store`）进行内容寻址持久化**，严禁在 SQLite 字段中存储 `Buffer` 或 Base64 字符串。
+   - **所有实际二进制字节必须通过 `this.blobs`（本包 Blob 模块）进行内容寻址持久化**，严禁在 SQLite 字段中存储 `Buffer` 或 Base64 字符串。
 2. **事务级提交事实（Commit Facts）**：
    - 资产记录的创建与导入属于正式数据事务，必须生成 `DataCommitFact`，确保可追溯性。
    - 新字节先经 Blob Store prepare/finalize，再在同一 Engine 事务内登记 Blob metadata 与 Asset/Artifact，二者共享 Changeset。事务失败回滚 metadata，但不删除已 finalize 的共享文件；文件写入与 SQLite 不是同一个原子事务，见 [`store.ts`](./src/store.ts)。
@@ -33,6 +33,7 @@
 
 Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
+- `createBlobStore(options)`：创建内容寻址字节存储；源码位于 `src/blobs/`，仍使用 `platform.blob-store` migration namespace。
 - `createAssetStore(options)`：创建资产管理实例（需注入 `engine`、`blobs`、`createId` 与 `now`）；
 - 核心操作方法：
   - `preserveSourceArtifact()`、`getSourceArtifact()`；

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { presetAnchorDeclarations } from '../../../apps/studio-client/src/features/context-assets/model/preset-declarations.js'
+import { presetAnchorDeclarations } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-declarations.js'
 import type { PromptResource, LoreMount } from '../../../apps/studio-client/src/entities/index.js'
 
 const resource = {

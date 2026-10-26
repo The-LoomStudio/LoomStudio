@@ -9,7 +9,7 @@ describe('prompt build steps model', () => {
       nodes: [],
       session: {
         cardSnapshot: {
-          id: 'card', version: 1, opening: { id: 'root-opening', content: '' }, createdAt: '', updatedAt: '',
+          id: 'card', artifactId: 'fixture-artifact', version: 1, opening: { id: 'root-opening', content: '' }, createdAt: '', updatedAt: '',
           name: 'Rain Card',
           lore: {
             entries: [

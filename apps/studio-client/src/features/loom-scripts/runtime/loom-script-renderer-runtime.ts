@@ -24,6 +24,7 @@ type ResolvedLoomScriptMount = {
   enabled: boolean
   orderIndex: number
   grantedCapabilities: string[]
+  settings?: Readonly<Record<string, string | number | boolean>>
   script: {
     id: string
     version: number
@@ -79,7 +80,7 @@ export function createLoomScriptRendererRuntime(input: {
       for (const mount of [...mounts].sort((left, right) => left.orderIndex - right.orderIndex || left.mountId.localeCompare(right.mountId))) {
         if (!mount.enabled) continue
         // Running code changes only when its adoption is explicitly refreshed or changed.
-        const fingerprint = `${mount.script.id}:${mount.mountVersion ?? 0}:${mount.grantedCapabilities.join(',')}`
+        const fingerprint = `${mount.script.id}:${mount.mountVersion ?? 0}:${[...mount.grantedCapabilities].sort().join(',')}`
         if (active.get(mount.mountId)?.fingerprint === fingerprint) continue
         disposeMount(mount.mountId)
         const declaredContributionIds = mount.script.contributions.map(item => item.renderer.id)
@@ -156,6 +157,7 @@ export function createLoomScriptRendererRuntime(input: {
                     scriptDocumentId: mount.script.id,
                     documentVersion: mount.script.version,
                     source,
+                    settings: mount.settings,
                     stateRead: async target => {
                       const assertTarget = () => {
                         const mounted = input.rendererHost.scopeSnapshot()

@@ -5,7 +5,7 @@ import { applicationDocumentTypes, createApplicationRuntime, extensionInstallati
 import { createAgentStore, createNarrativeStore, createPromptResourceStore, createStateStore } from '@loom-studio/application-data'
 import type { DataCommitFact } from '@loom-studio/data-engine'
 import { createId, nowIso, type JsonObject } from '@loom-studio/shared'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { summarizeDataCommit, summarizeDocumentCommit } from '../../../packages/kernel/src/handlers.js'
 import { projectExtensionEvent } from '../../../apps/studio-server/src/extensions/extension-event-projection.js'
 

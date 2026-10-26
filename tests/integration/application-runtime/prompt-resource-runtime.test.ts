@@ -17,6 +17,34 @@ function createIds() {
 }
 
 describe('Prompt Resource Store application runtime', () => {
+  it('keeps message sequences as leaves beside Messages and normalizes legacy author roles', async () => {
+    const createId = createIds()
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: () => '2026-10-24T00:00:00.000Z' })
+    try {
+      const promptResources = createPromptResourceStore({ engine, createId })
+      const { resource } = await promptResources.createResource({
+        actor: { kind: 'system', id: 'test' }, resourceKind: 'preset',
+        rootNode: { id: 'root', kind: 'module', label: 'Legacy', children: [
+          { id: 'message', kind: 'message', label: 'Message', meta: 'message.developer', capabilities: { roleHint: 'developer' },
+            children: [{ id: 'text', kind: 'entry', label: 'Text', body: 'Hello' }] },
+          { id: 'history', kind: 'virtual', label: 'History', capabilities: { targetAnchorId: '@chat.session' } },
+        ] },
+      })
+      const runtime = createApplicationRuntime({ dataEngine: engine, documents: createSqliteDocumentStore({ engine }), promptResources })
+      expect((await runtime.getPromptResource({ resourceId: resource.id })).resource.rootNode.children?.[0]).toMatchObject({ meta: 'message.system', capabilities: { roleHint: 'system' } })
+      await expect(runtime.movePromptResourceAsset({ resourceId: resource.id, assetId: 'history', targetAssetId: 'message', position: 'inside' })).rejects.toThrow('Invalid Prompt placement')
+      await expect(runtime.createPromptResourceAsset({ resourceId: resource.id, targetAssetId: 'history', position: 'inside',
+        asset: { id: 'nested', kind: 'entry', label: 'Invalid' } })).rejects.toThrow('cannot contain children')
+      await expect(runtime.updatePromptResourceAsset({ resourceId: resource.id, assetId: 'text',
+        capabilities: { targetAnchorId: '@chat.session' } })).rejects.toThrow('Text contributions cannot target')
+      await expect(runtime.createPromptResourceAsset({ resourceId: resource.id, targetAssetId: 'root', position: 'inside',
+        asset: { id: 'duplicate', kind: 'virtual', label: 'Duplicate', capabilities: { targetAnchorId: '@chat.session' } } })).rejects.toThrow('Invalid Prompt placement')
+      expect((await promptResources.getResource(resource.id))?.version).toBe(resource.version)
+      const moved = await runtime.movePromptResourceAsset({ resourceId: resource.id, assetId: 'history', targetAssetId: 'message', position: 'before' })
+      expect(moved.resource.rootNode.children?.map(node => node.id)).toEqual(['history', 'message'])
+    } finally { engine.close() }
+  })
+
   it('copies from one resource read and updates macros without losing metadata', async () => {
     const createId = createIds()
     const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: () => '2026-10-02T00:00:00.000Z' })
@@ -475,7 +503,7 @@ describe('Prompt Resource Store application runtime', () => {
       ).resource,
       agentMessages: [],
       userInput: 'Hi',
-      variables: createVariableRenderContext({ global: { user: { name: 'Mio' } } }),
+      variables: createVariableRenderContext({ computed: { user: { name: 'Mio', description: '' } } }),
     })
 
     expect(result.messages).toEqual(
@@ -617,6 +645,8 @@ describe('Prompt Resource Store application runtime', () => {
     const promptResources = createPromptResourceStore({ engine, createId, now })
     const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources })
     const artifact = JSON.parse(await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')) as CardBundleArtifact
+    // The seed still has a legacy multi-message opening; this test exercises the current bundle contract.
+    artifact.card.opening = { content: '雨线车站的月台灯逐盏亮起。' }
     const imported = await runtime.importCardBundle({ artifact })
     expect((await documents.list({ type: 'airp.promptResource' })).items).toHaveLength(0)
     expect(imported.card.promptResourceIds).toBeDefined()

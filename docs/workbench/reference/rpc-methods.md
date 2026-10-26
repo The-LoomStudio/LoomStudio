@@ -38,7 +38,7 @@
 
 | Namespace / 入口 | 当前所有者 |
 |---|---|
-| `system.*`、`docs.*`、`diagnostics.*`、`trace.*`、`audit.*`、`loom.run` | [Kernel](../../../packages/kernel/src/index.ts) 与 [handlers.ts](../../../packages/kernel/src/handlers.ts)；`loom.run` 的 Core 执行不同于 Agent PromptBuild |
+| `system.*`、`docs.*`、`diagnostics.*` | [Kernel](../../../packages/kernel/src/index.ts) 与 [handlers.ts](../../../packages/kernel/src/handlers.ts) |
 | `extensions.*`：安装、卸载、资源导入、授权、重载 | [Kernel handlers.ts](../../../packages/kernel/src/handlers.ts)注册，委托 [Server Extension Manager](../../../apps/studio-server/src/extensions/extension-manager.ts)；[安装及生命周期合同](../../architecture/extensions/README.md) |
 | `ai.*` | [services.ts](../../../apps/studio-server/src/rpc/trpc/services.ts) |
 | `logs.*` | [services.ts](../../../apps/studio-server/src/rpc/trpc/services.ts)；[日志查询与隐私边界](../../architecture/platform/logging.md) |
@@ -48,6 +48,8 @@
 | HTTP 认证、Asset、Card 文件、Extension 文件与 SSE | [Server README](../../../apps/studio-server/README.md#当前-http-面)、[http/](../../../apps/studio-server/src/http/)；不把文件接口当成 RPC |
 
 ## 旧名称与合同陷阱
+
+- `loom.run`、`trace.list`、`audit.list` 已随 Core / Runner / TraceAudit 退役，不提供兼容转译。PromptBuild 和模型日志仍由 Application 拥有，见 [PromptBuild](../../architecture/application/prompt-build/README.md)与[模型观测](../../architecture/platform/logging.md)。
 
 - `application.createAgentProfile` 等 Agent Profile CRUD 已取消。当前存在 `application.createAgentPreset` / `getAgentPreset` / `listAgentPresets` / `updateAgentPreset` / `deleteAgentPreset`；底层复用 Prompt Resource，并不因此不存在 Preset RPC。
 - `LoreMount.source.kind = preset` 是当前消费配置，不是仅供兼容的旧数据。`replaceLoreMounts` 接受 `loreResourceIds` 或 `mounts` 二选一；后者可按既有 Mount ID 保留失效引用。准确校验见 Handler 使用的共享 Schema 与 Runtime。

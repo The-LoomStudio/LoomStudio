@@ -5,9 +5,9 @@ import type { PromptResource } from '../../../apps/studio-client/src/entities/in
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 describe('Prompt Resource command outcomes', () => {
-  it.each(['create', 'duplicate', 'import', 'importZip', 'delete'] as const)('%s distinguishes rejection from committed mutation with failed refresh', async operation => {
+  it.each(['create', 'createPreset', 'duplicate', 'import', 'importZip', 'delete'] as const)('%s distinguishes rejection from committed mutation with failed refresh', async operation => {
     const resource = {
-      id: 'created', version: 1, resourceKind: 'lore',
+      id: 'created', version: 1, resourceKind: operation === 'createPreset' ? 'preset' : 'lore',
       rootNode: { id: 'root', kind: 'folder', label: 'Created' },
     } as PromptResource
     const failure = new Error('Unavailable')
@@ -18,7 +18,7 @@ describe('Prompt Resource command outcomes', () => {
     const report = vi.fn()
     let resources = operation === 'delete' ? [resource] : []
     const commands = usePromptResourceCommands({
-      api: { promptResources: { [operation]: mutate } } as unknown as StudioApi,
+      api: { promptResources: { [operation === 'createPreset' ? 'create' : operation]: mutate } } as unknown as StudioApi,
       t: createTranslator('en-US'),
       runMutation: async action => {
         try { return await action() } catch (error) { report(error); throw error }
@@ -32,6 +32,7 @@ describe('Prompt Resource command outcomes', () => {
     const invoke = () => {
       switch (operation) {
         case 'create': return commands.createPromptResource('lore')
+        case 'createPreset': return commands.createPromptResource('preset')
         case 'duplicate': return commands.duplicatePromptResource('original')
         case 'import': return commands.importPromptResource(new File(['{}'], 'resource.json'))
         case 'importZip': return commands.importPromptResourceZip(new File(['zip'], 'resource.zip'))

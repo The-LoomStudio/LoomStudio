@@ -1,19 +1,24 @@
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/context-assets/model/preset-build-context.js'
-import { buildPresetToolProjection } from '../../../apps/studio-client/src/features/context-assets/model/preset-tool-projection.js'
-import { PresetWorkbench } from '../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.js'
+import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-build-context.js'
+import { buildPresetToolProjection } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-tool-projection.js'
+import { PresetArrangementWorkbench as PresetWorkbench } from '../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.js'
 import { ContextWorkbench } from '../../../apps/studio-client/src/widgets/context-workbench/context-workbench.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { AgentToolDefinition, PresetToolMount, PromptResource, LoreMount } from '../../../apps/studio-client/src/entities/index.js'
 import type { FileTreeNode } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
-vi.mock('../../../apps/studio-client/src/features/context-assets/model/use-resource-token-snapshot.js', () => ({
+vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-resource-token-snapshot.js', () => ({
   useResourceTokenSnapshot: () => ({ pending: false, refresh: vi.fn() }),
 }))
 vi.mock('react', async original => ({
   ...await original<typeof import('react')>(),
+  useRef: (initial: unknown) => {
+    const index = hooks.cursor++
+    if (!(index in hooks.values)) hooks.values[index] = { current: initial }
+    return hooks.values[index]
+  },
   useId: () => 'test-id',
   useMemo: (fn: () => unknown) => fn(),
   useState: (initial: unknown) => {
@@ -42,7 +47,7 @@ vi.mock('../../../apps/studio-client/src/features/state-variables/ui/macro-autho
   MacroAuthoringDetail: () => null,
   MacroAuthoringExplorer: () => null,
 }))
-vi.mock('../../../apps/studio-client/src/features/text-transforms/ui/text-transform-panel.js', () => ({
+vi.mock('../../../apps/studio-client/src/widgets/text-transform-workbench/text-transform-panel.js', () => ({
   useTextTransformController: () => ({}),
   TextTransformExplorer: () => null,
   TextTransformDetail: () => null,
@@ -110,12 +115,12 @@ const loreMount = (id: string): LoreMount => ({
   orderIndex: 0, origin: {}, createdAt: '',
 })
 const common = () => ({
-  nodes: [], resources: [preset, setting], loreMounts: [loreMount('missing-setting')],
+  resources: [preset, setting], loreMounts: [loreMount('missing-setting')],
   tools: [availableTool], toolMounts: [mount('available'), mount('missing-tool'), mount('disabled-missing', false)],
   draftResourceIds: [], workspaceId: 'missing-reference-test', searchQuery: '', t,
   onReplaceToolMounts: vi.fn().mockResolvedValue(undefined),
   onReplaceCardResources: vi.fn().mockResolvedValue(undefined),
-  onSelectResource: vi.fn(), onLoomScriptsChanged: vi.fn(),
+  onSelectResource: vi.fn(),
 })
 
 beforeEach(() => {
@@ -174,7 +179,7 @@ describe('missing context projections', () => {
     tree = root()
     const detail = child(tree, 'PresetToolDetail')
     const renderDetail = instance(() => renderElement(detail))
-    const missingDetail = renderDetail() as Element
+    const missingDetail = child(renderDetail(), 'UnavailableToolDetail')
     const renderMissing = instance(() => renderElement(missingDetail))
     const missingTree = renderMissing()
     expect(elements(missingTree).some(item => item.type === 'input' || item.type === 'textarea')).toBe(false)
@@ -208,7 +213,7 @@ describe('missing context projections', () => {
     const explorer = child(root(), 'PresetToolExplorer')
     selectTool(instance(() => renderElement(explorer))(), 'missing-tool')
     const detail = child(root(), 'PresetToolDetail')
-    const missing = instance(() => renderElement(detail))() as Element
+    const missing = child(instance(() => renderElement(detail))(), 'UnavailableToolDetail')
     const renderMissing = instance(() => renderElement(missing))
     click(renderMissing(), t('preset.tools.removeUnavailable'))
     await Promise.resolve()

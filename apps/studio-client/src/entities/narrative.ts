@@ -29,6 +29,7 @@ export type NarrativeBranch = {
 }
 
 export type NarrativeNode = {
+  entryId?: string
   kind: 'user-input' | 'narrative'
   floor: number
   id: string

@@ -1,15 +1,13 @@
+import { onTestFinished } from 'vitest'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
-import type { LoomRunner } from '@loom-studio/loom-runner'
-import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { describe, expect, it } from 'vitest'
 
 function createTestKernel() {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
-  const traceAudit = createInMemoryTraceAuditStore()
   const extensionHost: ExtensionHost = {
     discover: async () => { throw new Error('not implemented') },
     activate: async () => { throw new Error('not implemented') },
@@ -21,19 +19,23 @@ function createTestKernel() {
     list: () => [],
     diagnostics: () => [],
   }
-  const loomRunner: LoomRunner = {
-    run: async input => ({ fragments: input.fragments }),
-  }
   const kernel = createKernel({
     documents,
     dataCommits: documents,
     diagnostics,
-    traceAudit,
     extensionHost,
-    loomRunner,
   })
 
-  return { kernel, documents, diagnostics, traceAudit }
+  onTestFinished(async () => {
+    try {
+      await kernel.stop()
+      await extensionHost.disposeAll()
+    } finally {
+      await documents.close()
+    }
+  })
+
+  return { kernel, documents, diagnostics }
 }
 
 describe('kernel rpc contract', () => {
@@ -121,11 +123,10 @@ describe('kernel rpc contract', () => {
   })
 
   it('exposes injected platform services through getters', () => {
-    const { kernel, documents, diagnostics, traceAudit } = createTestKernel()
+    const { kernel, documents, diagnostics } = createTestKernel()
 
     expect(kernel.getDocumentStore()).toBe(documents)
     expect(kernel.getDiagnostics()).toBe(diagnostics)
-    expect(kernel.getTraceAudit()).toBe(traceAudit)
   })
 
   it('emits docs.changed after document writes through kernel rpc', async () => {

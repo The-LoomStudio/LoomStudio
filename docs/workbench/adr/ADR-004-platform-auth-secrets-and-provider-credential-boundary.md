@@ -5,6 +5,8 @@
 > **Decision scope**: Platform Secret Store and Provider credential boundary
 > **Current authority**: Secret Store and Provider credential handling are implemented in the server/application path; login, workspace unlock, KDF, user grant UI/runtime enforcement and complete secret-use Audit remain open. Provider request mapping is owned by the Application Provider Adapter, not by a generic ordinary Extension.
 
+> **2026-10-25 implementation note**: Core / Loom Runner / TraceAudit and `loom.run` have retired. The flow below is retained as historical design; current Agent PromptBuild compiles directly in Application Runtime. See [PromptBuild](../../architecture/application/prompt-build/README.md). This does not complete the open authentication or secret-use Audit work listed above.
+
 ---
 
 ## Context

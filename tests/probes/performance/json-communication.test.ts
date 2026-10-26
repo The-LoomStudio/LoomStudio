@@ -1,11 +1,10 @@
-import { createClientBridge, type ClientBridge } from '@loom-studio/client-bridge'
+import { onTestFinished } from 'vitest'
+import { createClientBridge, type ClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
-import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
-import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 
 import { describe, expect, it } from 'vitest'
 
@@ -21,8 +20,6 @@ type Measurement = {
 function createHarness() {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
-  const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit })
   let kernel: Kernel
   const extensionHost = createExtensionHost({
     documents,
@@ -44,9 +41,16 @@ function createHarness() {
     documents,
     dataCommits: documents,
     diagnostics,
-    traceAudit,
     extensionHost,
-    loomRunner,
+  })
+
+  onTestFinished(async () => {
+    try {
+      await kernel.stop()
+      await extensionHost.disposeAll()
+    } finally {
+      await documents.close()
+    }
   })
 
   return { kernel }

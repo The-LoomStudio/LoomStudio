@@ -40,15 +40,14 @@ function elements(value: unknown): Element[] {
 beforeEach(() => { hooks.cursor = 0; hooks.values = [] })
 
 function fixture() {
-  const session = (id: string, title: string, agentPresetId: string, timelineId = 'timeline'): AgentSession => ({
+  const session = (id: string, title: string, agentPresetId: string, timelineId = 'timeline'): AgentSession => ({ kind: 'agent' as const,
     id, title, agentPresetId, timelineId, entryCount: 0, createdAt: '2026-10-02T00:00:00Z', updatedAt: '2026-10-02T00:00:00Z',
   })
   const sessions = [session('a', 'Story', 'writer'), session('b', 'Notes', 'summary'), session('c', 'Other', 'writer', 'other-timeline')]
   const props = {
-    session: sessions[0], sessions, primarySessionId: 'a', timelineId: 'timeline', disabled: false,
+    session: sessions[0], sessions, primarySessionId: 'a', disabled: false,
     presets: [{ id: 'writer', rootNode: { label: 'Writing' } }, { id: 'summary', rootNode: { label: 'Memory Summary' } }] as AgentPreset[],
     t: createTranslator('zh-CN'), onSelect: vi.fn(), onRename: vi.fn(async () => sessions[0]),
-    onSetPrimary: vi.fn(async () => {}),
   } as Parameters<typeof AgentSessionPicker>[0]
   const render = () => { hooks.cursor = 0; return elements(AgentSessionPicker(props)) }
   const control = (label: string) => render().find(element => element.props['aria-label'] === label)!
@@ -74,7 +73,6 @@ describe('Agent session picker', () => {
       .map(element => element.props['aria-label'])).toEqual(['打开会话：Notes'])
     f.control('打开会话：Notes').props.onClick()
     expect(f.props.onSelect).toHaveBeenCalledWith('b')
-    expect(f.props.onSetPrimary).not.toHaveBeenCalled()
     expect(f.render().some(element => element.props.title === 'Agent 会话')).toBe(false)
   })
 
@@ -93,19 +91,11 @@ describe('Agent session picker', () => {
     expect(f.sessions[0].title).toBe('Story')
   })
 
-  it('sets primary independently of viewing and keeps a failed selection visible', async () => {
+  it('keeps the primary identity visible without offering reassignment controls', () => {
     const f = fixture()
+    expect(f.render().some(element => element.props['aria-label'] === '主写作对话')).toBe(true)
     f.open()
-    expect(f.control('设为主写作对话：Other').props.disabled).toBe(true)
-    f.control('设为主写作对话：Notes').props.onClick()
-    await vi.waitFor(() => expect(f.props.onSetPrimary).toHaveBeenCalledWith(f.sessions[1]))
-    expect(f.props.onSelect).not.toHaveBeenCalled()
-    ;(f.props.onSetPrimary as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Paused run abandonment failed'))
-    await vi.waitFor(() => expect(f.control('设为主写作对话：Notes').props.disabled).toBe(false))
-    f.control('设为主写作对话：Notes').props.onClick()
-    await vi.waitFor(() => expect(f.render().some(element => element.props.role === 'alert'
-      && element.props.children === 'Paused run abandonment failed')).toBe(true))
-    expect(f.render().some(element => element.props.title === 'Agent 会话')).toBe(true)
+    expect(f.render().some(element => String(element.props['aria-label']).startsWith('设为主写作对话'))).toBe(false)
   })
 
   it('renames the original session and retains the input after a failed save', async () => {
@@ -118,6 +108,5 @@ describe('Agent session picker', () => {
     expect(f.props.onRename).toHaveBeenCalledWith('a', 'New story name')
     expect(f.control('会话名称').props.value).toBe('New story name')
     expect(f.props.onSelect).not.toHaveBeenCalled()
-    expect(f.props.onSetPrimary).not.toHaveBeenCalled()
   })
 })

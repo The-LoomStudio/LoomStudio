@@ -35,7 +35,7 @@ describe('resolveAgentRuntimePhase', () => {
     const messages: AgentTranscriptEntry[] = [
       {
         id: 'm1',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
         entry: { kind: 'reasoning', content: 'Thinking...' },
@@ -55,7 +55,7 @@ describe('resolveAgentRuntimePhase', () => {
     const searchMessages: AgentTranscriptEntry[] = [
       {
         id: 'm1',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
         entry: { kind: 'tool-invocation', invocationId: 'inv1', toolId: 'web_search', exposedName: '网页搜索' },
@@ -70,7 +70,7 @@ describe('resolveAgentRuntimePhase', () => {
     const readMessages: AgentTranscriptEntry[] = [
       {
         id: 'm2',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
         entry: { kind: 'tool-invocation', invocationId: 'inv2', toolId: 'read_worldbook', exposedName: '读取世界书' },
@@ -85,7 +85,7 @@ describe('resolveAgentRuntimePhase', () => {
     const writeMessages: AgentTranscriptEntry[] = [
       {
         id: 'm3',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
         entry: { kind: 'tool-invocation', invocationId: 'inv3', toolId: 'codeact_edit', exposedName: '编辑代码' },
@@ -103,21 +103,21 @@ describe('resolveAgentRuntimePhase', () => {
     const messages: AgentTranscriptEntry[] = [
       {
         id: 'm1',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
         entry: { kind: 'reasoning', content: 'thinking after tool' },
       },
       {
         id: 'm2',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:01Z',
         entry: { kind: 'tool-invocation', invocationId: 'inv1', toolId: 'read_file' },
       },
       {
         id: 'm3',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:02Z',
         entry: { kind: 'tool-result', invocationId: 'inv1', content: 'file content' },
@@ -137,7 +137,7 @@ describe('resolveAgentRuntimePhase', () => {
     const messages: AgentTranscriptEntry[] = [
       {
         id: 'm1',
-        sessionId: 's1',
+        agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
         entry: { kind: 'message', role: 'assistant', state: 'partial', content: 'Hello' },

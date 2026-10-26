@@ -1,3 +1,5 @@
+import { usePromptResourceWorkspace } from '../features/prompt-resources/model/use-prompt-resource-workspace.js'
+import { useAgentTools } from '../features/agent-presets/model/use-agent-tools.js'
 import { useUserProfilesQuery } from '../features/user-profiles/model/use-user-profiles-query.js'
 import { useNewStoryExtensions } from '../features/extension-renderers/ui/new-story-extensions.js'
 import { readStudioLocale, saveStudioLocale } from '../features/onboarding/model/onboarding-preferences.js'
@@ -10,17 +12,14 @@ import { createStudioApi, type NetworkSettings } from '../shared/api/studio-api.
 import { useAsyncOperations } from '../shared/hooks/use-async-operations.js'
 import { useCards } from '../features/cards/model/use-cards.js'
 import { useEditHistory } from '../features/edit-history/model/use-edit-history.js'
-import { useContextAssets } from '../features/context-assets/model/use-context-assets.js'
-import { findContextAssetNode } from '../features/context-assets/model/context-asset-tree.js'
+import { findContextAssetNode } from '../features/prompt-resources/model/context-asset-tree.js'
 import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
 import { useMacroPreview } from '../features/prompt-build/model/use-macro-preview.js'
 import { useMacroSelection } from '../features/prompt-build/model/use-macro-selection.js'
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
-import { useAgentPresets } from '../features/agent-presets/model/use-agent-presets.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
 import { useExtensionResourceCommands } from '../features/extension-renderers/model/use-extension-resource-commands.js'
 import { usePromptResourceCommands } from '../features/prompt-resources/model/use-prompt-resource-commands.js'
-import { usePromptResourceState } from '../features/prompt-resources/model/use-prompt-resource-state.js'
 import type { ContextAssetNode, PromptResource } from '../entities/index.js'
 import { useStudioStartup } from './use-studio-startup.js'
 import { useStudioDerivedValues } from './use-studio-derived-values.js'
@@ -71,7 +70,10 @@ export function useStudioState(transportLogger: Logger) {
     textTransforms: api.textTransforms,
   }), [api])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
-  const promptResourceState = usePromptResourceState({ api, endpoint })
+  const { state: promptResourceState, contextAssetState, presetSelection } = usePromptResourceWorkspace({
+    api, endpoint, recordEdit: editHistory.record,
+    runAction: action => operations.run('mutation', action).then(() => undefined), t,
+  })
   const {
     presetToolMounts,
     promptResources,
@@ -97,22 +99,8 @@ export function useStudioState(transportLogger: Logger) {
     runAction: action => operations.run('cards', action).then(() => undefined),
     t,
   })
-  const contextAssetState = useContextAssets({
-    api,
-    scope: endpoint,
-    onResourceChange: resource => {
-      setPromptResources(current => current.map(item => item.id === resource.id && item.version <= resource.version ? resource : item))
-    },
-    recordEdit: editHistory.record,
-    runAction: action => operations.run('mutation', action).then(() => undefined),
-    resources: promptResources,
-    t,
-  })
-  useEffect(() => {
-    contextAssetState.setResources(promptResources)
-  }, [endpoint, promptResources])
   const providerSettings = useProviderSettings({
-    api,
+    api, endpoint,
     initialProviderAccountDraft: {
       displayName: '',
       baseUrl: '',
@@ -120,14 +108,8 @@ export function useStudioState(transportLogger: Logger) {
     },
     runAction: action => operations.run('provider-settings', action).then(() => undefined),
   })
-  const agentPresets = useAgentPresets({
-    api,
-    resources: promptResources,
-    readResources: promptResourceState.readResources,
-    setResources: setPromptResources,
-    refreshDependents: () => promptResourceState.invalidate({ bindings: true, loreMounts: true, presetToolMounts: true }),
-    runAction: action => operations.run('agent-presets', action).then(() => undefined),
-  })
+  const agentTools = useAgentTools({ api, endpoint, runAction: action => operations.run('agent-presets', action).then(() => undefined) })
+  const agentPresets = { ...presetSelection, ...agentTools }
   const selectedAgentPreset = agentPresets.agentPresets.find(profile => profile.id === agentPresets.selectedAgentPresetId)
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const newStoryExtensions = useNewStoryExtensions(api)
@@ -340,8 +322,6 @@ export function useStudioState(transportLogger: Logger) {
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,
     setSelectedCardId: cardsState.setSelectedCardId,
-    cardDraft: cardsState.cardDraft,
-    setCardDraft: cardsState.setCardDraft,
     selectedCard: cardsState.selectedCard,
     selectedCardDetails: cardsState.selectedCardDetails,
     updateCardMedia: cardsState.updateCardMedia,
@@ -384,6 +364,17 @@ export function useStudioState(transportLogger: Logger) {
     // agent
     agentMessages: narrativeRuntime.agentMessages,
     narrativeAgentSession: narrativeRuntime.primarySession,
+    narrativeWorkEntries: narrativeRuntime.rootMessages,
+    narrativeActiveRun: narrativeRuntime.rootActiveRun,
+    narrativeRecovery: narrativeRuntime.rootRecovery,
+    reconnectNarrativeRun: narrativeRuntime.reconnectRootRun,
+    pauseNarrativeRun: narrativeRuntime.pauseRootRun,
+    resumeNarrativeRun: narrativeRuntime.resumeRootRun,
+    abandonNarrativeRun: narrativeRuntime.abandonRootRun,
+    approveNarrativeMutation: narrativeRuntime.approveRootMutation,
+    configureNarrativeSession: narrativeRuntime.configureRoot,
+    narrativeInputMode: narrativeRuntime.inputMode,
+    setNarrativeInputMode: narrativeRuntime.setInputMode,
     agentChatSession: narrativeRuntime.agentSession,
     agentChatSessions: narrativeRuntime.agentSessions,
     allAgentSessions: narrativeRuntime.allAgentSessions,
@@ -398,6 +389,7 @@ export function useStudioState(transportLogger: Logger) {
     abandonAgentRun: narrativeRuntime.abandonAgentRun,
     restoreRunInput: narrativeRuntime.restoreRunInput,
     retryNarrativeInput: narrativeRuntime.retryNarrativeInput,
+    retryDiscussionInput: narrativeRuntime.retryDiscussionInput,
     canRetryNarrativeInput: narrativeRuntime.canRetryNarrativeInput,
     cancelAgentRun: narrativeRuntime.cancelAgentRun,
     pauseAgentRun: narrativeRuntime.pauseAgentRun,
@@ -469,20 +461,20 @@ export function useStudioState(transportLogger: Logger) {
     addContextAssetFolder: contextAssetState.addContextAssetFolder,
     addContextAssetAnchor: contextAssetState.addContextAssetAnchor,
     addContextAssetMessageBlock: contextAssetState.addContextAssetMessageBlock,
+    addContextAssetMessageSequence: contextAssetState.addContextAssetMessageSequence,
     addContextAssetInZone: contextAssetState.addContextAssetInZone,
     duplicateContextAsset: contextAssetState.duplicateContextAsset,
     deleteContextAsset: contextAssetState.deleteContextAsset,
     ...promptResourceCommands,
     // derived
     ...derivedValues,
-    canSend: derivedValues.canSend && !narrativeRuntime.openingChanged,
+    canSend: derivedValues.canSend && !narrativeRuntime.openingChanged && Boolean(narrativeRuntime.primarySession?.agentPresetId) && narrativeRuntime.rootActiveRun?.status !== 'running' && narrativeRuntime.rootActiveRun?.status !== 'suspended',
     canSendAgent: derivedValues.canSendAgent && Boolean(narrativeRuntime.agentSession || (promptResourceState.resourcesReady && selectedAgentPreset)),
     refreshStates,
     // actions
     undoEdit,
     redoEdit,
     createCard: cardsState.createCard,
-    updateCard: cardsState.updateCard,
     deleteCard: cardsState.deleteCard,
     deleteCards: cardsState.deleteCards,
     previewCardDeletion: cardsState.previewCardDeletion,
@@ -530,10 +522,7 @@ export function useStudioState(transportLogger: Logger) {
     listProviderModels: providerSettings.listProviderModels,
     invokeAiCapability: providerSettings.invokeAiCapability,
     pingModelProfile: providerSettings.pingModelProfile,
-    createAgentPreset: agentPresets.createAgentPreset,
-    updateAgentPreset: agentPresets.updateAgentPreset,
     updateAgentTool: agentPresets.updateAgentTool,
-    deleteAgentPreset: agentPresets.deleteAgentPreset,
   }
 }
 

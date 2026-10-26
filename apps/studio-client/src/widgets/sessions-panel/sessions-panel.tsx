@@ -52,8 +52,9 @@ import { downloadBlob } from '../../shared/browser/download.js'
 import { formatDateTime, type Translator } from '../../shared/i18n/index.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
-import { AgentToolGroupBlock, buildRenderItems } from '../agent-chat-panel/agent-chat-panel.js'
-import { AgentSessionCreateDialog } from '../agent-chat-panel/agent-session-create-dialog.js'
+import { AgentToolGroupBlock } from '../../features/sessions/ui/agent-tool-blocks.js'
+import { buildRenderItems } from '../../features/sessions/model/transcript-render-items.js'
+import { AgentSessionCreateDialog } from '../../features/sessions/ui/agent-session-create-dialog.js'
 import {
   areAllExpandablesExpanded,
   areAllSelected,
@@ -101,8 +102,7 @@ type SessionsPanelProps = {
   timelines: NarrativeTimeline[]
   onOpenTimeline(timeline: NarrativeTimeline): void
   onOpenAgentSessionInSidebar?(session: AgentSession): void
-  onCreateAgentSession?(presetId: string, makeMain: boolean): Promise<AgentSession | undefined>
-  onSetPrimaryAgentSession?(session: AgentSession): Promise<void>
+  onCreateAgentSession?(presetId: string): Promise<AgentSession | undefined>
   onDeleteTimeline?(timelineId: string): Promise<boolean> | void
   onRenameTimeline?(timelineId: string, title: string): Promise<unknown> | void
   onDeleteAgentSession?(sessionId: string): Promise<boolean> | void
@@ -132,7 +132,6 @@ export function SessionsPanel(props: SessionsPanelProps) {
   }>()
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [primaryError, setPrimaryError] = useState<string>()
 
   useEffect(() => { setPendingDelete(undefined) }, [props.api])
 
@@ -434,16 +433,6 @@ export function SessionsPanel(props: SessionsPanelProps) {
     )
   }
 
-  async function choosePrimary(session: AgentSession) {
-    setPrimaryError(undefined)
-    try {
-      await props.onSetPrimaryAgentSession?.(session)
-      notify.success(props.t('notify.success.updated'))
-    } catch (error) {
-      notify.error(props.t('notify.error.general'), { description: error instanceof Error ? error.message : String(error) })
-      setPrimaryError(error instanceof Error ? error.message : String(error))
-    }
-  }
 
   return (
     <div className={styles.panel} data-loom-component="sessions-panel">
@@ -582,7 +571,6 @@ export function SessionsPanel(props: SessionsPanelProps) {
             )}
 
             <div className={styles.list}>
-              {primaryError ? <p role="alert">{primaryError}</p> : null}
               {filteredTimelines.length === 0 && filteredSessions.length === 0 ? (
                 <EmptyState text={props.t(filter === 'sessions' ? 'sessions.agentEmpty' : 'sessions.timelineEmpty')} />
               ) : null}
@@ -1081,8 +1069,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
               onDelete={() => void handleDeleteSession(selectedSession)}
               onOpenSidebar={() => handleOpenSessionInSidebar(selectedSession)}
               onRename={() => void handleRenameSession(selectedSession)}
-              onSetPrimary={selectedSession.timelineId === props.activeTimeline?.id
-                ? () => void choosePrimary(selectedSession) : undefined}
+
             />
           ) : (
             <div className={styles.empty}>
@@ -1095,7 +1082,6 @@ export function SessionsPanel(props: SessionsPanelProps) {
       {createOpen && props.onCreateAgentSession ? <AgentSessionCreateDialog
         t={props.t}
         presets={props.agentPresets}
-        canMakePrimary={Boolean(props.activeTimeline || props.selectedCardName)}
         onCreate={props.onCreateAgentSession}
         onClose={() => setCreateOpen(false)}
         onCreated={session => {
@@ -1441,7 +1427,6 @@ function SessionDetail(props: {
   onDelete?(): void
   onOpenSidebar(): void
   onRename?(): void
-  onSetPrimary?(): void
 }) {
   const [view, setView] = useState<'summary' | 'transcript'>(props.initialView ?? 'transcript')
   const [sessionDetailsOpen, setSessionDetailsOpen] = useState(false)
@@ -1475,7 +1460,6 @@ function SessionDetail(props: {
           </button>
           <DropdownMenu><DropdownMenuTrigger asChild><Button size="small" variant="ghost" aria-label="更多会话操作"><MoreHorizontal size={18} /></Button></DropdownMenuTrigger>
             <DropdownMenuContent>
-              {!props.isPrimary && props.onSetPrimary && <DropdownMenuItem onSelect={props.onSetPrimary}>{props.t('agent.makePrimary')}</DropdownMenuItem>}
               {props.onRename && <DropdownMenuItem icon={<Pencil size={14} />} onSelect={props.onRename}>{props.t('sessions.rename')}</DropdownMenuItem>}
               <DropdownMenuItem onSelect={() => setSessionDetailsOpen(true)}>会话详情</DropdownMenuItem>
               {props.onDelete && <DropdownMenuItem tone="danger" icon={<Trash2 size={14} />} onSelect={props.onDelete}>{props.t('sessions.delete')}</DropdownMenuItem>}

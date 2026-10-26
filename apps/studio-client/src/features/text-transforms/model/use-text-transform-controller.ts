@@ -1,4 +1,3 @@
-import type { LoomScriptMountTarget } from '@loom-studio/shared/loom-scripts'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type {
   HistorySource,
@@ -9,18 +8,12 @@ import type {
   TextTransformPhase,
   TextTransformRule,
   TextTransformRuleDraft,
-  LoomScript,
-  LoomScriptMount,
-  LoomScriptOwner,
-  ResolvedLoomScriptRendererMount,
-  UnavailableLoomScriptMount,
 } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { ClientRendererHost, ClientRendererRegistration } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { rendererContributionKey, rendererSurfacePolicies } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { notify } from '../../../shared/notifications/index.js'
-import { createScriptTemplate } from '../../loom-scripts/model/script-template.js'
 import { useTextTransformInspection } from './use-text-transform-inspection.js'
 
 export type OwnerScope = TextRuleOwner | { kind: 'runtime' } | { kind: 'catalog' }
@@ -35,10 +28,8 @@ export type TextTransformProps = {
   initialExtractorId?: string
   temporaryTarget?: boolean
   api: StudioApi['textTransforms']
-  loomScriptsApi?: StudioApi['loomScripts']
   onRuntimeChanged?: () => void
   rendererHost?: ClientRendererHost
-  runtimeScriptContext?: { workspaceId?: string; timelineId?: string; presetId?: string }
   t: Translator
   source?: HistorySource
   consumerAgentSessionId?: string
@@ -63,13 +54,7 @@ export function useTextTransformController(props: TextTransformProps) {
   const [rules, setRules] = useState<TextTransformRule[]>([])
   const [extractors, setExtractors] = useState<TextExtractor[]>([])
   const [renderers, setRenderers] = useState<RendererDefinition[]>([])
-  const [scripts, setScripts] = useState<LoomScript[]>([])
-  const [mounts, setMounts] = useState<LoomScriptMount[]>([])
-  const [resolvedMounts, setResolvedMounts] = useState<ResolvedLoomScriptRendererMount[]>([])
-  const [unavailableMounts, setUnavailableMounts] = useState<UnavailableLoomScriptMount[]>([])
   const [rendererRevision, setRendererRevision] = useState(0)
-  const [scriptSource, setScriptSource] = useState('')
-  const [scriptFileName, setScriptFileName] = useState('script.loom.js')
   const [searchValue, setSearchValue] = useState('')
   const [selectedTarget, setSelectedTarget] = useState<SelectedTarget>(authoring ? { kind: 'empty' } : { kind: 'inspection' })
   const runtimeContexts = props.runtimeContexts ?? (props.source ? [{
@@ -79,7 +64,6 @@ export function useTextTransformController(props: TextTransformProps) {
     consumerAgentSessionId: props.consumerAgentSessionId,
   }] : [])
   const runtimeContextsKey = JSON.stringify(runtimeContexts.map(context => [context.id, context.source, context.consumerAgentSessionId]))
-  const runtimeScriptContextKey = authoring ? '' : JSON.stringify(props.runtimeScriptContext ?? {})
   const [selectedRuntimeContextId, setSelectedRuntimeContextId] = useState(runtimeContexts[0]?.id ?? '')
   const selectedRuntimeContext = runtimeContexts.find(context => context.id === selectedRuntimeContextId) ?? runtimeContexts[0]
   const source = selectedRuntimeContext?.source ?? props.source
@@ -96,11 +80,9 @@ export function useTextTransformController(props: TextTransformProps) {
   const refreshRequest = useRef(0)
   const mountedRef = useRef(true)
   const sourceKey = JSON.stringify({ source, phase, consumerAgentSessionId })
-  const catalogScope = useMemo(() => ({ api: props.api, loomScriptsApi: props.loomScriptsApi, ownerKey, runtimeScriptContextKey }), [props.api, props.loomScriptsApi, ownerKey, runtimeScriptContextKey])
+  const catalogScope = useMemo(() => ({ api: props.api, ownerKey }), [props.api, ownerKey])
   const catalogScopeRef = useRef(catalogScope)
   catalogScopeRef.current = catalogScope
-  const scriptReadRef = useRef(0)
-  const [scriptDraft, setScriptDraft] = useState<{ scope: typeof catalogScope; id: string; version: number }>()
   const ruleWriteRef = useRef<{ scope: typeof catalogScope; id: string } | undefined>(undefined)
   const [ruleWrite, setRuleWrite] = useState<{ scope: typeof catalogScope; id: string }>()
   const [savedRule, setSavedRule] = useState<{ scope: typeof catalogScope; id: string; text: string }>()
@@ -126,9 +108,6 @@ export function useTextTransformController(props: TextTransformProps) {
     ? temporaryExtractor ? [temporaryExtractor] : []
     : extractors.filter(item => ownerMatches(item.owner, owner)), [extractors, owner, temporaryRule, temporaryExtractor])
   const finalOrder = useMemo(() => [...visibleRules].sort((a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id)), [visibleRules])
-  const scriptOwner = toScriptOwner(owner)
-  const visibleMounts = scriptOwner ? mounts.filter(mount => scriptOwnerMatches(mount.target, scriptOwner)) : mounts
-  const visibleScripts = visibleMounts.map(mount => ({ mount, script: scripts.find(script => script.id === mount.scriptDocumentId) })).filter((item): item is { mount: LoomScriptMount; script: LoomScript } => Boolean(item.script))
   const runtimeRenderers = props.rendererHost ? listRuntimeRendererRegistrations(props.rendererHost) : []
 
   useEffect(() => props.rendererHost?.subscribe(() => setRendererRevision(props.rendererHost?.revision() ?? 0)), [props.rendererHost])
@@ -156,20 +135,13 @@ export function useTextTransformController(props: TextTransformProps) {
     const requestId = ++refreshRequest.current
     try {
       setBusy(true)
-      const [ruleResult, extractorResult, rendererResult, scriptResult, mountResult, resolvedResult] = await Promise.all([
+      const [ruleResult, extractorResult, rendererResult] = await Promise.all([
         props.api.listRules(), props.api.listExtractors(), authoring ? props.api.listRenderers() : Promise.resolve({ renderers: [] }),
-        authoring ? (props.loomScriptsApi?.list() ?? Promise.resolve({ scripts: [] })) : Promise.resolve({ scripts: [] }),
-        authoring ? (props.loomScriptsApi?.listMounts(scriptOwner) ?? Promise.resolve({ mounts: [] })) : Promise.resolve({ mounts: [] }),
-        !authoring && props.loomScriptsApi ? props.loomScriptsApi.resolveRendererMounts(props.runtimeScriptContext) : Promise.resolve({ mounts: [], unavailableMounts: [] }),
       ])
       if (!isCurrentCatalog() || requestId !== refreshRequest.current) return
       setRules(ruleResult.rules)
       setExtractors(extractorResult.extractors)
       setRenderers(rendererResult.renderers)
-      setScripts(scriptResult.scripts)
-      setMounts(mountResult.mounts)
-      setResolvedMounts(resolvedResult.mounts)
-      setUnavailableMounts(resolvedResult.unavailableMounts)
       setError('')
     } catch (cause) {
       if (isCurrentCatalog() && requestId === refreshRequest.current) setError(readError(cause))
@@ -191,101 +163,6 @@ export function useTextTransformController(props: TextTransformProps) {
   useEffect(() => {
     setSelectedRuntimeContextId(current => runtimeContexts.some(context => context.id === current) ? current : (runtimeContexts[0]?.id ?? ''))
   }, [runtimeContextsKey])
-  async function selectScript(id: string, importedScript?: LoomScript) {
-    const request = ++scriptReadRef.current
-    setScriptDraft(undefined)
-    setScriptSource('')
-    setSelectedTarget({ kind: 'script', id })
-    setMobilePane('detail')
-    const resolved = resolvedMounts.find(item => item.script.id === id)
-    if (resolved) {
-      setScriptSource(resolved.source)
-      setScriptFileName(`${resolved.script.metadataId}.loom.js`)
-      setScriptDraft({ scope: catalogScope, id, version: resolved.script.version })
-      return
-    }
-    const script = importedScript ?? scripts.find(item => item.id === id)
-    if (!script || !props.loomScriptsApi) return
-    try {
-      setBusy(true)
-      const result = await props.loomScriptsApi.export(id)
-      if (!isCurrentCatalog() || request !== scriptReadRef.current) return
-      setScriptSource(result.artifact.source)
-      setScriptFileName(result.artifact.fileName)
-      setScriptDraft({ scope: catalogScope, id, version: script.version })
-    } catch (cause) {
-      if (isCurrentCatalog() && request === scriptReadRef.current) setError(readError(cause))
-    } finally {
-      if (isCurrentCatalog() && request === scriptReadRef.current) setBusy(false)
-    }
-  }
-
-  async function importScript(file: File) {
-    if (!scriptOwner || !props.loomScriptsApi) return
-    try {
-      setBusy(true)
-      const source = await file.text()
-      const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: file.name, source })
-      await props.loomScriptsApi.createMount({ target: scriptOwner, scriptDocumentId: result.script.id, orderIndex: visibleMounts.length })
-      await refresh()
-      await selectScript(result.script.id, result.script)
-      notify.success(props.t('notify.success.imported'))
-    } catch (cause) {
-      const message = readError(cause)
-      setError(message)
-      notify.error(message)
-    } finally { setBusy(false) }
-  }
-
-  async function createScript() {
-    if (!scriptOwner || !props.loomScriptsApi) return
-    try {
-      setBusy(true)
-      const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: 'script.loom.js', source: createScriptTemplate() })
-      await props.loomScriptsApi.createMount({ target: scriptOwner, scriptDocumentId: result.script.id, orderIndex: visibleMounts.length })
-      await refresh()
-      await selectScript(result.script.id, result.script)
-      notify.success(props.t('notify.success.saved'))
-    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
-  }
-
-  async function refreshScriptMount(mount: LoomScriptMount) {
-    if (!props.loomScriptsApi) return
-    try {
-      setBusy(true)
-      await props.loomScriptsApi.refreshMount({ mountId: mount.id, expectedVersion: mount.version })
-      await refresh()
-      props.onRuntimeChanged?.()
-    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
-  }
-
-  async function saveScript() {
-    if (selectedTarget.kind !== 'script' || !props.loomScriptsApi) return
-    const script = scripts.find(item => item.id === selectedTarget.id)
-    if (!script || !scriptDraft || scriptDraft.scope !== catalogScope || scriptDraft.id !== script.id || !isCurrentCatalog()) return
-    try {
-      setBusy(true)
-      const result = await props.loomScriptsApi.update({ scriptDocumentId: scriptDraft.id, expectedVersion: scriptDraft.version, fileName: scriptFileName, source: scriptSource })
-      setScriptDraft(current => current === scriptDraft ? { ...current, version: result.script.version } : current)
-      await refresh()
-      notify.success(props.t('notify.success.saved'))
-    } catch (cause) {
-      const message = readError(cause)
-      setError(message)
-      notify.error(message)
-    } finally { setBusy(false) }
-  }
-
-  async function updateScriptMount(mount: LoomScriptMount, patch: Partial<Pick<LoomScriptMount, 'enabled' | 'orderIndex' | 'grantedCapabilities'>>) {
-    if (!props.loomScriptsApi) return
-    try {
-      setBusy(true)
-      await props.loomScriptsApi.updateMount({ mountId: mount.id, expectedVersion: mount.version, enabled: patch.enabled ?? mount.enabled, orderIndex: patch.orderIndex ?? mount.orderIndex, ...(mount.pinnedDocumentVersion !== undefined ? { pinnedDocumentVersion: mount.pinnedDocumentVersion } : {}), grantedCapabilities: patch.grantedCapabilities ?? mount.grantedCapabilities })
-      await refresh()
-      props.onRuntimeChanged?.()
-    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
-  }
-
   async function updateRule(rule: TextTransformRule, patch: Partial<Pick<TextTransformRuleDraft, 'enabled' | 'orderIndex'>>) {
     try {
       setBusy(true)
@@ -517,9 +394,6 @@ export function useTextTransformController(props: TextTransformProps) {
     busy: busy || inspectionBusy,
     visibleRules,
     visibleExtractors,
-    visibleScripts,
-    resolvedMounts,
-    unavailableMounts,
     runtimeRenderers,
     rendererRevision,
     traceEntryId,
@@ -529,12 +403,6 @@ export function useTextTransformController(props: TextTransformProps) {
     selectRule,
     startNewRule,
     selectExtractor,
-    selectScript,
-    importScript,
-    createScript,
-    refreshScriptMount,
-    saveScript,
-    updateScriptMount,
     updateRule,
     moveAuthorRule,
     saveOverride,
@@ -549,17 +417,12 @@ export function useTextTransformController(props: TextTransformProps) {
     setRuleText,
     setExtractorText,
     setPhase,
-    scriptSource,
-    scriptFileName,
     disabledRuleIds,
     orderedRuleIds,
     searchValue,
-    setScriptSource,
-    setScriptFileName,
     setSearchValue,
     setError,
     editingOwner,
-    canCreateScript: Boolean(scriptOwner),
   }
 }
 
@@ -573,8 +436,6 @@ function ownerMatches(value: TextRuleOwner, scope: OwnerScope): boolean {
   return value.kind === 'user-override'
 }
 function ownerId(owner: OwnerScope): string { return owner.kind === 'runtime' ? 'runtime' : owner.kind === 'catalog' ? 'catalog' : JSON.stringify(owner) }
-function toScriptOwner(owner: OwnerScope): LoomScriptMountTarget | undefined { if (owner.kind === 'card') return { kind: 'card', cardId: owner.cardId }; if (owner.kind === 'preset') return { kind: 'preset', presetId: owner.presetId }; if (owner.kind === 'workspace') return { kind: 'workspace', workspaceId: 'workspace' }; if (owner.kind === 'user-override') return { kind: 'user' }; return undefined }
-function scriptOwnerMatches(left: LoomScriptOwner, right: LoomScriptOwner): boolean { return JSON.stringify(left) === JSON.stringify(right) }
 export function sourceLabel(source: HistorySource, t: Translator): string { return source.kind === 'narrative' ? t('textTransform.narrativeSource', { id: source.timelineId }) : t('textTransform.agentSessionSource', { id: source.sessionId }) }
 function sourceId(source: HistorySource): string { return source.kind === 'narrative' ? `narrative:${source.timelineId}:${source.branchId}` : `agent-session:${source.sessionId}` }
 function toRuleDraft(rule: TextTransformRule): TextTransformRuleDraft { const draft = { ...rule } as Record<string, unknown>; delete draft.id; delete draft.version; delete draft.createdAt; delete draft.updatedAt; return draft as TextTransformRuleDraft }

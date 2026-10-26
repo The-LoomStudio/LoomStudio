@@ -101,15 +101,9 @@ importers:
       '@loom-studio/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
-      '@loom-studio/loom-runner':
-        specifier: workspace:*
-        version: link:../../packages/loom-runner
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@loom-studio/trace-audit':
-        specifier: workspace:*
-        version: link:../../packages/trace-audit
       diff:
         specifier: 8.0.2
         version: 8.0.2
@@ -158,9 +152,6 @@ importers:
       '@loom-studio/ai-gateway':
         specifier: workspace:*
         version: link:../../packages/ai-gateway
-      '@loom-studio/client-bridge':
-        specifier: workspace:*
-        version: link:../../packages/client-bridge
       '@loom-studio/extension-sdk':
         specifier: workspace:*
         version: link:../../packages/extension-sdk
@@ -270,9 +261,6 @@ importers:
       '@loom-studio/asset-store':
         specifier: workspace:*
         version: link:../../packages/asset-store
-      '@loom-studio/blob-store':
-        specifier: workspace:*
-        version: link:../../packages/blob-store
       '@loom-studio/data-engine':
         specifier: workspace:*
         version: link:../../packages/data-engine
@@ -294,21 +282,12 @@ importers:
       '@loom-studio/logging':
         specifier: workspace:*
         version: link:../../packages/logging
-      '@loom-studio/loom-runner':
-        specifier: workspace:*
-        version: link:../../packages/loom-runner
       '@loom-studio/secret-store':
         specifier: workspace:*
         version: link:../../packages/secret-store
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@loom-studio/trace-audit':
-        specifier: workspace:*
-        version: link:../../packages/trace-audit
-      '@loom-studio/transport':
-        specifier: workspace:*
-        version: link:../../packages/transport
       '@trpc/server':
         specifier: 11.19.0
         version: 11.19.0(typescript@7.0.2)
@@ -487,29 +466,9 @@ importers:
 
   packages/asset-store:
     dependencies:
-      '@loom-studio/blob-store':
-        specifier: workspace:*
-        version: link:../blob-store
       '@loom-studio/data-engine':
         specifier: workspace:*
         version: link:../data-engine
-
-  packages/blob-store:
-    dependencies:
-      '@loom-studio/data-engine':
-        specifier: workspace:*
-        version: link:../data-engine
-
-  packages/client-bridge:
-    dependencies:
-      '@trpc/client':
-        specifier: 11.19.0
-        version: 11.19.0(@trpc/server@11.19.0(typescript@7.0.2))(typescript@7.0.2)
-      '@trpc/server':
-        specifier: 11.19.0
-        version: 11.19.0(typescript@7.0.2)
-
-  packages/core: {}
 
   packages/data-engine: {}
 
@@ -548,9 +507,6 @@ importers:
       '@loom-studio/tokenizer':
         specifier: workspace:*
         version: link:../tokenizer
-      '@loom-studio/transport':
-        specifier: workspace:*
-        version: link:../transport
 
   packages/extension-sdk/extension-host:
     dependencies:
@@ -572,9 +528,6 @@ importers:
       '@loom-studio/tokenizer':
         specifier: workspace:*
         version: link:../../tokenizer
-      '@loom-studio/transport':
-        specifier: workspace:*
-        version: link:../../transport
 
   packages/kernel:
     dependencies:
@@ -593,39 +546,15 @@ importers:
       '@loom-studio/extension-sdk':
         specifier: workspace:*
         version: link:../extension-sdk
-      '@loom-studio/loom-runner':
-        specifier: workspace:*
-        version: link:../loom-runner
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
-      '@loom-studio/trace-audit':
-        specifier: workspace:*
-        version: link:../trace-audit
-      '@loom-studio/transport':
-        specifier: workspace:*
-        version: link:../transport
 
   packages/logging:
     dependencies:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
-
-  packages/loom-runner:
-    dependencies:
-      '@loom-studio/diagnostics':
-        specifier: workspace:*
-        version: link:../diagnostics
-      '@loom-studio/shared':
-        specifier: workspace:*
-        version: link:../shared
-      '@loom-studio/trace-audit':
-        specifier: workspace:*
-        version: link:../trace-audit
-      '@loom/core':
-        specifier: workspace:*
-        version: link:../core
 
   packages/loom-ui:
     dependencies:
@@ -665,18 +594,6 @@ importers:
       gpt-tokenizer:
         specifier: 4.0.0
         version: 4.0.0
-
-  packages/trace-audit:
-    dependencies:
-      '@loom-studio/shared':
-        specifier: workspace:*
-        version: link:../shared
-
-  packages/transport:
-    dependencies:
-      '@loom-studio/shared':
-        specifier: workspace:*
-        version: link:../shared
 
   tests/fixtures/extensions/echo:
     dependencies:

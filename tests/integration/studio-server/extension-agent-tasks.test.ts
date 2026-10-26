@@ -52,7 +52,7 @@ describe('extension Agent task ownership', () => {
       const providerStarted = Promise.withResolvers<void>()
       const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives,
         agents: createAgentStore({ engine, ...clock }), promptResources: createPromptResourceStore({ engine, ...clock }),
-        gateway: { invokeChat: async ({ signal }) => {
+        gateway: { invokeChat: async ({ abortSignal: signal }) => {
           calls += 1
           if (calls === 2) {
             providerStarted.resolve()

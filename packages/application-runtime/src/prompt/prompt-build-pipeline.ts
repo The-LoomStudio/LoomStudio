@@ -1,3 +1,4 @@
+import { promptAnchorOutput, isPromptMessageSequence } from '@loom-studio/shared'
 import type { ObservationBuild } from '../observability/types.js'
 import { evaluatePromptActivation, type ActivationFacts } from './prompt-activation.js'
 import type {
@@ -102,6 +103,10 @@ export function planPromptBlocks(input: PromptDataModel, observation?: Observati
 
   function collectVirtualFragments(node: SourceNode, inheritedRole?: PromptProviderRole): PromptFragment[] {
     const anchorId = node.capabilities?.targetAnchorId ?? node.id
+    const sequence = isPromptMessageSequence(node)
+    // ponytail: Persisted presets may still wrap Session history in a Message. Preserve native roles
+    // until those author trees are explicitly edited; resource writes reject new nested sequences.
+    if ((childrenByParent.get(node.id)?.length ?? 0) > 0) throw new Error('Prompt inlets cannot contain children')
     const fragments: PromptFragment[] = []
     const appendMounts = (mounts: PromptContribution[]) => {
       mounts
@@ -114,23 +119,19 @@ export function planPromptBlocks(input: PromptDataModel, observation?: Observati
           ...(m.messages ? { messages: m.messages } : {}),
           role: m.sourceRef.kind === 'sessionHistory'
             ? m.capabilities.roleHint ?? 'system'
-            : inheritedRole ?? m.capabilities.roleHint ?? 'system',
+            : inheritedRole ?? (m.capabilities.roleHint === 'developer' ? 'system' : m.capabilities.roleHint) ?? 'system',
           targetAnchorId: node.id,
           localDepth: m.capabilities.localDepth,
         }))
     }
-    appendMounts(activeContributions.filter(c => c.capabilities.targetAnchorId === anchorId))
-    if (anchorId === '@chat.session') {
-      const hasExplicitAnchor = (id: string) => skeletonNodes.some(
-        n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === id || n.id === id),
-      )
-      if (!hasExplicitAnchor('@lore.lower')) {
-        appendMounts(activeContributions.filter(c => c.capabilities.targetAnchorId === '@lore.lower'))
-      }
-      if (!hasExplicitAnchor('@chat.session.post')) {
-        appendMounts(activeContributions.filter(c => c.capabilities.targetAnchorId === '@chat.session.post'))
-      }
+    const mounts = activeContributions.filter(c => c.capabilities.targetAnchorId === anchorId)
+    for (const mount of mounts) {
+      if (promptAnchorOutput(anchorId) === 'messages' && mount.sourceRef.kind !== 'sessionHistory')
+        throw new Error('Session message sequence cannot receive text contributions')
+      if (mount.messages && !sequence) throw new Error('Native messages require a message sequence inlet')
     }
+    appendMounts(mounts)
+
     return fragments
   }
 
@@ -139,13 +140,14 @@ export function planPromptBlocks(input: PromptDataModel, observation?: Observati
 
     function readMessageRole(node: SourceNode): 'system' | 'user' | 'assistant' | 'developer' {
       const hint = node.capabilities?.roleHint
-      if (hint === 'system' || hint === 'user' || hint === 'assistant' || hint === 'developer') {
+      if (hint === 'developer') return 'system'
+      if (hint === 'system' || hint === 'user' || hint === 'assistant') {
         return hint
       }
       const meta = node.meta
       if (meta?.includes('user')) return 'user'
       if (meta?.includes('assistant')) return 'assistant'
-      if (meta?.includes('developer')) return 'developer'
+      if (meta?.includes('developer')) return 'system'
       return 'system'
     }
 
@@ -153,6 +155,7 @@ export function planPromptBlocks(input: PromptDataModel, observation?: Observati
       node: SourceNode,
       inheritedRole: 'system' | 'user' | 'assistant' | 'developer',
     ): PromptFragment[] {
+      if (node.kind === 'message') throw new Error('Message blocks cannot be nested')
       if (!isActiveNode(node)) return []
       const fragments: PromptFragment[] = []
       if (node.kind === 'entry') {
@@ -231,7 +234,7 @@ function createEntryFragment(node: SourceNode, role: PromptProviderRole, contrib
     id: contribution?.id ?? node.id,
     source: { kind: 'preset', sourceId: node.sourceId, sourceNodeId: node.id },
     content,
-    role,
+    role: role === 'developer' ? 'system' : role,
     targetAnchorId: node.capabilities?.targetAnchorId,
     localDepth: node.capabilities?.localDepth,
   }

@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react'
 import { Tabs } from '@loom-studio/ui'
-import { ObservabilityPanel } from '../../features/observability/ui/observability-panel.js'
+import { ObservabilityPanel } from './observability-panel.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { LogViewer } from './log-viewer.js'
 import styles from './logs-panel.module.scss'

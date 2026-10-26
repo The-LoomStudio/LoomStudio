@@ -53,7 +53,7 @@ function searchState(overrides: Partial<SearchState> = {}): SearchState {
   return {
     mode: 'results', query: '王都', inputValue: '王都', scope: undefined, kind: undefined,
     navigation: [], results: [], scopes: [], types: [], loading: false, loadingMore: false,
-    error: null, hasMore: false,
+    error: null, hasMore: false, diagnostics: [],
     setInputValue: vi.fn(), showScopes: vi.fn(), showTypes: vi.fn(), showResults: vi.fn(),
     selectScope: vi.fn(), selectKind: vi.fn(), removeScope: vi.fn(), removeKind: vi.fn(),
     clearFilters: vi.fn(), loadMore: vi.fn(), retry: vi.fn(),

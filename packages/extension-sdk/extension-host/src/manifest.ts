@@ -1,4 +1,4 @@
-import { sharedStyleParameterDefinitions } from '@loom-studio/extension-sdk'
+import { rendererSurfaces, rendererInstanceScopes as rendererScopes, sharedStyleParameterDefinitions } from '@loom-studio/extension-sdk'
 import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 import type {
@@ -14,21 +14,6 @@ import {
   studioReservedNamespaces,
 } from './types.js'
 import { isRecord } from '@loom-studio/shared'
-
-const rendererSurfaces = [
-  'shell.background',
-  'narrative.entry.inline',
-  'narrative.timeline.tail',
-  'memory.panel',
-  'agent.message.inline',
-  'agent.session.tail',
-  'composer.sheet',
-  'shell.workspace-panel',
-  'shell.focus-surface',
-  'standalone.page',
-] as const
-
-const rendererScopes = ['workspace', 'timeline', 'agent-session', 'node', 'message'] as const
 
 const clientActionSurfaces = ['composer.quick-actions', 'extension.workbench.actions', 'stage.header.actions'] as const
 

@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
+import { ObservationSourceIcon } from '../../../apps/studio-client/src/widgets/log-viewer/observation-source-icon.js'
 import { afterEach, expect, it } from 'vitest'
 import { act, createElement as h, createRef, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
-import { ObservationSources } from '../../../apps/studio-client/src/widgets/observability-workbench/observation-sources.js'
-import { ToolResult } from '../../../apps/studio-client/src/widgets/observability-workbench/observation-content.js'
-import { ObservabilityWorkbench } from '../../../apps/studio-client/src/widgets/observability-workbench/observability-workbench.js'
+import { ObservationSources } from '../../../apps/studio-client/src/features/observability/ui/observation-sources.js'
+import { ToolResult } from '../../../apps/studio-client/src/features/observability/ui/observation-content.js'
+import { ObservabilityWorkbench } from '../../../apps/studio-client/src/widgets/log-viewer/observability-workbench.js'
 import { observationFixtures } from '../../../apps/studio-client/src/dev-preview/observability-fixtures.js'
 const t = createTranslator('zh-CN')
 let root: Root
@@ -38,7 +39,7 @@ it('keeps the first tool response visible and allows the changes switch without 
 })
 
 it('expands recorded resource groups, keeps unused closed, and uses anchor IDs and authoring icon colors', async () => {
-  await mount(h(ObservationSources, { sources: observationFixtures[0].steps[0].sources, onSelect: () => {}, scroller: createRef<HTMLElement>(), t }))
+  await mount(h(ObservationSources, { renderSourceIcon: input => h(ObservationSourceIcon, input), sources: observationFixtures[0].steps[0].sources, onSelect: () => {}, scroller: createRef<HTMLElement>(), t }))
   const groups = [...host.querySelectorAll('details')]
   const unused = groups.filter(item => item.querySelector(':scope > summary')?.textContent?.startsWith('未采用'))
   expect(unused.length).toBeGreaterThan(0)
@@ -54,15 +55,18 @@ it('expands recorded resource groups, keeps unused closed, and uses anchor IDs a
 it('keeps entry content expanded and opens the full diff only in its dialog', async () => {
   const original = Array.from({ length: 24 }, (_, index) => `Line ${index}`).join('\n')
   const entry = { ...observationFixtures[0].steps[0].sources[0], original, rendered: original.replace('Line 12', 'Changed 12') }
-  await mount(h(ObservationSources, { sources: [entry], selectedId: entry.id, onSelect: () => {}, scroller: createRef<HTMLElement>(), t }))
+  await mount(h(ObservationSources, { renderSourceIcon: input => h(ObservationSourceIcon, input), sources: [entry], selectedId: entry.id, onSelect: () => {}, scroller: createRef<HTMLElement>(), t }))
   expect(host.querySelector('[data-loom-component="read-only-diff"]')).toBeNull()
   const trigger = [...host.querySelectorAll('button')].find(item => item.textContent === t('observation.originalAndChanges'))!
   expect(trigger.getAttribute('aria-haspopup')).toBe('dialog')
-  await act(async () => trigger.click())
+  await act(async () => {
+    trigger.click()
+    // Await the actual lazy module instead of assuming it loads within 100 ms.
+    await import('../../../apps/studio-client/src/shared/ui/read-only-diff/read-only-diff.js')
+  })
   expect(host.querySelector('dialog')?.open).toBe(true)
   const collapse = [...host.querySelectorAll('button')].find(item => item.textContent === t('observation.collapseText'))!
   expect(collapse.getAttribute('aria-expanded')).toBe('true')
-  await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)) })
   const diff = host.querySelector('[data-loom-component="read-only-diff"]')!
   expect(diff.querySelector('button')?.getAttribute('aria-expanded')).toBe('true')
   expect(diff.querySelector('.cm-collapsedLines')).toBeNull()

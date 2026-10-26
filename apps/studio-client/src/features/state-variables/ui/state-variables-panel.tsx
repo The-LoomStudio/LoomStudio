@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Clock, Code2, Copy, FileText, Folder, FolderOpen, Globe, Layers, Maximize2, Minus, Plus, RefreshCw, Save } from 'lucide-react'
 import { notify } from '../../../shared/notifications/index.js'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { StateSnapshot, StateTarget } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'

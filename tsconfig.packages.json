@@ -5,11 +5,9 @@
     { "path": "./packages/tokenizer" },
     { "path": "./packages/logging" },
     { "path": "./packages/diagnostics" },
-    { "path": "./packages/transport" },
     { "path": "./packages/data-engine" },
     { "path": "./packages/secret-store" },
-    { "path": "./packages/blob-store" },
-    { "path": "./packages/asset-store" },
+    { "path": "packages/asset-store" },
     { "path": "./packages/application-data" },
     { "path": "./packages/document-store" },
     { "path": "./packages/ai-gateway" },
@@ -17,9 +15,6 @@
     { "path": "./packages/loom-ui" },
     { "path": "./packages/application-runtime" },
     { "path": "./packages/extension-sdk/extension-host" },
-    { "path": "./packages/client-bridge" },
-    { "path": "./packages/trace-audit" },
-    { "path": "./packages/loom-runner" },
     { "path": "./packages/kernel" }
   ]
 }

@@ -7,6 +7,7 @@ self.addEventListener('message', function connect(event: MessageEvent) {
   self.removeEventListener('message', connect)
   const port = event.ports[0]
   const { context, dispose } = createWorkerContext(port, event.data.extension)
+  if (event.data.scriptSettings !== undefined) Object.defineProperty(context, 'scriptSettings', { value: Object.freeze(event.data.scriptSettings), enumerable: true })
   let guest: ExtensionRegistrationHandle | void
   let stopping = false
   let blobUrl: string | undefined

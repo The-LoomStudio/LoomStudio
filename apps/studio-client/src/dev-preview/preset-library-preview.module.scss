@@ -1,0 +1,6 @@
+.host { display: flex; flex-direction: column; height: 100dvh; min-height: 0; overflow: hidden; background: var(--loom-color-surface); color: var(--loom-color-text); }
+.toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; flex: none; padding: 8px 16px; border-bottom: 1px solid var(--loom-color-divider); background: var(--loom-color-surface-inset); font-size: var(--loom-font-size-2); }
+.toolbar > span { flex: 1; color: var(--loom-color-text-muted); }
+.toolbar > div { display: flex; gap: 4px; }
+.toolbar button[aria-pressed='true'] { color: var(--loom-color-accent); background: var(--loom-color-surface-emphasis); }
+.panel { display: flex; flex: 1; min-height: 0; overflow: hidden; }

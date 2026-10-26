@@ -182,9 +182,9 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
         ...before, cardId, timelineId: activated?.timelineId, branchId: activated?.branchId, nodeId: undefined,
       })
     },
-    clearResourceTarget: (resourceId: string) => {
+    clearResourceTarget: (resourceId?: string) => {
       const latest = current.current
-      if (latest.resourceId !== resourceId) return
+      if (resourceId !== undefined && latest.resourceId !== resourceId) return
       return publish({
         ...latest, resourceId: undefined, assetId: undefined,
         referenceUri: undefined, targetUri: undefined,

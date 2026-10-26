@@ -1,4 +1,4 @@
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { ExtensionEntityRef, ExtensionInstallationTarget, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type { LogHistoryQuery, LogQuery } from '@loom-studio/logging'
 import type { ReplaceLoreMountsInput } from '@loom-studio/shared'
@@ -102,6 +102,14 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
   }
 
   return {
+    dashboard: {
+      usage: (input: StudioRpcInputs['dashboard']['usage']) => trpc.dashboard.usage.query(input),
+      usageRequests: (input: StudioRpcInputs['dashboard']['usageRequests']) => trpc.dashboard.usageRequests.query(input),
+      play: (input: StudioRpcInputs['dashboard']['play']) => trpc.dashboard.play.query(input),
+      resources: () => trpc.dashboard.resources.query(),
+      storage: (refresh = false) => trpc.dashboard.storage.query({ refresh }),
+      database: () => trpc.dashboard.database.query(),
+    },
     observations: {
       references: (input: StudioRpcInputs['application']['observations.references']) => trpc.application['observations.references'].query(input),
       persistence: () => trpc.application['observations.persistence'].query(),
@@ -190,6 +198,9 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       updateConfig: (input: { timelineId: string; presetId: string; expectedVersion: number; macroSelections: import('@loom-studio/shared').MacroSelectionMap }) => trpc.application['updateTimelinePresetConfig'].mutate(input),
     },
     loomScripts: {
+      preview: (input: StudioRpcInputs['application']['previewLoomScript']) => trpc.application.previewLoomScript.query(input),
+      getSettings: (input: StudioRpcInputs['application']['getLoomScriptSettings']) => trpc.application.getLoomScriptSettings.query(input),
+      removeMount: (input: StudioRpcInputs['application']['deleteLoomScriptMount']) => trpc.application.deleteLoomScriptMount.mutate(input),
       import: (input: { owner: LoomScriptOwner; fileName: string; source: string }) => trpc.application['importLoomScript'].mutate(input),
       update: (input: { scriptDocumentId: string; expectedVersion: number; fileName: string; source: string }) => trpc.application['updateLoomScript'].mutate(input),
       get: (scriptDocumentId: string) => trpc.application['getLoomScript'].query({ scriptDocumentId }),

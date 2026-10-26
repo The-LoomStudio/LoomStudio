@@ -1,6 +1,6 @@
 import { isValidElement, type ReactElement, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { AgentSessionCreateDialog } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-session-create-dialog.js'
+import { AgentSessionCreateDialog } from '../../../apps/studio-client/src/features/sessions/ui/agent-session-create-dialog.js'
 import type { AgentPreset } from '../../../apps/studio-client/src/entities/index.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
@@ -30,7 +30,7 @@ function fixture() {
     presets: [
       { id: 'preset-a', rootNode: { label: 'Writing' } },
       { id: 'preset-b', rootNode: { label: 'Summary' }, origin: { kind: 'extension-package', packageId: 'memory' } },
-    ] as AgentPreset[], initialPresetId: 'preset-a', canMakePrimary: true,
+    ] as AgentPreset[], initialPresetId: 'preset-a',
     onCreate, onCreated: vi.fn(), onClose: vi.fn(),
   }
   const render = () => {
@@ -51,29 +51,21 @@ describe('Agent session creation dialog', () => {
     const f = fixture()
     f.render().find(element => element.props['aria-label'] === '选择预设：Summary')!.props.onClick()
     await f.create()
-    expect(f.props.onCreate).toHaveBeenCalledExactlyOnceWith('preset-b', false)
+    expect(f.props.onCreate).toHaveBeenCalledExactlyOnceWith('preset-b')
     expect(f.props.onCreated).toHaveBeenCalledWith({ id: 'session' })
     expect(f.props.onClose).toHaveBeenCalledOnce()
   })
 
-  it('passes an explicit primary selection to the existing creation operation', async () => {
-    const f = fixture()
-    f.render().find(element => element.props['aria-label'] === '设为主写作对话')!.props.onClick()
-    await f.create()
-    expect(f.props.onCreate).toHaveBeenCalledExactlyOnceWith('preset-a', true)
-  })
-
-  it('keeps the chosen preset and primary flag after failure and opens only the successful retry', async () => {
+  it('keeps the chosen preset after failure and opens only the successful retry', async () => {
     const f = fixture()
     f.render().find(element => element.props['aria-label'] === '选择预设：Summary')!.props.onClick()
-    f.render().find(element => element.props['aria-label'] === '设为主写作对话')!.props.onClick()
     f.props.onCreate.mockRejectedValueOnce(new Error('Preset is unavailable'))
     await f.create()
     expect(f.props.onClose).not.toHaveBeenCalled()
     expect(f.props.onCreated).not.toHaveBeenCalled()
     expect(f.render().find(element => element.props.role === 'alert')!.props.children).toBe('Preset is unavailable')
     await f.create()
-    expect(f.props.onCreate.mock.calls).toEqual([['preset-b', true], ['preset-b', true]])
+    expect(f.props.onCreate.mock.calls).toEqual([['preset-b'], ['preset-b']])
     expect(f.props.onCreated).toHaveBeenCalledExactlyOnceWith({ id: 'session' })
     expect(f.props.onClose).toHaveBeenCalledOnce()
   })

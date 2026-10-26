@@ -13,8 +13,8 @@ export type TextTransformPhase = 'classify' | 'prompt' | 'display'
 
 export type TextPipelineConsumer = {
   agentSessionId: string
-  agentPresetId: string
-  presetId: string
+  agentPresetId?: string
+  presetId?: string
 }
 
 export type InspectTextPipelineInput = {
@@ -88,6 +88,8 @@ export type TextTransformRuleContent = TextTransformRuleDraft & {
 export type TextTransformRuleEntry = TextTransformRuleContent & {
   id: string
   version: number
+  scriptDocumentId?: string
+  contributionId?: string
 }
 
 export type HistoryTextEntry<Source extends TextProjectionSource = HistorySource> = {

@@ -1,4 +1,4 @@
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { RendererDefinition } from '../../../entities/index.js'
 
 export function ArtifactSlotHost(props: {

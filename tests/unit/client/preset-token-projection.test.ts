@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PromptResource } from '../../../apps/studio-client/src/entities/index.js'
-import { buildPresetTokenProjection } from '../../../apps/studio-client/src/features/context-assets/model/preset-token-projection.js'
-import { aggregateTokenCounts, collectTokenEntries } from '../../../apps/studio-client/src/features/context-assets/model/resource-token-counts.js'
+import { buildPresetTokenProjection } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-token-projection.js'
+import { aggregateTokenCounts, collectTokenEntries } from '../../../apps/studio-client/src/features/prompt-resources/model/resource-token-counts.js'
 
 describe('Preset anchor token projection', () => {
   const preset: PromptResource = {

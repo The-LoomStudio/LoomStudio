@@ -1,20 +1,17 @@
-import { createClientBridge } from '@loom-studio/client-bridge'
+import { onTestFinished } from 'vitest'
+import { createClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
-import { createLoomRunner, createSamplePassFactories } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
-import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 function createHarness() {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
-  const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit, factories: createSamplePassFactories() })
   let kernel: Kernel
   const extensionHost = createExtensionHost({
     documents,
@@ -38,12 +35,19 @@ function createHarness() {
     documents,
     dataCommits: documents,
     diagnostics,
-    traceAudit,
     extensionHost,
-    loomRunner,
   })
 
-  return { kernel, extensionHost, traceAudit }
+  onTestFinished(async () => {
+    try {
+      await kernel.stop()
+      await extensionHost.disposeAll()
+    } finally {
+      await documents.close()
+    }
+  })
+
+  return { kernel, extensionHost }
 }
 
 function createKernelFetch(kernel: Kernel): typeof fetch {
@@ -67,8 +71,8 @@ function createKernelFetch(kernel: Kernel): typeof fetch {
 }
 
 describe('platform capability integration smoke', () => {
-  it('runs the headless client path across kernel, documents, extension rpc, loom, trace, and diagnostics', async () => {
-    const { kernel, extensionHost, traceAudit } = createHarness()
+  it('runs the headless client path across kernel, documents, extension rpc, and diagnostics', async () => {
+    const { kernel, extensionHost } = createHarness()
     const events: StudioEvent[] = []
     await kernel.start()
     kernel.getEventBus().subscribe(['docs.changed', 'diagnostics.updated'], (event: StudioEvent) => { events.push(event) })
@@ -85,47 +89,27 @@ describe('platform capability integration smoke', () => {
     })
     const documents = await bridge.call<{ items: Array<{ id: string; content: { ok: boolean } }> }>('docs.list', { type: 'example.platform-smoke.note' })
     const echo = await bridge.call<{ packageId: string; moduleId: string; echo: { message: string } }>('example.echo.echo', { message: 'platform-smoke' })
-    const runResult = await bridge.call<{ fragments: Array<{ content: string }>; traceId?: string }>('loom.run', {
-      fragments: [{ id: 'platform-smoke-fragment', content: 'hello platform smoke', meta: { __owner: 'platform-smoke' } }],
-      passes: [{ name: 'uppercase' }],
-      trace: { enabled: true },
-    })
-    await bridge.call('loom.run', {
-      fragments: [{ id: 'platform-smoke-diagnostic', content: 'diagnostic', meta: {} }],
-      passes: [{ name: 'missing' }],
-    })
+    await extensionHost.dispose('example.echo', 'server')
     const diagnostics = await bridge.call<{ items: Array<{ code: string }> }>('diagnostics.list')
-    const traces = await bridge.call<{ items: Array<{ id: string }> }>('trace.list')
 
     expect(introspect.methods).toContainEqual({ name: 'example.echo.echo', owner: 'extension:example.echo/server' })
-    expect(introspect.methods).toContainEqual({ name: 'loom.run', owner: 'kernel' })
+    expect(introspect.methods).toContainEqual({ name: 'system.ping', owner: 'kernel' })
     expect(introspect.events).toContain('docs.changed')
     expect(introspect.events).toContain('diagnostics.updated')
     expect(writeResult.documents[0]).toMatchObject({ id: 'platform-smoke:doc', content: { ok: true } })
     expect(documents.items[0]).toMatchObject({ id: 'platform-smoke:doc', content: { ok: true } })
     expect(events.some(event => event.name === 'docs.changed')).toBe(true)
     expect(echo).toEqual({ packageId: 'example.echo', moduleId: 'server', echo: { message: 'platform-smoke' } })
-    expect(runResult.fragments[0]?.content).toBe('HELLO PLATFORM SMOKE')
-    expect(runResult.traceId).toBeDefined()
-    expect(traceAudit.listTraces()).toHaveLength(1)
-    expect(traces.items).toHaveLength(1)
-    expect(diagnostics.items.some((diagnostic: { code: string }) => diagnostic.code === 'loom/factory-missing')).toBe(true)
-    expect(events.some(event => event.name === 'diagnostics.updated')).toBe(true)
+    expect(diagnostics.items.some(diagnostic => diagnostic.code === 'example.echo.disposed')).toBe(true)
   })
 
-  it('keeps runtime/provider/chat fields out of the kernel loom.run contract', async () => {
+  it('keeps runtime/provider/chat methods out of the kernel surface', async () => {
     const { kernel } = createHarness()
     await kernel.start()
     const surface = JSON.stringify(kernel.getPublicSurface())
 
     expect(surface).not.toContain('chat.send')
     expect(surface).not.toContain('provider.invoke')
-    await expect(kernel.callRpc('loom.run', {
-      fragments: [{ id: 'bad', content: 'bad', meta: {} }],
-      passes: [{ name: 'noop' }],
-      messages: [],
-      provider: 'example',
-    })).rejects.toThrow('Forbidden loom.run fields')
   })
 })
 

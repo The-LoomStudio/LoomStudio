@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { cloneToolSchema } from './tool-schema.js'
 import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
 import {
   evaluatePromptActivation,
@@ -252,7 +252,7 @@ function compareText(left: string, right: string): number {
 
 function cloneToolInputDefinition(input: ToolInputDefinition): ToolInputDefinition {
   if (input.kind === 'structured') {
-    return { kind: input.kind, schema: cloneJsonObject(input.schema) }
+    return { kind: input.kind, schema: cloneToolSchema(input.schema) }
   }
 
   if (input.kind === 'freeform') {
@@ -262,7 +262,7 @@ function cloneToolInputDefinition(input: ToolInputDefinition): ToolInputDefiniti
       ...(input.grammar === undefined ? {} : { grammar: { ...input.grammar } }),
       ...(input.structuredFallback === undefined
         ? {}
-        : { structuredFallback: { schema: cloneJsonObject(input.structuredFallback.schema) } }),
+        : { structuredFallback: { schema: cloneToolSchema(input.structuredFallback.schema) } }),
     }
   }
 
@@ -270,24 +270,10 @@ function cloneToolInputDefinition(input: ToolInputDefinition): ToolInputDefiniti
     kind: 'hybrid',
     mediaType: input.mediaType,
     rawField: input.rawField,
-    metadataSchema: cloneJsonObject(input.metadataSchema),
+    metadataSchema: cloneToolSchema(input.metadataSchema),
     ...(input.grammar === undefined ? {} : { grammar: { ...input.grammar } }),
     ...(input.structuredFallback === undefined
       ? {}
-      : { structuredFallback: { schema: cloneJsonObject(input.structuredFallback.schema) } }),
+      : { structuredFallback: { schema: cloneToolSchema(input.structuredFallback.schema) } }),
   }
-}
-
-function cloneJsonObject(input: JsonObject): JsonObject {
-  return cloneJsonValue(input) as JsonObject
-}
-
-function cloneJsonValue(value: JsonValue): JsonValue {
-  if (Array.isArray(value)) return value.map(cloneJsonValue)
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, child]) => [key, cloneJsonValue(child)]),
-    )
-  }
-  return value
 }

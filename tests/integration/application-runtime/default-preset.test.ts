@@ -284,14 +284,14 @@ describe('bundled default preset', () => {
       const request = calls[1]!
       expect(request.messages).toEqual(preview.messages)
       expect(request.messages.map(message => message.role)).toEqual([
-        'system', 'system', 'system', 'developer', 'user', 'assistant', 'system', 'user',
+        'system', 'system', 'system', 'system', 'system', 'user', 'assistant', 'system', 'user',
       ])
       const contents = request.messages.map(message => message.content)
       expect(contents[0]).toContain('清晰自然')
       expect(contents[1]).toContain('CONTENT_TOOL_DEFINITION')
       expect(contents[2]).toContain('<lore>\n\nSTABLE_SETTING\n\n</lore>')
       expect(contents.slice(3)).toEqual([
-        'NARRATIVE_PROJECTED', 'PREVIOUS_USER', 'SESSION_REPLY', 'DYNAMIC_SETTING', 'CURRENT_INPUT',
+        'NARRATIVE_PROJECTED', expect.stringContaining('共同工作记忆'), 'PREVIOUS_USER', 'SESSION_REPLY', 'DYNAMIC_SETTING', 'CURRENT_INPUT',
       ])
       expect(request.messages.slice(0, 4)).toEqual(calls[0]!.messages.slice(0, 4))
       expect(JSON.stringify(request.messages)).not.toMatch(/NARRATIVE_RAW|NATIVE_SCHEMA_ONLY|\{\{/)

@@ -83,7 +83,7 @@ describe('PromptBuildPipeline', () => {
       ...contribution(`history-${index}`, `history-node-${index}`, `History ${index}`, '@chat.session', index, role as 'user' | 'assistant'),
       sourceRef: { kind: 'sessionHistory' as const, sourceId: 'session', sourceNodeId: `history-node-${index}` },
     }))
-    const compiled = compilePromptDataModel({
+    const build = () => compilePromptDataModel({
       sourceNodes: [
         node('root', null, 0, 'module'),
         ...(wrapped ? [{ ...node('wrapper', 'root', 0, 'message'), capabilities: { roleHint: 'system' as const } }] : []),
@@ -91,9 +91,34 @@ describe('PromptBuildPipeline', () => {
       ],
       contributions: history,
     })
+    const compiled = build()
     expect(compiled.messages).toEqual(history.map(item => ({
       role: item.capabilities.roleHint, content: item.content, fragmentIds: [item.id],
     })))
+  })
+
+  it('rejects text in the native Session sequence and messages in text anchors', () => {
+    const slot = { ...node('session', null, 0, 'virtual'), capabilities: { targetAnchorId: '@chat.session' } }
+    expect(() => compilePromptDataModel({ sourceNodes: [slot],
+      contributions: [contribution('text', 'lore', 'Lore text', '@chat.session')],
+    })).toThrow('cannot receive text contributions')
+    expect(() => compilePromptDataModel({ sourceNodes: [node('text', null, 0, 'virtual')],
+      contributions: [{ ...contribution('native', 'session', '', 'text'),
+        sourceRef: { kind: 'sessionHistory', sourceId: 'session', sourceNodeId: 'session' },
+        messages: [{ role: 'assistant', tool_calls: [{ id: 'call', type: 'function', function: { name: 'read', arguments: '{}' } }] },
+          { role: 'tool', tool_call_id: 'call', content: 'result' }] }],
+    })).toThrow('require a message sequence inlet')
+  })
+
+  it('preserves native tool call/result pairs at the Session sequence', () => {
+    const messages = [{ role: 'assistant' as const, content: '', tool_calls: [{ id: 'call', type: 'function' as const, function: { name: 'read', arguments: '{}' } }] },
+      { role: 'tool' as const, tool_call_id: 'call', content: 'result' }]
+    const compiled = compilePromptDataModel({
+      sourceNodes: [{ ...node('session', null, 0, 'virtual'), capabilities: { targetAnchorId: '@chat.session' } }],
+      contributions: [{ ...contribution('native', 'entry', '', '@chat.session'),
+        sourceRef: { kind: 'sessionHistory', sourceId: 'session', sourceNodeId: 'entry' }, messages }],
+    })
+    expect(compiled.messages).toEqual(messages.map(message => ({ ...message, content: message.content ?? '', fragmentIds: ['native'] })))
   })
 
   it('does not re-inject a disabled explicit anchor through the legacy Session fallback', () => {

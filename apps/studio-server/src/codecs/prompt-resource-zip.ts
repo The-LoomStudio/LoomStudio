@@ -1,4 +1,4 @@
-import { isPromptResourceArtifact, type PromptResourceArtifact } from '@loom-studio/application-runtime'
+import { isPromptResourceArtifact, type PromptResourceArtifact } from '@loom-studio/application-runtime/artifacts'
 import { unzipSync, zipSync } from 'fflate'
 import { validateBundlePath } from './card-bundle-files.js'
 import { isPromptResourceFilesIndex, projectPromptResourceFiles, restorePromptResourceFiles } from './prompt-resource-files.js'

@@ -262,9 +262,14 @@ export function createStoryMemory(ctx) {
     return locked(target, async () => {
       const record = await readBatch(target, id, version);
       if (record.data.status !== 'draft' || activeJobs.has(id)) throw new Error('只能确认已完成的草稿。');
-      if (!(await view(target)).validity.get(id)) throw new Error('来源已变化，不能确认旧草稿。');
+      const state = await view(target);
+      if (!state.validity.get(id)) throw new Error('来源已变化，不能确认旧草稿。');
       const count = (await ctx.tokens.countText({ text: record.data.text })).estimatedTokens;
       if (!record.data.text.trim() || count > record.data.budget) throw new Error('草稿为空或超过 Token 上限，请先修订。');
+      if (record.data.level === 2) {
+        const sourceTokens = record.data.inputs.reduce((sum, ref) => sum + state.byId.get(ref.id).data.tokenCount, 0);
+        if (count >= sourceTokens) throw new Error(`LV2 摘要 ${count} Token，未短于来源 LV1 合计 ${sourceTokens} Token，请修订后确认。`);
+      }
       const confirmed = await write(target, record, { ...record.data, tokenCount: count, status: 'confirmed', error: null });
       await publishReady(target);
       return confirmed;
@@ -274,7 +279,12 @@ export function createStoryMemory(ctx) {
     return locked(target, async () => {
       const record = await readBatch(target, id, version);
       if (record.data.status === 'confirmed' || activeJobs.has(id)) throw new Error('正在运行或已确认的摘要不能丢弃。');
-      return write(target, record, { ...record.data, status: 'discarded' });
+      if (record.data.sessionId) {
+        if (record.data.branchId !== target.branchId) throw new Error('请在创建此任务的分支丢弃。');
+        await ctx.agentTasks.dispose(record.data.sessionId);
+      }
+      const { sessionId: _sessionId, taskResultSaved: _saved, ...data } = record.data;
+      return write(target, record, { ...data, status: 'discarded' });
     });
   }
   async function cancel(target, { id }) {

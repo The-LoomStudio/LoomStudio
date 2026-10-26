@@ -1,3 +1,4 @@
+import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type { PresetToolMount } from '@loom-studio/shared/tool-mounts'
 export type { PresetToolMount } from '@loom-studio/shared/tool-mounts'
 import type {
@@ -49,13 +50,7 @@ export type PromptResource = {
   deleteReason?: string
 }
 
-export type PromptResourceWriteContext = {
-  actor: DataActorRef
-  reason?: string
-  correlationId?: string
-  callId?: string
-  parentCallId?: string
-}
+export type PromptResourceWriteContext = DataTransactionInput
 
 export type CreatePromptResourceInput = PromptResourceWriteContext & {
   id?: string

@@ -1,6 +1,6 @@
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { applicationDocumentTypes, createTimelineArchiveParticipantRegistry } from '@loom-studio/application-runtime'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { createExtensionRecordArchiveParticipant } from '../../../apps/studio-server/src/extensions/extension-record-archive.js'
 
 const idMap = { timelineId: 'new', nodeIds: { oldNode: 'newNode' }, branchIds: {}, stateRevisionIds: {} }
@@ -10,6 +10,7 @@ const exportInput = { timelineId: 'old', nodeIds: ['oldNode'], branchIds: [], st
 
 async function fixture() {
   const documents = createInMemoryDocumentStore()
+  onTestFinished(() => documents.close())
   for (const [id, owner, installation, recordScope] of [
     ['one', 'pkg', undefined, scope], ['two', 'pkg', undefined, scope],
     ['foreign', 'other', undefined, scope], ['card', 'pkg', 'card-installation', scope],

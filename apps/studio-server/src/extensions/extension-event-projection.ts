@@ -3,7 +3,7 @@ import type { NarrativeStore, PromptResourceStore, StateStore } from '@loom-stud
 import type { ExtensionHostOptions } from '@loom-studio/extension-host'
 import { applicationDocumentTypes, extensionInstallationId } from '@loom-studio/application-runtime'
 import { isRecord, type JsonObject } from '@loom-studio/shared'
-import type { StudioEvent } from '@loom-studio/transport'
+import type { StudioEvent } from '@loom-studio/extension-sdk'
 
 type EventSubscriberIdentity = Parameters<NonNullable<ExtensionHostOptions['subscribeEvents']>>[2]
 type EventStores = {

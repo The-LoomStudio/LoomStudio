@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Button } from '@loom-studio/ui'
 import { StartupReady } from '../app/startup-curtain.js'
-import { ObservabilityWorkbench } from '../widgets/observability-workbench/observability-workbench.js'
+import { ObservabilityWorkbench } from '../widgets/log-viewer/observability-workbench.js'
 import { observationScene, type ObservationScene } from './observability-fixtures.js'
 import styles from './observability-preview.module.scss'
 

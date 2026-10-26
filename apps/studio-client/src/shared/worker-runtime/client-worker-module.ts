@@ -89,7 +89,7 @@ export function createClientWorkerModule(input: ClientWorkerModuleInput): Client
       context.signal.addEventListener('abort', stop, { once: true })
       try {
         const resolvedInput = 'entryUrl' in input ? { entryUrl: new URL(input.entryUrl, globalThis.location.href).href } : input
-        worker.postMessage({ type: 'loom:worker.connect', input: resolvedInput, extension: context.extension }, [channel.port2])
+        worker.postMessage({ type: 'loom:worker.connect', input: resolvedInput, extension: context.extension, scriptSettings: context.scriptSettings }, [channel.port2])
         if (context.signal.aborted) void stop()
       } catch (error) { fail(error instanceof Error ? error : new Error(String(error))) }
       return activation

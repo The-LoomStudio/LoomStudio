@@ -1,5 +1,53 @@
 import { z } from 'zod'
 
+/** The Session inlet expands native messages; all other anchors receive text. */
+export function promptAnchorOutput(anchorId: string): 'text' | 'messages' {
+  return anchorId === '@chat.session' ? 'messages' : 'text'
+}
+
+export type PromptAuthoringNode = {
+  id: string
+  kind: string
+  capabilities?: { targetAnchorId?: string }
+  children?: readonly PromptAuthoringNode[]
+}
+
+export function isPromptMessageSequence(node: PromptAuthoringNode): boolean {
+  return node.kind === 'virtual' && promptAnchorOutput(node.capabilities?.targetAnchorId ?? node.id) === 'messages'
+}
+
+/** Folders preserve their surrounding level; they cannot hide nested message units. */
+export function canPlacePromptNode(root: PromptAuthoringNode, parentId: string, child: PromptAuthoringNode): boolean {
+  function path(node: PromptAuthoringNode): PromptAuthoringNode[] | undefined {
+    if (node.id === parentId) return [node]
+    for (const item of node.children ?? []) {
+      const found = path(item)
+      if (found) return [node, ...found]
+    }
+  }
+  const parents = path(root)
+  if (!parents || !['module', 'folder', 'message'].includes(parents.at(-1)!.kind)) return false
+  function valid(node: PromptAuthoringNode, insideMessage: boolean): boolean {
+    if (isPromptMessageSequence(node)) return !insideMessage && !node.children?.length
+    if (node.kind === 'message' && insideMessage) return false
+    if (!['module', 'folder', 'message'].includes(node.kind) && node.children?.length) return false
+    return (node.children ?? []).every(item => valid(item, insideMessage || node.kind === 'message'))
+  }
+  const incomingIds = new Set<string>()
+  let incomingSequences = 0
+  function inspect(node: PromptAuthoringNode) {
+    incomingIds.add(node.id)
+    if (isPromptMessageSequence(node)) incomingSequences++
+    for (const item of node.children ?? []) inspect(item)
+  }
+  inspect(child)
+  function hasOtherSequence(node: PromptAuthoringNode): boolean {
+    return (!incomingIds.has(node.id) && isPromptMessageSequence(node)) || (node.children ?? []).some(hasOtherSequence)
+  }
+  if (incomingSequences > 1 || (incomingSequences === 1 && hasOtherSequence(root))) return false
+  return valid(child, parents.some(node => node.kind === 'message'))
+}
+
 export const loreMountSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('manual'), id: z.literal('global').optional() }),
   z.object({ kind: z.literal('preset'), id: z.string() }),

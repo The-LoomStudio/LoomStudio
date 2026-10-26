@@ -12,7 +12,7 @@ function fixture(): PromptDataModel {
       { id: 'root', sourceId: 'preset', parentId: null, orderIndex: 0, displayName: 'Preset', kind: 'module' },
       { id: 'inline', sourceId: 'preset', parentId: 'root', orderIndex: 0, displayName: 'Inline', kind: 'entry', body: 'INLINE' },
       { id: 'slot', sourceId: 'preset', parentId: 'root', orderIndex: 1, displayName: 'Slot', kind: 'virtual' },
-      { id: 'history', sourceId: 'preset', parentId: 'root', orderIndex: 2, displayName: 'History', kind: 'virtual' },
+      { id: 'history', sourceId: 'preset', parentId: 'root', orderIndex: 2, displayName: 'History', kind: 'virtual', capabilities: { targetAnchorId: '@chat.session' } },
       { id: 'off', sourceId: 'lore', parentId: null, orderIndex: 0, displayName: 'Disabled', kind: 'entry', enabled: false },
     ],
     contributions: [
@@ -26,9 +26,9 @@ function fixture(): PromptDataModel {
         content: 'OFF', capabilities: { processorId: 'test/ejs', targetAnchorId: 'slot' } },
       { id: 'native', sourceRef: { kind: 'sessionHistory', sourceId: 'session', sourceNodeId: 'native' },
         content: 'SUMMARY', messages: [
-          { role: 'assistant', content: null, tool_calls: [{ id: 'call', type: 'function', function: { name: 'read', arguments: '{}' } }] },
+          { role: 'assistant', tool_calls: [{ id: 'call', type: 'function', function: { name: 'read', arguments: '{}' } }] },
           { role: 'tool', content: '<%= untouched %>', tool_call_id: 'call' },
-        ], capabilities: { targetAnchorId: 'history' } },
+        ], capabilities: { targetAnchorId: '@chat.session' } },
     ],
   }
 }
@@ -56,8 +56,8 @@ describe('authored prompt processing', () => {
     expect(result.projection.messages.map(message => message.content)).toEqual([
       '1:INLINE\n\n2:EARLY', '', '<%= untouched %>',
     ])
-    expect(result.projection.messages.at(-1)?.tool_call_id).toBe('call')
-    expect(result.projection.messages.at(-2)?.tool_calls?.[0]?.id).toBe('call')
+    expect(result.projection.messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'call' })
+    expect(result.projection.messages.at(-2)).toMatchObject({ role: 'assistant', tool_calls: [{ id: 'call' }] })
     expect(input.sourceNodes.find(node => node.id === 'inline')?.body).toBe('INLINE')
     expect(result.model.sourceNodes.find(node => node.id === 'inline')?.body).toBe('1:INLINE')
     expect(result.model.contributions.find(entry => entry.id === 'early')?.content).toBe('2:EARLY')

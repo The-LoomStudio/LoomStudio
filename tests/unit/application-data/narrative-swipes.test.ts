@@ -1,5 +1,5 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createNarrativeStore, createNarrativeSwipeStore, createStateStore, type NarrativeSwipeGroup } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createNarrativeSwipeStore, createStateStore, type NarrativeSwipeGroup } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 
 async function setup() {
@@ -22,11 +22,33 @@ async function setup() {
       headNodeId: 'input', stateRevisionId: initial.snapshot.revision.id, status: 'completed', mode: 'initial', createdAt: now() }],
     selectedCandidateId: 'a', generation: 1, revision: 0, closed: false, createdAt: now(), updatedAt: now(), excludedRunIds: ['failed-edit'],
   }
-  const save = (value: NarrativeSwipeGroup, expectedRevision?: number) => engine.transact({ actor }, tx => swipes.transaction(tx).save(value, { expectedRevision }))
+  const save = (value: NarrativeSwipeGroup, expectedRevision?: number) => engine.transact({ actor }, async tx => swipes.transaction(tx).save(value, { expectedRevision }))
   return { engine, swipes, narrative, state, actor, story, target, input, group, save, initial }
 }
 
 describe('narrative Swipe storage', () => {
+  it('persists communication candidates with an empty Narrative baseline and a distinct transcript baseline', async () => {
+    const c = await setup()
+    try {
+      const baseEntryId = (await c.narrative.getNode('input'))!.entryId
+      const saved = (await c.save({ ...c.group, inputKind: 'communication', inputNodeId: undefined,
+        input: 'Communicate without roleplay', baseEntryId,
+        candidates: [{ ...c.group.candidates[0]!, inputNodeId: undefined, headNodeId: undefined, headEntryId: baseEntryId }],
+      })).value
+      expect(await createNarrativeSwipeStore({ engine: c.engine }).get(saved.id)).toEqual(saved)
+      expect(await c.swipes.getLatest(c.target.branchId)).toMatchObject({ inputKind: 'communication', baseEntryId })
+      const workspaceRevisionId = (await c.narrative.getBranch(c.target.branchId))!.workspaceHeadRevisionId
+      const restored = await c.engine.transact({ actor: c.actor }, async tx => c.narrative.transaction(tx).restoreBranch({
+        ...c.target, expectedHeadNodeId: 'input', expectedStateHeadRevisionId: c.initial.snapshot.revision.id,
+        headNodeId: null, headEntryId: baseEntryId, stateRevisionId: c.initial.snapshot.revision.id, workspaceRevisionId,
+      }))
+      expect(restored.value.headNodeId).toBeUndefined()
+      expect(restored.value.headEntryId).toBe(baseEntryId)
+      expect((await createAgentStore({ engine: c.engine }).getSession(c.target.timelineId))!.headEntryId).toBe(baseEntryId)
+      expect(await c.narrative.getNode('input')).not.toBeNull()
+    } finally { await c.engine.close() }
+  })
+
   it('persists candidates with CAS, includes closed/session matches, and does not inherit on fork', async () => {
     const c = await setup()
     try {
@@ -43,7 +65,7 @@ describe('narrative Swipe storage', () => {
       const fork = await c.narrative.forkBranch({ actor: c.actor, timelineId: c.target.timelineId, fromBranchId: c.target.branchId,
         fromNodeId: 'input',})
       expect(await c.swipes.getLatest(fork.branch.id)).toBeNull()
-      await c.engine.transact({ actor: c.actor }, tx => {
+      await c.engine.transact({ actor: c.actor }, async tx => {
         expect(c.swipes.transaction(tx).get(saved.id)).toEqual(closed)
         return c.narrative.transaction(tx).deleteTimeline({ timelineId: c.target.timelineId })
       })
@@ -74,7 +96,7 @@ describe('narrative Swipe storage', () => {
   it('atomically adopts both existing heads, checks ownership, and preserves nodes/revisions/active branch', async () => {
     const c = await setup()
     try {
-      const revision = (await c.engine.transact({ actor: c.actor }, tx => c.state.transaction(tx).createRevision({
+      const revision = (await c.engine.transact({ actor: c.actor }, async tx => c.state.transaction(tx).createRevision({
         scopeId: c.initial.snapshot.scope.id, parentRevisionId: c.initial.snapshot.revision.id, snapshot: { coins: 80 }, operations: [],
       }))).value.revision
       const reply = await c.narrative.appendNode({ ...c.target, actor: c.actor, expectedHeadNodeId: 'input', stateRevisionId: c.initial.snapshot.revision.id,
@@ -83,7 +105,7 @@ describe('narrative Swipe storage', () => {
       const other = await c.narrative.createTimeline({ actor: c.actor, stateRevisionId: revision.id, openingNode: { body: { format: 'loom-markdown.v1', raw: 'Other' } } })
       const foreign = await c.state.createScopeWithInitialRevision({ actor: c.actor, scope: { kind: 'timeline', ownerId: other.timeline.id }, revision: { snapshot: {}, operations: [] } })
       const request = { ...c.target, expectedHeadNodeId: reply.node.id, expectedStateHeadRevisionId: revision.id, headNodeId: 'input', stateRevisionId: c.initial.snapshot.revision.id }
-      const restore = (input: typeof request) => c.engine.transact({ actor: c.actor }, tx => c.narrative.transaction(tx).restoreBranch(input))
+      const restore = (input: typeof request) => c.engine.transact({ actor: c.actor }, async tx => c.narrative.transaction(tx).restoreBranch(input))
       const before = await c.narrative.getBranch(c.target.branchId)
       for (const [change, code] of [
         [{ expectedHeadNodeId: 'input' }, 'narrative.head_conflict'],
@@ -94,13 +116,17 @@ describe('narrative Swipe storage', () => {
         await expect(restore({ ...request, ...change })).rejects.toMatchObject({ code })
         expect(await c.narrative.getBranch(c.target.branchId)).toEqual(before)
       }
+      const agents = createAgentStore({ engine: c.engine })
+      const entryCount = (await agents.getSession(c.target.timelineId))!.entryCount
+      const inputEntryId = (await c.narrative.getNode('input'))!.entryId
       const count = c.engine.database.prepare('SELECT COUNT(*) AS count FROM state_revisions').get()
       const result = await restore(request)
-      expect(result.value).toMatchObject({ headNodeId: 'input', stateHeadRevisionId: request.stateRevisionId })
+      expect(result.value).toMatchObject({ headNodeId: 'input', stateHeadRevisionId: request.stateRevisionId, headEntryId: inputEntryId })
+      expect(await agents.getSession(c.target.timelineId)).toMatchObject({ headEntryId: inputEntryId, entryCount })
       expect(await c.narrative.getNode(reply.node.id)).not.toBeNull()
       expect(c.engine.database.prepare('SELECT COUNT(*) AS count FROM state_revisions').get()).toEqual(count)
       expect((await c.narrative.getTimeline(c.target.timelineId))?.activeBranchId).toBe(c.target.branchId)
-      await expect(c.engine.transact({ actor: c.actor }, tx => {
+      await expect(c.engine.transact({ actor: c.actor }, async tx => {
         const narrativeTx = c.narrative.transaction(tx)
         expect(narrativeTx.getBranch(c.target.branchId)?.headNodeId).toBe('input')
         expect(narrativeTx.getNode(reply.node.id)?.id).toBe(reply.node.id)

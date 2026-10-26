@@ -8,7 +8,7 @@ describe('Narrative input persistence and delivery', () => {
     const f = fixture()
     await f.render().createTimelineFromCard()
     await f.render().createAgentSession('profile', true)
-    const node = (id: string) => ({ id, timelineId: 'timeline', stateRevisionId: 'state',
+    const node = (id: string) => ({ id, kind: 'narrative' as const, floor: Number(id.slice(1)), timelineId: 'timeline', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw: id }, createdAt: 'now' })
     const n1 = node('n1'), n2 = node('n2'), n3 = node('n3')
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
@@ -25,6 +25,7 @@ describe('Narrative input persistence and delivery', () => {
     expect(f.render().olderCursor).toBe('page1')
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     expect(f.render().olderCursor).toBe('page1')
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n1] })
     await f.render().loadOlderNodes()
@@ -33,7 +34,7 @@ describe('Narrative input persistence and delivery', () => {
     dispose?.()
   })
 
-  it('waits for the persisted user node before starting a Run on the primary Session', async () => {
+  it('waits for the persisted user node before starting a Run on the Timeline Session', async () => {
     const f = await primaryFixture()
     const append = f.appendInput.getMockImplementation()!
     let release!: () => void
@@ -63,16 +64,18 @@ describe('Narrative input persistence and delivery', () => {
     const f = await primaryFixture()
     f.appendInput.mockRejectedValueOnce(new Error('Head conflict'))
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     expect(f.createSession).toHaveBeenCalledOnce()
     expect(f.createRun).not.toHaveBeenCalled()
     expect(f.render().nodes).toEqual([])
     expect(f.render().composerInput).toBe('  Draft\n')
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     expect(f.appendInput.mock.calls[1]![0]).toEqual(f.appendInput.mock.calls[0]![0])
     expect(f.createRun).toHaveBeenCalledOnce()
   })
 
-  it('retains a user node committed while switching Session, but waits for explicit redelivery', async () => {
+  it('continues Timeline delivery when the sidebar Session changes during the user-node write', async () => {
     const f = await primaryFixture()
     const append = f.appendInput.getMockImplementation()!
     let release!: () => void
@@ -91,22 +94,22 @@ describe('Narrative input persistence and delivery', () => {
     await pending
     expect(f.render().nodes).toHaveLength(1)
     expect(f.createSession).toHaveBeenCalledOnce()
-    expect(f.createRun).not.toHaveBeenCalled()
-    await f.render().retryNarrativeInput()
+    expect(f.createRun).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ agentSessionId: 'timeline' }))
     expect(f.appendInput).toHaveBeenCalledOnce()
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.render().agentSession).toBeUndefined()
   })
 
-  it('redelivers saved input to the primary Session without replacing a newer composer draft', async () => {
+  it('redelivers saved input to the Timeline Session without replacing a newer composer draft', async () => {
     const f = await primaryFixture()
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     const nodeId = f.render().nodes[0]!.id
     f.render().newAgentSession()
     f.render().setInput('A newer draft')
     await f.render().retryNarrativeInput()
     expect(f.appendInput).toHaveBeenCalledOnce()
     expect(f.createRun).toHaveBeenLastCalledWith(expect.objectContaining({
-      agentSessionId: 'session', input: 'Draft',
+      agentSessionId: 'timeline', input: 'Draft',
       narrativeTarget: { timelineId: 'timeline', branchId: 'branch', inputNodeId: nodeId },
     }))
     expect(f.render().composerInput).toBe('A newer draft')
@@ -117,6 +120,7 @@ describe('Narrative input persistence and delivery', () => {
   it('does not redeliver a committed input through a different endpoint', async () => {
     const f = await primaryFixture()
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     f.input.api = { ...f.input.api }
     expect(f.render().canRetryNarrativeInput).toBe(false)
     await f.render().retryNarrativeInput()
@@ -127,12 +131,13 @@ describe('Narrative input persistence and delivery', () => {
     vi.stubGlobal('EventSource', class {})
     const f = await primaryFixture()
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     f.render()
     const dispose = hooks.commitEffect?.()
     const before = f.getPage.mock.calls.length
     hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'other-branch' }])
     expect(f.getPage).toHaveBeenCalledTimes(before)
-    const node = { id: 'external-node', timelineId: 'timeline', stateRevisionId: 'state',
+    const node = { id: 'external-node', kind: 'narrative' as const, floor: 2, timelineId: 'timeline', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw: 'External writer' }, createdAt: 'now' }
     f.getPage.mockResolvedValueOnce({
       ...f.result.narrative,
@@ -144,6 +149,7 @@ describe('Narrative input persistence and delivery', () => {
     expect(f.render().nodes.map(item => item.body.raw)).toEqual(['Draft', 'External writer'])
     f.render().setInput('Next input')
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     expect(f.appendInput.mock.calls[1]![0].expectedHeadNodeId).toBe(node.id)
     dispose?.()
   })
@@ -151,13 +157,15 @@ describe('Narrative input persistence and delivery', () => {
   it('treats an explicit new submission with the same text as a new user node', async () => {
     const f = await primaryFixture()
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     f.render().setInput('Draft')
     await f.render().submitTurn(f.event)
+    await f.loadRoot()
     expect(f.appendInput).toHaveBeenCalledTimes(2)
     expect(f.appendInput.mock.calls[1]![0].nodeId).not.toBe(f.appendInput.mock.calls[0]![0].nodeId)
   })
 
-  it.each([false, true])('does not clear newer input or publish a late Run into a new selection (switch: %s)', async switchSelection => {
+  it.each([false, true])('does not clear newer input or publish a late Run into another Timeline (leave Timeline: %s)', async switchSelection => {
     const f = await primaryFixture()
     let entered!: () => void
     const creating = new Promise<void>(resolve => { entered = resolve })
@@ -167,18 +175,23 @@ describe('Narrative input persistence and delivery', () => {
     const pending = f.render().submitTurn(f.event)
     await creating
     f.render().setInput('Newer draft')
-    if (switchSelection) f.render().newAgentSession()
+    if (switchSelection) { f.render().resetToDraftTimeline(); await f.loadRoot() }
+    const destinationDraft = f.render().composerInput
     accept({ runId: 'run' })
     const activated = await pending
+    await f.loadRoot()
     const state = f.render()
-    expect(state.composerInput).toBe('Newer draft')
+    expect(state.composerInput).toBe(destinationDraft)
     if (switchSelection) {
       expect(activated).toBeUndefined()
       expect(state.activeAgentRun).toBeUndefined()
-      expect(state.nodes).toHaveLength(1)
+      expect(state.nodes).toEqual([])
+      expect(state.rootMessages).toEqual([])
+      expect(state.rootActiveRun).toBeUndefined()
       expect(state.agentMessages).toEqual([])
     } else {
-      expect(state.activeAgentRun?.status).toBe('completed')
+      expect(state.rootActiveRun?.status).toBe('completed')
+      expect(state.activeAgentRun).toBeUndefined()
     }
   })
 
@@ -202,7 +215,7 @@ describe('Narrative input persistence and delivery', () => {
     expect(f.render().nodes.some(node => node.id.startsWith('optimistic-'))).toBe(false)
   })
 
-  it('submits on the explicitly created primary without creating another Timeline or Session', async () => {
+  it('submits on the loaded Timeline Session without creating another Timeline or Session', async () => {
     const f = await primaryFixture()
     await expect(f.render().submitTurn(f.event)).resolves.toBeUndefined()
     expect(f.reportFailure).not.toHaveBeenCalled()

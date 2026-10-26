@@ -1,5 +1,5 @@
 import { createAssetStore } from '@loom-studio/asset-store'
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

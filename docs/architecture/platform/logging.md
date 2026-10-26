@@ -424,7 +424,7 @@ Studio Client 的 Logs Workspace 分为应用日志与模型日志两个页签�
 
 ### 模型观测与保留边界
 
-Application Runtime 的 Observation Store 保存 Run、PromptBuild、独立 API 调用及其 Request 子记录。构建证据包含来源、激活与放置、宏读取、转换、消息和诊断；请求证据可包含准备后的消息、工具、模型配置、输出及 Usage。它们不写入普通 `LogRecord.data`，也不由 `@loom-studio/trace-audit` 拥有。
+Application Runtime 的 Observation Store 保存 Run、PromptBuild、独立 API 调用及其 Request 子记录。构建证据包含来源、激活与放置、宏读取、转换、消息和诊断；请求证据可包含准备后的消息、工具、模型配置、输出及 Usage。它们不写入普通 `LogRecord.data`，独立于已退役的原型 TraceAudit。
 
 - 默认最多保留 1,000 条记录，单条 2 MiB、总计 32 MiB，生命周期最长 24 小时；更新不续期。容量不足会淘汰记录族，捕获失败或超限会报告丢失或部分证据，不能据此推断请求没有执行。
 - Server 在配置目录的 `observations/` 下提供可选快照持久化，初始关闭，可通过模型日志界面开启跨重启保留；关闭会删除快照，但不清空当前内存记录。开启后仍受相同保留预算与过期时间限制，写盘异步执行，恢复或 IO 错误通过持久化状态显式报告。

@@ -84,7 +84,7 @@ describe('Character opening entry commands', () => {
       await act(async () => { await state.refreshCards() })
       expect(state.selectedCardId).toBe('bad')
       expect(get).not.toHaveBeenCalled()
-      await act(async () => { await state.selectCard('bad') })
+      await act(async () => { state.setSelectedCardId('bad') })
       expect(get).not.toHaveBeenCalled()
       await act(async () => { state.setSelectedCardId('good') })
       expect(state.selectedCardDetails?.id).toBe('good')

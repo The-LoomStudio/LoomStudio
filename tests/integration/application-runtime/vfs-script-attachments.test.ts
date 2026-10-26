@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createBlobStore } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { listPresetScriptAttachments } from '../../../packages/application-runtime/src/vfs/script-attachments.js'
 import { createResourceVfs } from '../../../packages/application-runtime/src/vfs/resource-filesystem.js'
 

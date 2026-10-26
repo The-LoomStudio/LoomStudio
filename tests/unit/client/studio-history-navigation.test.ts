@@ -24,8 +24,13 @@ vi.mock('react', async original => ({
   useCallback: (callback: unknown) => callback,
   useReducer: (_reducer: unknown, initial: unknown, initialize: (value: unknown) => unknown) => [initialize(initial), vi.fn()],
 }))
-vi.mock('@loom-studio/client-bridge', () => ({ createClientBridge: () => ({}) }))
-vi.mock('../../../apps/studio-client/src/shared/api/client-bridge-logging.js', () => ({ withClientBridgeLogging: () => ({}) }))
+vi.mock('../../../apps/studio-client/src/features/user-profiles/model/use-user-profiles-query.js', () => ({
+  useUserProfilesQuery: () => ({}),
+}))
+vi.mock('../../../apps/studio-client/src/features/themes/model/theme-store.js', async original => {
+  const actual = await original<typeof import('../../../apps/studio-client/src/features/themes/model/theme-store.js')>()
+  return { ...actual, useThemeStore: (select: (state: ReturnType<typeof actual.useThemeStore.getState>) => unknown) => select(actual.useThemeStore.getState()) }
+})
 vi.mock('../../../apps/studio-client/src/shared/api/studio-api.js', () => ({
   createStudioApi: () => ({ history: { revert: vi.fn() } }),
 }))
@@ -41,13 +46,13 @@ vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-pro
 vi.mock('../../../apps/studio-client/src/features/cards/model/use-cards.js', () => ({
   useCards: () => ({ refreshCards: fixture.refreshCards, setSelectedCardId: fixture.selectCard }),
 }))
-vi.mock('../../../apps/studio-client/src/features/context-assets/model/use-context-assets.js', () => ({
+vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-context-assets.js', () => ({
   useContextAssets: () => ({}),
 }))
 vi.mock('../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.js', () => ({
   useProviderSettings: () => ({}),
 }))
-vi.mock('../../../apps/studio-client/src/features/agent-presets/model/use-agent-presets.js', () => ({
+vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-agent-presets.js', () => ({
   useAgentPresets: () => ({ agentPresets: [] }),
 }))
 vi.mock('../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js', () => ({

@@ -10,7 +10,7 @@ import { useNarrativeRuntime } from '../../../apps/studio-client/src/features/na
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const timestamp = '2026-09-12T00:00:00.000Z'
-const session = (id: string, timelineId?: string, agentPresetId = 'profile-a'): AgentSession => ({
+const session = (id: string, timelineId?: string, agentPresetId = 'profile-a'): AgentSession => ({ kind: 'agent' as const,
   id, timelineId, agentPresetId, title: id, entryCount: 1, createdAt: timestamp, updatedAt: timestamp,
 })
 const message = (owner: AgentSession, suffix = '', role: 'user' | 'assistant' = 'user') => ({
@@ -38,7 +38,7 @@ async function runChecks() {
   const timeline = (id: string): NarrativeTimeline => ({
     id, title: id, activeBranchId: `${id}-main`, promptResourceIds: [], createdAt: timestamp, updatedAt: timestamp,
   })
-  const branch = (id: string): Awaited<ReturnType<StudioApi['narratives']['getPage']>>['branch'] => ({ id: `${id}-main`, timelineId: id, stateHeadRevisionId: 'state', createdAt: timestamp, updatedAt: timestamp })
+  const branch = (id: string): Awaited<ReturnType<StudioApi['narratives']['getPage']>>['branch'] => ({ id: `${id}-main`, timelineId: id, stateHeadRevisionId: 'state', workspaceHeadRevisionId: 'workspace', createdAt: timestamp, updatedAt: timestamp })
   const page = (id: string) => ({ timeline: timeline(id), branch: branch(id), nodes: [] })
   const baseApi = createStudioApi(createStudioTrpcClient({ fetch: async () => { throw new Error('Unexpected RPC in rendering test') } }))
   const api: StudioApi = {
@@ -51,7 +51,7 @@ async function runChecks() {
       create: async () => ({ ...page(`created-${++createdTimelines}`), mutation: { changesetId: 'create-timeline' } }),
       appendInput: async input => ({
         ...page(input.timelineId),
-        node: { id: input.nodeId, timelineId: input.timelineId, stateRevisionId: 'state', createdAt: timestamp,
+        node: { id: input.nodeId, timelineId: input.timelineId, stateRevisionId: 'state', workspaceRevisionId: 'workspace', kind: 'user-input', floor: 1, createdAt: timestamp,
           body: { format: 'loom-markdown.v1', raw: input.content } },
         mutation: { changesetId: 'append-input' },
       }),

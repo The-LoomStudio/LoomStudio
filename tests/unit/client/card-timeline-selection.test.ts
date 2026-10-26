@@ -33,13 +33,13 @@ function details(id: string) {
   const timeline: NarrativeTimeline = {
     id, promptResourceIds: [], activeBranchId: `${id}-branch`, createdAt: '2026-09-23', updatedAt: '2026-09-23',
   }
-  const branch: NarrativeBranch = {
-    id: timeline.activeBranchId, timelineId: id, createdAt: timeline.createdAt, updatedAt: timeline.updatedAt,
+  const branch: Awaited<ReturnType<StudioApi['narratives']['getPage']>>['branch'] = {
+    id: timeline.activeBranchId, timelineId: id, stateHeadRevisionId: 'state', workspaceHeadRevisionId: 'workspace', createdAt: timeline.createdAt, updatedAt: timeline.updatedAt,
   }
-  return { timeline, branch, branches: [branch], nodes: [] as NarrativeNode[], nextCursor: undefined as string | undefined }
+  return { timeline, branch, branches: [branch], nodes: [] as Awaited<ReturnType<StudioApi['narratives']['getPage']>>['nodes'], nextCursor: undefined as string | undefined }
 }
 function session(id: string, title = id): AgentSession {
-  return { id, title, agentPresetId: 'profile', entryCount: 0, createdAt: '2026-09-23', updatedAt: '2026-09-23' }
+  return { kind: 'agent' as const, id, title, agentPresetId: 'profile', entryCount: 0, createdAt: '2026-09-23', updatedAt: '2026-09-23' }
 }
 function fixture() {
   const requests = new Map<string, ReturnType<typeof Promise.withResolvers<{ timelines: NarrativeTimeline[] }>>>()
@@ -61,7 +61,10 @@ function fixture() {
   const input: Parameters<typeof useNarrativeRuntime>[0] = {
     api: {
       narratives: { list, get, getPage, create, delete: deleteTimeline },
-      agentSessions: { list: listSessions, delete: deleteSession, update: updateSession },
+      agentSessions: { list: listSessions, delete: deleteSession, update: updateSession,
+        create: vi.fn(async () => ({ session: session('new-agent'), mutation: { changesetId: 'create-agent' } })),
+        getTranscript: vi.fn(async ({ agentSessionId }: { agentSessionId: string }) => ({ session: { ...session(agentSessionId), kind: 'timeline' as const, timelineId: agentSessionId }, entries: [] })),
+      },
     } as unknown as StudioApi,
     storageScope: 'test', initialInput: '', onSelectCard: id => { input.selectedCardId = id },
     onSelectAgentPreset: vi.fn(), runAgentAction: action => action(),
@@ -78,15 +81,21 @@ function fixture() {
   }
   return { input, render, requests, list, get, getPage, create, listSessions, deleteSession, updateSession }
 }
-beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = [] })
-afterEach(() => vi.unstubAllGlobals())
+beforeEach(() => {
+  hooks.cursor = 0; hooks.values = []; hooks.effects = []
+  vi.stubGlobal('EventSource', class extends EventTarget { static OPEN = 1; readyState = 0; close() {} })
+})
+afterEach(() => {
+  for (const value of hooks.values) (value as { cleanup?: () => void } | undefined)?.cleanup?.()
+  vi.unstubAllGlobals()
+})
 
 describe('Card timeline selection', () => {
   it('restores edited custom content from only its node while retaining the source candidate identity', async () => {
     const f = fixture()
     const page = details('edited')
     page.timeline.opening = { id: 'source-candidate', nodeId: 'opening-node', custom: true, locked: false }
-    page.nodes = ['other-node', 'opening-node'].map(id => ({ id, timelineId: 'edited', stateRevisionId: 'state',
+    page.nodes = ['other-node', 'opening-node'].map((id, index) => ({ id, kind: 'narrative' as const, floor: index + 1, timelineId: 'edited', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1', raw: id === 'opening-node' ? 'Edited opening' : 'Unrelated node' }, createdAt: 'now' }))
     f.getPage.mockResolvedValueOnce(page)
     await f.render().activateTimeline('edited')
@@ -108,12 +117,14 @@ describe('Card timeline selection', () => {
     expect(f.input.api.narratives.replaceOpening).not.toHaveBeenCalled()
   })
 
-  it('requires an explicit start in preview, including when a primary Session is requested', async () => {
+  it('requires an explicit Timeline start in preview while standalone Agent creation stays independent', async () => {
     const f = fixture()
     f.input.selectedCardId = 'a'
     f.input.initialInput = 'Do not lose this draft'
     await f.render().submitTurn({ preventDefault() {} } as never)
-    await expect(f.render().createAgentSession('preset', true)).rejects.toThrow('开始一个新故事')
+    await expect(f.render().createAgentSession('preset', false)).resolves.toMatchObject({ id: 'new-agent' })
+    expect(f.input.api.agentSessions.create).toHaveBeenCalledWith(expect.objectContaining({ agentPresetId: 'preset' }))
+    expect(f.render().timeline).toBeUndefined()
     expect(f.create).not.toHaveBeenCalled()
     expect(f.render().input).toBe('Do not lose this draft')
     const selected = f.render().selectCardTimeline('a')
@@ -149,7 +160,7 @@ describe('Card timeline selection', () => {
     f.render().setAgentInput('My separate Agent draft')
     const replacement = { ...first, timeline: { ...first.timeline, opening: { id: 'alternative-1', nodeId: 'opening', locked: false } },
       branch: { ...first.branch, stateHeadRevisionId: 'state', headNodeId: 'opening' },
-      nodes: [{ id: 'opening', timelineId: 'story', stateRevisionId: 'state',
+      nodes: [{ id: 'opening', kind: 'narrative' as const, floor: 1, timelineId: 'story', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
         body: { format: 'loom-markdown.v1' as const, raw: 'New opening' }, createdAt: 'now' }],
       mutation: { changesetId: 'replace' } }
     const replace = vi.fn<StudioApi['narratives']['replaceOpening']>(async () => replacement)
@@ -182,12 +193,19 @@ describe('Card timeline selection', () => {
   })
 
   it('refreshes Timeline session choices from commit events without resetting drafts or selecting a session', async () => {
-    const streams: Array<{ listeners: Map<string, (event: { data: string }) => void>; closed: boolean }> = []
+    const streams: Array<{ listeners: Map<string, Set<(event: { data: string }) => void>>; closed: boolean }> = []
     vi.stubGlobal('EventSource', class {
-      listeners = new Map<string, (event: { data: string }) => void>()
+      listeners = new Map<string, Set<(event: { data: string }) => void>>()
+      static OPEN = 1
+      readyState = 0
       closed = false
       constructor() { streams.push(this) }
-      addEventListener(name: string, listener: (event: { data: string }) => void) { this.listeners.set(name, listener) }
+      addEventListener(name: string, listener: (event: { data: string }) => void) {
+        const listeners = this.listeners.get(name) ?? new Set()
+        listeners.add(listener)
+        this.listeners.set(name, listeners)
+      }
+      removeEventListener(name: string, listener: (event: { data: string }) => void) { this.listeners.get(name)?.delete(listener) }
       close() { this.closed = true }
     })
     const f = fixture()
@@ -195,7 +213,7 @@ describe('Card timeline selection', () => {
     f.render().setAgentInput('Keep my draft')
     const emit = () => {
       for (const stream of streams.filter(item => !item.closed))
-        stream.listeners.get('data.changed')?.({ data: JSON.stringify({ payload: { operations: [{ entityType: 'agent.session', entityId: 'external' }] } }) })
+        for (const listener of stream.listeners.get('data.changed') ?? []) listener({ data: JSON.stringify({ payload: { operations: [{ entityType: 'agent.session', entityId: 'external' }] } }) })
     }
     const external = { ...session('external'), timelineId: 'current' }
     f.listSessions.mockResolvedValue({ sessions: [external] })
@@ -218,7 +236,8 @@ describe('Card timeline selection', () => {
 
     const next = { ...session('next-session'), timelineId: 'next' }
     f.listSessions.mockResolvedValue({ sessions: [next] })
-    for (const stream of streams.filter(item => !item.closed)) stream.listeners.get('open')?.({ data: '' })
+    for (const stream of streams.filter(item => !item.closed))
+      for (const listener of stream.listeners.get('open') ?? []) listener({ data: '' })
     await vi.waitFor(() => expect(f.render().agentSessions).toEqual([next]))
   })
 
@@ -281,7 +300,7 @@ describe('Card timeline selection', () => {
     const result = operation === 'fork'
       ? await current.forkFromNode({ id: 'node', timelineId: 'current' } as NarrativeNode)
       : await current.switchBranch(target)
-    expect(result).toEqual(operation === 'fork' ? { timelineId: 'current', branchId: target.id } : undefined)
+    expect(result).toEqual(operation === 'fork' ? { timelineId: 'current', branchId: target.id } : true)
     expect(f.render().branch?.id).toBe(target.id)
     expect(f.render().timeline?.activeBranchId).toBe(target.id)
   })
@@ -308,7 +327,7 @@ describe('Card timeline selection', () => {
     await f.render().activateTimeline('new')
     f.render().setInput('New Timeline draft')
     pending.resolve()
-    expect(await result).toBeUndefined()
+    expect(await result).toBe(operation === 'switch' ? false : undefined)
     const current = f.render()
     expect(current.timeline?.id).toBe('new')
     expect(current.branch?.id).toBe('new-branch')
