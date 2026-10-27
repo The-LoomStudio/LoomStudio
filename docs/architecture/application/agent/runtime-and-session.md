@@ -15,7 +15,7 @@ AgentSession.agentPresetId
 
 不存在独立 Profile 或 Profile → Preset 选择关系。预设 Tool Mount 决定工具使用配置；特殊 Timeline Session 额外提供当前正文模式所需的声明工具，并隐藏追加正文工具；模型绑定可空，但预览和执行需要模型时明确报错。
 
-普通 `kind: agent` Session 固定引用预设。特殊 `kind: timeline` Session 与 Timeline 同 ID，可暂未选择预设；执行前必须有可用预设及模型。它在无活动或暂停 Run 的安全边界通过 `updateAgentSession` 更新预设或 `narrativeMode`，继续消费同一工作历史。预设身份不冻结资源内容，后续调用仍读取当前配置。
+普通 `kind: agent` Session 固定引用预设。特殊 `kind: timeline` Session 与 Timeline 同 ID，可暂未选择预设；执行前必须有可用预设及模型。通过 `updateAgentSession` 修改预设或 `narrativeMode` 时，Store 拒绝最新 Run 为 `created`、`running` 或 `suspended`，以及 `failed` 且仍带 `recovery` 检查点的情况；不能将规则泛化为所有 `failed` Run 都禁止修改。允许修改后仍消费同一工作历史。预设身份不冻结资源内容，后续调用仍读取当前配置。
 
 故事不存在单独选择的主接收方。主输入框的扮演和讨论均投递同 ID Session；右侧选择、创建和观察普通副 Session 独立于故事执行。绑定 Timeline 不代表自动拥有全部故事数据或工具权限。普通 Session 列表默认排除特殊 Session；删除故事统一清理根会话，普通会话删除接口拒绝删除根会话。
 

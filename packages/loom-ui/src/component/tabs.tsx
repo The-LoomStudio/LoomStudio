@@ -16,6 +16,8 @@ export type TabsProps<T extends string = string> = {
   className?: string
   size?: 'standard' | 'compact'
   align?: 'start' | 'center'
+  /** 横向子页签只使用选中下划线，不加整条底部分割线（包括外层容器）。
+   *  bordered 仅供确实需要结构分隔的特殊场景显式启用。 */
   bordered?: boolean
 }
 

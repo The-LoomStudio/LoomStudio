@@ -10,6 +10,8 @@ Document Store 管理需要版本与 Revision 的 typed JSON 聚合，不是所�
 |---|---|
 | `airp.cardSource` | Card 作者配置、资源关系、宏、State 与文本管线贡献 |
 | `airp.providerProfile` | Provider 配置、启用模型与后端 Secret 引用；Client 不取得 Secret 明文 |
+| `airp.userProfiles` | 本地用户档案与默认身份选择；[运行入口](../../../packages/application-runtime/src/runtime/user-profiles-runtime.ts) |
+| `airp.userBackgrounds` | 用户背景目录及资产引用；[运行入口](../../../packages/application-runtime/src/runtime/user-backgrounds-runtime.ts) |
 | `airp.aiCapabilityProfile` | AI Capability 配置 |
 | `airp.agentTool` | Workspace Tool Definition；可执行实现由 Registry 提供 |
 | `airp.stateDefinition` | Global Definition 或 Timeline Template |
@@ -24,6 +26,7 @@ Document Store 管理需要版本与 Revision 的 typed JSON 聚合，不是所�
 | `airp.extensionInstallation` | 全局或 Card 目标的扩展安装身份、版本与资源来源 |
 | `airp.importBundle` | Card 导入来源、Artifact 与资源绑定信息 |
 | `airp.timelineRuntimeContext` | Timeline 创建时固化的作者贡献与运行依赖 |
+| `airp.timelineExtensionParticipation` | Timeline 显式扩展参与与采用修订；[读写入口](../../../packages/application-runtime/src/extensions/timeline-participation.ts) |
 | `airp.timelinePresetConfig` | Timeline 与 Preset 组合下的宏选择配置；[读写入口](../../../packages/application-runtime/src/prompt/timeline-preset-config.ts) |
 | `airp.timelineArchivePending` | Timeline 归档恢复尚未完成的数据块与失败记录；[数据形状](../../../packages/application-runtime/src/archive/timeline-archive.ts) |
 
@@ -39,9 +42,10 @@ Document Store 管理需要版本与 Revision 的 typed JSON 聚合，不是所�
 
 | 领域 | 权威表与入口 |
 |---|---|
-| Narrative | `narrative_timelines / narrative_branches / narrative_nodes`；[Narrative Store](../../../packages/application-data/src/narrative/types.ts) |
+| Narrative | `narrative_timelines / narrative_branches / narrative_nodes` 保存时间线、分支和正文索引；正文读取关联 canonical Transcript Entry；[Narrative Store](../../../packages/application-data/src/narrative/types.ts) |
 | Agent Session / Transcript | `agent_sessions / agent_transcript_entries / agent_tool_invocations`；[Agent Store](../../../packages/application-data/src/agent/types.ts) |
-| Prompt Resource | 资源头、Node、Revision、Setting Mount 与 Preset Tool Mount；[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/types.ts) |
+| Prompt Resource | 资源头、Node、Revision、Lore Mount 与 Preset Tool Mount；[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/types.ts) |
 | State | `state_scopes / state_revisions`；[State Store](../../../packages/application-data/src/state/types.ts) |
+| Timeline Workspace | `workspace_revisions` 保存不可变工作树版本，Branch 记录当前引用；[Workspace Store](../../../packages/application-data/src/workspace/store.ts) |
 
 旧 `airp.agentProfile`、`airp.session`、`airp.narrative_branch`、`airp.narrative_entry`、`airp.branch_state_snapshot`、`airp.run`、`airp.commit_candidate`、`airp.runtime_entry`、`airp.agent_transcript_entry` 已不在当前注册表中；`airp.promptResource` 也不再是 Prompt Resource 权威存储。Agent Preset 使用 Prompt Resource，不要依据历史类型创建新记录。共享事务与实际提交边界见 [Data Architecture](../../architecture/data/README.md)。

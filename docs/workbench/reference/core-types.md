@@ -24,7 +24,7 @@
 | AiGateway | Provider 调用与 Application 返回合同；[Gateway](../../../packages/application-runtime/src/providers/gateway.ts) |
 | CompiledPrompt | 当前 DFS 编译器的 messages 与 editorProjection；[Prompt 类型](../../../packages/application-runtime/src/prompt/prompt-builder.ts) |
 
-当前会话使用 `createNarrativeTimeline`、`createAgentSession`、`previewAgentTurn`、`invokeAgentTurn` 等领域方法，不再提供旧 `createSession / submitTurn` 主链。Narrative、Agent、Prompt Resource 与 State 的权威数据分别由独立 Store 管理，见 [Data Architecture](../../architecture/data/README.md)。
+当前会话使用 `createNarrativeTimeline`、`createAgentSession`、`previewAgentTurn`、`invokeAgentTurn` 等领域方法，不再提供旧 `createSession / submitTurn` 主链。Timeline 根 Session 与 Timeline 同 ID，Transcript 是内容历史权威，Narrative Branch / Node 提供分支与正文投影；普通辅助 Session 仍独立运行。Narrative、Agent、Prompt Resource、State 与 Workspace 的持久化分别由对应 Store 管理，见 [Data Architecture](../../architecture/data/README.md)。
 
 ## Client 实体层
 

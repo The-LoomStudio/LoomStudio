@@ -31,6 +31,7 @@
 
 ## 接续入口
 
+- 更新发现、变更审阅与操作记录的跨对象建议见[应用与资源包更新讨论计划](./application-and-package-update-plan.md)；本页继续负责发行验收，不重复安装基础。
 - 源码入口为 `apps/studio-server/src/extensions/` 的安装器/管理器、SDK Manifest 与现有扩展中心，不重做安装基础。
 - SDK 公开发布、作者模板及设置兼容由 [DX 后续](./extension-developer-experience.md)处理。
 - Card 外部来源及作者开发工作区归[资源与分发后续](./workspace-resource-and-distribution-plan.md)。

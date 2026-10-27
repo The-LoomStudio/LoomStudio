@@ -97,7 +97,7 @@ pnpm test
 pnpm exec vitest run tests/unit/application-runtime tests/integration/application-runtime
 ```
 
-以上命令从仓库根目录执行，默认范围以根 `vitest.config.ts` 为准；显式设置 `LOOM_TEST_SCOPE` 会切换收集范围。需要 probes 或 stress 时分别使用 `pnpm test:probes`、`pnpm test:stress`（后者同时包含 probes）。根配置在没有匹配测试时失败退出，各包已有的测试命令也指向仓库根目录中的对应测试；验证时仍须核对实际执行的文件与用例数。
+以上命令从仓库根目录执行，默认范围以根 `vitest.config.ts` 为准；显式设置 `LOOM_TEST_SCOPE` 会切换收集范围。需要 probes 或 stress 时分别使用 `pnpm test:probes`、`pnpm test:stress`（仅运行 stress）。根配置在没有匹配测试时失败退出，各包已有的测试命令也指向仓库根目录中的对应测试；验证时仍须核对实际执行的文件与用例数。
 
 ## 6. 项目结构初探
 

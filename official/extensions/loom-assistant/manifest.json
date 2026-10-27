@@ -5,6 +5,7 @@
   "displayName": "Loom Assistant",
   "description": "Loom Studio 官方问答助手，包含辅助预设与脚本资源验证",
   "author": "Loom Studio",
+  "icon": "./icon.png",
   "engines": {
     "studio": "^0.1.0"
   },

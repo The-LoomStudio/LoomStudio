@@ -8,8 +8,8 @@
 
 在多 Agent 与多角色叙事场景中，不同模型供应商（OpenAI、Anthropic、Google 及各类兼容 OpenAI 协议的本地推理框架）的调用参数、流式协议与错误格式各不相同。
 `@loom-studio/ai-gateway` 提供统一的门面层：
-- **统一模型抽象**：基于 Vercel AI SDK 标准化各厂商接入；
-- **流式运行模型 (`AiGatewayRun`)**：统一输出 `text-delta`、`tool-call`、`finish` 与 Token 使用量统计（`AiGatewayUsage`）；
+- **统一模型抽象**：本包拥有 Vercel AI SDK `ai` 与官方 Provider adapters（Anthropic、Google、OpenAI、OpenAI-compatible），由 [`gateway.ts`](./src/gateway.ts) 负责协议调用与结果规范化；业务消费者通过 `AiGateway` 合同调用，不直接接入这些 SDK；
+- **流式运行模型 (`AiGatewayRun`)**：统一提供 `started`、`reasoning-delta`、`text-delta`、`tool-input-delta`、`usage`、`completed`、`failed` 和 `cancelled` 事件。完整结果携带 Tool Calls 与 Token 使用量（`AiGatewayUsage`）；事件合同见 [`types.ts`](./src/types.ts)；
 - **画像与凭据解析 (`ProfiledAiGateway`)**：结合 `@loom-studio/secret-store`，根据当前请求模型 Profile 动态解析对应的真实系统凭据；
 - **能力注册表 (`AiGatewayCapabilityRegistry`)**：支持平台内建 Provider 与 Extension 动态注入的自定义模型能力；
 - **官方 Fake Provider**：内置 `createOfficialFakeChatCompletion()`，提供可预测的离线模拟调用能力，支持脱机开发与自动化测试。
@@ -22,7 +22,7 @@
    - **全仓所有 LLM 调用必须通过本包发起**；
    - 业务代码（如 `application-runtime`、Extension 等）**严禁直接安装或 import `@ai-sdk/*`、`openai` 等厂商 SDK**，杜绝碎片化调用。
 2. **Schema 校验规范**：
-   - 外部 Provider 配置使用 `zod` 执行运行时边界校验，内部可信数据传递保持纯 TypeScript 契约。
+   - 本包直接拥有 `zod` 依赖，用于 Provider 配置、凭据与 Provider-specific options 的运行时校验（[`provider-registry.ts`](./src/provider-registry.ts)、[`provider-options.ts`](./src/provider-options.ts)）；其他跨包共享合同由 `@loom-studio/shared` 定义，避免在网关消费者重复解析。
 3. **无状态调度**：
    - 网关只负责单次会话或单次 Tool Step 的请求与流式回传，**不维护聊天时间线历史或会话持久化**（这些属于 `application-runtime` 和 `application-data`）。
 

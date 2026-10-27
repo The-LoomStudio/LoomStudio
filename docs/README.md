@@ -15,6 +15,7 @@
 - [`guide/getting-started.md`](guide/getting-started.md) — 如何启动项目、跑通第一遍
 - [`guide/workspace-development.md`](guide/workspace-development.md) — **开发代码第一入口**：按任务进入对应 Workspace README 与正式 Architecture
 - [`guide/project-structure.md`](guide/project-structure.md) — 仓库目录与 Package 职责，链接局部文件地图
+- [`guide/tech-stack.md`](guide/tech-stack.md) — 已采用依赖的职责与复用入口；跨包能力归属见[依赖所有权](architecture/platform/external-dependency-ownership.md)
 - [`guide/code-style.md`](guide/code-style.md) — 编码规范、命名规则
 - [`guide/testing.md`](guide/testing.md) — 测试分类与准则
 - [`guide/code-review.md`](guide/code-review.md) — PR 与审查边界
@@ -39,6 +40,8 @@ Reference 当前仍位于 Workbench，尚未整体晋升为正式文档；如与
 
 **入口: [`architecture/README.md`](architecture/README.md)**
 
+了解系统先看[系统总览](architecture/system-overview.md)，再沿 Architecture → Workspace README → 必要局部 README → 源码定位。各层分别维护跨模块合同、包入口和内部协作，避免复制完整 API 或文件地图。
+
 只有经过完全实现、代码完全跑通且设计非常稳定的模块，才配记录在这里。这里的描述**必须与当前主干代码严丝合缝**。
 
 正式架构按职责领域分类组织：
@@ -50,7 +53,7 @@ Reference 当前仍位于 Workbench，尚未整体晋升为正式文档；如与
 - [`architecture/application/`](architecture/application/) — 第一方 AIRP Application；
 - [`architecture/ui/`](architecture/ui/) — Studio Shell 与领域无关 UI 原语。
 
-六个分类 README 是正式 Architecture 的权威索引；已晋升专题不得因为根文档漏列而被误判为 Workbench 草案。
+六个分类 README 是正式 Architecture 领域专题的权威索引；已晋升专题不得因为根文档漏列而被误判为 Workbench 草案。
 
 ## 4. 🔧 Workbench: 演进工作台
 

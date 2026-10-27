@@ -6,7 +6,6 @@ import {
 } from '@loom-studio/application-data'
 import { createId, nowIso } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
-import { flattenTree, toTree } from '../../../packages/application-data/src/prompt-resource/tree.js'
 
 const actor = { kind: 'system' as const, id: 'write-result-contract' }
 
@@ -111,7 +110,7 @@ describe('Prompt Resource write result contract', () => {
     }
   })
 
-  it('shows why an in-memory tree cannot bypass SQL JSON normalization unchanged', async () => {
+  it('returns JSON-normalized writes equal to persisted reads', async () => {
     const { engine, store } = createStore()
     try {
       const created = await store.createResource({ actor, resourceKind: 'lore', rootNode: createTree() })
@@ -120,17 +119,12 @@ describe('Prompt Resource write result contract', () => {
         actor, resourceId: created.resource.id, expectedVersion: 1,
         mutations: [{ kind: 'node.update', nodeId: 'entry-a', patch: { capabilities } }],
       })
-      const draft = createTree()
-      draft.children![0].children![0].capabilities = capabilities
-      const flat = flattenTree(draft, created.resource.id, created.resource.createdAt)
-      const inMemory = toTree(flat.get(draft.id)!, flat)
       const storedCapabilities = updated.resource.rootNode.children![0].children![0].capabilities as { custom: number }
 
       expect(Object.is(capabilities.custom, -0)).toBe(true)
       expect(Object.is(storedCapabilities.custom, -0)).toBe(false)
       expect(Object.getPrototypeOf(capabilities)).toBeNull()
       expect(Object.getPrototypeOf(storedCapabilities)).toBe(Object.prototype)
-      expect(JSON.parse(JSON.stringify(inMemory))).toEqual(updated.resource.rootNode)
       expect(await store.getResource(created.resource.id)).toEqual(updated.resource)
     } finally {
       await engine.close()

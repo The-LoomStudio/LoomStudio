@@ -434,6 +434,12 @@ export function createStudioPanels(input: {
         extensionRuntime={state.api.extensionRuntime}
         extensionApi={state.api.extensions}
         scriptApi={state.api.loomScripts}
+        getScriptOwnerName={owner => {
+          if (owner.kind === 'card') return state.cards.find(card => card.id === owner.cardId)?.name
+          if (owner.kind === 'preset') return state.promptResources.find(resource => resource.id === owner.presetId)?.rootNode.label
+          if (owner.kind === 'extension') return [...clientExtensions.packages, ...clientExtensions.cardPackages].find(pkg => pkg.packageId === owner.packageId)?.displayName
+          return undefined
+        }}
         onScriptsChanged={uiState.bumpLoomScriptRefreshToken}
         scriptsRefreshToken={uiState.loomScriptRefreshToken}
         onRefreshExtensions={async () => {

@@ -89,7 +89,10 @@ export function PresetLibraryWorkbench(props: PresetLibraryWorkbenchProps) {
       toolCount: item.toolIds.length, resourceCount: item.resourceIds.length,
     }))} onConfigure={openConfiguration} onOpen={openPreset}
       actions={<Button size="small" variant="ghost" onClick={() => openConfiguration(props.onCreate())}><Plus size={15} />新建预设</Button>}
-      sourceContent={sourceId => <section className={styles.group}><div className={styles.groupHeading}><h3>来源提供的公共资源</h3></div>{props.resources.filter(r => r.sourceId === sourceId).map(r => resourceRow(r, false))}</section>} />}
+      sourceContent={sourceId => {
+        const resources = props.resources.filter(resource => resource.sourceId === sourceId)
+        return resources.length ? <details className={styles.sharedResources}><summary>公共资源 · {resources.length}</summary>{resources.map(resource => resourceRow(resource, false))}</details> : null
+      }} />}
     <PresetConfigurationDialog open={!!configured} onClose={() => setConfiguredId(undefined)}
       title={configured?.name ?? '预设配置'} source={props.sources.find(item => item.id === configured?.sourceId)?.name}>
       {configured && <PresetLibraryConfig key={configured.id} preset={configured} models={props.models} tools={props.tools} resources={props.resources} sources={props.sources}

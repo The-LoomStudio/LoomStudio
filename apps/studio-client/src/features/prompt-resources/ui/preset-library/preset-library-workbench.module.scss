@@ -170,3 +170,6 @@
   .configurationPanel { padding: 20px 16px 28px; }
   .resourceTabs { padding-inline: 16px; }
 }
+
+.sharedResources { margin: 12px 10px; }
+.sharedResources > summary { padding: 6px 0; color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-2); cursor: pointer; }

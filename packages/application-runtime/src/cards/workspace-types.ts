@@ -38,7 +38,7 @@ export type CardBundleArtifact = {
   contextAssets: PromptResourceNode[]
   /** Portable resource settings keyed by the corresponding context asset root ID. */
   contextAssetSettings?: Record<string, Pick<PromptResourceContent,
-    'macros' | 'macroOptions' | 'useCardLore' | 'useGlobalLore' | 'historyPolicy' | 'textUses'>>
+    'metadata' | 'macros' | 'macroOptions' | 'useCardLore' | 'useGlobalLore' | 'historyPolicy' | 'textUses'>>
   externalContextAssetIds?: string[]
   state?: StateArtifact
   stateTemplates?: Array<{
@@ -84,6 +84,7 @@ export type PortableExtensionPayloadContent = Omit<PortableExtensionPayloadArtif
 export type PromptResourceKind = 'preset' | 'lore' | 'logic' | 'runtime' | 'history' | 'prompt' | (string & {})
 
 export type PromptResourceContent = {
+  metadata?: import("@loom-studio/shared").PromptResourceDisplayMetadata
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
   useCardLore?: boolean
@@ -107,6 +108,7 @@ export type PromptResourceContent = {
 }
 
 export type PromptResourceArtifact = {
+  metadata?: import("@loom-studio/shared").PromptResourceDisplayMetadata
   format: 'loom.promptResource'
   schemaVersion: 1 | 2
   resourceKind: PromptResourceKind

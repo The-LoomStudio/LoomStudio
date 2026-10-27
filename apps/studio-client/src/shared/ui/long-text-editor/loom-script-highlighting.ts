@@ -62,6 +62,9 @@ const metadataField = StateField.define<DecorationSet>({
 })
 
 export const loomScriptMetadataHighlighting = [metadataField, EditorView.theme({
+  // JavaScript nests its comment token inside our marks. Inherit the declaration color
+  // without overriding nested property/string marks or comments outside the header.
+  '[class*=cm-loom-metadata-] > span:not([class*=cm-loom-metadata-])': { color: 'inherit' },
   '.cm-loom-metadata-marker': { color: 'var(--loom-color-syntax-meta)', fontWeight: '600' },
   '.cm-loom-metadata-field': { color: 'var(--loom-color-syntax-keyword)', fontWeight: '600' },
   '.cm-loom-metadata-value': { color: 'var(--loom-color-text)' },

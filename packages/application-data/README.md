@@ -4,7 +4,7 @@
 
 `@loom-studio/application-data` 是 Loom Studio 统一的领域存储核心包。在架构简化演进中，它将原本分散的 `agent-store`、`narrative-store`、`state-store` 与 `prompt-resource-store` 深度整合为一个高内聚的持久化模块。
 
-## 业务使命与五类领域存储
+## 领域存储与辅助统计
 
 本包负责将 AIRP（AI Role-Play）核心业务实体的生命周期、状态迁移与快照持久化到共享的 SQLite 存储中：
 
@@ -24,6 +24,8 @@
 5. **Workspace 存储 (`src/workspace/`)**：
    - 保存 Timeline 共享文件树的不可变版本，文本保存在树中，二进制引用 Blob；初始化包含 `MEMORY.md`。
    - 使用独立 `application.workspace` namespace；Narrative Store 负责装配，Branch / Node 的 Workspace 引用与恢复点归 Narrative 管理。新版本与 Branch 引用由领域流程显式组合到同一事务，不是任意宿主目录同步。
+6. **统计存储 (`src/statistics/`)**：
+   - 持久化 Provider 请求用量记录与被接受的用户交互，供 Dashboard 汇总；它是辅助统计能力，不是 Agent Transcript 或 Provider Observation 的替代存储。采集与保留边界见 [`statistics/README.md`](./src/statistics/README.md)。
 
 ---
 
@@ -42,7 +44,7 @@
 
 ## 公共入口
 
-Package 主入口为 [`src/index.ts`](./src/index.ts)，重导出五类领域存储及相关查询：
+Package 主入口为 [`src/index.ts`](./src/index.ts)，重导出领域 Store、统计采集与相关查询合同：
 
 ```ts
 import {
@@ -51,6 +53,8 @@ import {
   createStateStore,
   createPromptResourceStore,
   createWorkspaceStore,
+  createStatisticsStore,
+  recordUserInteraction,
 } from '@loom-studio/application-data'
 ```
 
@@ -59,6 +63,7 @@ import {
 - [`src/state/`](./src/state/)：导出 `createStateStore` 及状态变更类型（State Delta 支持合法空键重放与合并保真）；
 - [`src/prompt-resource/`](./src/prompt-resource/)：导出 `createPromptResourceStore` 及资源树操作类型；
 - [`src/workspace/`](./src/workspace/)：导出 `createWorkspaceStore`、文件树条目与不可变版本类型；
+- [`src/statistics/`](./src/statistics/README.md)：导出 `createStatisticsStore`、`recordUserInteraction` 与统计类型；依赖共享 Data Engine，采集入口与口径见模块说明；
 
 内部 [`src/json.ts`](./src/json.ts) 提供数据持久化 JSON 保真断言，显式拒绝 `NaN`、`Infinity` 等非有限数字，保护合法空键、`null`、`0` 与 `false`；它不是 package public export。
 
@@ -66,7 +71,7 @@ import {
 
 - [`NarrativeStore.appendInput()`](./src/narrative/store.ts) 以固定 `nodeId`、`expectedHeadNodeId` 和正文提交用户输入。同一输入重试返回原节点与原 Changeset；正文、原 parent 或归属不一致返回 `narrative.input_conflict`，不生成第二条正文。调用方在成功落库后另行投递 Agent Session；本 Store 不启动 Agent，也不把两次调用合成一个事务。
 - [`PromptResourceStore.mutateResource()`](./src/prompt-resource/mutations.ts) 必须携带资源级 `expectedVersion`；不匹配返回 `prompt_resource.conflict`，没有自动合并或改用最新版本重试。一次 mutations 列表在同一事务内提交，Header/Node 修订与提交事实一起生效。
-- 普通 Session 固定 `agentPresetId`；特殊 Timeline Session 可暂未配置，安全边界允许更新预设和正文模式，同一历史继续使用。`entryCount` 是全局单调写入计数；各分支保存采用的 Entry Head，回退不降低计数。
+- 普通 Session 固定 `agentPresetId`；特殊 Timeline Session 可暂未配置。更新预设或正文模式时，Store 拒绝最新 Run 为 `created`、`running`、`suspended`，或 `failed` 且带 `recovery` 检查点；不一概禁止所有失败 Run。允许更新后同一历史继续使用。`entryCount` 是全局单调写入计数；各分支保存采用的 Entry Head，回退不降低计数。
 - 各 Store 仅执行各自注册的连续版本 migration；数据库 namespace 高于当前支持版本时由 Engine 拒绝，不尝试降级或兼容读取。版本注册以各 `store.ts` 为准。
 
 ### 统一游标分页与数据保真底线

@@ -1,5 +1,6 @@
+import { ExtensionIcon, useExtensionIdentities } from '../../../shared/ui/extension-icon/extension-icon.js'
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, Database, Folder, Package, RefreshCw } from 'lucide-react'
+import { BookOpen, Database, Folder, RefreshCw } from 'lucide-react'
 import type { StateContribution } from '@loom-studio/shared'
 import type { Card } from '../../../entities/card.js'
 import type { ExtensionInstallationSource } from '../../../entities/extension.js'
@@ -23,6 +24,7 @@ type ExtensionSource = StateSourcesInspection['extensions'][number]
 type Outcome = { api: Props['api']; key: string } & ({ data: StateSourcesInspection } | { error: string })
 
 export function StateSourcesPanel(props: Props) {
+  const identities = useExtensionIdentities()
   const [outcome, setOutcome] = useState<Outcome>()
   const [refresh, setRefresh] = useState(0)
   const [selectedId, setSelectedId] = useState('timeline')
@@ -53,7 +55,7 @@ export function StateSourcesPanel(props: Props) {
       })) },
     { id: 'extensions', kind: 'folder', label: t('stateSources.extensions'), meta: String(data.extensions.length),
       children: data.extensions.map(source => ({
-        id: source.installationId, kind: 'entry', label: source.packageId,
+        id: source.installationId, kind: 'entry', label: identities.find(item => item.packageId === source.packageId)?.displayName ?? source.packageId,
         meta: `${scopeLabel(source, t)} · ${participationLabel(source, Boolean(data.timeline), t)}`,
       })) },
   ] : []
@@ -83,7 +85,7 @@ export function StateSourcesPanel(props: Props) {
           getDisclosureLabel={(node, expanded) => `${t(expanded ? 'stateVariables.collapse' : 'stateVariables.expand')}: ${node.label}`}
           getDragLabel={node => node.label} moreActionsLabel={t('stateVariables.actions')}
           renderIcon={node => node.kind === 'folder' ? <Folder size={16} /> : node.id === 'card' ? <BookOpen size={16} />
-            : node.id.startsWith('extension-installation:') ? <Package size={16} /> : <Database size={16} />}
+            : data?.extensions.some(item => item.installationId === node.id) ? <ExtensionIcon packageId={data.extensions.find(item => item.installationId === node.id)?.packageId} size={16} /> : <Database size={16} />}
           onSelect={node => {
             if (node.kind === 'folder') return
             setSelectedId(node.id)

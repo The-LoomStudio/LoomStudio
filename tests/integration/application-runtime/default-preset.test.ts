@@ -1,3 +1,7 @@
+import { join } from 'node:path'
+import { createBlobStore } from '@loom-studio/asset-store'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import type { AiGatewayRequest } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, composeAgentTurnPrompt, createPromptProcessorRegistry, type ToolDefinition } from '@loom-studio/application-runtime'
@@ -5,17 +9,20 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import type { PromptResourceNode } from '../../../packages/application-runtime/src/cards/workspace-types.js'
 import type { PromptActivation } from '../../../packages/application-runtime/src/prompt/prompt-activation.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
 function createFixture(tools: ToolDefinition[] = []) {
   let sequence = 0
   const createId = (prefix: string) => `${prefix}-${++sequence}`
   const now = () => '2026-09-21T00:00:00.000Z'
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const rootDirectory = mkdtempSync(join(tmpdir(), 'loom-default-preset-'))
+  const blobs = createBlobStore({ engine, rootDirectory, createId, now })
+  onTestFinished(async () => { await engine.close(); rmSync(rootDirectory, { recursive: true, force: true }) })
   const promptResources = createPromptResourceStore({ engine, createId, now })
   const calls: Array<Pick<AiGatewayRequest, 'messages' | 'tools'>> = []
   const promptProcessors = createPromptProcessorRegistry()
-  const runtime = createApplicationRuntime({
+  const runtime = createApplicationRuntime({ blobs,
     dataEngine: engine,
     documents: createSqliteDocumentStore({ engine }),
     agents: createAgentStore({ engine, createId, now }),
@@ -222,6 +229,11 @@ describe('bundled default preset', () => {
       expect(JSON.stringify(contents)).not.toMatch(/HISTORY_RAW|HISTORY_INTERMEDIATE/)
       expect(contents).toContain('SESSION_REPLY')
       expect(contents).toContain('CURRENT_INPUT')
+      const canonical = await runtime.getAgentTranscriptPage({ agentSessionId: session.id })
+      expect(canonical.entries.filter(entry => entry.entry.kind === 'message').map(entry => entry.entry.kind === 'message' && entry.entry.content)).toContain('HISTORY_RAW')
+      const projected = await runtime.projectHistory({ source: { kind: 'agent-session', sessionId: session.id }, phase: 'prompt' })
+      expect(projected.snapshot.matches).toHaveLength(2)
+      expect(projected.snapshot.entries.some(entry => entry.text.includes('HISTORY_RAW'))).toBe(false)
       expect((await runtime.getNarrativePage({ timelineId: timeline.id })).nodes[0]!.body.raw).toBe('HISTORY_RAW')
     } finally {
       engine.close()

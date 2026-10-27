@@ -222,6 +222,7 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         throw new Error('Only Preset Prompt Resources can import Loom Script attachments')
       }
       const content: PromptResourceContent = {
+        ...(artifact.metadata ? { metadata: structuredClone(artifact.metadata) } : {}),
         resourceKind: artifact.resourceKind,
         rootNode: clonePromptResourceNode(artifact.rootNode, ctx.createId),
         ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
@@ -265,6 +266,7 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
           schemaVersion: 2 as const,
           resourceKind: resource.resourceKind,
           rootNode: resource.rootNode,
+          ...(resource.metadata ? { metadata: structuredClone(resource.metadata) } : {}),
           ...(scriptAttachments.length ? { scriptAttachments } : {}),
           ...(resource.macros !== undefined ? { macros: structuredClone(resource.macros) } : {}),
           ...(resource.macroOptions !== undefined ? { macroOptions: structuredClone(resource.macroOptions) } : {}),

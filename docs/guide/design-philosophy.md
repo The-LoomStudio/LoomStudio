@@ -11,7 +11,7 @@ Loom Studio 不是一个普通的"套皮 API 客户端"或简单的表单系统�
 
 ## 1. 在定义 Schema 前必经的场景拷问
 
-如果你要在 Application Runtime (AIRP) 或任意核心层引入一个新的领域模型，你必须先在讨论区写一个场景用例，并通过以下模板进行拷问：
+如果你要在 Application Runtime (AIRP) 或任意核心层引入一个新的领域模型，先在对话中澄清场景；需要持久化时写入当前 Workbench Plan，并用以下模板核对：
 
 ```text
 Actor: 这个场景里是谁在使用 Studio？（例如：简单卡作者、复杂世界观作者、文生图插件作者、API 适配器开发者）

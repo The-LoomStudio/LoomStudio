@@ -99,15 +99,14 @@ Placement 只定义默认展开几何，不定义用户缩放下限。所有 Ref
 
 ## 6. 资源工作台映射
 
-资源页的 `explorer`、`split` 和 `editor` 是领域视图动作，负责选择可见 Column 组合，不拥有独立的拖拽体系：
+资源页通过 [`AssetWorkbenchLayout`](../../../apps/studio-client/src/shared/ui/asset-workbench-layout/asset-workbench-layout.tsx) 复用 `MasterDetailWorkbench`，布局偏好为 `master-detail` 与 `drilldown`：
 
-| 资源视图 | 可见 Column |
+| 布局 | 展示方式 |
 | --- | --- |
-| `explorer` | Explorer Column |
-| `split` | Explorer Column + Detail Column |
-| `editor` | Detail Column |
+| `master-detail` | 宽面板并列 Explorer 与 Detail，由 Splitter 调整目录宽度 |
+| `drilldown` | 同一区域按当前页面展示 Explorer 或 Detail |
 
-资源页左上角的三个按钮只改变 View State。Column Layout 根据 View State 生成列与 Splitter；Explorer 宽度仍属于本地布局偏好，可以由 Zustand 持久化。
+容器宽度小于 640px 时，`MasterDetailWorkbench` 自动使用单页导航。`mobilePane` 是当前页面，目录宽度仍是独立的本地偏好；临时窄屏不会覆盖宽屏尺寸。旧 `explorer/split/editor` 三态不再是当前资源工作台合同。
 
 Studio 工作窗口使用相同机制表达 Rail Column 与当前 Panel Column。Rail 收到最小端时可以吸附为纯图标宽度；该行为是 Rail Column 的约束配置，不是 Column Layout 内置的业务规则。
 

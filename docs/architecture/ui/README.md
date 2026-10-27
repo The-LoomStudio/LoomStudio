@@ -10,6 +10,12 @@ Architecture / Application / UI:
   Card、Chat、Prompt、Agent 等第一方领域体验。
 ```
 
+## 前端源码路线
+
+从 [Client README](../../../apps/studio-client/README.md#源码导航与-fsd-架构规范)进入本项目 FSD 分层、状态归属与依赖用法，再按其中的模块导航阅读 App、Feature 或共享 API 的局部说明。分层规约维护在 Client README；本目录维护跨模块宿主合同，不复制第二份 FSD 规则。
+
+需要先了解前后端怎样协作时，读取[系统总览](../system-overview.md)。第一方业务的草稿、提交与正文渲染边界仍在 [Application UI](../application/ui/README.md)。
+
 ## 当前文档
 
 - [`workspace-shell.md`](workspace-shell.md)：Base Canvas、浮动 Dock / Workspace、窗口模式和布局状态。
@@ -23,17 +29,17 @@ Architecture / Application / UI:
 
 ## 边界
 
-本目录默认描述当前实现事实；标记为“已确认合同、实现待迁移”的文档用于约束正在进入实现阶段的架构决定，不能当作已完成证明。下列方向尚未成为 Architecture contract：
+本目录描述当前实现事实；尚未实现的架构决定留在 Workbench，不能作为已完成证明。下列方向尚未成为当前实现合同：
 
 - 一维横向多窗口与插件窗口贡献；
 - 完整 Motion Contract；
 - 插件 locale resources；
-- 完整复数、日期和数字格式化；
+- 完整复数与相对时间格式化（日期、时间和数字已有统一 Intl 封装）；
 - 跨窗口焦点模型；
 - 提示词资源 Diff 与 Tokenizer 协议。
 
 当前路线从 [UI Plan 索引](../../workbench/plans/ui/README.md) 进入。以下材料分别保留历史依据和当前计划，归档候选不自动成为待办：
 
 - [Workspace 与 Motion 历史设计](../../archive/discussion/ui/widget-workspace-and-motion-v0.md)
-- [`../../workbench/plans/ui/prompt-resource-diff-mode-v0.md`](../../workbench/drafts/prompt-resource-diff-mode-v0.md)
+- [提示词资源 Diff 历史草稿](../../workbench/drafts/prompt-resource-diff-mode-v0.md)
 - [第一方 UI 历史设计](../../archive/discussion/application/ui/README.md)

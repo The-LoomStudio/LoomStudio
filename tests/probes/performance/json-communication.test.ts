@@ -1,10 +1,5 @@
-import { onTestFinished } from 'vitest'
-import { createClientBridge, type ClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createExtensionHost } from '@loom-studio/extension-host'
-import { createKernel, type Kernel } from '@loom-studio/kernel'
-import { createId } from '@loom-studio/shared'
+import { createKernelBridge } from '../../support/kernel-bridge.js'
+import { createExtensionHostHarness as createKernelHarness } from '../../contract/extension-host/helpers.js'
 
 import { describe, expect, it } from 'vitest'
 
@@ -17,74 +12,11 @@ type Measurement = {
   maxMs: number
 }
 
-function createHarness() {
-  const diagnostics = createInMemoryDiagnosticsRegistry()
-  const documents = createInMemoryDocumentStore()
-  let kernel: Kernel
-  const extensionHost = createExtensionHost({
-    documents,
-    diagnostics,
-    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
-      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
-    },
-    emitEvent: (name, payload, publisher) => {
-      return kernel.getEventBus().emit(name, payload, {
-        publisher,
-        source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
-      })
-    },
-  })
-
-  kernel = createKernel({
-    documents,
-    dataCommits: documents,
-    diagnostics,
-    extensionHost,
-  })
-
-  onTestFinished(async () => {
-    try {
-      await kernel.stop()
-      await extensionHost.disposeAll()
-    } finally {
-      await documents.close()
-    }
-  })
-
-  return { kernel }
-}
-
-function createBridge(kernel: Kernel): ClientBridge {
-  return createClientBridge({ endpoint: 'http://kernel/trpc', fetch: createKernelFetch(kernel) })
-}
-
-function createKernelFetch(kernel: Kernel): typeof fetch {
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const context = {
-      clientId: 'json-performance-client',
-      correlationId: createId('corr'),
-      callId: createId('call'),
-    }
-
-    try {
-      const path = new URL(String(input)).pathname.split('/').at(-1)!
-      const data = init?.body === undefined ? undefined : JSON.parse(String(init.body))
-      const request = path === 'kernel.invoke' ? data : { method: path, params: data }
-      const result = await kernel.callRpc(request.method, request.params, context)
-      return jsonResponse({ result: { data: result } })
-    } catch (error) {
-      return jsonResponse({ error: { message: error instanceof Error ? error.message : String(error), code: -32603, data: { code: 'INTERNAL_SERVER_ERROR', httpStatus: 500 } } })
-    }
-  }) as typeof fetch
-}
-
 describe('JSON communication performance probes', () => {
   it('P1: measures sequential system.ping tRPC baseline', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     await kernel.start()
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
 
     const measurement = await measure('100 sequential system.ping', 100, async index => {
       await bridge.call('system.ping', { echo: `ping-${index}` })
@@ -97,9 +29,9 @@ describe('JSON communication performance probes', () => {
   })
 
   it('P2: measures small JSON docs.write throughput through ClientBridge', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     await kernel.start()
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
 
     const measurement = await measure('100 sequential small docs.write', 100, async index => {
       await bridge.call('docs.write', {
@@ -118,9 +50,9 @@ describe('JSON communication performance probes', () => {
   })
 
   it('P3: probes medium JSON payload round trip without strict timing assertions', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     await kernel.start()
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
     const content = createJsonPayload(128 * 1024)
 
     const write = await measure('1 medium docs.write 128KiB JSON', 1, async () => {
@@ -144,9 +76,9 @@ describe('JSON communication performance probes', () => {
   })
 
   it('P4: measures docs.list pagination over 500 small JSON documents', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     await kernel.start()
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
 
     for (let index = 0; index < 500; index += 1) {
       await bridge.call('docs.write', {
@@ -212,11 +144,4 @@ function createJsonPayload(sizeBytes: number): { kind: string; text: string } {
     kind: 'json-payload-probe',
     text: 'x'.repeat(sizeBytes),
   }
-}
-
-function jsonResponse(response: unknown): Response {
-  return new Response(JSON.stringify(response), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  })
 }

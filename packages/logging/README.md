@@ -46,6 +46,12 @@
 
 ---
 
+## 依赖职责与记录边界
+
+唯一 Workspace 依赖 `@loom-studio/shared` 提供跨端 JSON 合同。Logger、规范化、查询与 Ring Buffer 在根入口实现；Node 文件 Sink / Reader 复用原生文件、流和路径 API，不依赖 Pino、Winston 或另一套日志采集器。业务模块消费注入的 `Logger`，Root、flush/close 与目录由组合根拥有。
+
+敏感键脱敏是第二道保险，不扫描 message，也不能判断任意正文或错误文本是否私密。调用点必须遵守 metadata-only 准入；Prompt、Provider payload、工具参数/结果等证据交给 Observation，不放入普通运行日志。
+
 ## 构建与验证
 
 ```bash

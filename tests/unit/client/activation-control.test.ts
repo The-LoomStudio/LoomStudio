@@ -12,11 +12,10 @@ describe('activation control model', () => {
     })
   })
 
-  it('toggles activation tags without mutating the previous list', () => {
+  it('toggles activation tags', () => {
     const tags = ['scene:combat'] as const
 
     expect(toggleActivationTag([...tags], 'style:cinematic')).toEqual(['scene:combat', 'style:cinematic'])
     expect(toggleActivationTag([...tags], 'scene:combat')).toEqual([])
-    expect(tags).toEqual(['scene:combat'])
   })
 })

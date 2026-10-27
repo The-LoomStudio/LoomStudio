@@ -45,6 +45,26 @@ function fixture() {
 }
 
 describe('Extension prompt resource import', () => {
+  it('binds a preset icon to its owning package and keeps it after duplication and update', async () => {
+    const { engine, runtime, input } = fixture()
+    try {
+      const icon = { kind: 'package' as const, packageId: input.packageId, path: 'assets/nom.png' }
+      const artifact = input.promptResources[0]!.artifact
+      if (!isPromptResourceArtifact(artifact)) throw new Error('Invalid fixture artifact')
+      artifact.metadata = { icon }
+      const result = await runtime.importExtensionPackageResources(input)
+      const resourceId = result.promptResources[0]!.resourceId
+      const expected = { icon: { ...icon, target: { kind: 'global' } } }
+      expect((await runtime.getPromptResource({ resourceId })).resource.metadata).toEqual(expected)
+      artifact.metadata = { icon: { ...icon, path: 'assets/nom-updated.png' } }
+      const installation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === result.installationId)!
+      await runtime.importExtensionPackageResources({ ...input, update: { expectedInstallationVersion: installation.version } })
+      const updated = { icon: { ...expected.icon, path: 'assets/nom-updated.png' } }
+      expect((await runtime.getPromptResource({ resourceId })).resource.metadata).toEqual(updated)
+      expect((await runtime.duplicatePromptResource({ resourceId })).resource.metadata).toEqual(updated)
+    } finally { await engine.close() }
+  })
+
   it('keeps missing external Setting mounts through edits and resource export without blocking Preview', async () => {
     const f = fixture()
     const { engine, runtime, input, promptResources } = f

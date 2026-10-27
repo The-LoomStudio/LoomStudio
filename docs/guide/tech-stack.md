@@ -13,9 +13,11 @@
 | 需要缓存和失效的服务端状态 | TanStack Query | 手写 request guard、全局 loading 和多组 refresh choreography |
 | 无界列表或树 | TanStack Virtual | 数据规模可增长时一次挂载全部可见组件 |
 | Context Menu / Dropdown | Radix primitives | 重写键盘焦点、Dismiss 和 Overlay 基础行为 |
+| 命令菜单 / 全局搜索键盘列表 | `@loom-studio/ui` 的 cmdk `CommandMenu` | 手写另一套选项键盘导航或绕过 feature 的搜索排序 |
 | 瞬时通知 | Sonner | 用 toast 代替可恢复错误状态 |
 | 长文本和代码编辑 | CodeMirror | 为语法、历史、搜索和 diff 自建编辑器 |
 | Markdown / YAML | react-markdown、remark-gfm、`yaml` | 使用正则实现简化 parser |
+| 消息切块、HTML 解析与安全展示 | `unified` / `remark-parse` / `parse5`，展示经 `rehype-raw` / `rehype-sanitize` | 把解析器当成消毒器，或绕过 `features/message-content` 重写切块 |
 | 图标 | Lucide 与既有品牌资产 | 为通用操作重复维护手绘 SVG |
 | 样式 | SCSS Modules + `--loom-*` | 为局部功能引入第二套主题或全局 CSS 框架 |
 
@@ -26,15 +28,15 @@ React 负责局部组件状态。TanStack Query 负责缓存型远端状态，Zu
 
 ## 2. Server 与跨端默认能力
 
-- HTTP/RPC 使用 Node `node:http` 与现有 Transport，不为普通路由增加 Express/Fastify/Hono。
+- HTTP 使用 Node `node:http`，主应用 RPC 使用 `@trpc/server` / `@trpc/client`；业务端复用 `shared/api/studio-api.ts`，不平行实现传输协议。动态扩展 RPC 仍经 Kernel adapter。
 - SQLite 使用 `node:sqlite` 和 `@loom-studio/data-engine`，领域 Store 不各自管理 connection、migration 或 transaction。
 - Provider HTTP 与代理复用 Undici；ZIP 编解码复用 fflate。
-- Zod 当前用于 AI Gateway 配置和 Shared Lore Mount RPC；新增跨端结构化边界且没有既有 parser 时优先评估，可信内部纯函数继续使用 TypeScript 类型。
+- Zod 当前用于 tRPC 输入、AI Gateway 配置和 Shared Lore Mount RPC；新增跨端结构化边界且没有既有 parser 时优先评估，可信内部纯函数继续使用 TypeScript 类型。
 - 跨端 JSON DTO、Schema 和纯逻辑进入 `@loom-studio/shared`；Shared 不依赖 React、数据库、Node 专属 API 或 Application Runtime。
 
 ## 3. 开发与审计工具
 
-- TypeScript 7 原生编译器与 Oxlint：类型、导入方向和静态规则；现有 `tsc`、Build 和 Watch 命令保持不变。
+- TypeScript 与 Oxlint（当前版本见根清单）：类型、导入方向和静态规则；现有 `tsc`、Build 和 Watch 命令保持不变。
 - Vitest：单元、契约与集成测试。
 - fast-check：树操作和状态转换等真实不变量。
 - mitata：纯 model/lib 基准，不替代浏览器性能诊断。

@@ -99,3 +99,18 @@ export type ListLoreMountsInput = z.infer<typeof listLoreMountsInputSchema>
 export type ListLoreMountsResult = z.infer<typeof listLoreMountsResultSchema>
 export type ReplaceLoreMountsInput = z.infer<typeof replaceLoreMountsInputSchema>
 export type ReplaceLoreMountsResult = z.infer<typeof replaceLoreMountsResultSchema>
+
+/** Package-owned display metadata; references remain meaningful when a preset is copied. */
+export const promptResourceDisplayMetadataSchema = z.object({
+  icon: z.object({
+    kind: z.literal('package'),
+    packageId: z.string().regex(/^[A-Za-z0-9._-]+$/),
+    path: z.string().min(1).refine(path => !path.startsWith('/') && !path.includes('\\')
+      && !path.includes(':') && path.split('/').every(part => part !== '..' && part !== '.' && part !== ''), 'Expected a package-relative file path'),
+    target: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('global') }),
+      z.object({ kind: z.literal('card'), cardId: z.string().min(1) }),
+    ]).optional(),
+  }).strict().optional(),
+}).strict()
+export type PromptResourceDisplayMetadata = z.infer<typeof promptResourceDisplayMetadataSchema>

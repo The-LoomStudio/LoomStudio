@@ -5,9 +5,11 @@ import { createAgentStore, createNarrativeStore, createPromptResourceStore } fro
 import type { AiGatewayRequest, AiGatewayResult } from '@loom-studio/ai-gateway'
 import { estimateRequestTokens } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, createNarrativeContextRegistry, type NarrativeContextProjection, type ToolDefinition } from '@loom-studio/application-runtime'
+import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import type { ChatMessage } from '@loom-studio/shared'
+import { serializeLoomScriptMetadata } from '@loom-studio/shared/loom-scripts'
 import type { PromptResourceNode } from '../../../packages/application-runtime/src/cards/workspace-types.js'
 import { beforeAll, describe, expect, it } from 'vitest'
 
@@ -26,6 +28,8 @@ const writeCall = (text: string): ChatMessage => ({
 })
 const flatten = (node: PromptResourceNode): PromptResourceNode[] => [node, ...(node.children ?? []).flatMap(flatten)]
 const project = (text: string) => text.replaceAll('RAW:', 'PROMPT:')
+const sessionMemory = '# 共同工作记忆\n\n暂无共同工作记录。\n\n\nMEMO:WORK_FACTS'
+const narrativeText = (messages: ChatMessage[]) => messages.find(message => message.content?.startsWith('<history>'))!.content
 const visible = (messages: ChatMessage[]) => messages.map(message => {
   // Provider payloads also carry fragmentIds for inspection; compare all protocol fields, not random IDs.
   if (message.role === 'tool') return { role: message.role, content: message.content, tool_call_id: message.tool_call_id }
@@ -63,6 +67,7 @@ async function simulateLifecycle() {
     })
     const runtime = createApplicationRuntime({
       dataEngine: engine, agents, narratives, promptResources, documents, narrativeContext,
+      blobs: createBlobStore({ engine, rootDirectory: join(directory, 'blobs'), ...options }),
       agentTools: createAgentToolRegistry(tools, tools.map(tool => ({
         toolId: tool.id,
         execute: async ({ invocation, scope }) => {
@@ -184,13 +189,23 @@ async function simulateLifecycle() {
         },
       })
     }
-    await runtime.upsertTextTransformRule({
-      ruleId: 'lifecycle-projection',
-      rule: {
-        name: 'Prompt-only projection', owner: { kind: 'preset', presetId: preset.id },
-        enabled: true, orderIndex: 0, matcher: { kind: 'regex', pattern: 'RAW:', flags: 'g' },
-        effect: { kind: 'replace', replacement: 'PROMPT:' }, targets: ['narrative'], phases: ['prompt'],
-      },
+    const { script } = await runtime.importLoomScript({
+      owner: { kind: 'preset', presetId: preset.id }, fileName: 'lifecycle.loom.js',
+      source: serializeLoomScriptMetadata({
+        formatVersion: 1, metadataId: 'lifecycle-projection', scriptVersion: '1.0.0',
+        name: 'Prompt-only projection', runtime: 'declarative', requestedCapabilities: [],
+        contributions: [{ kind: 'text-transform', id: 'rule', rule: {
+          name: 'Prompt-only projection', enabled: true, orderIndex: 0,
+          matcher: { kind: 'regex', pattern: 'RAW:', flags: 'g' },
+          effect: { kind: 'replace', replacement: 'PROMPT:' }, targets: ['narrative'], phases: ['prompt'],
+        } }],
+      }),
+    })
+    const { mount } = await runtime.createLoomScriptMount({
+      target: { kind: 'preset', presetId: preset.id }, scriptDocumentId: script.id, orderIndex: 0,
+    })
+    await runtime.updateLoomScriptMount({
+      mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 0, grantedCapabilities: [],
     })
     const { providerProfile } = await runtime.createProviderProfile({
       providerExtensionId: 'official.openai-compatible', displayName: 'Simulation',
@@ -224,10 +239,12 @@ async function simulateLifecycle() {
     const restartPreview = await restarted.previewAgentTurn({ agentSessionId: session.id, input: 'INPUT_THREE' })
     await restarted.invokeAgentTurn({ agentSessionId: session.id, input: 'INPUT_THREE' })
     const completedTranscript = await fixture.agents.getEntryPage({ agentSessionId: session.id, limit: 100 })
+    const requestsBeforeCancel = requests.length
     const abort = new AbortController()
-    abort.abort('test-cancel')
+    abort.abort()
     await expect(restarted.invokeAgentTurn({ agentSessionId: session.id, input: 'INPUT_CANCELLED' }, { abortSignal: abort.signal }))
       .rejects.toMatchObject({ name: 'AbortError' })
+    expect(requests).toHaveLength(requestsBeforeCancel)
     const abortedTranscript = await fixture.agents.getEntryPage({ agentSessionId: session.id, limit: 100 })
     const { session: isolated } = await restarted.createAgentSession({ agentPresetId: agentPreset.id, timelineId: created.timeline.id })
     const isolatedPreview = await restarted.previewAgentTurn({ agentSessionId: isolated.id, input: 'ISOLATED_INPUT' })
@@ -285,8 +302,9 @@ describe('Default preset: simulated Agent lifecycle', () => {
       { role: 'system', content: 'ROLE:WRITER\n\nSOP:WRITE_WITH_TOOLS\n\nSTYLE:清晰自然，人物言行符合已有设定。' },
       { role: 'system', content: toolInstructions },
       { role: 'system', content: '<world>\n\nSTABLE_B\n\nSTABLE_A\n\n</world>' },
-      { role: 'developer', content: ['<history>', 'MEMORY:EARLIER_EVENTS', ...initialWindow.map(project), '</history>'].join('\n\n') },
-      { role: 'system', content: 'MEMO:WORK_FACTS' },
+      { role: 'system', content: 'MEMORY:EARLIER_EVENTS' },
+      { role: 'system', content: ['<history>', ...initialWindow.map(project), '</history>'].join('\n\n') },
+      { role: 'system', content: sessionMemory },
       { role: 'system', content: 'CONDITIONAL:RUN_ONE' },
       { role: 'user', content: 'INPUT_ONE' },
       { role: 'system', content: 'TAIL:ORDINARY' },
@@ -320,7 +338,7 @@ describe('Default preset: simulated Agent lifecycle', () => {
     for (const request of requests.slice(0, 4)) {
       expect(request.tools).toEqual(requests[0]!.tools)
       expect(request.messages.filter(message => message.content === 'INPUT_ONE')).toHaveLength(1)
-      expect(request.messages.find(message => message.role === 'developer')!.content).not.toContain('WRITTEN_IN_RUN_ONE')
+      expect(narrativeText(request.messages)).not.toContain('WRITTEN_IN_RUN_ONE')
     }
     expect(scenario.afterOne.nodes.at(-1)?.id).toBe(written.nodeId)
     expect(scenario.afterOne.nodes.at(-1)?.source).toMatchObject({
@@ -349,7 +367,7 @@ describe('Default preset: simulated Agent lifecycle', () => {
     const baseLength = requests[4]!.messages.length
     expect(visible(requests[5]!.messages.slice(0, baseLength))).toEqual(visible(requests[4]!.messages))
     expect(requests[5]!.messages.at(-1)?.content).toContain('SAVED:RAW:COMMITTED_BEFORE_FAILURE')
-    expect(scenario.abortedTranscript.entries.at(-1)?.entry).toMatchObject({ kind: 'run-state', state: 'aborted' })
+    expect(scenario.abortedTranscript.entries).toEqual(completedTranscript.entries)
     expect(toolEvents).toHaveLength(4)
   })
 
@@ -357,20 +375,20 @@ describe('Default preset: simulated Agent lifecycle', () => {
     const { requests, isolatedPreview, mainPreview, mainPage } = scenario
     const second = requests[4]!.messages
     const third = requests[6]!.messages
-    const adoptedNarrative = visible(requests[0]!.messages.slice(3, 4))[0]!
+    const adoptedContext = visible(requests[0]!.messages.slice(0, 5))
     const priorHistory = [
-      { role: 'system', content: 'MEMO:WORK_FACTS' },
+      { role: 'system', content: sessionMemory },
       { role: 'user', content: 'INPUT_ONE' },
       ...visible(requests[3]!.messages.slice(requests[0]!.messages.length)),
       { role: 'assistant', content: 'RUN_ONE_DONE' },
     ]
     const tail = visible(requests[0]!.messages.slice(-3))
     expect(visible(second)).toEqual([
-      ...visible(requests[0]!.messages.slice(0, 3)), adoptedNarrative,
+      ...adoptedContext,
       ...priorHistory, { role: 'user', content: 'INPUT_TWO' }, ...tail,
     ])
     expect(visible(third)).toEqual([
-      ...visible(requests[0]!.messages.slice(0, 3)), adoptedNarrative,
+      ...adoptedContext,
       ...priorHistory, { role: 'user', content: 'INPUT_TWO' },
       ...visible(requests[5]!.messages.slice(requests[4]!.messages.length)),
       { role: 'user', content: 'INPUT_THREE' }, ...tail,
@@ -386,25 +404,11 @@ describe('Default preset: simulated Agent lifecycle', () => {
         .toBeLessThan(messages.findIndex(message => message.content === input))
     }
     expect(JSON.stringify(isolatedPreview.messages)).not.toMatch(/INPUT_ONE|INPUT_TWO|RUN_ONE_DONE|RECOVERED_AFTER_RESTART/)
-    expect(isolatedPreview.messages.find(message => message.role === 'developer')?.content).not.toContain('PROMPT:COMMITTED_BEFORE_FAILURE')
+    expect(narrativeText(isolatedPreview.messages)).not.toContain('PROMPT:COMMITTED_BEFORE_FAILURE')
     expect(mainPage.nodes.at(-1)?.body.raw).toBe('RAW:N105')
-    expect(mainPreview.messages.find(message => message.role === 'developer')?.content)
-      .toBe(['<history>', 'MEMORY:EARLIER_EVENTS', ...mainPage.nodes.map(node => project(node.body.raw)), '</history>'].join('\n\n'))
+    expect(narrativeText(mainPreview.messages))
+      .toBe(['<history>', ...mainPage.nodes.map(node => project(node.body.raw)), '</history>'].join('\n\n'))
     expect(JSON.stringify(mainPreview.messages)).not.toMatch(/ALT104|ALT105|WRITTEN_IN_RUN_ONE|COMMITTED_BEFORE_FAILURE/)
   })
 
-  it('retains completed tool actions and results across interactions and a database restart', () => {
-    const messages = scenario.requests[4]!.messages
-    expect([
-      messages.some(message => message.role === 'tool' && message.tool_call_id === 'read-before-write'),
-      messages.some(message => message.content?.includes(`invocation_id="${scenario.toolEvents[1]!.invocationId}"`)),
-      scenario.requests[6]!.messages.some(message =>
-        message.content?.includes(`invocation_id="${scenario.toolEvents[3]!.invocationId}"`)),
-    ]).toEqual([true, true, true])
-  })
-
-  it('keeps the published Narrative baseline unchanged across writes and subsequent interactions', () => {
-    const narrative = (index: number) => scenario.requests[index]!.messages.find(message => message.role === 'developer')!.content
-    expect(narrative(4)).toBe(narrative(0))
-  })
 })

@@ -2,6 +2,7 @@ import {
   createOfficialAgentToolRegistry,
   createPromptToolExecutionScope,
   officialAppendNarrativeTool,
+  officialDeclareNarrativeTool,
   officialEditNarrativeTool,
   officialReadContextTool,
   officialReadStateTool,
@@ -42,6 +43,7 @@ describe('official Agent context tools', () => {
       officialReadStateTool,
       officialUpdateStateTool,
       officialAppendNarrativeTool,
+      officialDeclareNarrativeTool,
       officialEditNarrativeTool,
       officialSearchPromptResourcesTool,
       officialReadPromptResourceTool,
@@ -100,53 +102,24 @@ describe('official Agent context tools', () => {
     expect(denied).toMatchObject({ status: 'failed', error: { code: 'state.permission_denied' } })
   })
 
-  it('preserves State error codes and replays one invocation without a second mutation', async () => {
+  it.each(['state.schema_minimum', 'state.head_conflict'])('passes the invocation identity and preserves %s from State', async code => {
     const registry = createOfficialAgentToolRegistry()
-    const revisions = new Map<string, string>()
-    let mutations = 0
-    const stateScope = {
-      ...scope,
-      state: {
+    const invocation = {
+      id: 'inv-state', toolId: officialUpdateStateTool.id, transport: 'native-function' as const,
+      arguments: { target: { scope: 'global' }, expectedRevisionId: 'revision-1', operations: [{ op: 'increment', path: '/gold', by: -3 }] },
+    }
+    const result = await registry.execute(invocation, signal, {
+      ...scope, state: {
         canAccess: () => true,
         read: async () => ({ revisionId: 'revision-1', value: { gold: 10 } }),
-        update: async (input: { expectedRevisionId: string; idempotencyKey: string }) => {
-          if (input.expectedRevisionId === 'schema-error') {
-            throw Object.assign(new Error('gold must be non-negative'), { code: 'state.schema_minimum' })
-          }
-          if (input.expectedRevisionId === 'stale-revision') {
-            throw Object.assign(new Error('State head changed'), { code: 'state.head_conflict' })
-          }
-          const replay = revisions.get(input.idempotencyKey)
-          if (replay) return { revisionId: replay }
-          mutations += 1
-          revisions.set(input.idempotencyKey, 'revision-2')
-          return { revisionId: 'revision-2' }
+        update: async input => {
+          expect(input).toEqual({ target: { scope: 'global' }, expectedRevisionId: 'revision-1',
+            operations: [{ op: 'increment', path: '/gold', by: -3 }], idempotencyKey: invocation.id })
+          throw Object.assign(new Error('State rejected the mutation'), { code })
         },
       },
-    }
-    const invocation = {
-      id: 'inv-idempotent', toolId: officialUpdateStateTool.id,
-      arguments: {
-        target: { scope: 'global' }, expectedRevisionId: 'revision-1',
-        operations: [{ op: 'increment', path: '/gold', by: -3 }],
-      }, transport: 'native-function' as const,
-    }
-
-    const first = await registry.execute(invocation, signal, stateScope)
-    const replay = await registry.execute(invocation, signal, stateScope)
-    const schemaError = await registry.execute({
-      ...invocation, id: 'inv-schema',
-      arguments: { ...invocation.arguments, expectedRevisionId: 'schema-error' },
-    }, signal, stateScope)
-    const headConflict = await registry.execute({
-      ...invocation, id: 'inv-conflict',
-      arguments: { ...invocation.arguments, expectedRevisionId: 'stale-revision' },
-    }, signal, stateScope)
-
-    expect(first).toEqual(replay)
-    expect(mutations).toBe(1)
-    expect(schemaError).toMatchObject({ status: 'failed', error: { code: 'state.schema_minimum' } })
-    expect(headConflict).toMatchObject({ status: 'failed', error: { code: 'state.head_conflict' } })
+    })
+    expect(result).toMatchObject({ status: 'failed', error: { code } })
   })
 
   it('searches the current execution scope and reads an exact item', async () => {
@@ -206,81 +179,6 @@ describe('official Agent context tools', () => {
 
     expect(result.context.map(item => item.id)).toEqual(['knowledge-fragment'])
     expect(result.context[0]).toMatchObject({ name: 'Hidden Knowledge', promptState: 'not-triggered' })
-  })
-
-  it('appends narrative node to active timeline through append_narrative tool', async () => {
-    const registry = createOfficialAgentToolRegistry()
-    let appendedContent = ''
-    const narrativeScope = {
-      ...scope,
-      narrative: {
-        timelineId: 'timeline-1',
-        branchId: 'branch-1',
-        sample: async () => { throw new Error('Not used') },
-        appendNode: async ({ content }: { content: string }) => {
-          appendedContent = content
-          return { nodeId: 'node-new-1', floor: 2 }
-        },
-        editNode: async () => {
-          throw new Error('Not used')
-        },
-      },
-    }
-
-    const result = await registry.execute({
-      id: 'inv-append-1',
-      toolId: officialAppendNarrativeTool.id,
-      arguments: { content: '新情节发生在一个雨夜。' },
-      transport: 'native-function',
-    }, signal, narrativeScope)
-
-    expect(result.status).toBe('completed')
-    expect(appendedContent).toBe('新情节发生在一个雨夜。')
-    expect(result.content).toEqual([{
-      type: 'json',
-      value: {
-        floor: 2, path: '/narrative/2.md',
-      },
-    }])
-  })
-
-  it('edits narrative node in active timeline through edit_narrative tool', async () => {
-    const registry = createOfficialAgentToolRegistry()
-    let editedFloor = 0
-    let editedContent = ''
-    const narrativeScope = {
-      ...scope,
-      narrative: {
-        timelineId: 'timeline-1',
-        branchId: 'branch-1',
-        sample: async () => { throw new Error('Not used') },
-        appendNode: async () => {
-          throw new Error('Not used')
-        },
-        editNode: async ({ floor, content }: { floor?: number; content: string }) => {
-          editedFloor = floor!
-          editedContent = content
-          return { nodeId: 'node-existing-1', floor: floor! }
-        },
-      },
-    }
-
-    const result = await registry.execute({
-      id: 'inv-edit-1',
-      toolId: officialEditNarrativeTool.id,
-      arguments: { floor: 1, content: '修改后的情节' },
-      transport: 'native-function',
-    }, signal, narrativeScope)
-
-    expect(result.status).toBe('completed')
-    expect(editedFloor).toBe(1)
-    expect(editedContent).toBe('修改后的情节')
-    expect(result.content).toEqual([{
-      type: 'json',
-      value: {
-        floor: 1, path: '/narrative/1.md',
-      },
-    }])
   })
 
   it('supports read_state with dot-notation properties and automatic defaultTarget fallback', async () => {

@@ -33,7 +33,9 @@ iframe 仅授予 `allow-scripts`，不授予 `allow-same-origin`。消息和 Loo
 
 普通消息的加载确认不依赖高度消息，避免后台标签页暂停动画帧测量时误判失败。共享尺寸工具默认范围为 32–6000px，重新绑定被替换的 body；消息 HTML 明确传入无限上界，允许长文档自然展开，仍拒绝非有限数值。其他 iframe 调用方保留默认限制。第三方 `100vh` 加额外内容等依赖 iframe 视口的布局可能反馈增长，不承诺任意网页的内在高度求解；作者应避免让文档总高度反过来依赖外层自适应 iframe 高度。
 
-消息展示按用户最新决定取消高度上限，跟随文档测量高度，不提供展开按钮，也不注入根滚动条样式；作者自行设置的滚动容器保持原样。宿主在独立 HTML 块之间保留 12px 间距，不改写作者文档内部的布局。首次加载复用 SkeletonText，加载／尺寸就绪后淡入；等待期间 frame 为 inert，reduced-motion 下关闭淡入。最近高度按完整内容、宽度和主题签名缓存在内存中，最多 32 项且键总长不超过 100 万字符，不持久化 HTML。
+消息展示不设宿主高度上限，跟随文档测量高度，不提供展开按钮，也不注入根滚动条样式；作者自行设置的滚动容器保持原样。宿主在独立 HTML 块之间保留 12px 间距，不改写作者文档内部的布局。首次加载复用 SkeletonText，加载／尺寸就绪后淡入；等待期间 frame 为 inert，reduced-motion 下关闭淡入。最近高度按完整内容、宽度和主题签名缓存在内存中，最多 32 项且键总长不超过 100 万字符，不持久化 HTML。
+
+`HtmlPreview` 将 iframe 视口直接设置为测量高度，只对宿主占位块进行高度过渡，避免中间视口高度反复触发文档重排。`prefers-reduced-motion` 下关闭过渡；这不改变完整 HTML 边界确认后才创建 iframe 的消费时机。实现见 [`html-preview.tsx`](../../../apps/studio-client/src/features/message-content/ui/html-preview.tsx)。
 
 未进入 Timeline 的角色卡开场白通过只读 `application.previewCardOpeningDisplay` 使用同一规则引擎。它按当前卡片、显式预设与公共规则执行 Narrative/Display、深度 0 的单条投影，不创建历史、不应用不存在的 Timeline Override；正式会话仍消费冻结的规则。客户端以 endpoint、角色、预设、正文和刷新版本隔离请求。
 

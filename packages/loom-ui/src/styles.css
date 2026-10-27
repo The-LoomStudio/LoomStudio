@@ -442,22 +442,14 @@ input[type='radio'][data-loom-ui-radio]:disabled {
 [data-loom-ui-dialog-actions] > button:hover:not(:disabled) { border-color: transparent; color: var(--loom-color-text); background: transparent; }
 /* Tool workbenches keep a stable viewport; each content region owns its scroll. */
 [data-loom-ui-dialog][data-layout='workbench'] {
-  width: min(960px, calc(100vw - 32px));
+  width: min(1200px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
-  height: min(680px, calc(var(--loom-viewport-height, 100dvh) - 32px));
+  height: min(820px, calc(var(--loom-viewport-height, 100dvh) - 32px));
   max-height: calc(var(--loom-viewport-height, 100dvh) - 32px);
 }
 [data-loom-ui-dialog][data-layout='workbench'] > [data-loom-ui-dialog-frame] { height: 100%; }
 [data-loom-ui-dialog][data-layout='workbench'] > [data-loom-ui-dialog-frame] > [data-loom-ui-dialog-header] { margin-inline: 16px; padding: 12px 4px; border-bottom: 1px solid var(--loom-color-divider); }
 [data-loom-ui-dialog][data-layout='workbench'] > [data-loom-ui-dialog-frame] > [data-loom-ui-dialog-body] { min-width: 0; overflow: hidden; padding: 0; }
-@media (max-width: 640px) {
-  [data-loom-ui-dialog][data-layout='workbench'] {
-    width: calc(100vw - 16px);
-    max-width: calc(100vw - 16px);
-    height: calc(var(--loom-viewport-height, 100dvh) - 16px);
-    max-height: calc(var(--loom-viewport-height, 100dvh) - 16px);
-  }
-}
 [data-loom-ui-dialog][data-layout='media'] {
   --loom-color-text: #eee;
   --loom-color-text-muted: #bbb;
@@ -479,6 +471,24 @@ input[type='radio'][data-loom-ui-radio]:disabled {
 [data-loom-ui-dialog][data-layout='media'] [data-loom-ui-dialog-title-row] h2 { flex-basis: 160px; }
 [data-loom-ui-dialog][data-layout='media'] [data-loom-ui-dialog-header-actions] { max-width: 100%; margin-left: auto; }
 [data-loom-ui-dialog][data-layout='media'] [data-loom-ui-dialog-body] { position: relative; overflow: hidden; padding: 0; }
+
+/* Mobile dialogs fill the viewport; safe-area padding belongs inside the frame. */
+@media (max-width: 640px) {
+  [data-loom-ui-dialog][data-layout] {
+    width: 100vw;
+    max-width: 100vw;
+    height: var(--loom-viewport-height, 100dvh);
+    max-height: var(--loom-viewport-height, 100dvh);
+    margin: 0;
+    border-radius: 0;
+  }
+  [data-loom-ui-dialog] > [data-loom-ui-dialog-frame] {
+    height: 100%;
+    box-sizing: border-box;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  [data-loom-ui-dialog][data-layout='media'] > [data-loom-ui-dialog-frame] { padding: 0; }
+}
 
 .loom-ui-menu {
   position: relative;

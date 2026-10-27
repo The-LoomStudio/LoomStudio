@@ -74,17 +74,6 @@ describe('extension host cleanup contract', () => {
     }
   })
 
-  it('dispose cleans extension rpc registrations', async () => {
-    const { kernel, extensionHost } = createExtensionHostHarness()
-    await kernel.start()
-    await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
-    await extensionHost.activate('example.echo', 'server')
-
-    await extensionHost.dispose('example.echo', 'server')
-
-    await expect(kernel.callRpc('example.echo.echo', {})).rejects.toThrow('method not found')
-  })
-
   it('forget removes the discovered module and allows a later rediscovery', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()

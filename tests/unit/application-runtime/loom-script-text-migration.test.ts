@@ -108,6 +108,8 @@ describe('Text rules become Script contributions', () => {
       const exported = (await f.runtime.exportPromptResource({ resourceId: resource.id })).artifact
       expect(exported.scriptAttachments?.[0]?.script.source).toBe(source)
       expect(exported.scriptAttachments?.[0]?.settings).toEqual({ caption: '用户标题' })
+      await expect(createApplicationRuntime({ ...f, blobs: undefined }).exportPromptResource({ resourceId: resource.id }))
+        .rejects.toThrow('Blob Store is required to export Script attachments')
       artifact = exported as typeof artifact
       previousId = nextId
     }

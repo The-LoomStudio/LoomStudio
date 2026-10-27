@@ -107,6 +107,7 @@ export function createOfficialContentRuntimeMethods(ctx: OfficialContentRuntimeC
             content: {
               resourceKind: artifact.resourceKind,
               rootNode: structuredClone(artifact.rootNode),
+              metadata: structuredClone(artifact.metadata ?? {}),
               ...(artifact.resourceKind === 'preset' ? {
                 historyPolicy: previous?.historyPolicy ?? 'persistent' as const,
                 delivery: previous?.delivery ?? 'stream' as const,

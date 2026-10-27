@@ -350,6 +350,7 @@ export async function exportCardArtifact(input: {
       }))
   const contextAssets = resources.map(resource => resource.rootNode)
   const contextAssetSettings = Object.fromEntries(resources.map(resource => [resource.rootNode.id, {
+    ...(resource.metadata ? { metadata: resource.metadata } : {}),
     ...(resource.macros !== undefined ? { macros: resource.macros } : {}),
     ...(resource.macroOptions !== undefined ? { macroOptions: resource.macroOptions } : {}),
     ...(resource.useCardLore !== undefined ? { useCardLore: resource.useCardLore } : {}),

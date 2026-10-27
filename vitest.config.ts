@@ -79,11 +79,6 @@ export default defineConfig({
     },
   },
   test: {
-    environmentMatchGlobs: [
-      ['tests/unit/client/**', 'happy-dom'],
-      ['tests/integration/client/**', 'happy-dom'],
-      ['tests/probes/client/**', 'happy-dom'],
-    ],
     include: scopedTestInclude,
     exclude: testScope ? ['**/node_modules/**', '**/dist/**'] : defaultTestExclude,
     passWithNoTests: false,

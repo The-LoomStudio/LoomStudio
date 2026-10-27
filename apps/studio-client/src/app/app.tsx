@@ -1,3 +1,4 @@
+import { ExtensionIdentityContext } from '../shared/ui/extension-icon/extension-icon.js'
 import { StudioDashboard } from './studio-dashboard.js'
 import { AgentMutationApprovalDialog } from '../widgets/agent-chat-panel/agent-mutation-approval-dialog.js'
 import { useUserBackgrounds } from '../features/backgrounds/model/use-user-backgrounds.js'
@@ -774,7 +775,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     }} />
 
   return (
-    <>
+    <ExtensionIdentityContext.Provider value={[...clientExtensions.packages, ...clientExtensions.cardPackages]}>
       {themeController.startupReady ? <StartupReady /> : null}
       <OfficialExtensionSetup api={state.api.extensions} ready={!assistantGuide && state.startup.ready('cards')} t={state.t}
         onInstalled={async () => {
@@ -814,7 +815,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         onOpenResult={hit => { void openSearchResult(hit) }} />
       <RendererFocusSurface host={rendererHost} scope={{ kind: 'workspace', key: 'workspace' }} />
       <NotificationToaster label={state.t('notification.label')} />
-    </>
+    </ExtensionIdentityContext.Provider>
   )
 }
 

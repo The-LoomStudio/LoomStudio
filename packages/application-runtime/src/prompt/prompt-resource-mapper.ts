@@ -18,6 +18,7 @@ import { normalizeMacros } from '../cards/card.js'
 const legacyNodeKeys = ['configRows', 'isSection', 'orderList'] as const
 
 type PromptResourceMetadata = JsonObject & {
+  icon?: NonNullable<PromptResourceContent['metadata']>['icon']
   historyPolicy?: PromptResourceContent['historyPolicy']
   model?: PromptResourceContent['model']
   delivery?: PromptResourceContent['delivery']
@@ -46,6 +47,7 @@ export function toStoredResourceInput(input: {
       throw new Error('Invalid Prompt tree: message sequences and Message blocks cannot be nested inside Message blocks')
   }
   const metadata: PromptResourceMetadata = {}
+  if (input.content.metadata?.icon) metadata.icon = structuredClone(input.content.metadata.icon)
   if (input.content.historyPolicy !== undefined) metadata.historyPolicy = input.content.historyPolicy
   if (input.content.useCardLore !== undefined) metadata.useCardLore = input.content.useCardLore
   if (input.content.useGlobalLore !== undefined) metadata.useGlobalLore = input.content.useGlobalLore
@@ -98,6 +100,7 @@ export function toStoredNode(node: PromptResourceNode): StoredPromptResourceTree
 export function fromStoredResource(resource: StoredPromptResource): PromptResourceContent & { id: string; version: number; tombstoned?: boolean } {
   const metadata = resource.metadata as PromptResourceMetadata
   return {
+    ...(metadata.icon ? { metadata: { icon: structuredClone(metadata.icon) } } : {}),
     resourceKind: resource.resourceKind,
     rootNode: fromStoredNode(resource.rootNode),
     ...(resource.resourceKind === 'preset' ? { historyPolicy: metadata.historyPolicy ?? 'persistent' } : {}),

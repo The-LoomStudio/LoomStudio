@@ -32,7 +32,9 @@ describe('Prompt Resource files', () => {
   it('writes a file index and still reads legacy artifact ZIPs', () => {
     const files = unzipSync(encodePromptResourceZip(artifact))
     expect(files['entries/0/0.md']).toBeDefined()
-    expect(decodePromptResourceZip(encodePromptResourceZip(artifact))).toEqual(artifact)
+    for (const input of [artifact, { ...artifact, rootNode: { id: 'empty', kind: 'module' as const, label: 'Empty', children: [] } }]) {
+      expect(decodePromptResourceZip(encodePromptResourceZip(input))).toEqual(input)
+    }
     expect(decodePromptResourceZip(zipSync({
       'manifest.json': new TextEncoder().encode(JSON.stringify({ schema: 'loom.promptResource.zip.v1', resourceKind: 'prompt', artifactPath: 'resource.json' })),
       'resource.json': new TextEncoder().encode(JSON.stringify(artifact)),

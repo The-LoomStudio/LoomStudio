@@ -32,6 +32,7 @@
 
 ## 接续入口
 
+- 主程序、角色卡与扩展更新的共同流程建议见[应用与资源包更新讨论计划](./application-and-package-update-plan.md)；仅整理候选，不改变本页已确认边界或新增自动合并授权。
 - 扩展安装、官方成品与发行验收归 [Extension 模块后续](./extension-module-completion-plan.md)。
 - SDK/模板与作者工具归 [DX 后续](./extension-developer-experience.md)；外部 Agent 访问归 [CLI/MCP 计划](./application-capability-cli-mcp-adapters-plan.md)。
 - Timeline 文件消费与版本恢复归 [Workspace 后续](./timeline-workspace-and-vfs-organization-plan.md)，Script 执行归 [Script 计划](./loom-script-distribution-and-runtime-plan.md)。

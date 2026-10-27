@@ -42,6 +42,10 @@ Kernel 负责 RPC owner/冲突校验、调用链 ID、Data Commit 事件投影�
 
 Kernel 不拥有 Application Runtime、Provider 选择、Prompt 编译、Narrative/Agent Store、HTTP/WebSocket/SSE Transport 或前端状态。Event Bus 也不是 Application Command Bus、可靠队列或网络 Stream。
 
+## 依赖职责
+
+Kernel 只消费 Workspace 平台包：Document Store/Data Engine 提供持久化与提交事实，Extension Host/SDK 提供模块合同与实例生命周期，Diagnostics 收集当前故障，Shared 提供跨端基础类型与标识。没有独立 HTTP、SQLite 驱动或第三方 Event Bus 依赖；进程内 RPC Registry / Event Bus 由本包拥有，网络 adapter 留在 Server。
+
 ## 构建与验证
 
 ```bash

@@ -4,6 +4,8 @@
 
 本页负责把开发者和 AI 从全仓文档路由到实际代码区域。它不复制各模块内部结构；进入目标 Workspace 后，以该目录的 `README.md`、当前源码和正式 Architecture 为准。
 
+需要先建立整体认识时，从[系统组成与源码探索路线](../architecture/system-overview.md)进入；已有明确任务时直接使用下表选路。
+
 ## 接手任务的最短路径
 
 1. 用下方需求词或任务表选中一个领域，读取对应源码入口和局部 README；不先通读整个文档库或递归列目录。
@@ -19,7 +21,10 @@ docs/guide/
   全仓开发流程、任务路由和共同规则。
 
 apps/*/README.md / packages/*/README.md
-  当前 Workspace 的职责、入口、目录、运行方式和局部边界。
+  当前 Workspace 的职责、入口、运行前提与模块导航。
+
+必要的 src/**/README.md
+  复杂模块内部的阅读顺序、依赖/注入前提、状态所有者与修改入口。
 
 docs/architecture/
   跨 Workspace 的稳定实现合同和数据流。
@@ -28,7 +33,11 @@ docs/workbench/
   当前计划、问题与参考材料；讨论在对话或 Plan 内收束，不能替代当前源码。
 ```
 
-局部 README 只维护靠近代码的事实，不重复完整 API、Schema 或跨包架构。跨模块事实发生变化时更新 Architecture；局部入口、命令或目录发生变化时更新对应 Workspace README。
+Architecture 维护系统关系与跨模块合同；Workspace README 维护包入口与模块路由；局部 README 只维护复杂模块内部的协作与必要运行前提。只在实际有探索成本时增加局部说明，不为每个目录生成文档，也不重复完整 API、Schema 或依赖清单。
+
+跨模块事实变化时更新对应 Architecture；源码入口变化时更新最靠近它的模块说明，包和 Architecture 继续链接该所有者。新增局部 README 必须从所属 Workspace README 或其模块入口可达，避免出现孤立说明。
+
+实现前也应查 [依赖职责](../architecture/platform/external-dependency-ownership.md)与该 Workspace README：依赖不只是一份安装清单，应说明当前解决的问题、实际消费者和复用边界。新增或迁移依赖用途时同步这些入口，不让后续开发者因为找不到用法而重复实现。
 
 ## 需求词与易混淆名称
 
@@ -36,14 +45,15 @@ docs/workbench/
 
 | 需求词 / 旧名称 | 当前概念与边界 | 第一源码入口 | 行为合同 |
 |---|---|---|---|
-| 聊天、正文、剧情、分支、开场白、多开场、Swipe | Narrative Timeline / Branch / Node；多开场初始化与运行时 Swipe 不是同一能力 | [narrative-runtime.ts](../../packages/application-runtime/src/runtime/narrative-runtime.ts) | [当前开场与 Swipe Plan](../archive/plans/opening-swipes-and-runtime-swipe-plan.md) |
-| 主写作、主对话、Agent 聊天、会话恢复、继续、重试 | 接收 Session、查看 Session 与 Run 恢复分开；旧 `agent-runtime` Feature 不再是入口 | [use-narrative-runtime.ts](../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.ts)、[run-recovery.ts](../../packages/application-runtime/src/agents/run-recovery.ts) | [Runtime 与 Session](../architecture/application/agent/runtime-and-session.md) |
+| 聊天、正文、剧情、分支、开场白、多开场、Swipe | Timeline 根 Session 保存权威内容历史，Narrative Node 为正文与分支投影；多开场初始化与运行时 Swipe 不是同一能力 | [narrative-runtime.ts](../../packages/application-runtime/src/runtime/narrative-runtime.ts) | [当前开场与 Swipe Plan](../archive/plans/opening-swipes-and-runtime-swipe-plan.md) |
+| 主写作、主对话、Agent 聊天、会话恢复、继续、重试 | Timeline 根 Session 与独立辅助 Session 分开；预设切换保留根 Session 历史，Run 恢复依持久检查点；旧 `agent-runtime` Feature 不再是入口 | [use-narrative-runtime.ts](../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.ts)、[run-recovery.ts](../../packages/application-runtime/src/agents/run-recovery.ts) | [Runtime 与 Session](../architecture/application/agent/runtime-and-session.md) |
 | Agent Profile、智能体配置、预设、Agent Preset | Agent Profile 已取消；Preset 是 Prompt Resource 执行定义，不等于 Provider Profile | [use-agent-presets.ts](../../apps/studio-client/src/features/prompt-resources/model/use-agent-presets.ts) | [Agent 身份](../architecture/application/agent/README.md) |
 | 世界书、设定、Lore、挂载 | 内容资源 / Lore Mount；不是应用偏好或 Provider 设置 | [prompt-runtime.ts](../../packages/application-runtime/src/runtime/prompt-runtime.ts) | [资源归属与使用配置](../architecture/application/prompt-build/README.md#资源归属与使用配置) |
 | 提示词、PromptBuild、注入、Anchor、Slot、笼中深度 | Application DFS 编译；当前 Agent 路径不执行 Loom Core Pass | [agent-turn.ts](../../packages/application-runtime/src/agents/agent-turn.ts)、[prompt-build-pipeline.ts](../../packages/application-runtime/src/prompt/prompt-build-pipeline.ts) | [PromptBuild](../architecture/application/prompt-build/README.md) |
 | 正则、提取器、Regex、Extractor、Display | History Text Pipeline；显示处理与存储原文分开 | [transforms-runtime.ts](../../packages/application-runtime/src/runtime/transforms-runtime.ts) | [文本管线](../architecture/application/history-text-pipeline.md) |
 | HTML、Markdown、消息渲染、iframe | 消息内容展示入口；不是所有 Renderer 都属于消息正文 | [message-content/](../../apps/studio-client/src/features/message-content/) | [iframe 隔离](../architecture/ui/iframe-runtime.md) |
 | CodeAct、VFS、工具、脚本执行 | Agent QuickJS 执行与受控读取；不等于 Loom Script UI Renderer | [codeact/execute.ts](../../packages/application-runtime/src/agents/codeact/execute.ts)、[vfs/](../../packages/application-runtime/src/vfs/) | [Tool 系统](../architecture/application/agent/tool-system.md) |
+| Dashboard、累计用量、交互计数、资源统计 | 累计记录、模型观测与即时资源/存储快照各有来源 | [Application Data README](../../packages/application-data/README.md)、[Server README](../../apps/studio-server/README.md) | [Application 索引](../architecture/application/README.md) |
 | Token、字数、usage、用量、估算 | UI 文本计数、请求估算、Provider 回报是不同口径 | [use-token-counts.ts](../../apps/studio-client/src/shared/tokenizer/use-token-counts.ts)、[token-estimate.ts](../../packages/ai-gateway/src/token-estimate.ts) | [Provider 与 PromptBuild](../architecture/application/agent/provider-and-prompt-build.md) |
 | 撤销、Undo、Revision、版本冲突、草稿 | 编辑历史与领域事务不是整轮 Agent 回滚 | [use-edit-history.ts](../../apps/studio-client/src/features/edit-history/model/use-edit-history.ts) | [编辑与提交](../architecture/application/ui/README.md) |
 | 插件、扩展、安装、授权、重载 | Extension Package / Module / Instance / Grant；声明不等于激活 | [extension-manager.ts](../../apps/studio-server/src/extensions/extension-manager.ts) | [Extension](../architecture/extensions/README.md) |
@@ -54,9 +64,9 @@ docs/workbench/
 | 任务                                                             | 第一入口                                                                                                   | 正式架构                                                    |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
 | Studio 页面、FSD 业务 Feature、交互状态、typed API Client         | [`apps/studio-client/README.md`](../../apps/studio-client/README.md)                                       | [`architecture/ui/`](../architecture/ui/)                   |
-| Server 进程入口、HTTP、会话认证、RPC 路由、依赖组装              | [`apps/studio-server/README.md`](../../apps/studio-server/README.md)                                       | [`architecture/kernel/`](../architecture/kernel/)           |
+| Server 进程入口、HTTP、会话认证、RPC 路由、依赖组装              | [`apps/studio-server/README.md`](../../apps/studio-server/README.md)                                       | [系统组装与请求链](../architecture/system-overview.md)           |
 | Card、Narrative、Agent、State、PromptBuild 业务流程              | [`packages/application-runtime/README.md`](../../packages/application-runtime/README.md)                   | [`architecture/application/`](../architecture/application/) |
-| Agent 会话/消息、时间线、状态定义与 Prompt 资源树持久化          | [`packages/application-data/README.md`](../../packages/application-data/README.md)                         | [`architecture/data/`](../architecture/data/)               |
+| Agent 历史、正文索引、State、Workspace、资源树与统计持久化          | [`packages/application-data/README.md`](../../packages/application-data/README.md)                         | [`architecture/data/`](../architecture/data/)               |
 | Kernel RPC 注册、Event Bus、提交事实投影与 Introspection         | [`packages/kernel/README.md`](../../packages/kernel/README.md)                                             | [`architecture/kernel/`](../architecture/kernel/)           |
 | SQLite connection、Migration、Transaction、Commit Fact           | [`packages/data-engine/README.md`](../../packages/data-engine/README.md)                                   | [`architecture/data/`](../architecture/data/)               |
 | 多模型网关调度（OpenAI/Claude/Gemini）、流式执行与 Fake Provider | [`packages/ai-gateway/README.md`](../../packages/ai-gateway/README.md)                                       | [`architecture/platform/external-dependency-ownership.md`](../architecture/platform/external-dependency-ownership.md) |

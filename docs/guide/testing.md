@@ -31,7 +31,7 @@ tests/
 | 命令 | 实际范围 |
 | --- | --- |
 | `pnpm test` | 主应用全部自动化回归，不含独立扩展、stress、probes |
-| `pnpm test:fast` | Core、Shared 单元测试及 contract；不是所有单元测试的别名 |
+| `pnpm test:fast` | Shared 单元测试及 contract；不是所有单元测试的别名 |
 | `pnpm test:client` | `unit/client` 与 `integration/client` |
 | `pnpm test:server` | `unit/studio-server` 与 `integration/studio-server` |
 | `pnpm test:real` | `integration/pipeline`，使用真实本地调用链和 Fake Provider，不访问真实模型 |
@@ -49,7 +49,7 @@ tests/
 
 The World 与 ST Data Compat 独立发布。检出对应扩展源码后，可用 `pnpm test:extensions` 和 `pnpm test:extensions:typecheck` 运行本仓库保留的扩展验证；只运行某个扩展时，在前者后附 `tests/extensions/the-world` 或 `tests/extensions/st-data-compat`。这些命令不是主应用门禁，不会自动下载扩展。主应用仍验证 Extension Host 和扩展安装、重载、卸载契约，使用自身维护的测试夹具。
 
-主应用的 [GitHub Actions 配置](../../.github/workflows/ci.yml) 在 push、pull request 或手动触发时依次运行 `check:workspace`、`build`、`lint`、`test:typecheck` 和 `test`。工作流只读仓库，不运行独立扩展测试或执行发布；Node 和 pnpm 版本分别来自 `.node-version` 与 `package.json`。
+主应用的 [GitHub Actions 配置](../../.github/workflows/ci.yml) 在 push、pull request、手动或可复用工作流触发时，检查 job 依次运行 `check:workspace`、`build`、Client build、`lint`、`test:typecheck` 和 `test`。独立的三平台 release-smoke job 构建主应用、验证静态文件与认证、准备发行目录并执行冒烟检查；它不发布产物，也不运行独立扩展测试。Node 和 pnpm 版本分别来自 `.node-version` 与 `package.json`。
 
 ## 3. 什么是好的测试？
 
@@ -74,9 +74,9 @@ The World 与 ST Data Compat 独立发布。检出对应扩展源码后，可用
 
 ## 5. 现有依赖与夹具
 
-- **happy-dom 与客户端隔离环境**：通过 `vitest.config.ts` 的 `environmentMatchGlobs` 对 `tests/unit/client/**` 和 `tests/integration/client/**` 自动启用 `happy-dom` 运行时，为客户端 Hook 与组件提供原生 DOM 与事件环境；服务端、内核与数据引擎测试严格保持纯 Node 极速环境。
+- **happy-dom 与客户端隔离环境**：默认使用 Node 环境。需要 DOM 或真实 React 挂载的测试在文件中声明 `// @vitest-environment happy-dom`；纯模型与 SSR 测试可以保持 Node 环境。当前 Vitest 不使用 `environmentMatchGlobs`，不依赖目录名切换环境。
 - **原生 Hook 挂载工具 (`renderHook`)**：针对需要验证 React 生命周期的 Custom Hooks，使用 `tests/support/client/render-hook.ts` 提供的零依赖原生挂载器（基于 React 19 的 `act` 与 `createRoot`）。**严禁在新测试中手写 `vi.mock('react')` 拦截 `useState`/`useEffect`**；纯逻辑应优先下沉为纯函数或纯模型文件进行无 Mock 单测。
-- **fast-check**：当前用于 Context Asset 操作序列与 Prompt Resource 树不变量。
+- **fast-check**：当前用于 Context Asset 列表过滤与 Prompt Resource 树不变量。
   所有随机输入必须由 arbitrary 生成，禁止在 property 或 `.map()` 中用 `Math.random()`。
   ID 从本次样本派生，避免全局递增状态；保留失败输出的 seed/path，通过
   `fc.assert(property, { seed, path })` 重放。固定例子保护已知 Bug，属性测试补充组合空间，二者不机械互换。

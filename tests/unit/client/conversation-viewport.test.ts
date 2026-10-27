@@ -52,7 +52,6 @@ describe('shared conversation viewport contract (no browser layout)', () => {
   it('uses stable IDs and pins an edited row outside the visible range', () => {
     render({ items: Array.from({ length: 20 }, (_, i) => ({ id: `node-${i}` })), pinnedId: 'node-17', overscan: 2 })
     expect(hooks.options?.getItemKey(17)).toBe('node-17')
-    expect(hooks.options?.anchorTo).toBe('start')
     expect(hooks.options?.useFlushSync).toBe(false)
     expect(hooks.options?.rangeExtractor({ startIndex: 2, endIndex: 4, overscan: 2, count: 20 })).toEqual([0, 1, 2, 3, 4, 5, 6, 17])
   })

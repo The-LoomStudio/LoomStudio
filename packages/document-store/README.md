@@ -8,7 +8,7 @@
 
 不同于高频追加的 Narrative 消息流或树形展开的 Prompt 资源，系统内存在部分需要像 Git Commit 一样进行版本快照与回滚追踪的文档。
 `@loom-studio/document-store` 提供：
-- **`Document`**：由命名空间 ID 唯一标识的 JSON 文档；
+- **`Document`**：由不透明 ID 唯一标识、以 type 和 owner 表达归属的 JSON 文档；
 - **`Revision`**：递增的版本号与不可变内容快照；
 - **`Changeset`**：跨单文档或多文档写操作的原子变更集；
 - **单一实现**：由 `@loom-studio/data-engine` 驱动的 SQLite 实现；测试/沙箱工厂 `createInMemoryDocumentStore` 创建隔离的 SQLite `:memory:` 实例，创建方须等待 `close()`。
@@ -45,6 +45,10 @@ Store 本身提供 `subscribeCommits()`，可直接作为 Data Commit Source；�
 这是动态集合遍历，不是跨请求快照：后插入项可在后续页出现，已越过边界的条目即使恢复或改为匹配筛选也不会重新返回。需要一致集合的导出、初始化与破坏性操作必须保留其事务/版本保护。游标不承诺跨数据库重建、离线 VACUUM 等维护操作继续有效。
 
 ---
+
+## 依赖职责
+
+本包复用 `@loom-studio/data-engine` 的连接、FIFO、migration、事务和提交日志；`@loom-studio/shared` 提供跨端 JSON/标识等基础合同。SQLite 运行能力来自 Engine 使用的 Node `node:sqlite`，不是独立第三方数据库驱动。本包只实现 Document 版本与回滚语义，不重复拥有连接、Commit Journal 或领域 Store。
 
 ## 构建与验证
 

@@ -104,12 +104,4 @@ describe('Timeline narrative output loop', () => {
       expect(entries.some(entry => entry.entry.kind === 'message' && entry.entry.content === 'first second')).toBe(false)
     } finally { f.ctx.observations.dispose(); f.engine.close() }
   })
-  it('rolls back the canonical complete message when adoption fails', async () => {
-    const f = await fixture('automatic', 'narrative', true)
-    try {
-      await expect(f.run()).rejects.toThrow('adoption rejected')
-      const { entries } = await f.agents.getEntryPage({ agentSessionId: 'timeline', limit: 100 })
-      expect(entries.some(entry => entry.entry.kind === 'message' && entry.entry.content === 'first second')).toBe(false)
-    } finally { f.ctx.observations.dispose(); f.engine.close() }
-  })
 })

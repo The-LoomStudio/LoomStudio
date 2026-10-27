@@ -2,6 +2,17 @@
 
 本分类用于收录 Loom Studio 已实现并稳定的数据基础语义，包括 Document、Revision、Changeset、持久化、Workspace 同步边界以及提交事实。
 
+## 持久化源码路线
+
+| 要定位的职责 | 下一入口 |
+| --- | --- |
+| Connection、FIFO、事务、Migration 与提交通知 | [Data Engine README](../../../packages/data-engine/README.md) |
+| Document / Revision / Changeset 的版本化操作 | [Document Store README](../../../packages/document-store/README.md) |
+| Transcript、正文分支索引、State、Workspace、Prompt Resource 与统计 | [Application Data README](../../../packages/application-data/README.md)；统计的采集与保留口径就近维护在该包内 |
+| Blob 字节、Source Artifact 与 Media Asset 元数据 | [Asset Store README](../../../packages/asset-store/README.md) |
+
+本页维护跨 Store 的事务与数据边界，表结构和具体 Store 操作从所属包继续定位。观测存储与模型请求链由 [Application Runtime](../../../packages/application-runtime/README.md)拥有，不按 SQLite 是否存在判断领域归属。
+
 ## 资源身份与消费者地址
 
 应用新生成的普通内部 ID 使用 11 位 base62 随机字符串，不包含资源类型前缀；实现见 `packages/shared/src/index.ts` 的 `createId`。类型由领域字段、所属表或既有实体引用协议表达。外部协议身份、固定语义键、内容哈希和安全凭据不套用该格式。
@@ -94,85 +105,42 @@ Document Store 不再自行打开第二条 SQLite connection，也不再写第�
 
 Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit Source。测试或其他宿主组合如果使用非 Engine Document Store，可直接注入 Store；其 `subscribeCommits` 已满足同一订阅合同，不需要转发工厂。
 
-当前 Document Store 与 Narrative Store 已接入共享 Engine。Narrative Store 使用 `application.narrative` migration namespace，当前版本 8，拥有：
+## Application Store 的物理归属
 
-- `narrative_timelines`：Timeline 根、来源 Card、资源链接、active branch、可空 `opening_json` 与 tombstone；
-- `narrative_branches`：Branch head、State / Workspace head、父 Branch 与 fork 来源；
-- `narrative_nodes`：不可变的 `loom-markdown.v1` 正文、parent、持久楼号、内容 kind、State / Workspace Revision 与可选 provenance；
-- `narrative_recovery_points`：按 Branch / Node 保存推进下一节点前的最终 State / Workspace 恢复引用。
+Application Store 与 Document Store 共用 Engine，但各自拥有领域表。以下是当前持久化边界，业务执行与恢复合同由 [Application 数据生命周期](../application/data-capabilities-and-lifecycle.md)和 [Runtime 与 Session](../application/agent/runtime-and-session.md)维护，不在平台层复制 RPC 清单。
 
-Workspace Store 使用独立的 `application.workspace@1` namespace，拥有 `workspace_revisions`，保存 Timeline 文件树的不可变版本；文本在树中持久化，二进制引用 Blob。Narrative Store 装配 Workspace Store，Branch Head 与 Workspace 新版本由领域流程在同一事务推进。Workspace 与节点提交时引用、末尾恢复点的区别见[数据生命周期](../application/data-capabilities-and-lifecycle.md#timeline-workspace-与稳定楼号)。
+| Store / migration namespace | 当前版本 | 权威数据 |
+| --- | --- | --- |
+| Narrative / `application.narrative` | 9 | `narrative_timelines`、`narrative_branches`、`narrative_nodes`、`narrative_recovery_points`：Timeline 来源、分支、稳定楼号及 State / Workspace / Transcript 引用 |
+| Workspace / `application.workspace` | 1 | `workspace_revisions`：Timeline 文件树的不可变版本；文本在树中保存，二进制引用 Blob |
+| Agent / `application.agent` | 9 | `agent_sessions`、`agent_transcript_entries`、`agent_tool_invocations`、`agent_summary_tasks`：Session 身份、Transcript、轻量工具配对索引与摘要任务 |
+| State / `application.state` | 2 | `state_scopes`、`state_revisions`：State 当前 Head 与历史修订 |
+| Prompt Resource / `application.prompt-resource` | 8 | Resource Header / Node、修订、Lore Mount 与 Preset Tool Mount |
 
-Narrative append 在一个 Engine transaction 中同时插入 Node、更新 Branch head 与 Timeline `updated_at`；分页沿 parent 链向历史读取，不使用 SQLite offset。
+精确 namespace 与迁移序号以 [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Workspace Store](../../../packages/application-data/src/workspace/store.ts)、[Agent Store](../../../packages/application-data/src/agent/store.ts)、[State Store](../../../packages/application-data/src/state/store.ts)和 [Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)的注册为准。
 
-State Store 使用 `application.state` migration namespace，当前支持到版本 2，拥有 `state_scopes` 与 `state_revisions`。版本以 [Store migration 注册](../../../packages/application-data/src/state/store.ts) 为准；完整合同与 Narrative Branch、Card、Macro、Undo、Agent Tool 的接缝见 [`../application/state-and-variables.md`](../application/state-and-variables.md)。
+Narrative v9 将正文权威移入 `agent_transcript_entries`，`narrative_nodes.entry_id` 引用正文 Entry；`narrative_node_projection` 将其投影为已有 Node body 读取形状。Branch 与恢复点分别保存 `head_entry_id`。不能再把 `narrative_nodes` 描述为独立正文副本。Agent v9 增加 Session `kind`、可空预设绑定、Narrative mode，以及 Entry 的 round / candidate 引用；Timeline 主 Session 与普通 Agent Session 的行为由 Runtime 约束。
 
-Studio Server 已在组合根创建 Narrative Store，并注入 Application Runtime。当前新增独立 RPC：
+迁移把旧 Narrative 正文转为 Timeline Session 的 Entry，并保留节点与分支引用；这不等于为旧 Timeline 补造完整的 Provider、工具或候选历史。摘要任务的持久化也不表示重启后可以继续原 Provider 请求。
 
-- `application.createNarrativeTimeline`；
-- `application.replaceNarrativeOpening`；
-- `application.getNarrativeTimeline`；
-- `application.getNarrativePage`；
-- `application.appendNarrativeInput`；
-- `application.editNarrativeNode`；
-- `application.forkNarrativeBranch`；
-- `application.switchNarrativeBranch`；
-- `application.deleteNarrativeTimeline`。
+Workspace 新版本、Branch Head 及 State 恢复引用由领域事务推进。历史分页沿各自 parent 链读取，不使用 SQLite offset，也不能把 Transcript 顺序等同于当前分支投影。完整恢复点与稳定楼号合同见[数据生命周期](../application/data-capabilities-and-lifecycle.md#timeline-workspace-与稳定楼号)。
 
-创建 Timeline 时读取 Card 当前版本，将有序 Prompt Resource ID 与经现有宏规则处理后的 Opening materialize 为 roleless Narrative Nodes。Card 后续修改不会静默更新既有 Timeline 的来源版本、标题或资源链接。
+### Prompt Resource 与 Mount
 
-新建故事保存 `opening: { id?: string; nodeId?: string; locked: boolean; custom?: boolean }`：id 是角色包内作者候选的稳定身份，无 id 表示临时自编或空白开始；nodeId 只指向一个开场节点，空白正文没有节点。custom 标记编辑过的自编正文，保留作者来源 id。`replaceNarrativeOpening` 接受 timelineId、branchId、expectedHeadNodeId，以及互斥的 openingId / openingContent 和可选 expectedCardVersion。替换只作用于当前唯一分支的单个开场节点；同一事务检查窗口、Head、渲染时读取的 State Head 和节点归属，替换并删除旧开场节点，保留现有 stateHeadRevisionId，不重跑初始化器、不重置世界书或 Session。
+Prompt Resource 不使用 `airp.promptResource` Document 作为权威存储。`PromptResourceStore` 拥有：
 
-首条 `appendNarrativeInput` 成功落盘时在同一事务将 locked 设为 true，保留开局身份；后续 Agent 投递失败及输入重放不能解锁。直接追加节点或创建分支也关闭窗口。初始化期编辑只在窗口仍开放、当前单分支且只有开场节点时保留窗口：`editNode` 保留 nodeId；`editBranchNode` 更新 nodeId，并删除被替换的旧节点。两者都标记 custom，不清除作者来源 id，不重置 State；已锁定时沿用普通历史编辑行为，不重新解锁。窗口及关闭状态持久化在 opening_json。归档保留开局身份并映射 nodeId，导入时锁定。旧多节点开场结构不提供兼容转换。这不是运行时 Swipe，不保存未选候选或候选 Session。
+- `prompt_resources`：Resource Header、版本、metadata 和 tombstone；
+- `prompt_resource_nodes`：当前 Resource Node；
+- `prompt_resource_node_revisions` / `prompt_resource_header_revisions`：受影响 Node 与 Header 的 before/after Revision；
+- `global_lore_mounts`：名称沿用，保存 `manual/global` 与 `preset/<id>` 消费关系；
+- `preset_tool_mounts`：Preset 到 Tool Definition 的挂载、默认开关、Activation 与 Provider / Content 投影策略。
 
-后端旧 `Session / NarrativeEntry / submitTurn` 路径已经删除，不再公开旧 Session、Transcript、Run RPC，也不保留双轨或兼容读取。Studio Client 已切换到 Narrative Timeline、Agent Preset 与按需 Agent Session 合同。
+`PromptResourceContent`、嵌套 `rootNode.children[]` 与 `loom.promptResource` 是 RPC、PromptBuild 和导入导出使用的投影/外部格式。Lore Mount 与 Preset Tool Mount 分别读取、替换，不嵌入 Resource 响应，也不复制引用资源。
 
-Agent Store 也已接入共享 Engine，使用 `application.agent` migration namespace，当前支持到版本 8，见 [Store migration 注册](../../../packages/application-data/src/agent/store.ts)。v6 只重命名引用列，保留历史与旧引用值，不猜测旧 Profile 的重绑定；v7 / v8 增加 Session 摘要策略与摘要任务持久化：
+Lore Mount 的 `resolvedLoreResourceId: null` 表示引用暂不可解析，不等于删除。替换列表二选一：资源 ID 列表，或可保留原 Mount ID 的 Mount 列表；Mount ID 必须属于指定来源。资源可消费性与包内引用映射由 Runtime 处理。
 
-- `agent_sessions`：Agent Preset identity、标题、transcript entry head/count、可选摘要策略与 tombstone；
-- `agent_transcript_entries`：不可变 canonical Transcript Entry、parent、sequence 与可选 runId，包含 `work-summary` 及其工作段退休边界；
-- `agent_tool_invocations`：Studio Invocation ID、Tool ID 与 ToolResult 的轻量配对索引，不保存参数或结果正文；
-- `agent_summary_tasks`：Session 所属摘要任务及状态记录。任务持久化不等于重启后能够继续原 Provider 执行。
+资源编辑携带读取时的 `expectedVersion`，Store 在写入事务内检查。失败草稿和重新应用策略属于 [Application UI](../application/ui/README.md)，不是 Store 自动合并。包图标等展示 metadata 仍随 Header 存储，不改变资源身份、归属或消费配置。
 
-Transcript append 在同一 transaction 内分配连续 sequence、插入一条或多条 Entry，并更新 Session head/count。写入通过 `expectedEntryCount` 防止并发覆盖；分页沿 parent 链读取，不使用 offset。ToolInvocation 与 ToolResult 可以跨批提交，但重复 Invocation ID、未知 Result、Tool ID 不匹配或重复 Result 都会被拒绝。
+其他小型低频配置与资源采用既有 Document 类型，例如 Card Source、Provider 配置、Import Bundle、Loom Script 和 Script Mount。旧 `airp.agentPreset` / `airp.agentProfile` 不再是 Agent Preset 权威，Preset CRUD 操作 PromptResourceStore。Script 的源码字节与 Document/Mount 分工见 [Script Runtime](../extensions/loom-script-runtime.md)。
 
-Studio Server 已注入 Agent Store。当前公开生命周期 RPC 包括：
-
-- `application.createAgentSession`；
-- `application.getAgentSession`；
-- `application.getAgentTranscriptPage`；
-- `application.deleteAgentSession`。
-
-`appendAgentTranscriptEntries` 当前只作为 Application Runtime 内部能力，不公开给普通 Client，避免绕过 Agent Runtime 伪造运行事实。`agentPresetId` 在 Session 创建时直接绑定 `resourceKind: preset` 的 Prompt Resource，后续更新不允许改绑；其 metadata 保存可空模型绑定、调用配置、`useCardLore` 与 `textUses`，Tool Mount 决定唯一工具使用集合，调用时不接受第二套临时绑定。
-
-Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储。它由 Application-owned `PromptResourceStore` 管理，并与同一个 SQLite Data Engine 共享 transaction / Changeset：
-
-- `prompt_resources`：Resource Header、版本和 tombstone；
-- `prompt_resource_nodes`：Resource Node 当前状态；
-- `prompt_resource_node_revisions`：受影响 Node 的 before/after Revision；
-- `prompt_resource_header_revisions`：Header before/after Revision；
-- `global_lore_mounts`：表名沿用，但 Registry 同时保存 `manual/global` 与 `preset/<id>` 消费关系；预设来源已是正式使用配置，不是旧兼容数据；
-- `preset_tool_mounts`：Preset 到 Workspace Tool Definition 的挂载关系、默认开关、Activation 与 Provider / Content 投影策略。
-
-`PromptResourceContent`、嵌套 `rootNode.children[]` 和 `loom.promptResource` 是当前 RPC、PromptBuild 与 Card Bundle 使用的兼容投影/外部格式，不是 SQL 权威模型。Lore Mount 通过独立的 `application.listLoreMounts` / `application.replaceLoreMounts` API 读取和修改；Preset Tool Mount 通过 `application.listPresetToolMounts` / `application.replacePresetToolMounts` 读取和修改。两者都不嵌入 Prompt Resource 响应，也不复制被引用的 Lore 或 Tool Definition。
-
-Lore Mount 保留原身份与引用，`resolvedLoreResourceId: null` 表示当前无法解析，不等于应当删除。替换列表必须二选一：`loreResourceIds: string[]` 或 `mounts: ({ id } | { loreResourceId })[]`；前者按资源 ID 配置，后者可保留原 Mount ID（包括失效引用）并追加资源。Mount ID 必须属于请求指定的来源，不能用另一预设的 Mount 旁路写入。资源是否可消费与包内引用映射由 Runtime 处理，Schema 只验证形状。
-
-资源编辑携带读取时的 `expectedVersion`，Store 在写入事务内检查版本；Server 不应替旧内容临时读取最新版本来绕过冲突。前端保留失败草稿、显式读取新版本后重新应用已编辑字段的策略属于[Application UI](../application/ui/README.md)，不是 Store 的自动合并行为。
-
-其他小型、低频配置继续使用 Document Store：
-
-- `airp.cardSource`：Card Source / Manifest；
-- `airp.providerProfile`、`airp.importBundle`：Provider 配置与 Card Bundle 导入来源。
-
-旧 `airp.agentPreset` 与 `airp.agentProfile` Document 均不再是 Agent 权威类型，不提供其兼容读取。当前 Agent Preset CRUD 直接操作 PromptResourceStore。
-
-`createAgentSession` 必须引用真实 Agent Preset。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、直接引用的预设、该预设的 Lore Mount、按 `useCardLore` 选入的当前 Card Lore 及 Provider Model 准备 Provider 输入。公共 Lore 不因出现在全局 Registry 中就自动注入，消费合同见[PromptBuild](../application/prompt-build/README.md#资源归属与使用配置)。Tool Loop 在调用 Provider 前保存用户 Message 与 running 状态，之后分阶段保存 Observation、Invocation、Result 和终态；Provider 失败仍可能保留本轮运行事实及已经完成的 Tool 副作用。工作台的选中资源和临时打开状态只是编辑状态，不参与运行时绑定。
-
-游玩用户输入先通过 `appendNarrativeInput` 写入正式 Timeline 节点，成功后再复制至 Agent Session。写入使用明确的 Branch Head 和固定 `nodeId`；同一输入的显式重试返回原节点及原 Changeset，内容、原 parent 或归属不匹配则失败。初始写入失败时不投递 Session；投递失败不删除已提交的用户节点。
-
-`invokeAgentTurn.narrativeTarget.inputNodeId` 指向已提交输入，Runtime 验证该节点位于目标分支并以持久化正文作为 Session 输入，不信任调用方重复携带的文本。换 Session 重投递复用节点，不重复追加正文。未提供 inputNodeId 的 Agent 调用仍可带 Narrative 上下文，但不会自动写入用户或 Assistant 正文。
-
-Agent 正文只由授权工具写入；Assistant 最终回复不自动成为 Narrative 节点。工具写入冲突或存储失败形成 failed Tool Result，保存在 Transcript 并返回 Agent；成功工具写入产生自己的 Changeset，不因后续调用失败被伪称回滚。Agent Turn 的 mutation scope 为 `agent-session-transcript`，不代表全部工具写入的原子事务。实现见 [agents-runtime.ts](../../../packages/application-runtime/src/runtime/agents-runtime.ts)、[narrative-runtime.ts](../../../packages/application-runtime/src/runtime/narrative-runtime.ts) 与 [tool-loop.ts](../../../packages/application-runtime/src/agents/tool-loop.ts)。
-
-Runtime Transcript 已解除对 OpenAI Chat Message wire shape 的持久化绑定。历史 Prompt 投影与同一 Run 内的 Provider Replay 是不同路径；当前 Loop 已将 Native / Content Tool Result 投影回后续 Provider Step，不能将其整体列为待实现。历史读取与恢复限制见 [Agent Runtime 与 Session](../application/agent/runtime-and-session.md)；持久化事实不等于 Server 重启后能够 Resume。
+一次 Engine transaction 只保证其参与的持久化修改；Provider 请求、工具外部副作用与后续提交不能因此描述为整个 Run 的原子事务。具体失败与重试边界以 Runtime 合同为准。

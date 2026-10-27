@@ -1,5 +1,8 @@
 # Studio Kernel
 
+源码入口与局部文件导航见 [Kernel README](../../../packages/kernel/README.md)。HTTP、认证、静态 tRPC procedure 和进程服务注入由 [Server README](../../../apps/studio-server/README.md)承接；它们不是 Kernel 内部模块。整体装配关系见[系统总览](../system-overview.md)。
+
+
 Studio Kernel 是 Loom Studio 的业务无感知协调层。它组装平台服务、维护统一 RPC 注册面和进程内事件总线，但不理解 Card、Session、Prompt、Agent、Provider 等 Application 语义。
 
 本文对应当前实现：

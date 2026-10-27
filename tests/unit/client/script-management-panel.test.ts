@@ -21,6 +21,22 @@ async function render(api = createScriptManagementPreviewApi()) {
 async function click(element: Element | null) { expect(element).not.toBeNull(); await act(async () => (element as HTMLElement).click()) }
 
 describe('script management scope controls', () => {
+  it('groups concrete owners and filters unrelated sources when selecting the current card', async () => {
+    const api = createScriptManagementPreviewApi()
+    const other = await api.import({ owner: { kind: 'card', cardId: 'other-card' }, fileName: 'other.loom.js', source: '// @name 其他角色规则' })
+    const { host } = await render(api)
+    expect(host.textContent).toContain('角色：preview-card')
+    expect(host.textContent).toContain('角色：other-card')
+    expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).not.toBeNull()
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="脚本查看与创建范围"]')!
+    await act(async () => { select.value = 'card'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).toBeNull()
+    expect(host.querySelector('[data-file-tree-node-id="status"]')).toBeNull()
+    expect(host.querySelector('[data-file-tree-node-id="scene-card"]')).not.toBeNull()
+    await act(async () => { select.value = 'user'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).not.toBeNull()
+  })
+
   it('shows the enabled role mount even when creation targets global, and stops only that mount', async () => {
     const { host, api, changed } = await render()
     await click(host.querySelector('[data-file-tree-node-id="scene-card"]'))

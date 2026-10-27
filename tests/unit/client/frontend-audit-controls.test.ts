@@ -75,7 +75,7 @@ describe('frontend audit controls', () => {
     expect(elements(measured).some(item => item.props.style?.height === '234px')).toBe(true)
   })
 
-  it('keeps failed approval reasons, blocks duplicate submissions, and does not dismiss on Escape', async () => {
+  it('keeps failed approval reasons, blocks duplicate submissions, and configures a non-dismissible dialog', async () => {
     const pending = Promise.withResolvers<boolean>()
     const onApprove = vi.fn(() => pending.promise)
     const props: Parameters<typeof AgentMutationApprovalDialog>[0] = {
@@ -151,6 +151,7 @@ describe('frontend audit controls', () => {
     }
     const item = elements(ProviderAccountList(props)).find(element => typeof element.type === 'function'
       && element.type.name === 'ProviderAccountItem')!
+    hooks.values = []; hooks.effects = []
     const view = () => elements(render(() => (item.type as FunctionComponent<Record<string, unknown>>)(item.props)))
     const first = view()
     const picker = first.find(element => element.props.onFocus)!

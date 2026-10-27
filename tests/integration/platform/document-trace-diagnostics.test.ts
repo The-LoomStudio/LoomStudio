@@ -1,86 +1,19 @@
-import { onTestFinished } from 'vitest'
-import { createClientBridge, type ClientBridge } from '../../../apps/studio-client/src/shared/api/client-bridge.js'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
+import { createKernelBridge } from '../../support/kernel-bridge.js'
+import { createExtensionHostHarness as createKernelHarness } from '../../contract/extension-host/helpers.js'
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createExtensionHost } from '@loom-studio/extension-host'
-import { createKernel, type Kernel } from '@loom-studio/kernel'
 import { createId } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { describe, expect, it } from 'vitest'
 
-function createHarness() {
-  const diagnostics = createInMemoryDiagnosticsRegistry()
-  const documents = createInMemoryDocumentStore()
-  let kernel: Kernel
-  const extensionHost = createExtensionHost({
-    documents,
-    diagnostics,
-    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
-      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
-    },
-    emitEvent: (name, payload, publisher) => {
-      return kernel.getEventBus().emit(name, payload, {
-        publisher,
-        source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
-      })
-    },
-  })
-
-  kernel = createKernel({
-    documents,
-    dataCommits: documents,
-    diagnostics,
-    extensionHost,
-  })
-
-  onTestFinished(async () => {
-    try {
-      await kernel.stop()
-      await extensionHost.disposeAll()
-    } finally {
-      await documents.close()
-    }
-  })
-
-  return { kernel, documents, diagnostics }
-}
-
-function createBridge(kernel: Kernel): ClientBridge {
-  return createClientBridge({ endpoint: 'http://kernel/trpc', fetch: createKernelFetch(kernel) })
-}
-
-function createKernelFetch(kernel: Kernel): typeof fetch {
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const context = {
-      clientId: 'document-scenario-client',
-      correlationId: createId('corr'),
-      callId: createId('call'),
-    }
-
-    try {
-      const path = new URL(String(input)).pathname.split('/').at(-1)!
-      const data = init?.body === undefined ? undefined : JSON.parse(String(init.body))
-      const request = path === 'kernel.invoke' ? data : { method: path, params: data }
-      const result = await kernel.callRpc(request.method, request.params, context)
-      return jsonResponse({ result: { data: result } })
-    } catch (error) {
-      return jsonResponse({ error: { message: error instanceof Error ? error.message : String(error), code: -32603, data: { code: 'INTERNAL_SERVER_ERROR', httpStatus: 500 } } })
-    }
-  }) as typeof fetch
-}
-
 describe('document and diagnostics integration', () => {
   it('preserves document history, tombstones deletes, and emits docs.changed', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     const events: StudioEvent[] = []
     await kernel.start()
     kernel.getEventBus().subscribe(['docs.changed'], event => { events.push(event) })
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
 
     await bridge.call('docs.write', {
       id: 'doc-scenario:revision',
@@ -108,7 +41,7 @@ describe('document and diagnostics integration', () => {
   })
 
   it('requires a shared SQLite Data Engine for Application Runtime', async () => {
-    const { documents } = createHarness()
+    const { documents } = createKernelHarness()
     const now = () => new Date().toISOString()
     const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
     try {
@@ -120,9 +53,9 @@ describe('document and diagnostics integration', () => {
   })
 
   it('rejects stale document writes and preserves the current document', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     await kernel.start()
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
 
     await bridge.call('docs.write', {
       id: 'doc-scenario:conflict',
@@ -143,11 +76,11 @@ describe('document and diagnostics integration', () => {
   })
 
   it('queries and reverts changesets through the client bridge', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     const events: StudioEvent[] = []
     await kernel.start()
     kernel.getEventBus().subscribe(['docs.*'], event => { events.push(event) })
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
     const created = await bridge.call<{ changesetId: string }>('docs.write', {
       id: 'doc-scenario:undo',
       type: 'example.documentScenario.note',
@@ -178,7 +111,7 @@ describe('document and diagnostics integration', () => {
   })
 
   it('filters documents by ownerExtensionId', async () => {
-    const { kernel, documents } = createHarness()
+    const { kernel, documents } = createKernelHarness()
     await kernel.start()
 
     await documents.write({
@@ -198,7 +131,7 @@ describe('document and diagnostics integration', () => {
       actor: { kind: 'extension', id: 'example.ownerB' },
     })
 
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
     const result = await bridge.call<{ items: Array<{ id: string; meta: { ownerExtensionId?: string } }> }>('docs.list', { ownerExtensionId: 'example.ownerA' })
 
     expect(result.items).toHaveLength(1)
@@ -206,12 +139,12 @@ describe('document and diagnostics integration', () => {
   })
 
   it('makes event subscriber failures queryable through diagnostics.list', async () => {
-    const { kernel } = createHarness()
+    const { kernel } = createKernelHarness()
     await kernel.start()
     const subscription = kernel.getEventBus().subscribe(['docs.changed'], () => {
       throw new Error('broken document subscriber')
     })
-    const bridge = createBridge(kernel)
+    const bridge = createKernelBridge(kernel)
     try {
       await bridge.call('docs.write', {
         id: 'diagnostic-scenario:subscriber',
@@ -227,10 +160,3 @@ describe('document and diagnostics integration', () => {
     }
   })
 })
-
-function jsonResponse(response: unknown): Response {
-  return new Response(JSON.stringify(response), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  })
-}

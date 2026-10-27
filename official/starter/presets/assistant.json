@@ -2,6 +2,7 @@
   "format": "loom.promptResource",
   "schemaVersion": 2,
   "resourceKind": "preset",
+  "metadata": { "icon": { "kind": "package", "packageId": "official.loom-assistant", "path": "icon.png" } },
   "rootNode": {
     "id": "official.loom-assistant.preset",
     "label": "Loom Studio 问答助手",

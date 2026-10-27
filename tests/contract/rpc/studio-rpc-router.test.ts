@@ -1,6 +1,6 @@
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
-import type { JsonValue } from '@loom-studio/shared'
-import { describe, expect, it } from 'vitest'
+import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { describe, expect, it, vi } from 'vitest'
 import { createStudioRpcRouter } from '../../support/trpc-caller.js'
 
 const context = {
@@ -10,38 +10,23 @@ const context = {
 }
 
 describe('studio rpc router', () => {
-  it('falls back to kernel rpc for unknown studio-server namespaces', async () => {
-    const router = createStudioRpcRouter({
-      applicationRuntime: {} as ApplicationRuntime,
-      kernel: createKernelCaller(),
-    })
-
-    await expect(router.call('extension.echo', { text: 'hello' }, context)).resolves.toEqual({
-      method: 'extension.echo',
-      params: { text: 'hello' },
-      callId: 'call-test',
-    })
-  })
-
-  it('passes rpc call context into application mutations', async () => {
-    let receivedContext: unknown
-    const applicationRuntime = {
-      createCard: async (_input: unknown, requestContext?: unknown) => {
-        receivedContext = requestContext
-        return {
-          card: { id: 'card-1', version: 1, name: 'Card' },
-          mutation: { changesetId: 'chg-1' },
-        }
-      },
-    } as unknown as ApplicationRuntime
-    const router = createStudioRpcRouter({
-      applicationRuntime,
-      kernel: createKernelCaller(),
-    })
-
-    await router.call('application.createCard', { name: 'Card' }, context)
-
-    expect(receivedContext).toEqual(context)
+  it.each<[string, JsonValue]>([
+    ['createCard', { name: 'Card' }],
+    ['updatePromptResourceAssets', { resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] }],
+    ['createNarrativeTimeline', { cardId: 'card-1' }],
+    ['createAgentSession', { agentPresetId: 'profile-1' }],
+    ['importCardBundle', { artifact: {
+      schemaVersion: 4, artifactId: 'artifact-1', displayName: 'Artifact', card: { name: 'Card' }, contextAssets: [],
+    } }],
+    ['updateCardPromptResources', { cardId: 'card-1', promptResourceIds: ['resource-1'] }],
+    ['replaceLoreMounts', { source: { kind: 'preset', id: 'preset-1' }, loreResourceIds: ['setting-1'] }],
+    ['replacePresetToolMounts', { presetId: 'preset-1', mounts: [] }],
+  ])('passes rpc context into %s', async (method, input) => {
+    const mutate = vi.fn(async (_input: unknown, _context: unknown) => ({}))
+    const applicationRuntime = { [method]: mutate } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+    await router.call(`application.${method}`, input, context)
+    expect(mutate).toHaveBeenCalledExactlyOnceWith(expect.anything(), context)
   })
 
   it('emits Card lifecycle facts after deletion commits', async () => {
@@ -229,115 +214,6 @@ describe('studio rpc router', () => {
     expect(receivedContext).toEqual(context)
   })
 
-  it('passes rpc call context into prompt resource mutations', async () => {
-    let receivedContext: unknown
-    const applicationRuntime = {
-      updatePromptResourceAssets: async (_input: unknown, requestContext?: unknown) => {
-        receivedContext = requestContext
-        return {
-          resource: { id: 'resource-1', version: 2, rootNode: {} },
-          mutation: { changesetId: 'chg-resource-1' },
-        }
-      },
-    } as unknown as ApplicationRuntime
-    const router = createStudioRpcRouter({
-      applicationRuntime,
-      kernel: createKernelCaller(),
-    })
-
-    await router.call('application.updatePromptResourceAssets', {
-      resourceId: 'resource-1',
-      updates: [{ assetId: 'asset-1', label: 'Renamed' }],
-    }, context)
-
-    expect(receivedContext).toEqual(context)
-  })
-
-  it('passes rpc call context into narrative mutations', async () => {
-    let receivedContext: unknown
-    const applicationRuntime = {
-      createNarrativeTimeline: async (_input: unknown, requestContext?: unknown) => {
-        receivedContext = requestContext
-        return {
-          timeline: { id: 'timeline-1' },
-          branch: { id: 'branch-1' },
-          nodes: [],
-          mutation: { changesetId: 'chg-1' },
-        }
-      },
-    } as unknown as ApplicationRuntime
-    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
-
-    await router.call('application.createNarrativeTimeline', { cardId: 'card-1' }, context)
-
-    expect(receivedContext).toEqual(context)
-  })
-
-  it('passes rpc call context into Agent Session mutations', async () => {
-    let receivedContext: unknown
-    const applicationRuntime = {
-      createAgentSession: async (_input: unknown, requestContext?: unknown) => {
-        receivedContext = requestContext
-        return { session: { id: 'agent-session-1' }, mutation: { changesetId: 'chg-agent-1' } }
-      },
-    } as unknown as ApplicationRuntime
-    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
-
-    await router.call('application.createAgentSession', { agentPresetId: 'profile-1' }, context)
-
-    expect(receivedContext).toEqual(context)
-  })
-
-  it('passes rpc call context into bundle and prompt resource mutations', async () => {
-    const received: unknown[] = []
-    const applicationRuntime = {
-      importCardBundle: async (_input: unknown, requestContext?: unknown) => {
-        received.push(requestContext)
-        return { card: { id: 'card-1' }, importBundle: { id: 'bundle-1' } }
-      },
-      updateCardPromptResources: async (_input: unknown, requestContext?: unknown) => {
-        received.push(requestContext)
-        return { card: { id: 'card-1' }, mutation: { changesetId: 'chg-1' } }
-      },
-      replaceLoreMounts: async (_input: unknown, requestContext?: unknown) => {
-        received.push(requestContext)
-        return { mounts: [], mutation: { changesetId: 'chg-2' } }
-      },
-      replacePresetToolMounts: async (_input: unknown, requestContext?: unknown) => {
-        received.push(requestContext)
-        return { mounts: [], mutation: { changesetId: 'chg-3' } }
-      },
-    } as unknown as ApplicationRuntime
-    const router = createStudioRpcRouter({
-      applicationRuntime,
-      kernel: createKernelCaller(),
-    })
-
-    await router.call('application.importCardBundle', {
-      artifact: {
-        schemaVersion: 4,
-        artifactId: 'artifact-1',
-        displayName: 'Artifact',
-        card: { name: 'Card' },
-        contextAssets: [],
-      },
-    }, context)
-    await router.call('application.updateCardPromptResources', {
-      cardId: 'card-1',
-      promptResourceIds: ['resource-1'],
-    }, context)
-    await router.call('application.replaceLoreMounts', {
-      source: { kind: 'preset', id: 'preset-1' },
-      loreResourceIds: ['setting-1'],
-    }, context)
-    await router.call('application.replacePresetToolMounts', {
-      presetId: 'preset-1',
-      mounts: [],
-    }, context)
-
-    expect(received).toEqual([context, context, context, context])
-  })
-
   it('parses portable Extension Payload mutations and preserves rpc context', async () => {
     const received: Array<{ method: string; input: unknown; requestContext: unknown }> = []
     const applicationRuntime = {
@@ -398,25 +274,31 @@ describe('studio rpc router', () => {
     ])
   })
 
-  it('rejects invalid Setting Mount sources before invoking the runtime', async () => {
-    let invoked = false
-    const applicationRuntime = {
-      replaceLoreMounts: async () => {
-        invoked = true
-        return { mounts: [], mutation: { changesetId: 'chg-1' } }
-      },
-    } as unknown as ApplicationRuntime
+  it.each<JsonObject>([
+    { mounts: [{ id: 'missing-mount' }, { loreResourceId: 'new-setting' }] },
+    { loreResourceIds: ['lore'] },
+    { mounts: [] },
+  ])('passes supported Setting Mount lists to the runtime: %j', async list => {
+    const replaceLoreMounts = vi.fn(async () => ({ mounts: [] }))
+    const applicationRuntime = { replaceLoreMounts } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+    const input = { source: { kind: 'preset', id: 'preset-1' }, ...list }
+    await router.call('application.replaceLoreMounts', input, context)
+    expect(replaceLoreMounts).toHaveBeenCalledExactlyOnceWith(input, context)
+  })
 
-    await expect(router.call('application.replaceLoreMounts', {
-      source: { kind: 'manual', id: 'workspace' },
-      loreResourceIds: [],
-    }, context)).rejects.toThrow('Expected Lore mount source param: source')
-    await expect(router.call('application.replaceLoreMounts', {
-      source: { kind: 'preset' },
-      loreResourceIds: [],
-    }, context)).rejects.toThrow('Expected Lore mount source param: source')
-    expect(invoked).toBe(false)
+  it.each<JsonObject>([
+    { source: { kind: 'manual', id: 'workspace' }, loreResourceIds: [] },
+    { source: { kind: 'preset' }, loreResourceIds: [] },
+    { source: { kind: 'preset', id: 'preset-1' } },
+    { source: { kind: 'preset', id: 'preset-1' }, mounts: [], loreResourceIds: [] },
+    { source: { kind: 'preset', id: 'preset-1' }, mounts: [{ id: 1 }] },
+  ])('rejects invalid Setting Mount input before invoking the runtime: %j', async input => {
+    const replaceLoreMounts = vi.fn()
+    const applicationRuntime = { replaceLoreMounts } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+    await expect(router.call('application.replaceLoreMounts', input, context)).rejects.toThrow()
+    expect(replaceLoreMounts).not.toHaveBeenCalled()
   })
 })
 

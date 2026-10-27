@@ -1,6 +1,6 @@
 # `@loom-studio/shared`
 
-本包共享无业务所有权的结构化身份、引用和挂载合同；Card/Extension 安装身份及 Agent Preset 生命周期由 Application 与 Extension Host 各自负责，不在 `shared` 建立通用资源注册表。
+本包共享无业务所有权的结构化身份、引用和挂载合同；Card/Extension 安装身份及 Agent Preset 生命周期由 Application 与 Extension Host 各自负责，不在 `shared` 建立通用资源注册表。直接依赖 `zod` 是为了定义可跨层复用的边界 Schema；领域归属、目标存在性和持久化仍由调用方负责。
 
 > **状态**：Active Package Guide / Current Source Is Authority
 
@@ -13,6 +13,7 @@
 - **变量宏渲染引擎 (`src/macros.ts`)**：提供模板中的只读变量替换、宏别名解析与渲染追踪；
 - **资源引用解析 (`src/resource-reference.ts`)**：提供带版本/行范围的 `ResourceReference` 与实体导航 `EntityReference` 的 URI 编解码；只校验引用形状，不查询目标是否存在，也不拥有 UI 展示模型；
 - **Prompt Resource 挂载契约 (`src/prompt-resource-contracts.ts`)**：提供 `LoreMount` 及其列表/替换 Zod Schema；`source` 支持 `manual/global` 和预设消费者，引用保留包内或外部 identity，解析结果允许为 `null`。替换输入在 `loreResourceIds` 与 `mounts` 中严格二选一，后者支持按 Mount ID 保留失效引用；Schema 不决定目标可用性或运行时是否注入；
+- **共享边界 Schema**：Prompt Resource 图标显示元数据由 `promptResourceDisplayMetadataSchema` 约束包 ID、相对路径与可选安装目标；它只验证数据形状，不解析安装或取用图像。其他 Loom Script、Tool Mount 与搜索输入 Schema 也在 `src/` 中由共享包持有，消费者应复用这些合同；
 - **状态与资源目录类型**：定义卡片目录格式（`resource-directories.ts`）与状态贡献契约（`state-contribution.ts`）。
 
 ---
@@ -34,7 +35,7 @@ Package 主入口为 [`src/index.ts`](./src/index.ts)：
 - 原语工具：`createId()`、`nowIso()`、`serializeError()`、`isRecord()`、`isJsonObject()`；
 - 宏工具：`renderVariableMacros()`、`createVariableRenderContext()`、`canonicalMacroName()`；
 - 资源引用：`parseResourceReference()`、`formatResourceReference()`、`parseEntityReference()`、`formatEntityReference()`、`parseResourceLink()`；
-- 挂载 Schema：`loreMountSchema`、`listLoreMountsInputSchema`、`replaceLoreMountsInputSchema`；
+- 挂载与显示元数据 Schema：`loreMountSchema`、`listLoreMountsInputSchema`、`replaceLoreMountsInputSchema`、`promptResourceDisplayMetadataSchema`；
 - 核心类型：`JsonValue`、`SerializedError`、`ChatMessage`、`ResourceReference`、`LoreMount`、`CardDirectoryCatalog` 等。
 
 ---

@@ -21,9 +21,7 @@
 .heading h3 { margin: 0 0 calc(var(--loom-page-header-padding) / 2); overflow-wrap: anywhere; }
 .heading small, .muted { color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-2); line-height: 1.6; }
 .muted { margin-block: var(--loom-page-header-padding); }
-.tabs { display: flex; gap: calc(var(--loom-page-header-padding) * 1.5); padding-inline: var(--loom-page-header-padding); border-bottom: 1px solid var(--loom-color-divider); }
-.tabs button { border-radius: 0; padding-block: calc(var(--loom-page-header-padding) * 1.5); border-bottom: 2px solid transparent; }
-.tabs button[aria-pressed='true'] { color: var(--loom-color-accent); border-bottom-color: currentColor; }
+.tabs { flex-shrink: 0; padding-inline: var(--loom-page-header-padding); }
 .content { flex: 1; min-height: 0; overflow: auto; padding: var(--loom-divider-space) var(--loom-page-header-padding); }
 .sectionHeading, .mountHeading, .sourceToolbar { justify-content: space-between; }
 .sectionHeading h4 { margin: 0; }

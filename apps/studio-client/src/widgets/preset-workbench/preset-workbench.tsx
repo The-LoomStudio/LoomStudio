@@ -1,3 +1,4 @@
+import { presetIconUrl, useExtensionIdentities } from '../../shared/ui/extension-icon/extension-icon.js'
 import { PresetLibraryCatalog, type PresetCatalogSource } from '../../features/prompt-resources/ui/preset-library/preset-library-catalog.js'
 import { PresetConfigurationDialog } from '../../features/prompt-resources/ui/preset-library/preset-configuration-dialog.js'
 import { AgentModelSelection } from '../../features/provider-settings/ui/agent-model-selection.js'
@@ -118,6 +119,7 @@ type PresetWorkbenchProps = {
 }
 
 export function PresetWorkbench(props: PresetWorkbenchProps) {
+  const extensionIdentities = useExtensionIdentities()
   const presets = props.resources.filter(resource => resource.resourceKind === 'preset')
   const [configurationId, setConfigurationId] = useState<string>()
   const [localEditingId, setLocalEditingId] = useState<string>()
@@ -130,11 +132,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const sourceOf = (preset: PromptResource): PresetCatalogSource => {
     const origin = preset.origin
     if (origin?.kind === 'extension-package') {
+      const identity = extensionIdentities.find(item => item.packageId === origin.packageId)
       const installation = props.extensionInstallations?.find(item => item.id === origin.installationId && item.packageId === origin.packageId)
       const target = installation?.target.kind === 'card' ? `角色 · ${props.card?.id === installation.target.cardId ? props.card.name : installation.target.cardId}` : installation?.target.kind === 'global' || !origin.installationId ? '全局' : '安装来源未解析'
-      return { id: `package:${origin.packageId}:${origin.installationId ?? ''}`, name: `${origin.packageId} · ${target}`, kind: 'package', description: `${target}${installation ? ` · v${installation.packageVersion}` : ''}` }
+      return { id: `package:${origin.packageId}:${origin.installationId ?? ''}`, name: `${identity?.displayName ?? origin.packageId} · ${target}`, iconUrl: identity?.iconUrl, kind: 'package', description: `${target}${installation ? ` · v${installation.packageVersion}` : ''}` }
     }
-    return origin?.kind === 'builtin' ? { id: 'official', name: 'Loom Studio', kind: 'official' }
+    return origin?.kind === 'builtin' ? { id: 'official', name: 'Loom Studio', kind: 'official', iconUrl: '/images/logo.png' }
       : { id: 'personal', name: '我的预设', kind: 'personal' }
   }
   const sources = [...new Map(presets.map(preset => { const source = sourceOf(preset); return [source.id, source] })).values()]
@@ -161,6 +164,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     <div className={styles.libraryPane} hidden={editing}>
       <PresetLibraryCatalog sources={sources} items={presets.map(preset => ({
         id: preset.id, sourceId: sourceOf(preset).id, name: preset.rootNode.label,
+        iconUrl: presetIconUrl(preset, extensionIdentities),
         modelLabel: preset.model?.modelId ?? props.t('agent.model.unbound'),
         toolCount: props.toolMounts.filter(mount => mount.presetResourceId === preset.id && mount.defaultEnabled !== false).length,
         resourceCount: props.loreMounts.filter(mount => mount.source.kind === 'preset' && mount.source.id === preset.id).length + (preset.textUses?.length ?? 0),

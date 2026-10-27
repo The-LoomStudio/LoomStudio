@@ -15,7 +15,7 @@ Extension Package 允许零 Module，仅携带声明式资源。静态贡献声�
 - [`scripts/dev/verify-server-extension.ts`](../../../scripts/dev/verify-server-extension.ts)
 - [`tests/integration/studio-server/extension-install.test.ts`](../../../tests/integration/studio-server/extension-install.test.ts)
 
-Client Renderer Host、Surface 与 UI 生命周期见 [`client-renderer-host.md`](client-renderer-host.md)。轻量单文件 Renderer 的 Metadata、Mount、版本冻结与 Sandbox 合同见 [`loom-script-runtime.md`](loom-script-runtime.md)。
+Client Renderer Host、Surface 与 UI 生命周期见 [`client-renderer-host.md`](client-renderer-host.md)。单文件 Script 的 Metadata、Mount、版本采用、后台执行与 Sandbox 合同见 [`loom-script-runtime.md`](loom-script-runtime.md)。
 
 ## 1. 三层身份
 
@@ -176,6 +176,8 @@ Handler 的第二参数包含 `signal`、宿主生成的 `invocationId`，以及
 
 Package 展示元数据保持为一组轻量可选字段：`description`、`icon`、`author`、`homepage`、`repository` 与 `tags`。`tags` 只用于搜索、分类和展示，不参与权限、加载顺序或 capability 判定；旧 `roles` 字段不再接受。`homepage` / `repository` 必须是 HTTP(S) 绝对 URL，`icon` 必须是 Package 内的 PNG、JPEG、WebP 或 GIF 相对路径。
 
+预设展示图标使用可选 `metadata.icon = { kind: 'package', packageId, path, target? }`，与来源 provenance 分开。资源存储映射及包资源安装保留该字段；Card 安装补充当前 target。Client 复用已发现 Package 的版本与受控文件 URL 解析图标，不为每个视图追加查询。复制预设保留包引用，不复制图标字节；Package 不可用时显示既有备用图标。实现见 [`prompt-resource-contracts.ts`](../../../packages/shared/src/prompt-resource-contracts.ts)、[`prompt-resource-mapper.ts`](../../../packages/application-runtime/src/prompt/prompt-resource-mapper.ts)与 [`extension-icon.tsx`](../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon.tsx)。
+
 ## 4. Server Module Host 与 Scope
 
 每个 Server Module 独立 discover、load、activate、reload、dispose 与 forget，当前最多一个活动实例。重复 activation 被拒绝；reload 先释放旧实例，再加载并激活新实例，生成新的 `instanceId`；forget 在释放实例后移除 Host discovery record，供 Package 卸载后安全重发现同 ID Module。
@@ -279,7 +281,7 @@ Client Entry、iframe source 与 Package 静态资源通过 `GET /extensions/:pa
 - 不可信 Client JavaScript 的强权限隔离；现有 Dedicated Worker 只提供线程隔离；
 - 通用跨端 Event Transport 与 Client Event Subscription；
 - 第三方网络权限合同；Client Config 读写与订阅已实现，主题 / 样式贡献见 [Extension 主题与样式增强](../ui/extension-themes.md)；
-- Package Prompt Resource / Agent Tool 的跨版本升级、差异合并与迁移 UI；
+- Package 资源更新的逐字段差异合并与自定义迁移 UI；现有显式更新已支持 installation 版本校验和贡献替换；
 - Client HMR；当前只提供显式 reload；
 - Module dependency graph、加载顺序和通用 DI Container；
 - Marketplace、签名与自动更新检测；目录 / ZIP / Git 安装和依赖版本、来源、循环检查已实现，不包含通用包管理器式版本求解；

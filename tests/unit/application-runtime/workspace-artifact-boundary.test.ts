@@ -1,3 +1,4 @@
+import { mkdtempSync, rmSync } from 'node:fs'
 import {
   createApplicationRuntime,
   createVariableRenderContext,
@@ -12,7 +13,7 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -291,7 +292,9 @@ describe('card bundle artifact boundary', () => {
 
       const exported = await exportCardArtifact({ cardId: imported.card.id, documents: fixture.documents, promptResources: fixture.promptResources, blobs })
       expect(exported.schemaVersion).toBe(4)
-      expect(exported.scriptAttachments).toEqual(artifact.scriptAttachments)
+      expect(exported.scriptAttachments).toEqual(artifact.scriptAttachments!.map(attachment => ({
+        ...attachment, textResourceIds: {}, textResourceReferences: {},
+      })))
     } finally {
       await rm(rootDirectory, { recursive: true, force: true })
     }
@@ -335,7 +338,7 @@ describe('card bundle artifact boundary', () => {
       await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 4, grantedCapabilities: [] })
 
       const exported = (await runtime.exportCardBundle({ cardId: card.id })).artifact
-      expect(exported.scriptAttachments).toEqual([{ orderIndex: 4, script: { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName, source: editedSource } }])
+      expect(exported.scriptAttachments).toEqual([{ orderIndex: 4, settings: {}, textResourceIds: {}, script: { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName, source: editedSource } }])
       expect((await runtime.getLoomScript({ scriptDocumentId: script.id })).script).toEqual(saved)
       const copy = (await runtime.importCardBundle({ artifact: exported })).card
       const copies = (await runtime.listLoomScripts({ owner: { kind: 'card', cardId: copy.id } })).scripts
@@ -344,7 +347,8 @@ describe('card bundle artifact boundary', () => {
       expect((await runtime.listLoomScriptMounts({ target: { kind: 'card', cardId: copy.id } })).mounts).toEqual([
         expect.objectContaining({ scriptDocumentId: copies[0]!.id, enabled: false, grantedCapabilities: [], orderIndex: 4 }),
       ])
-      expect((await runtime.exportCardBundle({ cardId: copy.id })).artifact.scriptAttachments).toEqual(exported.scriptAttachments)
+      expect((await runtime.exportCardBundle({ cardId: copy.id })).artifact.scriptAttachments)
+        .toEqual(exported.scriptAttachments!.map(attachment => ({ ...attachment, textResourceReferences: {} })))
       expect((await runtime.getLoomScript({ scriptDocumentId: script.id })).script.owner).toEqual(script.owner)
       if (kind === 'card-extension') {
         expect(exported.extensionPackages).toHaveLength(1)
@@ -371,13 +375,15 @@ describe('card bundle artifact boundary', () => {
       targets: ['narrative'], strategy: 'latest-valid', parser: 'text', artifactType: 'weather',
     }]
     const first = await importCardBundle({ artifact, ...fixture })
-    const exported = await exportCardArtifact({ cardId: first.card.id, documents: fixture.documents, promptResources: fixture.promptResources })
-    expect(exported.textTransformRules).toEqual(artifact.textTransformRules)
+    const exported = await exportCardArtifact({ cardId: first.card.id, ...fixture })
+    expect(exported.textTransformRules).toEqual([])
+    expect(exported.scriptAttachments).toHaveLength(1)
     expect(exported.textExtractors).toEqual(artifact.textExtractors)
     const second = await importCardBundle({ artifact: exported, ...fixture })
-    const rules = await fixture.documents.list({ type: 'airp.textTransformRule' })
-    expect(rules.items).toEqual(expect.arrayContaining([first.card.id, second.card.id].map(cardId =>
-      expect.objectContaining({ content: expect.objectContaining({ owner: { kind: 'card', cardId } }) }),
+    const runtime = createApplicationRuntime({ ...fixture })
+    const rules = await runtime.listTextTransformRules()
+    expect(rules.rules).toEqual(expect.arrayContaining([first.card.id, second.card.id].map(cardId =>
+      expect.objectContaining({ ...artifact.textTransformRules![0], owner: { kind: 'card', cardId } }),
     )))
     const extractors = await fixture.documents.list({ type: 'airp.textExtractor' })
     expect(extractors.items).toEqual(expect.arrayContaining([first.card.id, second.card.id].map(cardId =>
@@ -386,7 +392,7 @@ describe('card bundle artifact boundary', () => {
     const invalid = structuredClone(artifact)
     Object.assign(invalid.textTransformRules![0]!, { owner: { kind: 'workspace' } })
     await expect(importCardBundle({ artifact: invalid, ...fixture })).rejects.toThrow('Invalid Card text pipeline')
-    expect((await fixture.documents.list({ type: 'airp.textTransformRule' })).items).toHaveLength(2)
+    expect((await runtime.listTextTransformRules()).rules).toHaveLength(2)
   })
 
   it('accepts Prompt Resource v1 and normalizes portable Script attachments to v2', () => {
@@ -407,39 +413,7 @@ describe('card bundle artifact boundary', () => {
     expect(portable.scriptAttachments?.[0]).toMatchObject({ orderIndex: 3, script: { fileName: 'alice.loom.js' } })
   })
 
-  it('retains legacy Preset attachments on import but exports only the prompt resource', async () => {
-    const fixture = createFixture()
-    const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-preset-script-'))
-    const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-preset-blob`, now: () => '2026-09-11T00:00:00.000Z' })
-    try {
-      const runtime = createApplicationRuntime({ ...fixture, blobs })
-      const attachment = {
-        orderIndex: 2,
-        script: { format: 'loom.script' as const, schemaVersion: 1 as const, fileName: 'alice.loom.js', source: loomScriptSource() },
-      }
-      const imported = await runtime.importPromptResource({
-        artifact: {
-          format: 'loom.promptResource',
-          schemaVersion: 2,
-          resourceKind: 'preset',
-          rootNode: { id: 'preset-root', label: 'Preset', kind: 'module' },
-          scriptAttachments: [attachment],
-        },
-      })
-      const mounts = await runtime.listLoomScriptMounts({ target: { kind: 'preset', presetId: imported.resource.id } })
-      expect(mounts.mounts).toMatchObject([{ enabled: false, grantedCapabilities: [], orderIndex: 2 }])
 
-      const withoutBlobs = createApplicationRuntime({ ...fixture })
-      const exported = await withoutBlobs.exportPromptResource({ resourceId: imported.resource.id })
-      expect(exported.artifact).toEqual({
-        format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset',
-        rootNode: imported.resource.rootNode,
-      })
-      expect(await runtime.listLoomScriptMounts({ target: { kind: 'preset', presetId: imported.resource.id } })).toEqual(mounts)
-    } finally {
-      await rm(rootDirectory, { recursive: true, force: true })
-    }
-  })
 })
 
 function loomScriptSource(): string {
@@ -525,7 +499,10 @@ function createFixture() {
   const createId = (prefix: string) => `${prefix}-${++sequence}`
   const now = () => '2026-06-22T00:00:00.000Z'
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const rootDirectory = mkdtempSync(join(tmpdir(), 'loom-card-boundary-'))
+  const blobs = createBlobStore({ engine, rootDirectory, createId, now })
+  onTestFinished(async () => { await engine.close(); rmSync(rootDirectory, { recursive: true, force: true }) })
   const documents = createSqliteDocumentStore({ engine })
   const promptResources = createPromptResourceStore({ engine, createId, now })
-  return { dataEngine: engine, engine, documents, promptResources }
+  return { dataEngine: engine, engine, documents, promptResources, blobs }
 }

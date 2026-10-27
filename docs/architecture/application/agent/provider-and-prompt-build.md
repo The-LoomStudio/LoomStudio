@@ -84,6 +84,8 @@ Preset 挂载与预览是构建表面的静态投影：
 
 每个 Provider Step 保存 Provider、Model、Provider Call ID、raw / normalized stop reason 和 usage。Provider Observation 是外部事实，Run State 是 Runtime 判断。`stop` 不必然表示 Agent 完成，`tool_call` 也不直接等同于整个 Run 的状态。
 
+模型日志使用的 Build / Provider Observation Store 与 canonical Transcript、运行日志及累计统计分别拥有各自生命周期。观测的读取、临时容量及可选保留从 [Runtime 模块导航](../../../../packages/application-runtime/README.md#源码导航)进入，累计用量从 [Application Data](../../../../packages/application-data/README.md)进入；不在本页复制 Store API。日志与观测的跨模块边界见[日志合同](../../platform/logging.md)。
+
 ## 7. 失效业务引用与宽松构建契约
 
 用户已确立业务资源之间的宽松引用与非严格构建原则：

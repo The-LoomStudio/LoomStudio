@@ -1,5 +1,5 @@
-import { Button, IconButton, Toggle } from '@loom-studio/ui'
-import { Code2, Download, Plus, Power, RefreshCw, Upload, X } from 'lucide-react'
+import { Button, IconButton, Tabs, Toggle } from '@loom-studio/ui'
+import { Code2, Download, Folder, Plus, Power, RefreshCw, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { resolveLoomScriptSettings, type LoomScriptMountTarget, type LoomScriptSettingDefinition, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { LoomScript, LoomScriptMount, LoomScriptOwner } from '../../../entities/index.js'
@@ -31,6 +31,7 @@ type ScriptSettingsSnapshot = {
 export function ScriptManagementPanel(props: {
   api: Pick<StudioApi['loomScripts'], 'list' | 'listMounts' | 'export' | 'import' | 'update' | 'createMount' | 'updateMount' | 'refreshMount'> & Partial<Pick<StudioApi['loomScripts'], 'preview' | 'getSettings' | 'removeMount'>>
   cardId?: string
+  getOwnerName?(owner: LoomScriptOwner): string | undefined
   onScriptsChanged(): void
   refreshToken?: number
   header?: ReactNode
@@ -43,7 +44,7 @@ export function ScriptManagementPanel(props: {
   const [detailTab, setDetailTab] = useState<'run' | 'source'>('run')
   const [scope, setScope] = useState<'user' | 'card'>('user')
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
-  const [expandedIds, setExpandedIds] = useState(['user', 'card', 'extension', 'workspace', 'preset'])
+  const [collapsedIds, setCollapsedIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -58,8 +59,12 @@ export function ScriptManagementPanel(props: {
   const dirty = Boolean(draft && (draft.source !== draft.savedSource || draft.fileName !== draft.savedFileName || !draft.script))
   const settingsDirty = selectedMounts.some(mount => settingsDrafts[mount.id] !== undefined && !sameSettings(settingsDrafts[mount.id]!, mount.settings ?? {}))
   const tags = useMemo(() => [...new Set(scripts.flatMap(script => script.tags ?? []))].sort((left, right) => left.localeCompare(right)), [scripts])
-  const visibleScripts = scripts.filter(script => (!tag || script.tags?.includes(tag))
-    && `${script.name} ${script.metadataId} ${(script.tags ?? []).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+  const scopeScripts = scripts.filter(script => scope !== 'card' || !props.cardId
+    || script.owner.kind === 'card' && script.owner.cardId === props.cardId
+    || mounts.some(mount => mount.scriptDocumentId === script.id
+      && (mount.target.kind === 'user' || mount.target.kind === 'card' && mount.target.cardId === props.cardId)))
+  const visibleScripts = scopeScripts.filter(script => (!tag || script.tags?.includes(tag))
+    && `${script.name} ${script.metadataId} ${props.getOwnerName?.(script.owner) ?? ''} ${(script.tags ?? []).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 
   useEffect(() => { if (tag && !tags.includes(tag)) setTag('') }, [tag, tags])
 
@@ -205,22 +210,35 @@ export function ScriptManagementPanel(props: {
       await load()
     })
   }
-  const nodes = (['user', 'card', 'extension', 'workspace', 'preset'] as const).map(kind => ({
-    id: kind,
+  function ownerLabel(owner: LoomScriptOwner) {
+    const name = props.getOwnerName?.(owner)
+    return name ? `${({ user: '个人', card: '角色', extension: '扩展', workspace: '工作区', preset: '预设' })[owner.kind]} · ${name}` : scriptOwnerLabel(owner)
+  }
+  const owners = new Map(visibleScripts.map(script => [JSON.stringify(script.owner), script.owner]))
+  const nodes = [...owners].map(([key, owner]) => ({
+    id: `owner:${key}`,
     kind: 'folder' as const,
-    label: ({ user: '个人脚本', card: '角色脚本', extension: '扩展包脚本', workspace: '工作区脚本', preset: '预设脚本' })[kind],
-    children: visibleScripts.filter(script => script.owner.kind === kind).map(script => {
+    label: ownerLabel(owner),
+    children: visibleScripts.filter(script => JSON.stringify(script.owner) === key).map(script => {
       const count = mounts.filter(mount => mount.scriptDocumentId === script.id && mount.enabled).length
       return { id: script.id, kind: 'entry' as const, label: script.name, meta: `${count ? `${count} 个范围已启用` : '未启用'} · v${script.version}${script.tags?.length ? ` · ${script.tags.join(' · ')}` : ''}` }
     }),
-  })).filter(node => node.children.length)
+  }))
+  function changeScope(next: 'user' | 'card') {
+    if (!canReplaceDraft()) return
+    requestRef.current++
+    setScope(next)
+    setDraft(undefined)
+    setMobilePane('master')
+  }
+
 
   return <MasterDetailWorkbench navigationScope="local" masterWidth={260} mobilePane={mobilePane} onMobilePaneChange={setMobilePane} hasSelection={Boolean(draft)}
     master={<div className={styles.sidebar}>
       {props.header}
       <div className={styles.toolbar}>
-        <label className={styles.scope}>新建 / 导入到<select aria-label="脚本创建范围" disabled={busy} value={target.kind} onChange={event => setScope(event.target.value as 'user' | 'card')}>
-          <option value="user">全局</option>{props.cardId ? <option value="card">当前角色</option> : null}
+        <label className={styles.scope}>查看 / 新建范围<select aria-label="脚本查看与创建范围" disabled={busy} value={target.kind} onChange={event => changeScope(event.target.value as 'user' | 'card')}>
+          <option value="user">全部脚本（新建到全局）</option>{props.cardId ? <option value="card">当前角色</option> : null}
         </select></label>
         <Button size="small" variant="ghost" disabled={busy} onClick={() => startNew()}><Plus size={14} aria-hidden="true" />新建</Button>
         <Button size="small" variant="ghost" disabled={busy} onClick={() => startNew(true)}>新建规则</Button>
@@ -232,14 +250,14 @@ export function ScriptManagementPanel(props: {
         {tags.length > 0 && <select aria-label="按脚本标签筛选" value={tag} onChange={event => setTag(event.target.value)}><option value="">全部标签</option>{tags.map(value => <option key={value} value={value}>{value}</option>)}</select>}
       </div>
       <div className={styles.tree}>
-        <FileTree ariaLabel="脚本" nodes={nodes} selectedId={draft?.script?.id} expandedIds={expandedIds} onExpandedIdsChange={setExpandedIds}
+        <FileTree ariaLabel="脚本" nodes={nodes} selectedId={draft?.script?.id} expandedIds={nodes.map(node => node.id).filter(id => !collapsedIds.includes(id))} onExpandedIdsChange={ids => setCollapsedIds(nodes.map(node => node.id).filter(id => !ids.includes(id)))}
           moreActionsLabel="更多操作" getDisclosureLabel={node => node.label} getDragLabel={node => node.label}
-          renderIcon={() => <Code2 size={14} aria-hidden="true" />}
+          renderIcon={node => node.kind === 'folder' ? <Folder size={14} aria-hidden="true" /> : <Code2 size={14} aria-hidden="true" />}
           renderTrailing={node => node.kind !== 'folder' && mounts.some(mount => mount.scriptDocumentId === node.id && mount.enabled)
             ? <IconButton size="small" disabled={busy} aria-label={`停用 ${node.label} 的所有范围`} onClick={event => { event.stopPropagation(); void stopScript(node.id) }}><Power size={14} aria-hidden="true" /></IconButton> : null}
           onSelect={node => { const script = scripts.find(item => item.id === node.id); if (script) void selectScript(script) }} />
         {!scripts.length ? <p className={styles.muted}>暂无脚本。新建或导入后，再授权并启用。</p> : null}
-        {scripts.length > 0 && !visibleScripts.length ? <p className={styles.muted}>没有匹配的脚本。调整搜索词或标签筛选。</p> : null}
+        {scripts.length > 0 && !visibleScripts.length ? <p className={styles.muted}>此范围内没有匹配的脚本。调整范围、搜索词或标签。</p> : null}
       </div>
       <details className={styles.examples}><summary>示例脚本</summary><Button size="small" variant="ghost" disabled={busy} onClick={startSceneExample}>新建场景卡示例</Button></details>
     </div>}>
@@ -247,24 +265,27 @@ export function ScriptManagementPanel(props: {
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       {draft ? <>
         <header className={styles.heading}>
-          <div className={styles.title}><h3>{draft.script?.name ?? '新脚本'}</h3><small>{ownerKindLabel(draft.owner)} · {draft.script ? `v${draft.script.version}` : '未保存'}{dirty && draft.script ? ' · 有未保存修改' : ''}</small></div>
+          <div className={styles.title}><h3>{draft.script?.name ?? '新脚本'}</h3><small>{ownerLabel(draft.owner)} · {draft.script ? `v${draft.script.version}` : '未保存'}{dirty && draft.script ? ' · 有未保存修改' : ''}</small></div>
           <div className={styles.actions}>
             {enabledMounts.length > 0 && <Button size="small" variant="ghost" disabled={busy} onClick={() => void stopScript(draft.script!.id)}><Power size={14} aria-hidden="true" />全部停用</Button>}
             <Button size="small" disabled={busy || !dirty} onClick={() => void save()}>{props.t('textTransform.save')}</Button>
             <IconButton size="small" disabled={busy} aria-label="关闭脚本详情" onClick={closeDetail}><X size={16} aria-hidden="true" /></IconButton>
           </div>
         </header>
-        <nav className={styles.tabs} aria-label="脚本详情">
-          <Button size="small" variant="ghost" aria-pressed={detailTab === 'run'} onClick={() => setDetailTab('run')}>运行与授权</Button>
-          <Button size="small" variant="ghost" aria-pressed={detailTab === 'source'} onClick={() => setDetailTab('source')}>源码{dirty ? ' ·' : ''}</Button>
-        </nav>
+        <Tabs<'run' | 'source'>
+          className={styles.tabs}
+          ariaLabel="脚本详情"
+          activeId={detailTab}
+          onChange={setDetailTab}
+          items={[{ id: 'run', label: '运行与授权' }, { id: 'source', label: `源码${dirty ? ' ·' : ''}` }]}
+        />
         <div className={styles.content}>
         {detailTab === 'run' ? draft.script ? <>
           <div className={styles.sectionHeading}><h4>启用范围</h4><span className={styles.muted}>{draft.script.runtime}</span></div>
           <p className={styles.muted}>同一脚本只运行一次，角色配置优先于全局。角色明确关闭时，会覆盖全局启用；关闭不会删除脚本或授权。</p>
           {!selectedMounts.length && <p className={styles.empty}>尚未添加启用范围。选择下方的全局或当前角色开始配置。</p>}
           {selectedMounts.map(mount => {
-            const label = mountTargetLabel(mount.target, props.cardId)
+            const label = props.getOwnerName?.(mount.target) ? ownerLabel(mount.target) : mountTargetLabel(mount.target, props.cardId)
             const missing = draft.script!.requestedCapabilities.filter(capability => !mount.grantedCapabilities.includes(capability))
             const independentRules = draft.script!.contributions.some(contribution => contribution.kind !== 'renderer' && !contribution.requiresCode)
             const settings = settingsSnapshots[mount.id]
@@ -302,9 +323,9 @@ export function ScriptManagementPanel(props: {
             {!selectedMounts.some(mount => mount.target.kind === 'user') && <Button size="small" variant="ghost" disabled={busy} onClick={() => void addMount({ kind: 'user' })}><Plus size={14} aria-hidden="true" />添加到全局</Button>}
             {props.cardId && !selectedMounts.some(mount => mount.target.kind === 'card' && mount.target.cardId === props.cardId) && <Button size="small" variant="ghost" disabled={busy} onClick={() => void addMount({ kind: 'card', cardId: props.cardId! })}><Plus size={14} aria-hidden="true" />添加到当前角色</Button>}
           </div>
-          <details className={styles.metadata}><summary>来源与标识</summary><p>{scriptOwnerLabel(draft.owner)}</p><p>文档：{draft.script.id}</p><p>Metadata：{draft.script.metadataId}</p></details>
+          <details className={styles.metadata}><summary>来源与标识</summary><p>{ownerLabel(draft.owner)}</p><p>文档：{draft.script.id}</p><p>Metadata：{draft.script.metadataId}</p></details>
         </> : <p className={styles.muted}>保存脚本后，可添加启用范围并授权。保存不会自动启动。</p> : <>
-          <div className={styles.sourceToolbar}><span className={styles.muted}>编辑原脚本 · {ownerKindLabel(draft.owner)}</span><Button size="small" variant="ghost" disabled={busy || !draft.script} onClick={() => void run(async () => { const { artifact } = await props.api.export(draft.script!.id); downloadBlob(new Blob([artifact.source], { type: 'text/javascript' }), artifact.fileName) })}><Download size={14} aria-hidden="true" />导出已保存版本</Button></div>
+          <div className={styles.sourceToolbar}><span className={styles.muted}>编辑原脚本 · {ownerLabel(draft.owner)}</span><Button size="small" variant="ghost" disabled={busy || !draft.script} onClick={() => void run(async () => { const { artifact } = await props.api.export(draft.script!.id); downloadBlob(new Blob([artifact.source], { type: 'text/javascript' }), artifact.fileName) })}><Download size={14} aria-hidden="true" />导出已保存版本</Button></div>
           <LoomScriptSourceFields key={draft.script?.id ?? `new-script-${requestRef.current}`} fileName={draft.fileName} source={draft.source} disabled={busy} t={props.t} onPreview={props.api.preview}
             onFileNameChange={fileName => setDraft({ ...draft, fileName })} onSourceChange={source => setDraft({ ...draft, source })} />
         </>}
@@ -314,9 +335,6 @@ export function ScriptManagementPanel(props: {
   </MasterDetailWorkbench>
 }
 
-function ownerKindLabel(owner: LoomScriptOwner) {
-  return ({ user: '个人脚本', card: '角色脚本', extension: '扩展包脚本', workspace: '工作区脚本', preset: '预设脚本' })[owner.kind]
-}
 function mountTargetLabel(target: LoomScriptMountTarget, cardId?: string): string {
   if (target.kind === 'user') return '全局'
   if (target.kind === 'card') return target.cardId === cardId ? '当前角色' : `其他角色 · ${target.cardId}`

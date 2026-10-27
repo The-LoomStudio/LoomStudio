@@ -16,7 +16,7 @@ Studio Client 是 React/Vite Web Client，负责页面组合、交互状态和 t
 | Timeline/Session 目录缓存、Run 控制与重放 | [use-narrative-collections.ts](src/features/narrative-runtime/model/use-narrative-collections.ts)、[use-session-run.ts](src/features/narrative-runtime/model/use-session-run.ts)、[agent-run-observer.ts](src/features/narrative-runtime/model/agent-run-observer.ts) | [card-timeline-selection.test.ts](../../tests/unit/client/card-timeline-selection.test.ts)、[narrative-run-recovery.test.ts](../../tests/unit/client/narrative-run-recovery.test.ts)、[use-timeline-session.test.ts](../../tests/unit/client/use-timeline-session.test.ts) |
 | Text Transform 作者编辑与运行检查 | [use-text-transform-controller.ts](src/features/text-transforms/model/use-text-transform-controller.ts)、[use-text-transform-inspection.ts](src/features/text-transforms/model/use-text-transform-inspection.ts) | [text-transform-source.test.ts](../../tests/unit/client/text-transform-source.test.ts) |
 | 剧情、主写作、Agent Session、输入投递 | [use-narrative-runtime.ts](src/features/narrative-runtime/model/use-narrative-runtime.ts) | [use-narrative-runtime.test.ts](../../tests/unit/client/use-narrative-runtime.test.ts)、[narrative-session-lifecycle.test.ts](../../tests/unit/client/narrative-session-lifecycle.test.ts) |
-| Session 搜索、改名、查看与主对话选择 | [agent-session-picker.tsx](src/widgets/agent-chat-panel/agent-session-picker.tsx) | [agent-session-picker.test.ts](../../tests/unit/client/agent-session-picker.test.ts) |
+| 独立 Session 搜索、改名与查看 | [agent-session-picker.tsx](src/widgets/agent-chat-panel/agent-session-picker.tsx) | [agent-session-picker.test.ts](../../tests/unit/client/agent-session-picker.test.ts) |
 | Agent Preset、预设选择与 Lore 使用 | [use-agent-presets.ts](src/features/prompt-resources/model/use-agent-presets.ts)、[preset-workbench.tsx](src/widgets/preset-workbench/preset-workbench.tsx) | [preset-lore-uses.test.ts](../../tests/unit/client/preset-lore-uses.test.ts)（使用配置 UI） |
 | 世界书、Context Assets、资源树操作 | [tree-ops.ts](src/features/prompt-resources/model/tree-ops.ts)、[use-context-assets.ts](src/features/prompt-resources/model/use-context-assets.ts) | [context-assets.test.ts](../../tests/unit/client/context-assets.test.ts) |
 | PromptBuild 展示步骤 | [build-prompt-build-steps.ts](src/features/prompt-build/model/build-prompt-build-steps.ts) | [prompt-build-steps.test.ts](../../tests/unit/client/prompt-build-steps.test.ts) |
@@ -30,7 +30,16 @@ Studio Client 是 React/Vite Web Client，负责页面组合、交互状态和 t
 | 面板、窗口、返回、导航恢复 | [studio-shell/](src/shared/studio-shell/)、[studio-page.tsx](src/pages/studio/studio-page.tsx) | [studio-workspace-navigation.test.ts](../../tests/unit/client/studio-workspace-navigation.test.ts) |
 | 文案、翻译、i18n | [zh-cn.ts](src/shared/i18n/zh-cn.ts)、[en-us.ts](src/shared/i18n/en-us.ts) | [国际化规范](../../docs/guide/i18n.md)；按使用方核对，不为纯文案默认构建 |
 
-旧名称 `agent-profiles` / `features/agent-runtime` 不能作为当前源码入口：预设选择在 `agent-presets`，Narrative 与独立 Session 的客户端编排在 `narrative-runtime`。不要因为旧生成物目录仍存在而重建旧层。
+旧名称 `agent-profiles` / `features/agent-runtime` 不能作为当前源码入口：预设选择在 `features/prompt-resources`，独立工具管理仍在 `features/agent-presets`；Narrative 与独立 Session 的客户端编排在 `narrative-runtime`。不要因为旧生成物目录仍存在而重建旧层。
+
+## 复杂模块阅读入口
+
+FSD 分层与状态归属见本文[架构规范](#源码导航与-fsd-架构规范)；遇到需要追踪跨模块接线的任务，再看这些局部入口：
+
+- [App 装配](src/app/README.md)：启动前提、跨 Feature 接线与状态 facade。
+- [Narrative Runtime](src/features/narrative-runtime/README.md)：Timeline、Session、Transcript 投影与 Run 生命周期。
+- [Prompt Resources](src/features/prompt-resources/README.md)：资源查询缓存、Context Asset 草稿与预设选择。
+- [Shared API](src/shared/api/README.md)：AppRouter 推导、tRPC 传输与领域 API 适配。
 
 ## 开发入口
 
@@ -148,19 +157,35 @@ URL / History 路由导航       -> React Router
 
 ### 关键依赖使用提醒
 - **本地偏好沿用 Zustand**：面板折叠、展开偏好、主题外观写入所属 store。工作区导航恢复由 `shared/studio-shell/studio-workspace.ts` 按 endpoint 持久化位置；组件不得另建平行 `localStorage` 状态。
-- **服务端状态必须用 TanStack Query**：Prompt Resource、Lore Mount 等远端实体必须由 Query 管理缓存与失效，表单未保存草稿不进入 Query Cache。
+- **缓存型服务端状态沿用 TanStack Query**：Prompt Resource、Lore Mount、Preset Tool Mount、用户档案与全局搜索结果已有 Query 消费入口；这些缓存与失效由 Query 管理，表单未保存草稿不进入 Query Cache。
 - **长文本与代码编辑**：需要语法、搜索或高亮的场景必须复用 CodeMirror / Lezer；短文本用原生 input/textarea。
 - **消息展示**：复用 `features/message-content`；Markdown 使用 `react-markdown` / `remark-gfm`，HTML 使用现有消毒和隔离路径。不能绕过这些入口手写正则 parser 或直接注入未经处理的 HTML。
 - **菜单与弹层**：上下文菜单与下拉菜单必须基于 Radix primitives，不手写底层 focus/dismiss 机制；轻量反馈使用 Sonner。
 - **图标**：通用操作图标必须优先使用 Lucide 图标，品牌图标使用已有静态资产，不私自手绘重复 SVG。
-- **分页消费完整性（`collectPages`）**：消费 Provider、Capability Profile 与 Agent Profile 等后端分页时，统一通过 `collectPages` 收集完整列表后再发布，避免半列表暴露。
+- **分页消费完整性（`collectPages`）**：消费 Provider 与 Capability Profile 等后端分页时，统一通过 `collectPages` 收集完整列表后再发布，避免半列表暴露。
 - **失效引用容错呈现**：业务依赖（如绑定的 Provider 账号被删除）缺失时，UI 宽容呈现为不可用警告并提供显式重新绑定入口，严禁因坏引用阻断列表或白屏崩溃。
+
+### 依赖职责与复用入口
+
+精确依赖见本 Workspace 的 `package.json`；下表记录实际消费者。新增类似能力时，从对应入口复用，不把服务端缓存、UI 偏好与草稿合成一个 Store。
+
+| 能力 | 依赖与当前入口 | 使用边界 |
+| --- | --- | --- |
+| 布局、外观、主题、搜索偏好、计数系数 | Zustand `create` / `persist`；[布局 Store](src/shared/studio-shell/studio-layout-store.ts)、[外观 Store](src/shared/studio-shell/appearance-store.ts)、[主题 Store](src/features/themes/model/theme-store.ts)、[搜索 Store](src/features/global-search/model/global-search-store.ts)、[计数设置](src/shared/tokenizer/settings.ts) | 持久偏好复用 `safeLocalStorage` adapter；导航位置仍由 History / `studio-workspace.ts` 拥有，不将远端正文搬入 Store。 |
+| 远端缓存与分页 | TanStack Query；[资源缓存](src/features/prompt-resources/model/use-prompt-resource-state.ts)、[用户档案](src/features/user-profiles/model/use-user-profiles-query.ts)、[搜索查询](src/features/global-search/model/global-search-queries.ts) | 使用已有 Query key 和失效入口；未迁移领域仍由其当前 feature 拥有，不据此宣称全站状态已迁移。 |
+| 大列表窗口 | TanStack Virtual；[文件树](src/shared/ui/file-tree/file-tree.tsx)、[NarrativeTimeline](src/widgets/narrative-timeline/narrative-timeline.tsx) | 管理可见 DOM，数据分页及流式跟随分别沿用领域 API 和 [useSmoothFollow](src/shared/ui/streaming-viewport/use-smooth-follow.ts)。 |
+| 命令菜单、弹层与通知 | `@loom-studio/ui` 的 cmdk `CommandMenu`、Radix 菜单、原生 Dialog，以及 Sonner；[全局搜索](src/widgets/global-search/global-search-dialog.tsx) | 搜索排序和范围由 feature 决定；不另写键盘列表、菜单焦点和 dismiss 基础设施。 |
+| 长文本与差异编辑 | CodeMirror / Lezer；[长文本编辑器](src/shared/ui/long-text-editor/) | 已有语言、高亮、搜索与 merge 扩展；普通短字段使用现有 input/textarea。 |
+| Markdown 与安全 HTML | `react-markdown`、`remark-gfm`、`rehype-raw`、`rehype-sanitize`；[Markdown adapter](src/shared/ui/markdown-content/) | 沿用现有消毒 Schema 和文档 iframe 边界；不自行拼接 HTML 注入。 |
+| 消息切块与 HTML 文档解析 | `unified` / `remark-parse` / `parse5`；[消息切块](src/features/message-content/model/message-segments.ts)、[HTML 文档](src/features/message-content/model/html-document.ts) | 使用语法树识别 Markdown / HTML 范围；解析不代替消毒，也不改变保存的正文。 |
+| State / 引用文本格式 | `yaml`；[State 编辑](src/features/state-variables/model/state-variable-editor.ts)、[引用模型](src/features/resource-references/reference-model.ts) | 解析和序列化使用库；校验与提交由领域入口负责。 |
+| typed RPC 与文本计数 | `@trpc/client` 和 Server 的 type-only AppRouter；`@loom-studio/tokenizer` 的共享 Worker adapter | 分别复用 [API](src/shared/api/) 和 [计数入口](src/shared/tokenizer/)；不在浏览器导入 Server Runtime，也不另加载一份词表。 |
 
 ## 编辑与正文生命周期
 
 - Context Asset 草稿不进入 Query Cache；失焦保存携带首次编辑版本。冲突保留输入，只有用户明确重新应用才读取最新版本并合并已编辑字段；不自动覆盖 Agent 的新提交。
 - 保存调用使用保留 rejection 的 `operations.run()`；`runReported()` 不能作为成功信号。已经提交的对象身份不能因刷新失败丢失。
-- 游玩先 `appendNarrativeInput` 持久化用户节点，再向 Agent Session 投递；重投递复用节点。Assistant 最终回复不自动追加正文，正文写入及失败结果由工具负责。
+- 游玩先 `appendNarrativeInput` 原子保存 canonical user message 和 Narrative 正文索引，再向当前 Timeline 根 Session 投递；当前页面的提交重投递复用节点，持久 Run 恢复使用已有检查点。Assistant 最终回复不自动追加正文，正文写入及失败结果由工具负责。
 - Narrative 正文使用 TanStack Virtual；离屏消息及消息内 Renderer/iframe 可卸载，编辑节点例外保留。外观设置的缓冲默认上下各5条，可调整0～50；不是所有已加载数据的内存上限。
 
 具体行为、失败恢复和源码入口见[Application UI 架构](../../docs/architecture/application/ui/README.md)，不要从已归档审查反推当前合同。
@@ -180,7 +205,7 @@ URL / History 路由导航       -> React Router
 
 `/dev/preview/scripts` 复用正式 `ScriptManagementPanel`，提供正常、空列表与较多脚本的交互预览。正常场景包含“全局停用、角色启用”的同一脚本，用于核对各范围开关及全部停用。API 和布局 Storage 均使用当前预览文档内存，不调用业务接口、不执行源码；关闭详情与停用实例是独立操作。只在开发环境注册，视觉与交互方向待用户验收。
 
-`/dev/preview/presets` 提供预设库草稿：按个人、作者套件与官方来源浏览，以浮层打开单个预设的配置，保留底下的目录、筛选与滚动位置；修改即时作用于内存样例，点击浮层外、关闭按钮或按 Escape 关闭，无需保存或返回步骤；浮层标题下固定并列的模型与审批、Lore、正则 / 提取器、工具、脚本 / 模块标签；各标签内容独立滚动，模型页包含模型选择、流式输出与工具审批，再独立进入消息编排，查看公共资源与实际采用关系，再通过双栏将条目、分组或整条 Message 复制到当前预设。包含正常、空列表、较多内容、长名称与嵌套样例；可编辑样例文本、采用资源、复制及撤销上次复制。刷新或重置后恢复样例，数据和布局 Storage 只在内存中，不请求业务接口。样例入口仅开发环境可用；目录与配置浮层宿主已被正式预设面板复用，双栏复制仍为预览能力。
+`/dev/preview/presets` 提供预设库草稿：单栏按个人、官方与扩展来源分组，来源默认展开且可收起，个人预设直接列出；搜索展开匹配来源，移动端无需先下钻来源，以浮层打开单个预设的配置，保留底下的目录、筛选与滚动位置；修改即时作用于内存样例，点击浮层外、关闭按钮或按 Escape 关闭，无需保存或返回步骤；浮层标题下固定并列的模型与审批、Lore、正则 / 提取器、工具、脚本 / 模块标签；各标签内容独立滚动，模型页包含模型选择、流式输出与工具审批，再独立进入消息编排，查看公共资源与实际采用关系，再通过双栏将条目、分组或整条 Message 复制到当前预设。包含正常、空列表、较多内容、长名称与嵌套样例；可编辑样例文本、采用资源、复制及撤销上次复制。刷新或重置后恢复样例，数据和布局 Storage 只在内存中，不请求业务接口。样例入口仅开发环境可用；目录与配置浮层宿主已被正式预设面板复用，双栏复制仍为预览能力。
 
 正式预设面板现在默认显示来源目录。点击名称、图标或行主体进入当前预设的消息编排；只有“配置”按钮打开浮层。目录使用 `PresetLibraryCatalog`，浮层使用 `PresetConfigurationDialog`，两者也供预览复用。正式配置复用现有模型选择、审批、Lore、正则/提取器及工具挂载，按顶部标签切换；修改立即保存，保存中阻止重复写入与关闭，失败保留提示与重试。编排的深链接、节点编辑和导入导出继续使用原接口，返回库目录保留筛选和列表位置。脚本/模块预设绑定与跨预设双栏复制尚未接入正式业务。
 

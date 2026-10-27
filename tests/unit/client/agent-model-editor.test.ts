@@ -108,14 +108,13 @@ describe('Agent model slot', () => {
     expect(f.picker()).toMatchObject({ open: true, error: 'Account offline', current: { modelId: 'original' } })
   })
 
-  it('reports partial success and retries the binding after the account models refresh', async () => {
+  it('reports partial success and retries only the binding after adding the model', async () => {
     const f = fixture()
     vi.mocked(f.props.onSave).mockRejectedValueOnce(new Error('Version conflict'))
     const selection = { providerProfileId: 'provider', modelId: 'new' }
     await f.picker().onSelect(selection, true)
     expect(f.picker().error).toContain(f.props.t('agent.model.addedButNotBound'))
     expect(f.picker().current?.modelId).toBe('original')
-    f.props.modelProfiles = [{ id: 'new', version: 1, displayName: 'new', providerAccountId: 'provider', providerModelId: 'new' }]
     await f.picker().onSelect(selection, false)
     expect(f.props.onCreateModel).toHaveBeenCalledOnce()
     expect(f.props.onSave).toHaveBeenCalledTimes(2)

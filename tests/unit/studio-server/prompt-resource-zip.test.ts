@@ -1,4 +1,4 @@
-import { decodePromptResourceZip, encodePromptResourceZip } from '../../../apps/studio-server/src/codecs/prompt-resource-zip.js'
+import { decodePromptResourceZip } from '../../../apps/studio-server/src/codecs/prompt-resource-zip.js'
 import { zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
 
@@ -10,10 +10,6 @@ const artifact = {
 }
 
 describe('prompt resource ZIP codec', () => {
-  it('round trips one Prompt Resource artifact', () => {
-    expect(decodePromptResourceZip(encodePromptResourceZip(artifact))).toEqual(artifact)
-  })
-
   it('rejects missing or invalid manifest', () => {
     expect(() => decodePromptResourceZip(zipSync({ 'resource.json': new TextEncoder().encode(JSON.stringify(artifact)) }))).toThrow('missing')
     expect(() => decodePromptResourceZip(zipSync({

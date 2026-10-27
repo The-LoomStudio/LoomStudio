@@ -3,6 +3,7 @@
   "id": "official.story-memory",
   "version": "1.0.0",
   "displayName": "剧情记忆",
+  "icon": "./icon.png",
   "description": "按固定剧情范围准备摘要，确认后采用；支持分层压缩、来源回查与共享的记忆工作台。",
   "author": "Loom Studio",
   "engines": { "studio": "^0.1.0" },

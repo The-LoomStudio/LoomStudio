@@ -148,3 +148,6 @@ export function isJsonObject(value: unknown): value is JsonObject {
   return isRecord(value)
 }
 export { formatResourceReference, parseResourceReference, formatEntityReference, parseEntityReference, parseResourceLink, type ResourceReference, type EntityReference } from './resource-reference.js'
+
+export { promptResourceDisplayMetadataSchema } from './prompt-resource-contracts.js'
+export type { PromptResourceDisplayMetadata } from './prompt-resource-contracts.js'

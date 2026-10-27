@@ -4,7 +4,7 @@ Card 的作者文件、ZIP 包与 PNG 分发共用同一套编解码。SQLite �
 
 Card Bundle 可携带 `extensionPackages` 中的 Extension Package 归档，与扩展 Portable Payload 分开索引。导入归档不会自动激活其中代码。角色安装的 Client 文件通过带 Card ID、包版本及归档 SHA-256 的私有 URL 提供，读取时校验该 Card 当前安装归档，不以同名全局包回退。安装记录、资源导入、模块启用和授权是分开的生命周期操作。
 
-v4 的可选 `contextAssetSettings` 按 `contextAssets` 根节点 ID 保存资源宏、宏选项、两个 Lore 开关和历史策略，文件投影与 ZIP 会保留这些配置。旧 v4 未携带该字段时沿用原默认值；机器本地模型绑定和授权策略不随该字段传播。重复导入发生节点 ID 冲突时，导入集合内的隐式 virtual 锚点引用同步重写，显式公共锚名保持不变。
+v4 的可选 `contextAssetSettings` 按 `contextAssets` 根节点 ID 保存资源显示元数据（含可选包图标引用）、宏、宏选项、两个 Lore 开关、历史策略与文本使用配置，文件投影与 ZIP 会保留这些配置。图标仍引用包内文件，不把图像字节嵌入资源设置。旧 v4 未携带该字段时沿用原默认值；机器本地模型绑定和授权策略不随该字段传播。重复导入发生节点 ID 冲突时，导入集合内的隐式 virtual 锚点引用同步重写，显式公共锚名保持不变。
 
 ## 内容与容器
 
@@ -94,7 +94,7 @@ ST 扩展导入时只将世界书写入 Prompt Resource，不再复制进内联 
 
 文件解析与领域声明校验在进入应用导入前完成。资源、脚本和文本管线记录复用现有导入事务；媒体 Asset 创建仍先于领域事务，不宣称所有 Asset 与领域写入已具备跨存储原子性。
 
-单独导出的 Prompt Resource 是白名单 Artifact，不递归携带脚本、规则、模型绑定、工具实现或关联 Lore。旧 Artifact reader 仍接受历史附件字段，但旧附件迁移为 Extension Package 或并列资源的完整、无损转换流程尚未完成。
+单独导出的 Prompt Resource 是白名单 Artifact，允许携带可选的包图标引用，但不递归携带图标文件、脚本、规则、模型绑定、工具实现或关联 Lore。旧 Artifact reader 仍接受历史附件字段，但旧附件迁移为 Extension Package 或并列资源的完整、无损转换流程尚未完成。
 
 ## 实现位置
 

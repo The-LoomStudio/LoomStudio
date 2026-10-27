@@ -4,7 +4,7 @@
 
 Extension SDK 定义 Extension 作者侧的 TypeScript 合同。它描述 Manifest v2、Package/Module/Instance identity、Activation Context 与 Capability facade；它不负责加载、授权或运行 Extension。
 
-Package 可以没有 Module，仅携带声明式 Prompt Resource、工具定义或转换规则。静态贡献只有经 Studio 显式导入后才形成 Application 资源；声明本身不代表已安装、已授权或已激活。
+Package 可以没有 Module，仅携带声明式 Prompt Resource、工具定义或转换规则。静态贡献经宿主资源导入链才形成 Application 资源；全局安装会在尚无 installation 时调用该导入链，已有 installation 的资源替换仍需显式更新。声明本身不代表已安装、已授权、被某个预设采用或已激活。
 
 Preset contribution 的 `loreMounts` / `textUses` 表达资源使用关系，支持包内 contribution 引用或外部引用；`toolMounts` 配置工具使用。它们不创建预设专属资源 Owner，也不会将外部引用内容自动打包。一个扩展可携带多个预设并共享定义，模块生命周期仍由 Host 管理，不跟随 Session 选择自动启停。
 
@@ -22,14 +22,15 @@ Server Module 还可用 `ctx.prompt.registerProcessor` 注册作者正文的候�
 
 ## 公共入口
 
-唯一入口是 [`src/index.ts`](./src/index.ts)。除 `defineServerExtension(module)` identity helper 外，也提供 iframe 作者侧连接代理；其余导出以类型合同为主：
+唯一入口是 [`src/index.ts`](./src/index.ts)。除 `defineServerExtension(module)`、安装身份与 Renderer 常量等纯 helper 外，也提供 iframe 作者侧连接代理；其余导出以类型合同为主：
 
 - Manifest v2 与 Package/Module/Instance identity；
 - RPC、Event、Document、Asset 与 AI Gateway capability；
 - `StudioEvent` / `EventMeta` 事件 envelope（源码为 [`src/events.ts`](./src/events.ts)）；原 transport 包已撤去，事件授权、可见性与 wire shape 保持原合同；
 - Config/Record Storage 和 Portable Payload；
-- `ExtensionActivationContext`；
-- `ServerExtensionModule`。
+- Server 的 `ExtensionActivationContext` / `ServerExtensionModule`；
+- Client 的 `ClientExtensionActivationContext` / `ClientExtensionModule`；
+- [`src/worker-context.ts`](./src/worker-context.ts) 的 `WorkerExtensionActivationContext` / `WorkerExtensionModule`。
 
 典型入口：
 
@@ -135,7 +136,7 @@ source 也可以声明 `{ "kind": "zip", "url": "https://example.org/helper-1.0.
 
 SQL 数据使用已有 `ctx.storage.configs` / `ctx.storage.records` 的宿主归属隔离。
 Server 文件数据使用 `await ctx.storage.files!.directory()` 获取当前安装的目录，
-位于用户数据 `extensions/<packageId>/` 下；不要在代码目录或用户数据根目录随意写入。
+位于用户数据 `extensions/<packageId>/global` 或按 Card 安装目标隔离的子目录下；不要在代码目录或用户数据根目录随意写入。
 此接口不赋予对恶意同进程 Node.js 代码的文件系统沙箱保证。
 
 ### Client iframe 通知
@@ -168,6 +169,12 @@ const page = await ctx.logs.query({ limit: 50, source: 'current' })
 
 - 订阅安全：`ctx.state.subscribe` 等事件与状态监听通过受控 `AbortSignal` 协调；预取消的 Signal 绝不会创建有效订阅，正常取消与重复 `dispose()` 保持完全幂等；
 - 资源释放：扩展在收到 `dispose` 通知时必须清理自身句柄；Host 保证单模块清理异常被隔离并记录，不会造成 sibling 模块或宿主环境级联崩溃。
+
+## Worker 与依赖边界
+
+Manifest Module 的 runtime 接受 `server`、`client`、`client-worker`。Worker 合同复用已授权 Client 能力，以 MessagePort 代理 State、配置、History、Records、RPC、Tokens、通知与日志；`timeline.getTarget()`、`assets.url()`、`files.url()` 和订阅注册是异步调用。Worker 不提供 Renderer / DOM API，原生网络与浏览器存储仍可用，线程隔离不等于权限沙箱。实现由 Client 的 [`shared/worker-runtime/`](../../apps/studio-client/src/shared/worker-runtime/) 拥有，不由 SDK 启动 Worker。
+
+SDK 的 Workspace 依赖主要作为作者类型来源：AI Gateway 的模型调用、Document Store 的文档输入输出、Diagnostics 的诊断、Logging 的扩展日志、Tokenizer 的计数合同，以及 Shared 的 JSON/State/Renderer 常量。它不引入 React、SQLite、网络 adapter 或第三方插件框架；只引用合同不等于获得相应能力，实际 gate 仍归 Host。
 
 ## SDK 与 Host
 

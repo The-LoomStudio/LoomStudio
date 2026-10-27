@@ -1,3 +1,6 @@
+import { createBlobStore } from '@loom-studio/asset-store'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import {
   createApplicationRuntime,
   createVariableRenderContext,
@@ -9,7 +12,7 @@ import { createSqliteDocumentStore } from '../../../packages/document-store/src/
 import { createPromptResourceStore } from '../../../packages/application-data/src/index.js'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
 describe('application runtime card bundle integration', () => {
   it('preserves public work identity across local copies and assigns a new identity only for an explicit derived work', async () => {
@@ -159,7 +162,7 @@ describe('application runtime card bundle integration', () => {
   })
 
   it('preserves exact raw JSON through the Source Artifact capability', async () => {
-    const raw = await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')
+    const raw = `${JSON.stringify(await readLoomCityArtifact(), null, 2)}\n`
     let preserved: Uint8Array | undefined
     const { runtime } = createTestRuntime({
       sourceArtifacts: {
@@ -467,27 +470,6 @@ describe('application runtime card bundle integration', () => {
     await expect(runtime.listTextTransformRules()).resolves.toEqual({ rules: [] })
   })
 
-  it('edits a resource directly and exports the current card bundle', async () => {
-    const { runtime } = createTestRuntime()
-    const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
-    expect(imported.card.promptResourceIds).toBeDefined()
-    const resources = await Promise.all(imported.card.promptResourceIds!.map(async resourceId => (
-      await runtime.getPromptResource({ resourceId })
-    ).resource))
-    const preset = resources.find(resource => resource.rootNode.id === 'preset-default-airp')
-    if (!preset) throw new Error('Expected preset resource')
-
-    await runtime.updatePromptResourceAsset({
-      resourceId: preset.id,
-      assetId: 'preset-style-directive',
-      body: 'Resource-scoped edit.',
-    })
-    const exported = await runtime.exportCardBundle({ cardId: imported.card.id })
-
-    expect(findNode(exported.artifact, 'preset-style-directive')?.body).toBe('Resource-scoped edit.')
-    expect(exported.artifact.metadata).toMatchObject({ exportedFromCardId: imported.card.id })
-  })
-
   it('passes through unknown source fields while canonical fields use current data', async () => {
     const { runtime } = createTestRuntime()
     const source = {
@@ -548,18 +530,9 @@ describe('application runtime card bundle integration', () => {
 })
 
 async function readLoomCityArtifact(): Promise<CardBundleArtifact> {
-  return JSON.parse(await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')) as CardBundleArtifact
-}
-
-function findNode(artifact: CardBundleArtifact, id: string): CardBundleArtifact['contextAssets'][number] | undefined {
-  const queue = [...artifact.contextAssets]
-  while (queue.length > 0) {
-    const node = queue.shift()
-    if (!node) continue
-    if (node.id === id) return node
-    queue.push(...(node.children ?? []))
-  }
-  return undefined
+  const artifact = JSON.parse(await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8'))
+  artifact.card.opening = { content: artifact.card.opening.entries[0].content }
+  return artifact as CardBundleArtifact
 }
 
 async function readOfficialContentInput() {
@@ -587,8 +560,11 @@ function createTestRuntime(options: {
   const createId = (prefix: string) => `${prefix}-${++sequence}`
   const now = () => '2026-08-19T00:00:00.000Z'
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const rootDirectory = mkdtempSync(join(tmpdir(), 'loom-workspace-artifact-'))
+  const blobs = createBlobStore({ engine, rootDirectory, createId, now })
+  onTestFinished(async () => { await engine.close(); rmSync(rootDirectory, { recursive: true, force: true }) })
   const documents = createSqliteDocumentStore({ engine })
   const promptResources = createPromptResourceStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources, sourceArtifacts: options.sourceArtifacts })
+  const runtime = createApplicationRuntime({ blobs, dataEngine: engine, documents, promptResources, sourceArtifacts: options.sourceArtifacts })
   return { engine, documents, promptResources, runtime }
 }

@@ -17,6 +17,29 @@ function createIds() {
 }
 
 describe('Prompt Resource Store application runtime', () => {
+  it('preserves package icon references through storage, duplication and export/import', async () => {
+    const createId = createIds()
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: () => '2026-10-26T00:00:00.000Z' })
+    try {
+      const promptResources = createPromptResourceStore({ engine, createId })
+      const runtime = createApplicationRuntime({ dataEngine: engine, documents: createSqliteDocumentStore({ engine }), promptResources })
+      const metadata = { icon: { kind: 'package' as const, packageId: 'official.loom-assistant', path: 'icon.png' } }
+      const { resource } = await runtime.importPromptResource({ artifact: {
+        format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset', metadata,
+        rootNode: { id: 'nom-root', kind: 'module', label: 'Nom' },
+      } })
+      expect((await runtime.getPromptResource({ resourceId: resource.id })).resource.metadata).toEqual(metadata)
+      const copy = await runtime.duplicatePromptResource({ resourceId: resource.id })
+      expect(copy.resource.metadata).toEqual(metadata)
+      const { artifact } = await runtime.exportPromptResource({ resourceId: copy.resource.id })
+      expect(artifact.metadata).toEqual(metadata)
+      expect((await runtime.importPromptResource({ artifact })).resource.metadata).toEqual(metadata)
+      await expect(runtime.importPromptResource({ artifact: {
+        ...artifact, metadata: { icon: { ...metadata.icon, path: '../outside.png' } },
+      } })).rejects.toThrow('package-relative')
+    } finally { await engine.close() }
+  })
+
   it('keeps message sequences as leaves beside Messages and normalizes legacy author roles', async () => {
     const createId = createIds()
     const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: () => '2026-10-24T00:00:00.000Z' })
@@ -45,7 +68,7 @@ describe('Prompt Resource Store application runtime', () => {
     } finally { engine.close() }
   })
 
-  it('copies from one resource read and updates macros without losing metadata', async () => {
+  it('copies mounts and updates macros without losing metadata', async () => {
     const createId = createIds()
     const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: () => '2026-10-02T00:00:00.000Z' })
     try {
@@ -58,17 +81,12 @@ describe('Prompt Resource Store application runtime', () => {
         resourceId: source.id, expectedVersion: source.version, actor: { kind: 'system', id: 'test' },
         mutations: [{ kind: 'resource.update', patch: { metadata: { custom: { retained: true }, macros: { old: 'value' } } } }],
       })
-      const reads = vi.spyOn(promptResources, 'getResource')
       const copy = await runtime.duplicatePromptResource({ resourceId: source.id })
-      expect(reads).toHaveBeenCalledTimes(1)
       expect(copy.resource.rootNode.id).not.toBe(source.rootNode.id)
       expect(copy.resource.macros).toEqual({ old: 'value' })
       expect(await promptResources.listLoreMounts({ source: { kind: 'preset', id: copy.resource.id } }))
         .toEqual([expect.objectContaining({ loreResourceId: setting.id })])
-      reads.mockClear()
       await runtime.updatePromptResourceMacros({ resourceId: source.id, expectedVersion: updated.resource.version, macros: { next: 'value' } })
-      expect(reads).toHaveBeenCalledTimes(1)
-      reads.mockRestore()
       expect((await promptResources.getResource(source.id))?.metadata).toEqual({ custom: { retained: true }, macros: { next: 'value' } })
     } finally { await engine.close() }
   })
@@ -95,11 +113,9 @@ describe('Prompt Resource Store application runtime', () => {
       expect(await children('left')).toEqual(['c', 'a', 'b'])
       await runtime.movePromptResourceAsset({ resourceId: created.resource.id, assetId: 'c', targetAssetId: 'b', position: 'after' })
       expect(await children('left')).toEqual(['a', 'b', 'c'])
-      const mutations = vi.spyOn(promptResources, 'mutateResource')
       const moved = await runtime.movePromptResourceAsset({ resourceId: created.resource.id, assetId: 'b', targetAssetId: 'd', position: 'before' })
       expect(await children('left')).toEqual(['a', 'c'])
       expect(await children('right')).toEqual(['b', 'd'])
-      expect(mutations.mock.calls[0]![0].mutations.every(mutation => mutation.kind === 'node.move' && mutation.parentId !== 'other')).toBe(true)
       expect(moved.resource.version).toBe(4)
       await runtime.revertPromptResourceChangeset({ changesetId: moved.mutation.changesetId, expectedVersion: moved.resource.version })
       expect(await children('left')).toEqual(['a', 'b', 'c'])

@@ -45,13 +45,7 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
 
 局部开发入口：[`apps/studio-server/README.md`](../../apps/studio-server/README.md)。
 
-- `main.ts`: 服务器启动入口与组合根，实例化各个 Store、Kernel、Host。
-- `http/`: 基于 Node HTTP 挂载 RPC、Asset、Card、Extension SSE 等数据入口，并统一执行应用会话认证 (`http-server.ts`, `application-session-auth.ts`)。
-- `rpc/`: RPC 路由中心与按领域细分的 RPC 边界 Adapters（消除了巨型单一入口，细分为 `cards`, `agents`, `workspaces`, `providers` 等子模块）。
-- `codecs/`: 卡片 PNG 与 ZIP 打包/解包格式编解码。
-- `platform/`: 宿主系统路径、系统代理与网络配置。
-- `logging/`: 日志观测与审计适配器。
-- `extensions/`: 插件包源管理、安装与生命周期编排。
+组装与启动前提、HTTP 面和模块地图统一维护在 Server README。请求认证、文件与 SSE 进入 [HTTP 模块](../../apps/studio-server/src/http/README.md)；procedure、可信 Context、服务注入与领域交接进入 [RPC 模块](../../apps/studio-server/src/rpc/README.md)。整体依赖关系见[系统总览](../architecture/system-overview.md)，不在本页复制另一份 Server 文件清单。
 
 ---
 
@@ -80,7 +74,7 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
 - 📦 [`packages/application-runtime/`](../../packages/application-runtime/README.md) (AIRP Layer)
   - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent / State / PromptResource 持久化由 `@loom-studio/application-data` 承担。
 - 📦 [`packages/application-data/`](../../packages/application-data/README.md)
-  - 核心领域持久化中枢，在共享 SQLite 中内聚管理 Agent 会话与消息、Narrative 时间线与分支、State 状态值与修订、Prompt Resource 资源树与 LoreMount 挂载关系。
+  - 核心领域持久化中枢，在共享 SQLite 中内聚管理 Agent 会话与权威内容历史、Narrative 分支与正文索引、State 状态修订、Timeline Workspace 不可变版本、Prompt Resource 树与 LoreMount 挂载关系。
 - 📦 [`packages/kernel/`](../../packages/kernel/README.md)
   - Studio 的底层发动机，管理内部的核心服务（RPC 注册、事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
   - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
@@ -95,11 +89,13 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
   - 在共享 SQLite 中保存 Source Artifact 与 Media Asset metadata，并通过稳定 ID 关联同包 blobs 模块；Blob 仍独立承担内容寻址文件存储职责。
 - 📦 [`packages/ai-gateway/`](../../packages/ai-gateway/README.md)
   - 统一的多模型厂商调度网关（基于 Vercel AI SDK），支持流式执行、工具调用、能力画像映射与离线测试 Fake Provider。
+- 📦 [`packages/tokenizer/`](../../packages/tokenizer/README.md)
+  - 跨端纯文本计数与轻量/异步入口；请求估算和 Provider usage 维持不同口径。
 - 📦 [`packages/logging/`](../../packages/logging/README.md)
   - Server/Client 共用的结构化运行日志底座，提供 Root/Child Logger、Memory/Console Sink 与查询类型；Node JSONL 旋转持久化通过 `@loom-studio/logging/node` 子入口提供。
   - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
 - 📦 [`packages/loom-ui/`](../../packages/loom-ui/README.md) (`@loom-studio/ui`)
-  - 领域无关的原子级 UI 设计系统组件库（Button、TextInput、Field、Radix 菜单原语等）与 SVG 图标集。
+  - 领域无关的原子级 UI 设计系统组件库（Button、TextInput、Field、Radix 菜单原语等），组件内部复用 Lucide 图标。
 - 📦 [`packages/extension-sdk/`](../../packages/extension-sdk/README.md)
   - 第三方 Extension 作者侧合同（Manifest v2、Activation Context 与 Capability 类型）。
 - 📦 [`packages/extension-sdk/extension-host/`](../../packages/extension-sdk/extension-host/README.md)

@@ -89,7 +89,7 @@ Studio 的临时异步状态按 `bootstrap`、`cards`、`resources`、`provider-
 
 尚未迁移到 Query 的可能竞态读取使用 latest-wins：旧请求可以在 Bridge 中自然完成，但完成后不得覆盖更新的界面状态。Mutation 不采用 latest-wins，必须完整执行；Context Asset 写入继续由现有队列保证顺序。
 
-Prompt Resource、Lore Mount 与 Preset Tool Mount 的缓存型远端状态由 TanStack Query 管理，负责同 key 请求去重、缓存和失效；默认关闭自动重试与窗口聚焦刷新。Query Cache 不是领域持久化，也不保存未提交草稿。其他领域仍按各自 feature 的现有读取模型工作，不能因为根应用已经提供 QueryClient 就假装所有 RPC 都支持取消或自动缓存。完整依赖所有权见 [`../platform/external-dependency-ownership.md`](../platform/external-dependency-ownership.md)。
+Prompt Resource、Lore Mount、Preset Tool Mount、Provider 显式目录及搜索、背景、用户档案、模型观测等已迁移消费者的缓存型远端状态由 TanStack Query 管理，负责同 key 请求去重、缓存和失效；默认关闭自动重试与窗口聚焦刷新。Query Cache 不是领域持久化，也不保存未提交草稿。其他领域仍按各自 feature 的现有读取模型工作，不能因为根应用已经提供 QueryClient 就假装所有 RPC 都支持取消或自动缓存。完整依赖所有权见 [`../platform/external-dependency-ownership.md`](../platform/external-dependency-ownership.md)。
 
 下列能力尚未实现，不属于当前 Shell contract：
 

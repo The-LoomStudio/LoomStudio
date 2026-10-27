@@ -41,7 +41,7 @@ Extension Manifest 中的 Agent Preset 贡献属于静态声明。显式导入�
 
 创建 Session 可直接绑定没有模型的 Agent Preset；预览/执行遇到缺失模型时明确失败。Preset 上的模型选择仍由 Provider Profile ID 与 Model ID 组成，并非移除 Provider Profile。
 
-Session 创建后固定 `agentPresetId`，不能通过 `updateAgentSession` 改绑；使用另一预设应创建另一 Session。主写作指客户端为 Narrative 输入选择的接收 Session，与当前查看对象分离。生成中不允许换主，旧暂停任务须先成功放弃，不跨预设续跑。固定绑定不冻结预设资源版本，详细边界见[身份与绑定](runtime-and-session.md#1-身份与绑定)。
+普通 `kind: agent` Session 创建后固定 `agentPresetId`，不能通过 `updateAgentSession` 改绑；使用另一预设应创建另一 Session。特殊 `kind: timeline` Session 与 Timeline 同 ID，可暂不配置预设；改动预设或 `narrativeMode` 时，Store 拒绝最新 Run 为 `created`、`running`、`suspended`，或 `failed` 且带 `recovery` 检查点的情况，不是一概拒绝所有失败 Run。主写作是 Timeline 的根 Session；扮演与讨论均投递到该 Session，普通副 Session 可独立选择和观察，不作为 Narrative 正文输入的接收方。存在活动或暂停 Run 时不允许改动根 Session 配置；旧暂停任务须先成功放弃，不跨预设续跑。预设身份不冻结其资源版本，详细边界见[身份与绑定](runtime-and-session.md#1-身份与绑定)。
 
 预设资源使用配置与包归属分离：Lore 通过 Mount 显式采用，角色默认采用可关闭，正则/提取器以 `textUses` 覆盖公共默认。引用不自动将资源收入包，预设切换也不启动独立代码实例或停用整个扩展，见[PromptBuild](../prompt-build/README.md#资源归属与使用配置)。
 

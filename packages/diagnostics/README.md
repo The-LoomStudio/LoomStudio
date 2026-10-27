@@ -38,6 +38,10 @@ Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
 ---
 
+## 依赖职责
+
+本包只依赖 `@loom-studio/shared` 的 JSON 类型、`createId` 与 `nowIso`，聚合逻辑位于 [`src/index.ts`](./src/index.ts)，没有外部监控 SDK、持久化或网络采集依赖。已有 Registry 足以承接平台当前诊断；历史日志继续交给 Logging，不为诊断再建平行日志管道。
+
 ## 构建与验证
 
 ```bash

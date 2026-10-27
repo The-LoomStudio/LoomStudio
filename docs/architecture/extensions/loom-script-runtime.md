@@ -1,6 +1,6 @@
 # Loom Script Runtime
 
-> 状态：声明式文本贡献、托管配置与脚本编辑器已接通（2026-10-26）；Workspace 文件执行及其余运行环境见[实施计划](../../workbench/plans/loom-script-distribution-and-runtime-plan.md)
+> 当前实现包含声明式文本贡献、托管配置、脚本编辑器与 Client / Worker / Server 执行；未接通的能力见本文“当前边界”。实施计划不作为运行能力证明。
 
 Loom Script 是带头部 Metadata 的单文件代码分发格式，不要求独立 Manifest。渲染只是其中一项能力。持久化身份为 Script Document 与 Mount；Client / Server 脚本在内存中适配为 Extension Host 模块和实例，不创建伪造的安装文档。Renderer 继续共用现有 Host、Surface、Scope、冲突仲裁和诊断。
 
@@ -83,7 +83,7 @@ Client 使用现有状态读取、History、Renderer、通知、信号及清理�
 
 未被更高优先级采用遮蔽的全局实例不随角色切换停止；角色实例随角色切换，切换同角色 Timeline 保持实例。Client 的 `ctx.timeline.target` 读取当前目标；显式 State 订阅保留原目标，不自动改写。已经发出的读操作前后检查目标，旧目标结果不作为新 Timeline 数据返回。服务重启按全局启用配置重新启动 Server 脚本，不恢复闭包或补放旧事件。
 
-`@require` 使用绝对 HTTP(S) URL，按顺序下载经典 JS 并拼接入口，在实际运行环境中执行。Client 受浏览器 CORS 约束；Server 每项 4 MiB、15 秒超时。停用、刷新会取消下载，迟到结果不执行；下载失败有诊断。缓存仅随当前实例/采用版本存活，不做自动更新或远端 ESM 依赖图解析。iframe 路径的依赖也只在 iframe 执行，原有 CSP 不因此放宽。
+`@require` 使用绝对 HTTP(S) URL，按顺序下载经典 JS 并拼接入口，在实际运行环境中执行。Client 受浏览器 CORS 约束；Server 每项最多 4 MiB，当前一次源码准备（全部依赖下载）共用 15 秒超时。停用、刷新会取消下载，迟到结果不执行；下载失败有诊断。缓存仅随当前实例/采用版本存活，不做自动更新或远端 ESM 依赖图解析。iframe 路径的依赖也只在 iframe 执行，原有 CSP 不因此放宽。
 
 ## Client 场景背景 UI 示例
 
@@ -137,5 +137,8 @@ Inline Mount 只替换渲染投影中的目标范围，不修改 Canonical Narra
 
 - [`packages/application-runtime/src/scripts/`](../../../packages/application-runtime/src/scripts/)
 - [`apps/studio-client/src/features/loom-scripts/runtime/`](../../../apps/studio-client/src/features/loom-scripts/runtime/)
+- [`apps/studio-client/src/features/loom-scripts/model/client-script-runtime.ts`](../../../apps/studio-client/src/features/loom-scripts/model/client-script-runtime.ts)
+- [`apps/studio-server/src/scripts/script-service.ts`](../../../apps/studio-server/src/scripts/script-service.ts)
+- [`apps/studio-server/src/scripts/server-script-runtime.ts`](../../../apps/studio-server/src/scripts/server-script-runtime.ts)
 - [`client-renderer-host.md`](client-renderer-host.md)
 - [`../application/history-text-pipeline.md`](../application/history-text-pipeline.md)

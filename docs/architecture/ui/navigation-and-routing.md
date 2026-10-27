@@ -36,7 +36,7 @@ Zustand 保存 Panel 与目录宽高、文件树展开状态、当前 Asset、�
 外部链接：/studio?target=<URLSearchParams 编码的资源 URI>
 ```
 
-URI 按 ID 解析，不按名称或文件路径猜测替代对象。资源链接不会把资源内容传给其他实例，也不会绕过访问权限。Session 暂无直接定位入口；Provider 引用只打开模型管理，并不声称定位到具体行。
+URI 按 ID 解析，不按名称或文件路径猜测替代对象。资源链接不会把资源内容传给其他实例，也不会绕过访问权限。Session 引用先校验目标，再打开历史浮层中的会话摘要；Provider 引用打开模型管理并携带 `providerProfileId`。Run 引用打开应用日志筛选，不代表完整运行快照。解析入口为 `shared/studio-shell/studio-target.ts`。
 
 ## History 规则
 

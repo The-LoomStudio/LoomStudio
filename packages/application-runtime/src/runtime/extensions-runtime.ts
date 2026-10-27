@@ -1016,6 +1016,8 @@ async function importExtensionPackageResourcesInternal(
       const newlyCreatedPromptIds = new Set<string>()
       for (const item of missingPromptResources) {
         const artifact = promptArtifacts.get(item.contribution.id)!
+        const metadata = structuredClone(artifact.metadata ?? {})
+        if (metadata.icon?.packageId === input.packageId && !metadata.icon.target) metadata.icon.target = target
         const restorableVersion = restorablePromptResourceVersions.get(item.contribution.id)
         const resourceId = promptResourceIds.get(item.contribution.id) ?? ctx.createId('prompt-resource')
         const previous = existingPromptById.get(resourceId)
@@ -1029,6 +1031,7 @@ async function importExtensionPackageResourcesInternal(
             content: {
               ...previous,
               rootNode: structuredClone(artifact.rootNode),
+              metadata,
               macros: structuredClone(artifact.macros ?? {}),
               macroOptions: structuredClone(artifact.macroOptions ?? {}),
               ...(textUsesByContribution.get(item.contribution.id) ? { textUses: textUsesByContribution.get(item.contribution.id) } : {}),
@@ -1049,6 +1052,7 @@ async function importExtensionPackageResourcesInternal(
             content: {
               resourceKind: artifact.resourceKind,
               rootNode: structuredClone(artifact.rootNode),
+              metadata,
               ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
               ...(artifact.macros !== undefined ? { macros: structuredClone(artifact.macros) } : {}),
               ...(artifact.macroOptions !== undefined ? { macroOptions: structuredClone(artifact.macroOptions) } : {}),

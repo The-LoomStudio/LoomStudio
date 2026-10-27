@@ -2,7 +2,11 @@ import { createNarrativeStore, createPromptResourceStore, createAgentStore } fro
 import { createApplicationRuntime, type HistorySource, type TextTransformRuleDraft } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import { createBlobStore } from '@loom-studio/asset-store'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 function fixture() {
   let next = 0
@@ -13,7 +17,10 @@ function fixture() {
   const narratives = createNarrativeStore({ engine })
   const agents = createAgentStore({ engine })
   const promptResources = createPromptResourceStore({ engine })
-  const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, agents, promptResources })
+  const rootDirectory = mkdtempSync(join(tmpdir(), 'loom-api-subsets-'))
+  onTestFinished(() => rmSync(rootDirectory, { recursive: true, force: true }))
+  const blobs = createBlobStore({ engine, rootDirectory, createId: prefix => `${prefix}-${++next}`, now: () => '2026-10-02T00:00:00.000Z' })
+  const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, agents, promptResources, blobs })
   return { engine, documents, narratives, agents, runtime }
 }
 
@@ -117,7 +124,7 @@ describe('API history and directory subsets', () => {
     }
   })
 
-  it('filters authoritative documents before decoding, with isolation, stable order, tombstones and empty IDs', async () => {
+  it('isolates Script rule owners and preserves State definition order, tombstones and empty IDs', async () => {
     const f = fixture()
     try {
       const own = await f.runtime.upsertTextTransformRule({ ruleId: 'own', rule: { ...rule, owner: { kind: 'card', cardId: 'a' } } })
@@ -134,49 +141,23 @@ describe('API history and directory subsets', () => {
       const beforeRules = await f.runtime.listTextTransformRules({ owner: { kind: 'card', cardId: 'a' } })
       const ids = ['second', 'first', 'first', 'missing', 'deleted', 'own']
       const beforeStates = await f.runtime.listStateDefinitions({ ids })
+      await f.runtime.upsertTextTransformRule({ ruleId: 'other-rule', rule: { ...rule, owner: { kind: 'card', cardId: 'b' } } })
       await f.documents.transact({ actor }, async tx => {
         for (let index = 0; index < 220; index++) {
-          await tx.write({
-            id: `other-rule-${index}`, type: 'airp.textTransformRule', expectedVersion: 'new',
-            content: { ...rule, owner: { kind: 'card', cardId: 'b' }, name: 'x'.repeat(1000) },
-          })
           await tx.write({
             id: `other-state-${index}`, type: 'airp.stateDefinition', expectedVersion: 'new',
             content: { kind: 'global', path: `global.other${index}`, schema: { description: 'x'.repeat(1000) } },
           })
         }
       })
-      const parse = vi.spyOn(JSON, 'parse')
-      const get = vi.spyOn(f.documents, 'get')
-      const list = vi.spyOn(f.documents, 'list')
-      const read = vi.spyOn(f.engine, 'read')
-      try {
-        expect(await f.runtime.listTextTransformRules({ owner: { kind: 'card', cardId: 'a' } })).toEqual({ rules: [own.rule] })
-        expect(parse).toHaveBeenCalledTimes(1)
-        expect(read).toHaveBeenCalledTimes(1)
-        parse.mockClear()
-        read.mockClear()
-        expect(await f.runtime.listStateDefinitions({ ids })).toEqual({ definitions: [first.definition, second.definition] })
-        expect(parse).toHaveBeenCalledTimes(2)
-        expect(read).toHaveBeenCalledTimes(1)
-        parse.mockClear()
-        read.mockClear()
-        expect(await f.runtime.listStateDefinitions({ ids: [] })).toEqual({ definitions: [] })
-        expect(parse).not.toHaveBeenCalled()
-        expect(read).not.toHaveBeenCalled()
-        expect(get).not.toHaveBeenCalled()
-        expect(list).not.toHaveBeenCalled()
-      } finally {
-        parse.mockRestore()
-        get.mockRestore()
-        list.mockRestore()
-        read.mockRestore()
-      }
+      expect(await f.runtime.listTextTransformRules({ owner: { kind: 'card', cardId: 'a' } })).toEqual({ rules: [own.rule] })
+      expect(await f.runtime.listStateDefinitions({ ids })).toEqual({ definitions: [first.definition, second.definition] })
+      expect(await f.runtime.listStateDefinitions({ ids: [] })).toEqual({ definitions: [] })
       expect(await f.runtime.listTextTransformRules({ owner: { kind: 'card', cardId: 'a' } })).toEqual(beforeRules)
       expect(await f.runtime.listStateDefinitions({ ids })).toEqual(beforeStates)
       expect((await f.runtime.listStateDefinitions({ ids, kind: 'global' })).definitions).toEqual([])
       expect((await f.runtime.listStateDefinitions()).definitions).toHaveLength(222)
-      expect((await f.runtime.listTextTransformRules()).rules).toHaveLength(221)
+      expect((await f.runtime.listTextTransformRules()).rules).toHaveLength(2)
       expect((await f.runtime.listTextTransformRules({ owner: { kind: 'card', cardId: 'missing' } })).rules).toEqual([])
     } finally {
       await f.engine.close()

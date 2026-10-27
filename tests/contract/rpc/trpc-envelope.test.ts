@@ -2,18 +2,32 @@ import { describe, expect, it } from 'vitest'
 import { authenticatedFetch, callRpc, withStudioServer } from '../../integration/studio-server/helpers.js'
 
 describe('tRPC wire contract', () => {
-  it('preserves domain failure and tracing metadata without exposing stacks', async () => {
+  it.each(['single', 'batch'])('preserves %s editing CAS and domain failure tracing without exposing stacks', async mode => {
     await withStudioServer(async port => {
-      const { resource } = await callRpc<{ resource: { id: string; version: number; rootNode: { id: string } } }>(port, 'application.createPromptResource', { resourceKind: 'lore', name: 'Test' })
-      const input = { resourceId: resource.id, assetId: resource.rootNode.id, expectedVersion: resource.version, label: 'Updated' }
-      await callRpc(port, 'application.updatePromptResourceAsset', input)
-      const response = await authenticatedFetch(port, '/trpc/application.updatePromptResourceAsset', {
-        method: 'POST', headers: { 'content-type': 'application/json', 'x-correlation-id': 'contract-correlation' }, body: JSON.stringify(input),
+      const { resource } = await callRpc<{ resource: { id: string; version: number; rootNode: { id: string; label: string } } }>(port, 'application.createPromptResource', { resourceKind: 'lore', name: 'Original' })
+      const { resource: latest } = await callRpc<{ resource: typeof resource }>(port, 'application.updatePromptResourceAsset', {
+        resourceId: resource.id, assetId: resource.rootNode.id, expectedVersion: resource.version, label: 'Agent edit',
       })
+      const method = mode === 'single' ? 'application.updatePromptResourceAsset' : 'application.updatePromptResourceAssets'
+      const submit = (expectedVersion: number) => authenticatedFetch(port, `/trpc/${method}`, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-correlation-id': 'contract-correlation' },
+        body: JSON.stringify({ resourceId: resource.id, expectedVersion, ...(mode === 'single'
+          ? { assetId: resource.rootNode.id, label: 'User edit' }
+          : { updates: [{ assetId: resource.rootNode.id, label: 'User edit' }] }) }),
+      })
+      const response = await submit(resource.version)
       const payload = await response.json()
       expect(response.status).toBe(409)
       expect(payload.error.data).toMatchObject({ domainCode: 'prompt_resource.conflict', correlationId: 'contract-correlation', callId: response.headers.get('x-call-id') })
       expect(payload.error.data.stack).toBeUndefined()
+      const unchanged = await callRpc<{ resource: typeof resource }>(port, 'application.getPromptResource', { resourceId: resource.id })
+      expect(unchanged.resource).toEqual(latest)
+      const invalid = await submit(0)
+      expect(invalid.ok).toBe(false)
+      expect((await invalid.json()).error.data.domainCode).toBe('prompt_resource.expected_version_invalid')
+      const saved = await submit(latest.version)
+      expect(saved.status).toBe(200)
+      expect((await saved.json()).result.data.resource).toMatchObject({ version: latest.version + 1, rootNode: { label: 'User edit' } })
     })
   })
 

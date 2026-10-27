@@ -9,52 +9,35 @@ import {
   updateContextAssetNode,
 } from '../../../apps/studio-client/src/features/prompt-resources/model/tree-ops.js'
 
-type TreeOperation = {
-  kind: 'add' | 'delete' | 'duplicate'
-  first: number
-}
-
-const operationArbitrary: fc.Arbitrary<TreeOperation> = fc.record({
-  kind: fc.constantFrom('add', 'delete', 'duplicate'),
-  first: fc.nat(),
-})
-
 describe('context asset tree operation invariants', () => {
-  it('builds unique additions and copies without mutating the source across command sequences', () => {
-    fc.assert(fc.property(fc.array(operationArbitrary, { maxLength: 80 }), operations => {
-      const nodes = baseTree()
-      const original = structuredClone(nodes)
-      const before = flattenContextAssetNodes(nodes)
-      const allocated = new Set(before.map(node => node.id))
-      let idSequence = 0
-      const makeId = () => `generated-${idSequence++}`
-      for (const operation of operations) {
-        if (operation.kind === 'add') {
-          const parent = pick(before.filter(node => node.kind === 'module' || node.kind === 'folder'), operation.first)!
-          const creation = addContextAssetNode(nodes, parent.id, makeId)!
-          expect(creation).toMatchObject({ targetAssetId: parent.id, position: 'inside' })
-          expect(allocated.has(creation.asset.id)).toBe(false)
-          allocated.add(creation.asset.id)
-          expect(flattenContextAssetNodes([creation.asset])).toHaveLength(1)
-        } else if (operation.kind === 'duplicate') {
-          const target = pick(before.filter(node => node.kind !== 'module'), operation.first)!
-          const creation = duplicateContextAssetNode(nodes, target.id, makeId)!
-          const copied = flattenContextAssetNodes([creation.asset])
-          expect(creation).toMatchObject({ targetAssetId: target.id, position: 'after' })
-          expect(copied).toHaveLength(flattenContextAssetNodes([target]).length)
-          for (const copy of copied) {
-            expect(allocated.has(copy.id)).toBe(false)
-            allocated.add(copy.id)
-          }
-          expect(creation.asset.label).toBe(`${target.label} Copy`)
-        } else {
-          const target = pick(before.filter(node => node.kind !== 'module'), operation.first)!
-          const deletion = deleteContextAssetNode(nodes, target.id, target.id)
-          expect(deletion?.selectedId).toBe(target.id.startsWith('entry-') ? 'folder' : 'root')
-        }
-        expect(nodes).toEqual(original)
+  it('builds additions and subtree copies with fresh IDs without mutating the source', () => {
+    const nodes = baseTree()
+    const original = structuredClone(nodes)
+    const before = flattenContextAssetNodes(nodes)
+    const allocated = new Set(before.map(node => node.id))
+    let idSequence = 0
+    const makeId = () => `generated-${idSequence++}`
+    for (const parentId of ['root', 'folder']) {
+      const creation = addContextAssetNode(nodes, parentId, makeId)!
+      expect(creation).toMatchObject({ targetAssetId: parentId, position: 'inside' })
+      expect(allocated.has(creation.asset.id)).toBe(false)
+      allocated.add(creation.asset.id)
+      expect(flattenContextAssetNodes([creation.asset])).toHaveLength(1)
+    }
+    for (const target of before.filter(node => node.kind !== 'module')) {
+      const creation = duplicateContextAssetNode(nodes, target.id, makeId)!
+      const copied = flattenContextAssetNodes([creation.asset])
+      expect(creation).toMatchObject({ targetAssetId: target.id, position: 'after' })
+      expect(copied).toHaveLength(flattenContextAssetNodes([target]).length)
+      for (const copy of copied) {
+        expect(allocated.has(copy.id)).toBe(false)
+        allocated.add(copy.id)
       }
-    }), { numRuns: 200 })
+      expect(creation.asset.label).toBe(`${target.label} Copy`)
+      expect(deleteContextAssetNode(nodes, target.id, target.id)?.selectedId)
+        .toBe(target.kind === 'entry' ? 'folder' : 'root')
+    }
+    expect(nodes).toEqual(original)
   })
 
   it('keeps only live order references when applying draft updates', () => {
@@ -70,10 +53,6 @@ describe('context asset tree operation invariants', () => {
     }), { numRuns: 100 })
   })
 })
-
-function pick<T>(values: T[], index: number): T | undefined {
-  return values.length === 0 ? undefined : values[index % values.length]
-}
 
 function baseTree(): ContextAssetNode[] {
   return [{

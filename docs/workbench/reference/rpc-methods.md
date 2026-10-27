@@ -62,6 +62,6 @@
 rg -n -F 'replaceLoreMounts' apps/studio-server/src/rpc/trpc/application/workspaces.ts
 ```
 
-验证选择对应 Handler / Runtime / Store 的真实风险，不默认跑全套。会话运行的例子：[agent-run-rpc.test.ts](../../../tests/unit/studio-server/agent-run-rpc.test.ts)与 [agent-run-recovery.test.ts](../../../tests/integration/application-runtime/agent-run-recovery.test.ts)；Lore Mount 参数边界见 [lore-mount-rpc.test.ts](../../../tests/unit/studio-server/lore-mount-rpc.test.ts)。
+验证选择对应 Handler / Runtime / Store 的真实风险，不默认跑全套。会话运行的例子：[agent-run-rpc.test.ts](../../../tests/unit/studio-server/agent-run-rpc.test.ts)与 [agent-run-recovery.test.ts](../../../tests/integration/application-runtime/agent-run-recovery.test.ts)；Lore Mount 参数边界见 [studio-rpc-router.test.ts](../../../tests/contract/rpc/studio-rpc-router.test.ts)。
 
 网络入口为认证后的 `POST /trpc/<procedure>`，请求体是输入对象，成功响应为 `{ result: { data } }`。`directories.applyChanges` 替代旧 `directories.apply`（`apply` 为 tRPC 保留名称）；StudioApi 的 `directories.apply` 调用形式保留。旧 `/rpc` 返回 404。动态扩展参数通过 `kernel.invoke` 的 `{ method, params }` 传递；它不能绕过平台 procedure 的输入校验。

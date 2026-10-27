@@ -10,7 +10,7 @@ Loom Studio 使用统一的结构化运行日志记录 Server、Client、Transpo
 - [`apps/studio-server/src/main.ts`](../../../apps/studio-server/src/main.ts)；
 - [`apps/studio-client/src/main.tsx`](../../../apps/studio-client/src/main.tsx)；
 - [`apps/studio-server/src/rpc/trpc/services.ts`](../../../apps/studio-server/src/rpc/trpc/services.ts)；
-- [`apps/studio-client/src/widgets/log-viewer/`](../../../apps/studio-client/src/widgets/log-viewer/)；
+- [`apps/studio-client/src/features/log-viewer/`](../../../apps/studio-client/src/features/log-viewer/)；
 - [`tests/unit/logging/`](../../../tests/unit/logging/)；
 - [`tests/unit/client/log-viewer.test.ts`](../../../tests/unit/client/log-viewer.test.ts)；
 - [`tests/integration/studio-server/logging.test.ts`](../../../tests/integration/studio-server/logging.test.ts)。
@@ -475,7 +475,7 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 - SSE/WebSocket 实时日志流；
 - Browser 日志持久化或 Server ingest；
 - Extension Logger 的远程采集、批处理和跨端持久化策略；Server / Client Activation Context 已提供受控 `ctx.logger`；
-- Notification 与 Sonner 协议；
+- 操作日志自动转 Notification 的统一协议（Client 通知桥已接入 Sonner，见 [iframe 通知授权](../ui/iframe-runtime.md#通知授权)）；
 - 后端 TUI；
 - 从观测快照完整重放 PromptBuild 或 Agent Run；
 - Metric backend；

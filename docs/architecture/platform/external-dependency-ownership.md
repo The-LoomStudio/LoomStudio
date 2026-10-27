@@ -12,13 +12,16 @@ Loom Studio 选择第三方依赖时，不只记录“安装了什么”，还�
 | --- | --- | --- |
 | 组件与渲染生命周期 | React / React DOM | 第一方 Client UI 的渲染基座。普通界面不建立平行的手工 DOM 组件系统；Extension Renderer adapter 除外。 |
 | 页面身份与深链接 | React Router | 普通入口归一化到 `/studio`，面板与明确资源位置由 History State 保存，URI负责外部定位。按 endpoint 的最后位置由 Shell 的 `studio-workspace` helper 持久化；不再建第二个可写导航 Store。 |
-| 本地应用与布局状态 | Zustand | Panel 尺寸、目录展开、当前局部选择、外观等 UI 偏好。它不保存服务端 canonical resource cache，也不取代上述 History State 的导航权威。 |
-| 缓存型服务端状态 | TanStack Query | Query key、请求去重、缓存、失效和远端错误状态。当前 Prompt Resource、Lore Mount 和 Preset Tool Mount 已迁移；其他领域迁移前仍以当前实现为事实。 |
+| 本地应用与布局状态 | Zustand | Panel 尺寸、目录展开、当前局部选择、外观、主题、Tokenizer 设置与按 endpoint 保存的搜索条件等 UI 偏好。它不保存服务端 canonical resource cache，也不取代上述 History State 的导航权威。 |
+| 缓存型服务端状态 | TanStack Query | Query key、请求去重、缓存、失效和远端错误状态。当前用于 Prompt Resource、Lore Mount、Preset Tool Mount、Provider 目录、角色目录、用户档案、背景、全局搜索与模型观测等实际消费者；未迁移领域仍以各自 feature 为准。 |
 | 无界集合渲染窗口 | TanStack Virtual | FileTree、Narrative 正文和导航刻度等可见行窗口；正文支持动态高度及编辑节点保留。窗口化约束DOM挂载数量，不自动限制已加载数据缓存，不为固定小列表机械接入。 |
 | Context Menu / Dropdown | Radix primitives | 键盘导航、焦点、Dismiss 和 Overlay 基础语义。业务层组合项目内容，不重复实现菜单基础设施。 |
+| 搜索命令列表 | `cmdk`，由 `@loom-studio/ui` 导出 `CommandMenu` | 可搜索选项的过滤、键盘选择和列表语义；领域组件提供选项与操作，不另建通用命令列表引擎。 |
 | 瞬时通知 | Sonner | 成功、失败和短时反馈。可恢复错误和持久状态仍由对应 feature 或页面拥有。 |
 | 长文本与代码编辑 | CodeMirror / Lezer | 需要语法、搜索、历史、差异或结构化高亮的编辑器。普通短字段继续使用原生 input/textarea。 |
 | Markdown 展示 | react-markdown + remark-gfm | 第一方 Markdown 到 React 的渲染路径。不得用正则或 `innerHTML` 再建简化 Markdown parser。 |
+| 消息分段与 HTML 结构解析 | `unified` / `remark-parse` / `remark-gfm` + `parse5` | `message-segments.ts` 以 Markdown AST 与 HTML parser 判定完整 HTML 块、代码块及普通文本；`html-document.ts` 负责文档结构与序列化，不用正则猜 HTML 树。 |
+| Markdown 内安全 HTML | `rehype-raw` + `rehype-sanitize` | `safe-html.ts` 解析原始 HTML、约束允许的标签与样式后消毒；完整 HTML 文档另走隔离 iframe，不混为同一执行边界。 |
 | YAML 解析与序列化 | `yaml` | State 等 YAML 文本的结构化解析。业务代码不手写缩进、标量和转义规则。 |
 | 图标 | Lucide 与既有品牌图标资产 | 通用操作图标优先 Lucide；品牌图标使用已有静态资产，不重复维护手绘通用 SVG。 |
 | 样式 | SCSS Modules + `--loom-*` Custom Properties | 局部样式隔离和公共主题 token。当前没有 Tailwind、CSS-in-JS 或重型全局组件库合同。 |
@@ -45,6 +48,8 @@ Streaming domain lifecycle   -> owning Agent / Narrative feature
 | SQLite | Node `node:sqlite` + `@loom-studio/data-engine` | Connection、migration 和 transaction 的统一入口。领域 Store 不各自创建数据库基础设施。 |
 | Provider HTTP 与代理 | Undici | Application Runtime 的 Provider 请求和 `ProxyAgent`。普通 Server 路由优先使用平台现有 HTTP 能力。 |
 | ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩/解压。Card 另用现有 `zip-checksums.ts` 读取完整性元数据、配合 Node CRC32 验证实际数据；这不是第二套解压器，不另建重复编解码。 |
+| 扩展依赖版本判定 | `semver` | Server 的扩展下载/安装预览校验依赖版本范围；不提供自动版本求解或后台更新。 |
+| Unified Diff | `diff` | Runtime 的 Resource Filesystem 与 Session Summary 使用既有 parser / patch 应用能力；领域层继续校验目标、基线与提交，不手写第二份补丁格式解析器。 |
 | 边界 Schema | Zod | 用于 tRPC 输入边界、AI Gateway Provider 配置和 Shared Lore Mount RPC Schema；既有领域 reader 通过 adapter 接入 tRPC，不要求全部改写为 Zod object。新增跨端结构化边界且没有既有 parser 时优先复用；可信内部纯函数不重复 parse。 |
 | 系统凭据与敏感密钥托管 | `@napi-rs/keyring` + `@loom-studio/secret-store` | 操作系统安全凭据链（Keychain/SecretService）与 SQLite 元数据双层物理隔离；受控闭包临时借用、写入意图防丢失持久化与生命周期清理队列，绝不向数据库或日志写入明文。 |
 | CodeAct 隔离与受信任实验执行 | `quickjs-emscripten` / `node:vm` | 正式 CodeAct 使用 QuickJS 的内存上限、截止时间中断与受控宿主桥，不直接提供宿主文件、网络或进程能力。Playground 的 `node:vm` 仅执行受信任实验片段，不构成不可信代码的安全边界，也不承诺与 QuickJS 相同的资源隔离。 |
@@ -89,7 +94,7 @@ Server 的 `./trpc` 是仅含 `types` 的 package export，Client 通过 TypeScr
 | 纯逻辑基准 | mitata | 可重复的 model/lib 性能基线；不冒充浏览器 DOM、React commit 或交互手感。 |
 | 未使用代码审计 | Knip | 报告候选孤儿文件、依赖和导出；动态入口显式登记，结果不自动删除。 |
 | 包体积治理 | Size Limit + Rollup Visualizer | Size Limit 保护入口与总量预算；Visualizer 定位 chunk 和重复依赖，只在分析时生成报告。 |
-| 静态检查 | TypeScript + ESLint | 类型、导入边界和局部规则。当前不把未安装的格式化工具描述为强制流水线。 |
+| 静态检查 | TypeScript + Oxlint | TypeScript 负责类型与项目引用；根及 Workspace 的 lint 使用 Oxlint。导入边界另由 `check:workspace` 检查，不把 lint 当作跨包架构检查或自动格式化。 |
 
 ## 4. 开发时的默认选择
 
@@ -124,5 +129,9 @@ Server 的 `./trpc` 是仅含 `types` 的 package export，Client 通过 TypeScr
 - 正文窗口与编辑生命周期：[`NarrativeTimeline`](../../../apps/studio-client/src/widgets/narrative-timeline/narrative-timeline.tsx)
 - 工作区导航持久化：[`studio-workspace.ts`](../../../apps/studio-client/src/shared/studio-shell/studio-workspace.ts)
 - Shared Lore Mount Schema：[`prompt-resource-contracts.ts`](../../../packages/shared/src/prompt-resource-contracts.ts)
+- Provider 显式目录缓存：[`use-explicit-catalog.ts`](../../../apps/studio-client/src/shared/api/use-explicit-catalog.ts)
+- 消息分段：[`message-segments.ts`](../../../apps/studio-client/src/features/message-content/model/message-segments.ts)
+- 安全 HTML：[`safe-html.ts`](../../../apps/studio-client/src/shared/ui/markdown-content/safe-html.ts)
+- UI 公共依赖出口：[`packages/loom-ui/src/index.ts`](../../../packages/loom-ui/src/index.ts)
 - Client 构建与 Compiler 试点：[`vite.config.ts`](../../../apps/studio-client/vite.config.ts)
 - 审计和体积命令：[`package.json`](../../../package.json)

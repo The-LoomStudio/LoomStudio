@@ -4,14 +4,14 @@ Loom Studio 随着功能的增长，最容易腐化的区域是应用运行时�
 
 ## 1. 包引用边界 (Package Exports)
 
-- 所有的包间引用**必须**通过公共入口（`src/index.ts`），**绝对禁止**内部文件的深度引用 (Deep Import，例如 `import { X } from '@loom-studio/kernel/src/internal/x'`)。
-- **依赖方向只能自上而下**：`apps/` -> `packages/application-runtime` -> `packages/kernel` -> 基础包。绝不允许出现反向依赖。
+- 包间引用通过目标包 `package.json#exports` 声明的公共入口；除主入口外，也可使用 `@loom-studio/logging/node`、`@loom-studio/ai-gateway/contracts` 等正式子入口。禁止绕过 exports 引用内部源码或产物路径。
+- **内层不依赖外层**：Server 组合根分别装配 Application Runtime 和 Kernel；Application Runtime 依赖领域 Store、Gateway 和基础能力，并不经由 Kernel 调用业务。Kernel 依赖平台存储、Extension Host 等基础包，不得反向依赖 Application Runtime 或 apps。实际依赖以各包清单为准。
 - `@loom-studio/shared` 只放基础工具和 JSON 定义，绝不能成为放置跨域业务实体的"垃圾桶"。
 
 ## 2. Server 的身份限定
 
 `apps/studio-server` **仅仅是一个组装根 (Composition Root)**。
-它的职责仅限于：启动进程、挂载 WS/HTTP 服务、注册 RPC 路由字典、实例化各层依赖。
+它负责进程与依赖组装、HTTP/认证、tRPC procedure、SSE，以及服务端扩展安装与宿主适配。当前没有通用 WebSocket 服务；typed procedure 调用已有领域 Runtime，不在传输层重复业务流程。
 它**绝对不能**承担任何业务规则的判定（如：不写长篇的 Switch Case 判断不同的业务动作，不负责 Provider 的选择逻辑，不解析 Prompt）。所有的业务逻辑必须在 `application-runtime` 内部消化闭环。
 
 ## 3. Kernel 与 Extension 的能力发现

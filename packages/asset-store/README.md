@@ -10,7 +10,7 @@
 
 1. **Source Artifact (`preserveSourceArtifact`)**：
    - 记录外部格式（如 SillyTavern 角色卡、第三方规范 JSON 或 ZIP 归档）的原始输入副本；
-   - 保存导入时间、原始文件名、格式标识（Format）与转换器版本（ImporterVersion），用于后续合规审计与差分对比。
+   - 保存导入时间、原始文件名、格式标识（Format）与转换器版本（ImporterVersion），供导入溯源；本包不解析外部业务格式，也不自动计算业务差异。
 2. **Media Asset (`createMediaAsset`)**：
    - 记录角色头像、背景插图、语音音频、视频等多媒体一等公民元数据；
    - 实行容器与素材解耦，支持 GIF、APNG、WebP、音频与视频等格式，严格保留原样 MIME 与底层字节身份，绝不将未知格式伪装成 PNG；
@@ -22,7 +22,7 @@
 
 1. **绝对禁止数据库内联大二进制（No Inline Blobs in SQLite）**：
    - SQLite 只保存轻量级的资产元数据；
-   - **所有实际二进制字节必须通过 `this.blobs`（本包 Blob 模块）进行内容寻址持久化**，严禁在 SQLite 字段中存储 `Buffer` 或 Base64 字符串。
+   - **所有实际二进制字节必须通过注入的 `blobs`（本包 Blob 模块）进行内容寻址持久化**，严禁在 SQLite 字段中存储 `Buffer` 或 Base64 字符串。
 2. **事务级提交事实（Commit Facts）**：
    - 资产记录的创建与导入属于正式数据事务，必须生成 `DataCommitFact`，确保可追溯性。
    - 新字节先经 Blob Store prepare/finalize，再在同一 Engine 事务内登记 Blob metadata 与 Asset/Artifact，二者共享 Changeset。事务失败回滚 metadata，但不删除已 finalize 的共享文件；文件写入与 SQLite 不是同一个原子事务，见 [`store.ts`](./src/store.ts)。
@@ -41,6 +41,12 @@ Package 主入口为 [`src/index.ts`](./src/index.ts)：
 - 核心类型：`AssetStore`、`MediaAssetRecord`、`SourceArtifactRecord`、`AssetStoreError`。
 
 ---
+
+## 依赖职责
+
+唯一 Workspace 运行依赖 `@loom-studio/data-engine` 拥有 SQLite 连接和事务。Blob 的 [`src/blobs/store.ts`](./src/blobs/store.ts) 使用原生 `node:crypto` 计算 SHA-256，使用 `node:fs`、`node:stream` 和 `pipeline` 写入 staging 并 finalize；不需要另一套对象存储 SDK、ZIP parser 或媒体转码器。
+
+Blob 是不可变原始字节，SQLite 是引用与可查询 metadata。删除业务引用不自动删除字节；当前没有引用计数或完整物理 GC。路径由 Server 注入，Store 不从用户 Home 或应用代码目录推导存储根。
 
 ## 构建与验证
 

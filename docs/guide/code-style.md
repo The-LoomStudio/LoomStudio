@@ -40,7 +40,7 @@ Oxlint 默认遵循 `.gitignore`，目录扫描会跳过本地 `extensions/` 等
 
 ## 2. 导出与入口
 
-- 所有的 Package (`packages/`) 必须使用统一的入口点 `src/index.ts` 向外暴露它允许外部使用的类型和函数。
+- Package (`packages/`) 通过 `package.json#exports` 暴露允许外部使用的类型和函数，主入口通常为 `src/index.ts`。正式声明的 `/node`、`/contracts` 等子入口可以使用；浏览器消费者应选择适合自身运行环境的入口。
 - **绝对禁止 Deep Import**:
   - ❌ `import { foo } from '@loom-studio/kernel/src/internals'`
   - ✅ `import { foo } from '@loom-studio/kernel'`

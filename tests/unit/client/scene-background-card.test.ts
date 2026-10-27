@@ -52,9 +52,9 @@ describe('scene background script', () => {
     } finally { await runtime.dispose() }
   })
   it('allows a self-contained Client UI while retaining required sandbox inputs', () => {
-    expect(metadata.contributions[0].inputs).toEqual([])
+    expect(metadata.contributions[0]).toMatchObject({ kind: 'renderer', inputs: [] })
     const sandbox = source.replace('// @runtime client', '// @runtime client-sandbox').replace('// @capability assets.read\n', '')
-    expect(() => parseLoomScriptSource(sandbox)).toThrow('contribution inputs')
+    expect(() => parseLoomScriptSource(sandbox)).toThrow('Sandbox Renderer requires inputs')
   })
   it('requires assets.read, limits Card resources to the current Card, clones results and revokes stopped contexts', async () => {
     const rendererHost = createClientRendererHost()

@@ -1,5 +1,5 @@
 import { NarrativeExecutionFlow } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-execution-flow.js'
-import type { NarrativeSessionExecution } from '../../../apps/studio-client/src/dev-preview/narrative-session/narrative-session.js'
+import type { NarrativeSessionExecution } from '../../../apps/studio-client/src/features/narrative-runtime/model/narrative-execution-view.js'
 // @vitest-environment happy-dom
 import { act, createElement as h, useRef } from 'react'
 import { createRoot, type Root } from 'react-dom/client'

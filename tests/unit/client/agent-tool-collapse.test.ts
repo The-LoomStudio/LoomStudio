@@ -126,6 +126,13 @@ describe('Agent tool group identity and collapse', () => {
       entry: { kind: 'run-state' as const, state },
     }
     expect(buildRenderItems([invocation, terminal])).toMatchObject([{ tools: [{ status: 'interrupted' }] }])
+  })
+
+  it('uses the active run state for an unresolved tool without a terminal entry', () => {
+    const invocation = {
+      id: 'tool', runId: 'old-run', agentSessionId: 'session', sequence: 1, createdAt: '',
+      entry: { kind: 'tool-invocation' as const, toolId: 'codeact', invocationId: 'call', exposedName: 'codeact' },
+    }
     expect(buildRenderItems([invocation], { runId: 'old-run', status: 'suspended' }))
       .toMatchObject([{ tools: [{ status: 'interrupted' }] }])
     expect(buildRenderItems([invocation], { runId: 'old-run', status: 'running' }))

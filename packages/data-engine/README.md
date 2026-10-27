@@ -10,7 +10,8 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 
 - `createSqliteDataEngine()`、`SqliteDataEngine` 和 `DataEngineError`；
 - Migration、`DataTransactionInput`、Transaction 与 Engine options 类型；
-- `DataCommitFact`、operation、observer、source 和 notifier。
+- `DataCommitFact`、operation、observer、source 和 notifier；
+- `readSqliteSpaceUsage()`：读取当前 SQLite 空间统计。
 
 源码集中在：
 
@@ -18,6 +19,7 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 | ----------- | -------------------------------------------------------------------- |
 | `sqlite.ts` | Connection、Migration、FIFO read/transact、Commit Journal 与关闭状态 |
 | `commit.ts` | 领域无关 Commit Fact、Observer 和通知隔离                            |
+| `storage-statistics.ts` | SQLite 页面与 freelist 空间统计 |
 | `index.ts`  | Package public exports                                               |
 
 ## 事务边界
@@ -33,6 +35,10 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 本包不拥有 Document、Narrative、Agent、Asset 等业务 Schema，不提供 ORM/Repository，也不理解 Application 语义。领域 Store 在事务内直接使用 transaction 暴露的 SQLite connection，不重新进入公开排队方法。
 
 `DataTransactionInput` 是公共写入上下文的字段来源；领域 Store 的 `*WriteContext` 与 `DocumentTransactionInput` 保留各自名称并直接引用该类型。领域 API 的其他参数与可选 actor 合同仍由各 Store 定义。
+
+## 原生依赖职责
+
+本包没有第三方运行时依赖。[`sqlite.ts`](./src/sqlite.ts) 直接使用 Node 的 `node:sqlite` `DatabaseSync`，`node:async_hooks` 的 `AsyncLocalStorage` 检测事务重入，文件与路径 API 只负责数据库父目录。FIFO 是本包对共享连接的访问合同，不是异步 SQLite 驱动；领域 Store 应参与既有 transaction，不再引入连接池、ORM 或另一套 migration runner。
 
 ## Schema 版本边界
 

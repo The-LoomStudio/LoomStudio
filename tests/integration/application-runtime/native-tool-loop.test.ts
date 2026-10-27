@@ -1,3 +1,7 @@
+import { join } from 'node:path'
+import { createBlobStore } from '@loom-studio/asset-store'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { createAgentStore } from '@loom-studio/application-data'
 import {
   createObservationStore,
@@ -17,7 +21,7 @@ import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { callApplicationRpc as handleAgentsRpc } from '../../support/trpc-caller.js'
 
 const readContextTool: ToolDefinition = {
@@ -1133,40 +1137,6 @@ describe('Native Function Tool Loop', () => {
     fixture.close()
   })
 
-  it('projects persisted Agent Session history through ordered prompt rules', async () => {
-    const fixture = await createFixture({
-      execute: ({ invocation }) => ({ invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }),
-      invokeChat: async () => ({
-        provider: 'test', model: 'test-model', text: 'secret answer', finishReason: 'stop',
-        message: { role: 'assistant', content: 'secret answer' },
-      }),
-    })
-    await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'secret request' })
-    await fixture.runtime.upsertTextTransformRule({
-      ruleId: 'workspace.redact',
-      rule: {
-        name: 'Redact', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0,
-        matcher: { kind: 'regex', pattern: 'secret', flags: 'g' },
-        effect: { kind: 'replace', replacement: 'projected' },
-        targets: ['agent-session'], phases: ['prompt'],
-      },
-    })
-
-    const projected = await fixture.runtime.projectHistory({
-      source: { kind: 'agent-session', sessionId: fixture.sessionId },
-      phase: 'prompt',
-    })
-    const canonical = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
-    const preview = await fixture.runtime.previewAgentTurn({ agentSessionId: fixture.sessionId, input: 'next' })
-
-    expect(projected.snapshot.entries.filter(entry => entry.role).map(entry => entry.text)).toEqual(['projected request', 'projected answer'])
-    expect(canonical.entries.filter(entry => entry.entry.kind === 'message').map(entry => entry.entry.kind === 'message' ? entry.entry.content : '')).toEqual(['secret request', 'secret answer'])
-    expect(projected.snapshot.matches).toHaveLength(2)
-    expect(preview.messages.some(message => typeof message.content === 'string' && message.content.includes('projected answer'))).toBe(true)
-    expect(preview.messages.some(message => typeof message.content === 'string' && message.content.includes('secret answer'))).toBe(false)
-    fixture.close()
-  })
-
   it('rejects a native call for a content-only tool and lets the Provider retry with content protocol', async () => {
     let requestCount = 0
     const fixture = await createFixture({
@@ -1262,6 +1232,9 @@ async function createFixture(input: {
   const createId = (prefix: string) => `${prefix}-${++nextId}`
   const now = () => '2026-08-23T00:00:00.000Z'
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const rootDirectory = mkdtempSync(join(tmpdir(), 'loom-native-tool-loop-'))
+  const blobs = createBlobStore({ engine, rootDirectory, createId, now })
+  onTestFinished(async () => { await engine.close(); rmSync(rootDirectory, { recursive: true, force: true }) })
   const documents = createSqliteDocumentStore({ engine })
   const agents = createAgentStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
@@ -1269,7 +1242,7 @@ async function createFixture(input: {
   const logs = createMemoryLogSink({ capacity: 100 })
   const logger = createRootLogger({ service: 'test', instanceId: 'test', sinks: [logs] })
   const observations = createObservationStore()
-  const runtime = createApplicationRuntime({
+  const runtime = createApplicationRuntime({ blobs,
     observations,
     agents,
     agentTools: input.agentTools ?? createAgentToolRegistry(

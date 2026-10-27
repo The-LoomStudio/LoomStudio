@@ -1,3 +1,4 @@
+import { ExtensionIcon } from '../../../shared/ui/extension-icon/extension-icon.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { ClientActionPlacement, ClientCommandDeclaration, ExtensionInstallationTarget, RendererContributionDefinition } from '@loom-studio/extension-sdk'
 import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, Folder, Package, PackageMinus, PackagePlus, Power, RefreshCw, TerminalSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
@@ -139,7 +140,7 @@ export function ExtensionWorkspace(props: {
             <span>{props.t('renderer.back')}</span>
           </button>
           <strong className={styles.activeTitle}>
-            {activeIconUrl ? <img className={styles.activeIcon} src={activeIconUrl} alt="" aria-hidden="true" /> : null}
+            {activePackage ? <ExtensionIcon iconUrl={activeIconUrl} size={30} /> : null}
             <span>{active.definition.name}</span>
           </strong>
         </header>
@@ -330,7 +331,7 @@ export function ExtensionWorkspace(props: {
                     type="button"
                     onClick={() => select({ kind: 'package', packageId: extensionPackage.packageId })}
                   >
-                    {extensionIconUrl(extensionPackage) ? <img className={styles.packageIcon} src={extensionIconUrl(extensionPackage)} alt="" aria-hidden="true" /> : <Package aria-hidden="true" />}
+                    <ExtensionIcon iconUrl={extensionPackage.iconUrl} size={30} />
                     <span><strong>{extensionPackage.displayName}</strong><small>{extensionPackage.packageId} · {extensionPackage.version}</small></span>
                   </button>
                   {extensionPackage.modules.length > 0 ? (

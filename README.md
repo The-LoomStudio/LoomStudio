@@ -33,7 +33,7 @@
 
 **Loom Studio** 是本地运行的 AI 角色扮演与互动叙事工作台。角色、世界设定、故事分支和提示词可以放在一起管理，也可以给 Agent 配置工具，让它参与剧情编辑和状态更新。
 
-剧情正文与 Agent 的工作记录分开保存。阅读时看故事；需要调整生成方式时，再打开预设、工具记录和提示词构建结果。
+每条故事使用同一份会话历史承接扮演输入与讨论。阅读视图聚焦剧情正文，工具调用与工作记录按需查看；在允许切换时更换预设，也能继续沿用已有历史。需要排查生成方式时，可以查看本轮提示词构建与模型调用记录。
 
 目前处于 **Beta** 阶段，适合愿意尝试新功能、反馈问题的玩家和创作者。开始对话需要自行配置模型服务与 API 凭据；模型调用会将本轮上下文发送给所配置的服务。
 
@@ -60,6 +60,12 @@
 ### 给 Agent 配上工具
 
 除了生成回复，Agent 还可以通过已配置的工具读取状态、更新变量或编辑剧情。工具调用和返回结果保留在工作记录中；具体能做什么，取决于所用预设、已启用工具和扩展授权。
+
+### 故事有自己的工作文件
+
+每条时间线有共享文件工作区，可保存笔记与 `MEMORY.md` 等材料。Agent 通过已开放、已授权的工具读写文本；文件版本随故事分支与恢复点关联。文件保存和脚本执行是不同操作，保存脚本不会自动运行。
+
+界面支持中文、英语、日语与韩语，语言与外观可在设置中调整。
 
 ---
 
@@ -209,17 +215,19 @@ LoomStudio/
 
 涉及提示词编译时，先看 [PromptBuild 文档](docs/architecture/application/prompt-build/README.md)：当前 Agent 使用 Application 编译器及异步正文处理器；Core 原型已经退役。更详细的目录职责见[项目结构](docs/guide/project-structure.md)。
 
+开发界面前，先看 [Client README](apps/studio-client/README.md) 的依赖职责与复用入口：Zustand 管理本地布局和偏好，TanStack Query 管理已接入领域的远端缓存，表单草稿与流式执行状态由各自组件或 Feature 拥有。其他能力与实际使用入口见[技术栈](docs/guide/tech-stack.md)和[依赖所有权](docs/architecture/platform/external-dependency-ownership.md)，避免重复实现已有的编辑、解析、菜单和存储能力。
+
 ---
 
 ## 文档导航
 
-开始具体开发时，先用[需求词与源码路由](docs/guide/workspace-development.md)定位；需要了解文档分工再看 [`docs/README.md`](docs/README.md)，不要求通读文档库：
+了解模块关系与前后端协作时，从[系统总览](docs/architecture/system-overview.md)进入。开始具体开发时，用[需求词与源码路由](docs/guide/workspace-development.md)定位；文档分工见 [`docs/README.md`](docs/README.md)，不要求通读文档库：
 
 - **[`docs/guide/workspace-development.md`](docs/guide/workspace-development.md)** — 全仓开发规范、共同契约与任务路线
 - **[`docs/guide/beta-release.md`](docs/guide/beta-release.md)** — 玩家安装、数据目录、发行命令与 Beta 限制
-- **[`docs/architecture/`](docs/architecture/)** — 核心领域稳定架构合同（PromptBuild、Timeline、Agent、State）
+- **[`docs/architecture/`](docs/architecture/)** — 核心领域稳定架构合同（PromptBuild、Timeline / Session、Agent、State、Workspace）
 - **[`docs/workbench/`](docs/workbench/)** — 演进中的设计提案与讨论
-- **[`docs/archive/`](docs/archive/)** — 冻结的历史材料，不代表内容全部已实现；默认仅保存在本机
+- **本地 `docs/archive/`** — 冻结的历史材料，不代表内容全部已实现；该目录被 Git 忽略，不随 GitHub 仓库分发
 
 ---
 

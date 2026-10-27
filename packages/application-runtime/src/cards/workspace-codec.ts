@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
-import { normalizeMacroOptions } from '@loom-studio/shared'
+import { normalizeMacroOptions, promptResourceDisplayMetadataSchema } from '@loom-studio/shared'
 import { resolveLoomScriptSettings, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { PromptContribution, SourceNode } from '../prompt/prompt-builder.js'
 import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
@@ -221,6 +221,7 @@ export function applyDefaultPromptProjection(asset: PromptResourceNode, resource
 
 function assertPromptResourceArtifact(value: unknown): asserts value is PromptResourceArtifact {
   if (!isObject(value)) throw new Error('Prompt Resource artifact must be an object')
+  if (value.metadata !== undefined) promptResourceDisplayMetadataSchema.parse(value.metadata)
   if (value.format !== 'loom.promptResource') throw new Error(`Unsupported Prompt Resource artifact format: ${String(value.format)}`)
   if (value.schemaVersion !== 1 && value.schemaVersion !== 2) throw new Error(`Unsupported Prompt Resource artifact schemaVersion: ${String(value.schemaVersion)}`)
   if (!isPromptResourceKind(value.resourceKind)) throw new Error(`Invalid Prompt Resource kind: ${String(value.resourceKind)}`)
@@ -279,11 +280,12 @@ export function assertCardBundleArtifact(value: unknown): asserts value is CardB
   if (value.contextAssetSettings !== undefined) {
     if (!isObject(value.contextAssetSettings)) throw new Error('Card bundle contextAssetSettings must be an object')
     const rootIds = new Set(value.contextAssets.map(node => (node as JsonObject).id))
-    const settingKeys = new Set(['macros', 'macroOptions', 'useCardLore', 'useGlobalLore', 'historyPolicy', 'textUses'])
+    const settingKeys = new Set(['metadata', 'macros', 'macroOptions', 'useCardLore', 'useGlobalLore', 'historyPolicy', 'textUses'])
     for (const [rootId, settings] of Object.entries(value.contextAssetSettings)) {
       if (!rootIds.has(rootId) || !isObject(settings) || Object.keys(settings).some(key => !settingKeys.has(key))) {
         throw new Error(`Invalid Card context asset settings: ${rootId}`)
       }
+      if (settings.metadata !== undefined) promptResourceDisplayMetadataSchema.parse(settings.metadata)
       assertTextUses(settings.textUses)
       if (settings.macros !== undefined) validateBundleMacros(settings.macros)
       if (settings.macroOptions !== undefined) normalizeMacroOptions(settings.macroOptions)

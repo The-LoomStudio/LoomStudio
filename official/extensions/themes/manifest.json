@@ -3,6 +3,7 @@
   "id": "official.themes",
   "version": "1.1.0",
   "displayName": "官方主题",
+  "icon": "./icon.png",
   "description": "纸页与潮汐主题，以及轻动效、薄荷和琥珀样式增强。",
   "author": "Loom Studio",
   "engines": {

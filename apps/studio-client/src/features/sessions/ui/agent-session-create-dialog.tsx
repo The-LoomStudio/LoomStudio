@@ -1,5 +1,6 @@
+import { ExtensionIcon, presetIconUrl, useExtensionIdentities } from '../../../shared/ui/extension-icon/extension-icon.js'
 import { useState } from 'react'
-import { Bot, Check, Package, Plus, X } from 'lucide-react'
+import { Bot, Check, Plus, X } from 'lucide-react'
 import { Button, Dialog, IconButton, SearchField } from '@loom-studio/ui'
 import type { AgentPreset, AgentSession } from '../../../entities/index.js'
 import { normalizeSearchText } from '../../../shared/lib/text.js'
@@ -14,12 +15,17 @@ export function AgentSessionCreateDialog(props: {
   onCreated(session: AgentSession): void
   onClose(): void
 }) {
+  const identities = useExtensionIdentities()
   const [presetId, setPresetId] = useState(props.initialPresetId ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const source = (preset: AgentPreset) => preset.origin?.kind === 'extension-package'
-    ? props.t('agent.presetExtension', { name: preset.origin.packageId }) : props.t(preset.origin?.kind === 'builtin' ? 'agent.presetOfficial' : 'agent.presetPersonal')
+  const source = (preset: AgentPreset) => {
+    const origin = preset.origin
+    return origin?.kind === 'extension-package'
+      ? props.t('agent.presetExtension', { name: identities.find(item => item.packageId === origin.packageId)?.displayName ?? origin.packageId })
+      : props.t(origin?.kind === 'builtin' ? 'agent.presetOfficial' : 'agent.presetPersonal')
+  }
   const search = normalizeSearchText(query)
   const presets = props.presets.filter(preset =>
     normalizeSearchText(`${preset.rootNode.label} ${source(preset)}`).includes(search))
@@ -59,7 +65,7 @@ export function AgentSessionCreateDialog(props: {
         {presets.map(preset => <button key={preset.id} type="button"
           className={styles.presetChoice} aria-pressed={preset.id === presetId}
           aria-label={props.t('agent.selectPresetNamed', { name: preset.rootNode.label })} disabled={busy} onClick={() => setPresetId(preset.id)}>
-          {preset.origin?.kind === 'extension-package' ? <Package size={18} aria-hidden="true" /> : <Bot size={18} aria-hidden="true" />}
+          {presetIconUrl(preset, identities) || preset.origin?.kind === 'extension-package' ? <ExtensionIcon iconUrl={presetIconUrl(preset, identities)} size={18} /> : <Bot size={18} aria-hidden="true" />}
           <span className={styles.choiceText}><strong>{preset.rootNode.label}</strong><span>{source(preset)}</span></span>
           {preset.id === presetId ? <Check size={16} aria-hidden="true" /> : null}
         </button>)}

@@ -1,4 +1,4 @@
-# 全局用户资料
+# 全局用户资料与背景集合
 
 用户资料是配置，不是剧情 State，也不是 Lore 资源。DocumentStore 的单例 `user-profiles:global`（类型 `airp.userProfiles`）保存 `profiles` 和可空的 `currentProfileId`；每份资料包含 ID、名称、描述与可选 `avatarAssetId`。版本来自 Document，所有写操作携带 `expectedVersion`，在 Data Engine 事务中通过 CAS 保存。
 
@@ -24,6 +24,12 @@ Card.userName 保留为作者字段，退出玩家名称回退；旧 Timeline �
 “我的”页面采用头像、名称 Hero 和“设定 / 资源”子 Tab，多份资料共用原有资源工作台。头像复用 Asset / Blob：先上传，再通过配置 CAS 保存引用；写引用失败保留可重试草稿。服务端要求存在且为支持的光栅图片，客户端上传沿用 PNG / JPEG / WebP / GIF 与 64 MiB 限制。
 
 替换、移除头像与删除资料只解除引用，不删除底层 Asset / Blob，不引入垃圾回收。资料不自动包含在角色或 Timeline 归档中；完整备份须同时保留应用数据库和媒体。独立资料导入导出尚未提供。
+
+## 全局背景集合
+
+用户背景目录独立保存在 `user-backgrounds:global`（类型 `airp.userBackgrounds`），不是某份用户资料的子字段，也不是 Timeline State。条目只保存名称与 Media Asset 引用，写入携带读取时的版本；添加前由 Runtime 校验媒体存在及其支持的图片类型。移除条目只更新目录引用，不删除底层媒体。
+
+此目录提供可选背景素材，不自动决定当前界面的背景选择、主题或扩展运行状态。配置形状与操作入口从 [Runtime README](../../../packages/application-runtime/README.md#源码导航)的 Profiles 路由进入；当前实现分别位于 [profiles/user-backgrounds.ts](../../../packages/application-runtime/src/profiles/user-backgrounds.ts) 和 [user-backgrounds-runtime.ts](../../../packages/application-runtime/src/runtime/user-backgrounds-runtime.ts)。资料与背景均依赖 Document 的版本提交和共享 Data Engine；媒体字节仍归 Asset / Blob。
 
 ## 验证
 
