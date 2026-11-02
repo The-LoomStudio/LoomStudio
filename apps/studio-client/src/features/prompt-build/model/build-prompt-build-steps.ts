@@ -79,18 +79,17 @@ export function buildPromptBuildSteps(input: {
 }
 
 function buildProjectionSteps(projection: PromptProjection): PromptBuildStep[] {
-  if (!Array.isArray(projection?.zones)) return []
+  if (!projection.zones) return []
   return projection.zones.map(zone => ({
     title: `Zone: ${zone.displayName}`,
-    rows: (zone.slots ?? []).map(slot => ({
+    rows: zone.slots.map(slot => ({
       label: slot.orderSource,
-      value: `${slot.slotKey} -> ${(slot.fragments ?? []).map(fragment => fragment.id).join(' -> ')}`,
+      value: `${slot.slotKey} -> ${slot.fragments.map(fragment => fragment.id).join(' -> ')}`,
     })),
   }))
 }
 
 function readActiveEntryLabels(entries: Array<JsonObject | NonNullable<PromptProjection['editorProjection']>['sourceRows'][number]>, t: Translator): string {
-  if (!Array.isArray(entries)) return t('prompt.value.activeEntryListEmpty')
   const labels = entries.map(entry => {
     if ('sourcePath' in entry) return entry.sourcePath
     return entry.title ?? entry.path ?? entry.id ?? t('prompt.value.untitled')

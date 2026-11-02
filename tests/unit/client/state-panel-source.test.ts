@@ -2,15 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Button } from '@loom-studio/ui'
+import { playerEntity, playerEntityPath, playerEntityType, playerProfileComponentKey, playerProfilePath, type JsonObject } from '@loom-studio/shared'
 import { notify } from '../../../apps/studio-client/src/shared/notifications/index.js'
 import { StateVariablesPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-variables-panel.js'
 import { StateAuthoringPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-authoring-panel.js'
 import { StateSourcesPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-sources-panel.js'
 import { StudioStatePanel } from '../../../apps/studio-client/src/app/studio-state-panel.js'
-import { FileTree } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js'
+import { FileTree, type FileTreeNode } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js'
+import { findNodeById } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree-model.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { StateTarget } from '../../../apps/studio-client/src/entities/index.js'
 import type { StateSourcesInspection } from '../../../apps/studio-client/src/entities/state.js'
+
+vi.mock('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon.js')>(),
+  useExtensionIdentities: () => [],
+}))
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
 vi.mock('../../../apps/studio-client/src/shared/notifications/index.js', () => ({ notify: { success: vi.fn(() => 'test-success'), error: vi.fn(() => 'test-error') } }))
@@ -96,6 +103,38 @@ function fixture() {
 beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = []; vi.clearAllMocks() })
 
 describe('State panel source isolation', () => {
+  it('reveals the current branch description and saves edits to its State', async () => {
+    const f = fixture()
+    const path = `/${playerProfilePath.replaceAll('.', '/')}/description`
+    const description = 'A detailed identity used only by this story branch.'
+    f.get.mockImplementation(async target => {
+      const value: JsonObject = target.scope === 'timeline'
+        ? { $loom: { players: { User: { components: { loom_profile: { name: 'Story user', description } } } } } } : { count: 1 }
+      return { snapshot: { ...snapshot(target, 1).snapshot, value } }
+    })
+    f.render()
+    await f.settle()
+    const scopeTree = elements(f.render()).find(item => item.type === FileTree && !item.props.renderTrailing)!
+    ;(scopeTree.props.onSelect as ComponentProps<typeof FileTree>['onSelect'])({ id: 'global', label: 'Global' })
+    f.render()
+    f.props.focusPath = path
+    f.render()
+    await f.settle()
+    const tree = elements(f.render()).find(item => item.props.renderTrailing)!
+    expect(tree.props.revealId).toBe(path)
+    expect(tree.props.expandedIds).toEqual(expect.arrayContaining(['/$loom', '/$loom/players', '/$loom/players/User/components/loom_profile']))
+    const node = findNodeById(tree.props.nodes as FileTreeNode[], path)!
+    const editor = elements((tree.props.renderExpandedRow as (node: unknown) => unknown)(node)).find(item => item.type === 'textarea')!
+    expect(editor.props.value).toBe(description)
+    expect(f.apply).not.toHaveBeenCalled()
+    ;(editor.props.onChange as (event: unknown) => void)({ target: { value: 'Edited story description' } })
+    const save = elements(f.render()).find(item => item.type === Button)!
+    ;(save.props.onClick as () => void)()
+    expect(f.apply).toHaveBeenCalledWith(expect.objectContaining({ target: a,
+      operations: [{ op: 'set', path, value: 'Edited story description' }] }))
+    await f.settle()
+  })
+
   it('keeps the tree collapsed across renders', async () => {
     const f = fixture()
     f.render()
@@ -299,6 +338,68 @@ describe('State panel source isolation', () => {
 })
 
 describe('State authoring save ownership', () => {
+  it('offers the built-in player without copying its declarations into author config', async () => {
+    const template = { id: 'stats', componentKey: 'stats', templateVersion: 1, schema: { type: 'object' }, initial: { hp: 5 } }
+    const card = {
+      id: 'card-player', artifactId: 'fixture-artifact', version: 1, name: 'Player card',
+      opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
+      stateTemplates: [template], timelineStateBindings: [], createdAt: 'now', updatedAt: 'now',
+    }
+    const save = vi.fn().mockResolvedValue(card)
+    const props = { card, t, onSaveCard: save }
+    const outer = StateAuthoringPanel(props)
+    function render() {
+      hooks.cursor = 0
+      const tree = (outer.type as (props: unknown) => unknown)(props)
+      for (const effect of hooks.effects.splice(0)) effect()
+      return elements(tree)
+    }
+    function master() {
+      const element = render().find(item => typeof item.props.select === 'function')!
+      return elements((element.type as (props: unknown) => unknown)(element.props)).find(item => item.type === FileTree)!
+    }
+    function detail() {
+      const element = render().find(item => typeof item.props.updateSource === 'function')!
+      return (element.type as (props: unknown) => ReactElement)(element.props)
+    }
+    const tree = master()
+    const nodes = tree.props.nodes as ComponentProps<typeof FileTree>['nodes']
+    const builtin = nodes.find(node => node.id === 'group:entity')!.children!.find(node => node.id === 'builtin:entity')!
+    expect(builtin.meta).toBe(t('directory.builtinResource'))
+    ;(tree.props.onSelect as ComponentProps<typeof FileTree>['onSelect'])(builtin)
+    const builtinHtml = renderToStaticMarkup(detail())
+    expect(builtinHtml).toContain('readOnly=""')
+    expect(builtinHtml).toContain(playerEntity.entityId)
+    expect(builtinHtml).not.toContain(t('stateAuthoring.delete'))
+
+    const component = nodes.find(node => node.id === 'group:component')!.children![0]!
+    ;(tree.props.onSelect as ComponentProps<typeof FileTree>['onSelect'])(component)
+    const targetTypes = elements(detail()).find(item => item.props.label === t('stateAuthoring.targetEntityTypes'))!
+    expect(targetTypes.props.options).toContainEqual(playerEntityType)
+    const mountGroup = nodes.find(node => node.id === 'group:mount')!
+    const addMount = elements((tree.props.renderTrailing as (node: unknown) => unknown)(mountGroup)).find(item => item.type === 'button')!
+    ;(addMount.props.onClick as (event: unknown) => void)({ stopPropagation() {} })
+    const targetKind = elements(detail()).find(item => item.props.label === t('stateAuthoring.mountTargetKind'))!
+    ;(targetKind.props.onChange as (value: string) => void)('entity')
+    const target = elements(detail()).find(item => item.props.label === t('stateAuthoring.mountTarget'))!
+    expect(target.props.value).toBe(`${playerEntity.typeId}:${playerEntity.entityId}`)
+    expect(target.props.options).toEqual([{ value: `${playerEntity.typeId}:${playerEntity.entityId}`, label: `${playerEntity.entityId} · ${playerEntity.typeId}` }])
+
+    const preview = render().find(item => item.type === FileTree)!
+    const previewRoot = (preview.props.nodes as Array<{ capabilities: { value: unknown } }>)[0]!
+    expect(previewRoot.capabilities.value).toEqual({ players: { User: { components: {
+      [playerProfileComponentKey]: { name: 'User', description: '' }, stats: { hp: 5 },
+    } } } })
+    ;(render().find(item => item.props['aria-label'] === t('stateAuthoring.saveCard'))!.props.onClick as () => void)()
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      stateEntityTypes: [], timelineStateEntities: [], stateTemplates: [template],
+      timelineComponentMounts: [{ templateId: 'stats', templateVersion: 1, componentKey: 'stats',
+        target: { kind: 'entity', entity: playerEntity }, initial: {} }],
+    }))
+    expect(JSON.stringify(save.mock.calls[0])).not.toContain(playerProfileComponentKey)
+    for (let i = 0; i < 4; i++) await Promise.resolve()
+  })
+
   it('locks edits during saving, keeps failed drafts and isolates a new card', async () => {
     const card = {
       id: 'card-a', artifactId: 'fixture-artifact', version: 1, name: 'A', opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
@@ -382,6 +483,21 @@ function sourceFixture() {
 }
 
 describe('State source inspection panel', () => {
+  it('identifies the application player paths without attributing them to an extension', async () => {
+    const f = sourceFixture()
+    const inspection = sourceInspection()
+    inspection.timeline!.paths = [
+      { path: playerEntityPath, kind: 'entity', present: true },
+      { path: playerProfilePath, kind: 'component', present: true },
+    ]
+    f.inspectSources.mockResolvedValue(inspection)
+    f.render()
+    const paths = elements(await f.settle()).find(item => Array.isArray(item.props.paths))!
+    const html = renderToStaticMarkup(paths)
+    expect(html.match(new RegExp(t('directory.builtinResource'), 'g'))).toHaveLength(2)
+    expect(html).toContain(playerProfilePath)
+  })
+
   it('does not refresh the editable runtime draft when only source participation changes', () => {
     const f = fixture()
     const props: ComponentProps<typeof StudioStatePanel> = {

@@ -6,6 +6,7 @@ import { readDocument, writeDocument } from '../foundation/document-store.js'
 import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
 import { narrativeWriteContext, requireDocumentParticipant, requireNarratives } from '../runtime/context.js'
 import { readAgentTurnVariables, readStateInitializationResources } from '../runtime/narrative-runtime.js'
+import { hasPlayerProfile } from '../profiles/player-state.js'
 import { readAvailableExtensionInstallations } from '../runtime/extension-resource-access.js'
 import { composeStateContributions, materializeStateContribution } from '../state/state-contribution.js'
 import { applyStateOperations, getApplicationStateSnapshot, notifyStateChange, validateSnapshotAgainstDefinitions } from '../state/state.js'
@@ -126,7 +127,7 @@ export function createTimelineExtensionAdoptionMethods(ctx: Context) {
       const timeline = (await requireNarratives(ctx).getTimeline(input.timelineId))!
       const installations = new Map(await readAvailableExtensionInstallations(ctx.documents, runtime.content.sourceCardId, input.timelineId))
       installations.set(installation.id, installation.content.packageId)
-      const variables = await readAgentTurnVariables(ctx, state.value, runtime.content.cardName)
+      const variables = await readAgentTurnVariables(ctx, state.value, runtime.content.cardName, hasPlayerProfile(runtime.content))
       const resources = sources.length
         ? await readStateInitializationResources(ctx, installations, timeline.promptResourceIds, variables) : []
       const contributions: StateContribution[] = []

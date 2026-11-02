@@ -107,3 +107,6 @@
   font-size: var(--loom-font-size-3);
   text-align: center;
 }
+
+.result[data-inactive] .resultIcon,
+.result[data-inactive] .resultText { opacity: 0.56; }

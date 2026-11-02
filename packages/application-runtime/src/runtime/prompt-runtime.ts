@@ -1,3 +1,4 @@
+import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
 import type { PromptResourceMutation, PromptResourceMutationResult } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
@@ -10,7 +11,7 @@ import {
   toStoredNodeDraft,
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
-import { applyDefaultPromptProjection, isPromptResourceArtifact, normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
+import { applyDefaultPromptProjection, normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
 import defaultPresetTemplate from '../prompt/default-preset.json' with { type: 'json' }
 import type { PromptResourceNode } from '../cards/workspace-types.js'
 import type { TextTransformRuleDraft } from '../transforms/history-text.js'
@@ -253,6 +254,7 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         if (!document || document.type !== applicationDocumentTypes.loomScript) throw new Error(`Script not found: ${mount.content.scriptDocumentId}`)
         const script = document.content as LoomScriptContent
         return { orderIndex: mount.content.orderIndex,
+      ...(typeof mount.content.origin.groupOrder === 'number' ? { groupOrder: mount.content.origin.groupOrder } : {}),
           ...(mount.content.settings ? { settings: mount.content.settings } : {}),
           textResourceIds: exportScriptTextResourceIds(document.id, script),
           ...(script.textResourceReferences ? { textResourceReferences: script.textResourceReferences } : {}),
@@ -438,7 +440,7 @@ async function importPromptResourceContent(
     return { attachment, metadata, textResourceIds: allocateImportedTextResourceIds(metadata, attachment, ctx.createId),
       blob: await ctx.blobs!.prepareWrite({
       source: new TextEncoder().encode(attachment.script.source),
-      mediaType: 'text/javascript',
+      mediaType: loomScriptMediaType(attachment.script.fileName),
     }) }
   }))
   const prepared = preparedResults.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
@@ -485,7 +487,7 @@ async function importPromptResourceContent(
             ...item.metadata,
             source: {
               blobId: blob.id,
-              mediaType: 'text/javascript',
+              mediaType: loomScriptMediaType(item.attachment.script.fileName),
               fileName: item.attachment.script.fileName,
             },
             sourceDigest: blob.sha256,
@@ -506,7 +508,7 @@ async function importPromptResourceContent(
             orderIndex: item.attachment.orderIndex,
             grantedCapabilities: [],
             ...(item.attachment.settings ? { settings: item.attachment.settings } : {}),
-            origin: { kind: 'prompt-resource-import' },
+            origin: { kind: 'prompt-resource-import', orderOverride: true, ...(item.attachment.groupOrder !== undefined ? { groupOrder: item.attachment.groupOrder } : {}) },
             createdAt: content.createdAt,
             updatedAt: content.updatedAt,
           },
@@ -537,7 +539,6 @@ export function createEmptyPromptResourceContent(
   timestamp: string,
 ): PromptResourceContent {
   if (resourceKind === 'preset') {
-    if (!isPromptResourceArtifact(defaultPresetTemplate)) throw new Error('Invalid bundled default preset')
     const template = normalizePromptResourceArtifact(defaultPresetTemplate)
     const rootNode = clonePromptResourceNode(template.rootNode, createId)
     rootNode.label = name.trim()

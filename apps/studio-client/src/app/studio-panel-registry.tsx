@@ -1,9 +1,12 @@
+import type { RecentCharacter } from '../features/recent-characters/model/recent-characters.js'
+import { resolvePackageResourceTarget } from '../features/extension-renderers/model/package-resource-target.js'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { UserBackgroundLibrary } from '../features/backgrounds/model/use-user-backgrounds.js'
 import type { useExtensionCardContext } from '../features/extension-renderers/model/use-extension-card-context.js'
 import type { MemoryLogSink } from '@loom-studio/logging'
-import React, { type ReactNode } from 'react'
+import React, { type ComponentProps, type ReactNode } from 'react'
 import { ContentErrorBoundary } from '../shared/ui/content-error-boundary.js'
-import { formatEntityReference } from '@loom-studio/shared'
+import { formatEntityReference, playerProfilePath } from '@loom-studio/shared'
 import type { ClientRendererHost } from '../shared/extension-renderer-runtime/client-renderer-host.js'
 import type { StudioPanelId } from '../shared/studio-shell/studio-layout-store.js'
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
@@ -31,12 +34,16 @@ import {
   LazyMyProfilePanel,
 } from './studio-panel-modules.js'
 
+import type { ScriptManagementPanel } from '../features/loom-scripts/ui/script-management-panel.js'
+
 type StudioState = ReturnType<typeof useStudioState>
 type StudioUiState = ReturnType<typeof useStudioUiState>
 type StudioNavigation = ReturnType<typeof useStudioNavigation>
 
 export function createStudioPanels(input: {
   state: StudioState
+  recentCharacters: RecentCharacter[]
+  openRecentCharacter(visit: RecentCharacter): void
   extensionCardContext: ReturnType<typeof useExtensionCardContext>
   uiState: StudioUiState
   navigation: StudioNavigation
@@ -61,12 +68,23 @@ export function createStudioPanels(input: {
   userBackgrounds: UserBackgroundLibrary
   backgrounds: readonly RegisteredClientBackground[]
 }): Record<StudioPanelId, (active: boolean, surface?: 'tool') => ReactNode> {
-  const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, cardsBusy, providerBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds } = input
+  const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, cardsBusy, providerBusy, activePresetId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds } = input
   // Shared panels follow the playing Timeline; gallery browsing stays in its own route.
   const currentCardId = state.narrativeTimeline?.createdFrom?.cardId ?? state.selectedCardId
   const currentCard = input.extensionCardContext?.card
     ?? (state.selectedCardDetails?.id === currentCardId ? state.selectedCardDetails : undefined)
   const currentCardName = currentCard?.name ?? state.cards.find(card => card.id === currentCardId)?.name
+  const scriptScopes: ComponentProps<typeof ScriptManagementPanel>['scopes'] = [
+    ...state.cards.map(card => ({ owner: { kind: 'card' as const, cardId: card.id }, target: { kind: 'card' as const, cardId: card.id } })),
+    ...state.promptResources.filter(resource => resource.resourceKind === 'preset').map(resource => ({ owner: { kind: 'preset' as const, presetId: resource.id }, target: { kind: 'preset' as const, presetId: resource.id } })),
+    ...[...clientExtensions.packages, ...clientExtensions.cardPackages].map(pkg => ({ owner: { kind: 'extension' as const, packageId: pkg.packageId, installationId: extensionInstallationId(pkg.packageId, pkg.target ?? { kind: 'global' }) }, target: pkg.target?.kind === 'card' ? pkg.target : { kind: 'user' as const } })),
+  ]
+  const getScriptOwnerName: ComponentProps<typeof ScriptManagementPanel>['getOwnerName'] = owner => {
+    if (owner.kind === 'card') return state.cards.find(card => card.id === owner.cardId)?.name
+    if (owner.kind === 'preset') return state.promptResources.find(resource => resource.id === owner.presetId)?.rootNode.label
+    if (owner.kind === 'extension') return [...clientExtensions.packages, ...clientExtensions.cardPackages].find(pkg => pkg.packageId === owner.packageId)?.displayName
+    return undefined
+  }
   const renderHistory = (view: 'timelines' | 'sessions') => (
     <LazySessionsPanel
       view={view}
@@ -140,7 +158,17 @@ export function createStudioPanels(input: {
       />
     ),
     agent: resourcePanels.preset,
-    user: active => <LazyMyProfilePanel api={state.api.userProfiles} endpoint={state.endpoint} t={state.t} active={active} resources={<LazyUserResourcesPanel
+    user: active => <LazyMyProfilePanel api={state.api.userProfiles} endpoint={state.endpoint} t={state.t} active={active}
+      currentStory={state.hasTimelinePlayerProfile && state.narrativeTimeline ? {
+        title: state.narrativeTimeline.title,
+        character: state.cards.find(card => card.id === state.narrativeTimeline?.createdFrom?.cardId),
+        onOpen: () => {
+          uiState.setVariableView('state')
+          const params = new URLSearchParams({ statePath: `/${playerProfilePath.replaceAll('.', '/')}/description` })
+          void navigation.openPath(`/studio/state?${params}`)
+        },
+      } : undefined}
+      resources={<LazyUserResourcesPanel
       backgroundLibrary={input.userBackgrounds}
       onOpenBackground={id => { void navigation.openPath(`/studio/settings?category=appearance&backgroundId=${encodeURIComponent(`user-background/${id}`)}`) }}
       api={state.textTransformsApi}
@@ -180,19 +208,8 @@ export function createStudioPanels(input: {
             timelines={state.allTimelines.length > 0 ? state.allTimelines : state.cardTimelines}
             agentSessions={state.allAgentSessions}
             agentPresets={state.agentPresets}
-            onOpenCard={card => {
-              if (card.validationError !== undefined) {
-                void navigation.openPanel('character', { cardId: card.id })
-                return
-              }
-              void state.selectCardTimeline(card.id).then(activated => {
-                if (!navigation.isCurrent()) return
-                if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
-                else if (activated === null) {
-                  void navigation.openCardPreview(card.id)
-                }
-              })
-            }}
+            recent={input.recentCharacters}
+            onOpenRecent={input.openRecentCharacter}
             onOpenTimeline={timeline => {
               void state.activateTimeline(timeline.id).then(branchId => {
                 if (branchId) navigation.openNarrative(timeline.id, branchId)
@@ -288,7 +305,8 @@ export function createStudioPanels(input: {
     resource: resourcePanels.resource,
     state: () => <LazyStudioStatePanel
       hasTimeline={Boolean(state.narrativeTimeline)}
-      variableView={uiState.variableView}
+      variableView={navigation.searchParams.has('statePath') ? 'state' : uiState.variableView}
+      focusPath={navigation.searchParams.get('statePath') ?? undefined}
       card={currentCard}
       statesApi={state.statesApi}
       refreshToken={`${state.lastRun?.runId ?? ''}:${state.branch?.stateHeadRevisionId ?? ''}`}
@@ -298,7 +316,14 @@ export function createStudioPanels(input: {
       t={state.t}
       onSaveCard={state.updateCardStateConfig}
       onOpenSource={openStateSource}
-      onViewChange={uiState.setVariableView}
+      onViewChange={view => {
+        uiState.setVariableView(view)
+        if (view !== 'state' && navigation.searchParams.has('statePath')) {
+          const params = new URLSearchParams(navigation.searchParams)
+          params.delete('statePath')
+          void navigation.setSearchParams(params)
+        }
+      }}
       onStateMutated={state.refreshStates}
     />,
     macro: () => {
@@ -335,6 +360,7 @@ export function createStudioPanels(input: {
           sources.push({
             id: resource.id,
             kind: resource.resourceKind === 'preset' ? 'preset' : 'workspace',
+            sourceGroup: resource.origin?.kind === 'extension-package' || resource.origin?.kind === 'builtin' ? 'extension' : 'personal',
             label: resource.rootNode.label,
             version: resource.version,
             readonly: resource.origin?.kind === 'extension-package' || resource.origin?.kind === 'builtin',
@@ -362,9 +388,12 @@ export function createStudioPanels(input: {
     },
     'text-transform': () => (
       <LazyTextTransformPanel
+        scriptScopes={scriptScopes}
+        getScriptOwnerName={getScriptOwnerName}
+        onScriptsChanged={uiState.bumpLoomScriptRefreshToken}
+        scriptsRefreshToken={uiState.loomScriptRefreshToken}
         initialRuleId={navigation.searchParams.get('ruleId') ?? undefined}
         initialExtractorId={navigation.searchParams.get('extractorId') ?? undefined}
-        temporaryTarget={navigation.searchParams.get('temporary') === '1'}
         api={state.textTransformsApi}
         loomScriptsApi={state.api.loomScripts}
         onRuntimeChanged={input.onTextTransformsChanged}
@@ -433,13 +462,10 @@ export function createStudioPanels(input: {
         runtimeError={clientExtensions.error?.message ?? input.extensionCardContext.error}
         extensionRuntime={state.api.extensionRuntime}
         extensionApi={state.api.extensions}
+        onCharacterImported={async () => { await state.refreshCards() }}
         scriptApi={state.api.loomScripts}
-        getScriptOwnerName={owner => {
-          if (owner.kind === 'card') return state.cards.find(card => card.id === owner.cardId)?.name
-          if (owner.kind === 'preset') return state.promptResources.find(resource => resource.id === owner.presetId)?.rootNode.label
-          if (owner.kind === 'extension') return [...clientExtensions.packages, ...clientExtensions.cardPackages].find(pkg => pkg.packageId === owner.packageId)?.displayName
-          return undefined
-        }}
+        scriptScopes={scriptScopes}
+        getScriptOwnerName={getScriptOwnerName}
         onScriptsChanged={uiState.bumpLoomScriptRefreshToken}
         scriptsRefreshToken={uiState.loomScriptRefreshToken}
         onRefreshExtensions={async () => {
@@ -469,6 +495,7 @@ export function createStudioPanels(input: {
         onRemoveCardResources={state.removeCardPackageResources}
         installations={state.extensionInstallations}
         timelineParticipation={{
+          character: state.cards.find(card => card.id === state.narrativeTimeline?.createdFrom?.cardId),
           api: state.api.timelineExtensions,
           packages: [...clientExtensions.packages, ...clientExtensions.cardPackages],
           timeline: state.narrativeTimeline && state.branch ? {
@@ -479,8 +506,14 @@ export function createStudioPanels(input: {
           onChanged: async () => { await Promise.all([state.refreshStates(), state.refreshResourceConsumers()]) },
         }}
         promptResources={state.promptResources}
-        onOpenPromptResource={resource => {
-          void navigation.openResource(resource.resourceKind === 'preset' ? 'agent' : 'resource', resource.id, resource.rootNode.id)
+        onOpenPackageResource={async (pkg, entry) => {
+          const target = await resolvePackageResourceTarget({ pkg, entry, api: state.api, promptResources: state.promptResources })
+          if (!navigation.isCurrent()) return
+          if (!target) throw new Error(state.t('renderer.resourceNotImported'))
+          if ('resource' in target) {
+            const resource = target.resource
+            await navigation.openResource(resource.resourceKind === 'preset' ? 'agent' : 'resource', resource.id, resource.rootNode.id)
+          } else await navigation.openPath(target.path)
         }}
         onUpdateResources={state.updateExtensionPackageResources}
         onRemoveResources={state.removeExtensionPackageResources}
@@ -518,6 +551,7 @@ export function createStudioPanels(input: {
         t={state.t}
         onChangeCustomCss={state.setCustomCss}
         onChangeLocale={state.setLocale}
+        localePending={state.localePending}
         onChangeUiScale={setUiScale}
         onUpdateNetworkSettings={state.updateNetworkSettings}
       />

@@ -52,6 +52,24 @@ async function appendLegacyFailure(f: Awaited<ReturnType<typeof fixture>>, effec
 }
 
 describe('Timeline discussion retry', () => {
+  it('keeps a sent discussion input after pausing and abandoning without material changes', async () => {
+    const f = await fixture()
+    try {
+      f.queue.push(async () => text('Previous reply'))
+      await f.invoke('Previous input')
+      const controller = new AbortController()
+      f.queue.push(async () => { controller.abort('user-pause'); throw new DOMException('Paused', 'AbortError') })
+      await expect(f.runtime.invokeAgentTurn({ agentSessionId: f.timeline.id, input: '继续', narrativeTarget: f.target },
+        { abortSignal: controller.signal })).rejects.toThrow()
+      const page = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+      const user = page.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')!
+      await f.runtime.appendAgentTranscriptEntries({ agentSessionId: f.timeline.id, expectedEntryCount: page.session.entryCount,
+        entries: [{ runId: user.runId, entry: { kind: 'run-state', state: 'discarded' } }] })
+      const displayed = await f.runtime.getAgentTranscriptPage({ agentSessionId: f.timeline.id })
+      expect(displayed.entries.some(item => item.id === user.id)).toBe(true)
+    } finally { f.engine.close() }
+  })
+
   it('replaces the latest input and restores its story, State and Workspace while retaining old facts', async () => {
     const f = await fixture()
     try {
@@ -126,7 +144,7 @@ describe('Timeline discussion retry', () => {
     } finally { f.engine.close() }
   })
 
-  it.each([false, true])('retries a just-abandoned input after canonical history is restored (prior reply: %s)', async priorReply => {
+  it.each([false, true])('retries a just-abandoned input while retaining its visible history (prior reply: %s)', async priorReply => {
     const f = await fixture(priorReply)
     try {
       if (priorReply) {
@@ -139,7 +157,7 @@ describe('Timeline discussion retry', () => {
       const user = page.entries.findLast(entry => entry.entry.kind === 'message' && entry.entry.role === 'user')!
       await f.runtime.appendAgentTranscriptEntries({ agentSessionId: f.timeline.id, expectedEntryCount: page.session.entryCount,
         entries: [{ runId: user.runId, entry: { kind: 'run-state', state: 'discarded' } }] })
-      expect((await f.agents.getEntryPage({ agentSessionId: f.timeline.id, limit: 100 })).entries.some(entry => entry.id === user.id)).toBe(false)
+      expect((await f.agents.getEntryPage({ agentSessionId: f.timeline.id, limit: 100 })).entries.some(entry => entry.id === user.id)).toBe(true)
       f.queue.push(async () => text('RECOVERED_WORK'))
       const recovered = await f.invoke('EDITED_FAILED_INPUT', { entryId: user.id })
       expect(recovered.entries.user.entry).toMatchObject({ content: 'EDITED_FAILED_INPUT' })
@@ -272,4 +290,113 @@ describe('Timeline discussion retry', () => {
       expect(f.requests).toHaveLength(0)
     } finally { f.engine.close() }
   })
+})
+
+it('edits and withdraws a pending input without starting a model request and rejects stale edits', async () => {
+  const f = await fixture()
+  try {
+    const receipt = await f.runtime.submitAgentInterjection({ agentSessionId: f.timeline.id, requestId: 'pending-edit', input: 'before', mode: 'discussion', narrativeTarget: f.target })
+    const edit = { agentSessionId: f.timeline.id, entryId: receipt.entry.id, expectedContent: 'before', content: 'after', attachments: [] }
+    const revised = await f.runtime.reviseAgentInput(edit)
+    expect(revised.rerun).toBe(false)
+    expect(revised.entry.entry).toMatchObject({ content: 'after' })
+    await expect(f.runtime.reviseAgentInput(edit)).rejects.toThrow('输入已被修改')
+    const removed = await f.runtime.reviseAgentInput({ ...edit, expectedContent: 'after', content: '' })
+    expect(removed.entry.entry).toMatchObject({ withdrawn: true })
+    expect(f.requests).toHaveLength(0)
+  } finally { f.engine.close() }
+})
+
+it('replaces a completed receipt-backed discussion with a new pending input and removes its old reply from active history', async () => {
+  const f = await fixture()
+  try {
+    const receipt = await f.runtime.submitAgentInterjection({ agentSessionId: f.timeline.id, requestId: 'first-input', input: 'before', mode: 'discussion', narrativeTarget: f.target })
+    f.queue.push(async () => text('old reply'))
+    await f.runtime.invokeAgentTurn({ agentSessionId: f.timeline.id, input: 'before', interjectionRequestId: 'first-input', narrativeTarget: f.target })
+    const history = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+    const user = history.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')!
+    const result = await f.runtime.reviseAgentInput({ agentSessionId: f.timeline.id, entryId: user.id, expectedContent: 'before', content: 'after' })
+    expect(result.rerun).toBe(true)
+    const page = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+    expect(page.entries.some(item => item.id === user.id || item.entry.kind === 'message' && item.entry.content === 'old reply')).toBe(false)
+    expect((await f.agents.getEntry(receipt.entry.id))?.entry).toMatchObject({ withdrawn: true })
+  } finally { f.engine.close() }
+})
+
+it('edits the latest applied interjection from its own safe boundary, preserving earlier work', async () => {
+  const f = await fixture()
+  try {
+    f.queue.push(async () => {
+      const receipt = await f.runtime.submitAgentInterjection({ agentSessionId: f.timeline.id, requestId: 'during-run', input: 'pending', mode: 'discussion', narrativeTarget: f.target })
+      await f.runtime.reviseAgentInput({ agentSessionId: f.timeline.id, entryId: receipt.entry.id, expectedContent: 'pending', content: 'latest guidance' })
+      return text('first reply')
+    }, async () => text('reply to guidance'))
+    await f.invoke('first input')
+    const page = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+    const last = page.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')!
+    expect(last.entry).toMatchObject({ content: 'latest guidance', editBaseline: { timelineId: f.timeline.id } })
+    await f.runtime.reviseAgentInput({ agentSessionId: f.timeline.id, entryId: last.id, expectedContent: 'latest guidance', content: 'replacement' })
+    const revised = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+    expect(revised.entries.filter(item => item.entry.kind === 'message').map(item => item.entry.kind === 'message' && item.entry.content)).toContain('first reply')
+    expect(revised.entries.some(item => item.id === last.id)).toBe(false)
+  } finally { f.engine.close() }
+})
+
+it('deletes the latest standalone input without starting another run', async () => {
+  const f = await fixture()
+  try {
+    const timeline = (await f.agents.getSession(f.timeline.id))!
+    const { session } = await f.runtime.createAgentSession({ agentPresetId: timeline.agentPresetId! })
+    f.queue.push(async () => text('old standalone reply'))
+    await f.runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'standalone' })
+    const page = await f.agents.getEntryPage({ agentSessionId: session.id })
+    const last = page.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')!
+    const result = await f.runtime.reviseAgentInput({ agentSessionId: session.id, entryId: last.id, expectedContent: 'standalone', content: '' })
+    expect(result.rerun).toBe(false)
+    expect((await f.agents.getEntryPage({ agentSessionId: session.id })).entries).toEqual([])
+    expect(f.requests).toHaveLength(1)
+  } finally { f.engine.close() }
+})
+
+it('starts one explicit replacement run through the RPC and sends the edited input', async () => {
+  const f = await fixture()
+  try {
+    f.queue.push(async () => text('old'))
+    await f.invoke('original')
+    const user = (await f.agents.getEntryPage({ agentSessionId: f.timeline.id })).entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')!
+    f.queue.push(async () => text('new'))
+    const result = await callApplicationRpc(f.runtime, 'application.reviseAgentInput', { agentSessionId: f.timeline.id, entryId: user.id, expectedContent: 'original', content: 'edited' }) as { runId: string }
+    expect(result.runId).toBeTruthy()
+    await vi.waitFor(async () => {
+      const page = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+      expect(page.entries.some(item => item.entry.kind === 'message' && item.entry.content === 'new')).toBe(true)
+      expect(page.entries.some(item => item.entry.kind === 'message' && item.entry.content === 'original')).toBe(false)
+    })
+    expect(f.requests).toHaveLength(2)
+    expect(JSON.stringify(f.requests[1])).toContain('edited')
+    expect(JSON.stringify(f.requests[1])).not.toContain('original')
+  } finally { f.engine.close() }
+})
+
+it('atomically replaces a suspended input without discarding it when edit validation fails', async () => {
+  const f = await fixture()
+  try {
+    const controller = new AbortController()
+    f.queue.push(async () => { controller.abort('user-pause'); throw new DOMException('Paused', 'AbortError') })
+    await expect(f.runtime.invokeAgentTurn({ agentSessionId: f.timeline.id, input: 'paused input', narrativeTarget: f.target }, { abortSignal: controller.signal })).rejects.toThrow()
+    const before = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+    const user = before.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')!
+    const edit = { agentSessionId: f.timeline.id, entryId: user.id, expectedContent: 'wrong snapshot', content: 'new input' }
+    await expect(f.runtime.reviseAgentInput(edit)).rejects.toThrow('输入已被修改')
+    expect((await f.agents.getSession(f.timeline.id))!.headEntryId).toBe(before.session.headEntryId)
+    const result = await f.runtime.reviseAgentInput({ ...edit, expectedContent: 'paused input' })
+    expect(result.rerun).toBe(true)
+    f.queue.push(async () => text('new answer'))
+    expect(result.entry.entry.kind).toBe('user-interjection')
+    if (result.entry.entry.kind !== 'user-interjection') throw new Error('missing receipt')
+    await f.runtime.invokeAgentTurn({ agentSessionId: f.timeline.id, input: 'new input', narrativeTarget: f.target, interjectionRequestId: result.entry.entry.requestId })
+    const after = await f.agents.getEntryPage({ agentSessionId: f.timeline.id })
+    expect(after.entries.some(item => item.id === user.id)).toBe(false)
+    expect(after.entries.some(item => item.entry.kind === 'message' && item.entry.content === 'new answer')).toBe(true)
+  } finally { f.engine.close() }
 })

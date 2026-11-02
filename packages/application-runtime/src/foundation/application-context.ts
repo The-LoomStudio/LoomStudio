@@ -26,6 +26,7 @@ export type ApplicationRuntimeContext = {
   observations: ObservationStore
   onStateChanged?: ApplicationRuntimeOptions['onStateChanged']
   exportExtensionArchive?: ApplicationRuntimeOptions['exportExtensionArchive']
+  validatePackageAsset?: ApplicationRuntimeOptions['validatePackageAsset']
   withCardDeletion: ApplicationRuntimeOptions['withCardDeletion']
   withCardDeletions: ApplicationRuntimeOptions['withCardDeletions']
   agents?: AgentStore
@@ -72,6 +73,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     observations,
     onStateChanged: options.onStateChanged,
     exportExtensionArchive: options.exportExtensionArchive,
+    validatePackageAsset: options.validatePackageAsset,
     withCardDeletion: options.withCardDeletion,
     withCardDeletions: options.withCardDeletions,
     agents: options.agents,
@@ -104,6 +106,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     stateContributions: options.stateContributions ?? createStateContributionRegistry(),
     timelineArchiveParticipants: createTimelineArchiveParticipantRegistry(options.timelineArchiveParticipants),
     gateway: createObservedAiGateway(options.gateway ?? createDocumentBackedAiGateway({
+      mediaAssets: options.mediaAssets,
       documents: options.documents,
       secrets: options.secrets,
       providerAdapters,

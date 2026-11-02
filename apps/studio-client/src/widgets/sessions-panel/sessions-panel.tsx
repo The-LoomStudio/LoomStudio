@@ -1,3 +1,4 @@
+import { MessageAttachments } from '../../features/attachments/message-attachments.js'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { notify } from '../../shared/notifications/index.js'
 import {
@@ -340,7 +341,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
         notify.warning(props.t('notify.error.general'))
       }
     } catch (error) {
-      notify.error(props.t('notify.error.general'), { description: error instanceof Error ? error.message : String(error) })
+      notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
     } finally {
       setDeleteBusy(false)
       setPendingDelete(undefined)
@@ -392,7 +393,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
         await props.onRenameTimeline?.(timeline.id, next.trim())
         notify.success(props.t('notify.success.updated'))
       } catch (error) {
-        notify.error(props.t('notify.error.general'), { description: error instanceof Error ? error.message : String(error) })
+        notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
       }
     }
   }
@@ -413,7 +414,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
         await props.onRenameAgentSession?.(session.id, next.trim())
         notify.success(props.t('notify.success.updated'))
       } catch (error) {
-        notify.error(props.t('notify.error.general'), { description: error instanceof Error ? error.message : String(error) })
+        notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
       }
     }
   }
@@ -1161,7 +1162,7 @@ function TimelineDetail(props: {
       )
       notify.success(props.t('notify.success.exported'))
     } catch (error) {
-      notify.error(props.t('notify.error.general'), { description: error instanceof Error ? error.message : String(error) })
+      notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
       setArchiveError(error instanceof Error ? error.message : String(error))
     }
     finally { setArchiveBusy(false) }
@@ -1182,11 +1183,12 @@ function TimelineDetail(props: {
       setImportedArchive(result)
       const notice = [props.t('sessions.archiveImported', { id: result.timelineId }), ...warnings].join('\n')
       setArchiveNotice(notice)
-      if (warnings.length) notify.warning(notice)
-      else notify.success(notice)
+      const options = { details: notice }
+      if (warnings.length) notify.warning('故事已导入，部分附加数据需要检查', options)
+      else notify.success('故事已导入', { details: notice })
       await finishImport(result)
     } catch (error) {
-      notify.error(props.t('notify.error.general'), { description: error instanceof Error ? error.message : String(error) })
+      notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
       setArchiveError(error instanceof Error ? error.message : String(error))
     }
     finally { setArchiveBusy(false) }
@@ -1207,10 +1209,10 @@ function TimelineDetail(props: {
       setImportedArchive(imported)
       const notice = props.t('sessions.chatImported', { count: converted.messages.length, id: result.timeline.id })
       setArchiveNotice(notice)
-      notify.success(notice)
+      notify.success(`已导入 ${converted.messages.length} 条聊天消息`, { details: notice })
       await finishImport(imported)
     } catch (error) {
-      notify.error(props.t('notify.error.general'), { description: error instanceof Error ? error.message : String(error) })
+      notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
       setArchiveError(error instanceof Error ? error.message : String(error))
     }
     finally { setArchiveBusy(false) }
@@ -1524,7 +1526,9 @@ function SessionDetail(props: {
                   <span>{props.t(item.role === 'assistant' ? 'sessions.messageAssistant' : 'sessions.messageUser')}</span>
                   <small>{formatDate(item.message.createdAt)}</small>
                 </div>
+                {item.interjectionStatus ? <small>{item.interjectionStatus === 'discarded' ? '未接入（已放弃）' : item.interjectionStatus === 'pending' ? '待接入' : '已接入'}</small> : null}
                 <p className={styles.transcriptEntryContent}>{item.content}</p>
+                <MessageAttachments t={props.t} attachments={item.message.entry.kind === 'message' || item.message.entry.kind === 'user-interjection' ? item.message.entry.attachments : undefined} />
               </div>
             ))}
           </div>

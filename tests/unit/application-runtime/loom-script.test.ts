@@ -19,6 +19,26 @@ afterEach(async () => {
 })
 
 describe('Loom Script codec and store', () => {
+  it('persists Markdown ordering without rewriting or restarting, and deletes its adoptions', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const source = '---\nid: example.md\nname: Rule\nregex: x\norder: 10\n---\ny'
+      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'rule.md', source })
+      expect(script.source.mediaType).toBe('text/markdown')
+      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 10 })
+      const enabled = (await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 10, grantedCapabilities: [] })).mount
+      await runtime.reorderLoomScripts({ groups: [{ owner: { kind: 'user' }, scriptIds: [script.id], groupOrder: 0 }] })
+      const restartedRuntime = createApplicationRuntime(fixture)
+      expect((await restartedRuntime.listLoomScriptMounts()).mounts[0]).toMatchObject({ orderIndex: 0, enabled: true, runtimeRevision: enabled.runtimeRevision, origin: { groupOrder: 0 } })
+      expect((await restartedRuntime.exportLoomScript({ scriptDocumentId: script.id })).artifact.source).toBe(source)
+      await expect(runtime.reorderLoomScripts({ target: { kind: 'card', cardId: 'other' }, groups: [{ owner: { kind: 'user' }, scriptIds: [script.id] }] })).rejects.toThrow('Adopt')
+      await runtime.deleteLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version })
+      expect((await runtime.listLoomScriptMounts()).mounts).toEqual([])
+      expect((await runtime.listLoomScripts()).scripts).toEqual([])
+    } finally { await fixture.dataEngine.close() }
+  })
+
   it('resolves precedence before reading invalid obsolete settings and can browse disabled mounts', async () => {
     const fixture = await createFixture()
     const runtime = createApplicationRuntime(fixture)

@@ -1,3 +1,5 @@
+import type { MediaAssetLookup } from '../types.js'
+import { validateMessageAttachments } from '../agents/message-attachments.js'
 import type { StatisticsStore } from '@loom-studio/application-data'
 import {
   createAiGateway,
@@ -143,6 +145,7 @@ export function createFakeAiGateway(): AiGateway {
 }
 
 export function createDocumentBackedAiGateway(options: {
+  mediaAssets?: MediaAssetLookup
   documents: DocumentStore
   secrets?: SecretStore
   fallback?: AiGateway
@@ -222,7 +225,7 @@ export function createDocumentBackedAiGateway(options: {
               return (typeof message.content === 'string' && message.content.trim().length > 0)
                 || Boolean(message.tool_calls && message.tool_calls.length > 0)
             }
-            return typeof message.content === 'string' && message.content.trim().length > 0
+            return typeof message.content === 'string' && (message.content.trim().length > 0 || message.role === 'user' && Boolean(message.attachments?.length))
           })
           const actualProvider = resolved.provider
           const providerKind = actualProvider.kind
@@ -238,7 +241,7 @@ export function createDocumentBackedAiGateway(options: {
             ...(report ? { onUsage: report } : {}),
             provider: actualProvider,
             modelId: input.model!.modelId,
-            messages: sanitizedMessages,
+            messages: await prepareAttachmentTransport(sanitizedMessages, options.mediaAssets),
             ...(input.request.tools ? { tools: input.request.tools } : {}),
             ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
             ...(input.request.providerOptions ? { providerOptions: input.request.providerOptions } : {}),
@@ -301,7 +304,7 @@ export function createOpenAICompatibleGateway(options: OpenAICompatibleGatewayOp
             fetch: transport,
           },
           modelId: options.modelId,
-          messages: input.request.messages,
+          messages: await prepareAttachmentTransport(input.request.messages, options.mediaAssets),
           ...(input.request.tools ? { tools: input.request.tools } : {}),
           ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
           ...(input.request.providerOptions ? { providerOptions: input.request.providerOptions } : {}),
@@ -419,4 +422,16 @@ function readCauseCode(error: unknown): string | undefined {
     current = 'cause' in current ? Reflect.get(current, 'cause') : undefined
   }
   return undefined
+}
+
+async function prepareAttachmentTransport(messages: import('@loom-studio/shared').ChatMessage[], assets?: MediaAssetLookup): Promise<import('@loom-studio/ai-gateway').AiGatewayRequest['messages']> {
+  return Promise.all(messages.map(async message => {
+    if (message.role !== 'user' || !message.attachments?.length) return message
+    const attachments = await validateMessageAttachments(assets, message.attachments)
+    const images = await Promise.all(attachments.filter(file => file.kind === 'image').map(async file => ({
+      mediaType: file.mediaType,
+      data: Buffer.from(await assets!.read!(file.assetId, { maxBytes: 32 * 1024 * 1024 })).toString('base64'),
+    })))
+    return { role: 'user' as const, content: message.content, ...(images.length ? { images } : {}) }
+  }))
 }

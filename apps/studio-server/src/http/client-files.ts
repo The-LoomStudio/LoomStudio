@@ -58,10 +58,23 @@ export async function serveClientFile(
       response.writeHead(404).end()
       return true
     }
+    const etag = `W/"${file.size.toString(16)}-${file.mtimeMs.toString(16)}"`
+    response.setHeader('etag', etag)
+    response.setHeader('last-modified', file.mtime.toUTCString())
+    response.setHeader('cache-control', pathname.startsWith('/app-assets/') ? 'public, max-age=31536000, immutable' : 'no-cache')
+    const ifNoneMatch = request.headers['if-none-match']
+    const ifModifiedSince = request.headers['if-modified-since']
+    // If-None-Match takes precedence; GET and HEAD use weak ETag comparison.
+    const notModified = ifNoneMatch !== undefined
+      ? ifNoneMatch.split(',').some(value => value.trim() === '*' || value.trim().replace(/^W\//, '') === etag.slice(2))
+      : ifModifiedSince !== undefined && Math.floor(file.mtimeMs / 1000) * 1000 <= Date.parse(ifModifiedSince)
+    if (notModified) {
+      response.writeHead(304).end()
+      return true
+    }
     response.writeHead(200, {
       'content-type': mediaTypes[extname(filename)] ?? 'application/octet-stream',
       'content-length': file.size,
-      'cache-control': pathname.startsWith('/app-assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
       'x-content-type-options': 'nosniff',
     })
     if (request.method === 'HEAD') response.end()

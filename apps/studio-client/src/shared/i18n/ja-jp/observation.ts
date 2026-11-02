@@ -1,4 +1,6 @@
 export const messages = {
+  'observation.runInfo': '実行情報',
+  'observation.relatedResources': '関連リソース',
   "observation.readComplete": "読み取り完了",
   "observation.readPartial": "部分読み取り",
   "observation.currentStep": "現在のステップ",

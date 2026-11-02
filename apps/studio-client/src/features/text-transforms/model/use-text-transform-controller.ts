@@ -281,7 +281,7 @@ export function useTextTransformController(props: TextTransformProps) {
     } catch (cause) {
       const message = readError(cause)
       setError(message)
-      notify.error(message)
+      notify.failure('文本处理规则操作未完成', message)
     }
     finally {
       if (ruleWriteRef.current === task) ruleWriteRef.current = undefined
@@ -326,7 +326,7 @@ export function useTextTransformController(props: TextTransformProps) {
     } catch (cause) {
       const message = readError(cause)
       setError(message)
-      notify.error(message)
+      notify.failure('文本处理规则操作未完成', message)
     }
   }
 
@@ -345,7 +345,7 @@ export function useTextTransformController(props: TextTransformProps) {
     } catch (cause) {
       const message = readError(cause)
       setError(message)
-      notify.error(message)
+      notify.failure('文本处理规则操作未完成', message)
     }
   }
 
@@ -356,7 +356,7 @@ export function useTextTransformController(props: TextTransformProps) {
     } catch (cause) {
       const message = props.t('textTransform.invalidJson', { error: readError(cause) })
       setError(message)
-      notify.error(message)
+      notify.failure('文本处理规则操作未完成', message)
     }
   }
 

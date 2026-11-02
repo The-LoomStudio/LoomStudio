@@ -20,6 +20,7 @@ export function createExtensionHostHarness(options: {
   logger?: Logger
   grantAssetCapabilities?: (packageId: string, moduleId: string) => readonly ExtensionAssetCapability[]
   assets?: ExtensionHostOptions['assets']
+  canAccessAsset?: ExtensionHostOptions['canAccessAsset']
   portablePayloads?: ExtensionHostOptions['portablePayloads']
   validateStorageScope?: ExtensionHostOptions['validateStorageScope']
   validateEntityRef?: ExtensionHostOptions['validateEntityRef']
@@ -57,6 +58,7 @@ export function createExtensionHostHarness(options: {
       options.grantAssetCapabilities?.(packageManifest.id, moduleManifest.id) ?? []
     ),
     assets: options.assets,
+    canAccessAsset: options.canAccessAsset,
     portablePayloads: options.portablePayloads,
     validateStorageScope: options.validateStorageScope,
     validateEntityRef: options.validateEntityRef,

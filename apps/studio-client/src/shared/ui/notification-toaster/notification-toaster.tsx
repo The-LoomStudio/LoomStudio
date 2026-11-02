@@ -1,3 +1,5 @@
+import { Dialog, Button } from '@loom-studio/ui'
+import { useNotificationDetails } from '../../notifications/notification-details-store.js'
 import { Toaster } from 'sonner'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import 'sonner/dist/styles.css'
@@ -5,6 +7,7 @@ import { tryWriteClipboardText } from '../../browser/clipboard.js'
 import styles from './notification-toaster.module.scss'
 
 export function NotificationToaster(props: { label: string }) {
+  const { detail, close } = useNotificationDetails()
   function preventToastDrag(event: ReactPointerEvent<HTMLDivElement>) {
     const target = event.target as Element
     if (target.closest('button')) return
@@ -20,6 +23,7 @@ export function NotificationToaster(props: { label: string }) {
   }
 
   return (
+    <>
     <div onClick={copyToast} onPointerDownCapture={preventToastDrag}>
       <Toaster
         closeButton
@@ -52,6 +56,11 @@ export function NotificationToaster(props: { label: string }) {
         visibleToasts={4}
       />
     </div>
+    {detail && <Dialog open title={detail.title} closeLabel="关闭" onClose={close}>
+      <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: '60vh', overflow: 'auto' }}>{detail.text}</pre>
+      <Button onClick={() => { void tryWriteClipboardText(detail.text) }}>复制技术详情</Button>
+    </Dialog>}
+    </>
   )
 }
 

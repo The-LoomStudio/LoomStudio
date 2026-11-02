@@ -131,7 +131,7 @@ describe('Agent preset resource', () => {
         presetId = (await runtime.createAgentPreset({ name: 'Default Writer' })).agentPreset.id
       } else {
         const artifact = JSON.parse(await readFile(
-          new URL('../../../official/starter/presets/assistant.json', import.meta.url), 'utf8',
+          new URL('../../../tests/fixtures/legacy-official-starter/presets/assistant.json', import.meta.url), 'utf8',
         )) as PromptResourceArtifact
         presetId = 'prompt-resource.official.loom-assistant'
         await runtime.installOfficialContent({

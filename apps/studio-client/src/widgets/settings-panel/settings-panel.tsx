@@ -1,9 +1,12 @@
+import { AboutLinks } from './about-links.js'
+import studioLogoUrl from '../../shared/assets/logo.png'
+import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
 import type { UserBackgroundLibrary } from '../../features/backgrounds/model/use-user-backgrounds.js'
 import { useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { ThemeSettings } from '../../features/themes/ui/theme-settings.js'
 import type { ThemeController } from '../../features/themes/model/theme-controller.js'
 import { useEffect, useState, type FormEvent } from 'react'
-import { Columns3, ExternalLink, Globe, Info, Layers, Network, Palette, Save, ZoomIn } from 'lucide-react'
+import { Columns3, Globe, Info, Layers, Network, Palette, Save, ZoomIn } from 'lucide-react'
 import { Button, Slider } from '@loom-studio/ui'
 import type { NetworkSettings } from '../../shared/api/studio-api.js'
 import type { Locale, Translator } from '../../shared/i18n/index.js'
@@ -35,6 +38,7 @@ export function SettingsPanel(props: {
   busy: boolean
   customCss: string
   locale: Locale
+  localePending?: boolean
   networkSettings: NetworkSettings
   backgrounds?: readonly BackgroundOption[]
   backgroundCardId?: string
@@ -45,7 +49,7 @@ export function SettingsPanel(props: {
   onUpdateNetworkSettings(value: { proxyMode: NetworkSettings['proxyMode']; proxyUrl?: string }): Promise<void>
   t: Translator
 }) {
-  const [category, setCategory] = useState<SettingsCategory>('general')
+  const [category, setCategory] = useWorkbenchView<SettingsCategory>('settings.category', 'general', ['general', 'network', 'appearance', 'about'])
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   useEffect(() => {
     if (props.requestedCategory) { setCategory(props.requestedCategory); setMobilePane('detail') }
@@ -162,7 +166,7 @@ export function SettingsPanel(props: {
               <section className={styles.settingSection}>
                 <label className={styles.settingRow}>
                   <span>{props.t('app.localeLabel')}</span>
-                  <select value={props.locale} onChange={event => props.onChangeLocale(event.target.value as Locale)}>
+                  <select value={props.locale} disabled={props.localePending} aria-busy={props.localePending} onChange={event => props.onChangeLocale(event.target.value as Locale)}>
                     {supportedLocales.map(locale => <option key={locale} value={locale}>{localeLabels[locale]}</option>)}
                   </select>
                 </label>
@@ -294,12 +298,10 @@ export function SettingsPanel(props: {
           ) : (
             <section className={styles.settingSection}>
               <div className={styles.aboutBrand}>
-                <img src="/images/logo.png" alt="" width={64} height={64} />
+                <img src={studioLogoUrl} alt="" width={64} height={64} />
                 <div><h4>Loom Studio</h4><span>v{STUDIO_VERSION}</span></div>
               </div>
-              <a className={styles.aboutLink} href="https://github.com/The-LoomStudio/LoomStudio.git" rel="noreferrer" target="_blank">
-                <ExternalLink aria-hidden="true" size={15} /><span>GitHub · The-LoomStudio/LoomStudio</span>
-              </a>
+              <AboutLinks locale={props.locale} t={props.t} />
             </section>
           )}
         </div>

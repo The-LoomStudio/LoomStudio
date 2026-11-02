@@ -66,6 +66,8 @@ export type TextTransformRuleDraft = {
   owner: TextRuleOwner
   enabled: boolean
   orderIndex: number
+  captureRemove?: string[]
+  streaming?: boolean
   matcher: { kind: 'regex'; pattern: string; flags: string }
   effect: TextTransformRuleEffect
   targets: HistoryTarget[]
@@ -86,6 +88,11 @@ export type TextTransformRuleContent = TextTransformRuleDraft & {
 }
 
 export type TextTransformRuleEntry = TextTransformRuleContent & {
+  orderGroup?: number
+  orderGroupKey?: string
+  orderGroupExplicit?: boolean
+  orderOverridden?: boolean
+  localOrder?: number
   id: string
   version: number
   scriptDocumentId?: string
@@ -103,6 +110,11 @@ export type HistoryTextEntry<Source extends TextProjectionSource = HistorySource
 }
 
 export type TextTransformDiagnostic = {
+  presetId?: string
+  presetName?: string
+  resourceName?: string
+  referenceIndex?: number
+  resourceKind?: 'rule' | 'extractor'
   code: string
   message: string
   ruleId?: string
@@ -183,6 +195,8 @@ export const defaultHistoryProjectionBudget: HistoryProjectionBudget = {
 }
 
 export function validateTextTransformRuleDraft(rule: TextTransformRuleDraft): void {
+  if (rule.captureRemove !== undefined && (!Array.isArray(rule.captureRemove) || rule.captureRemove.some(value => typeof value !== 'string'))) throw new Error('Capture removal must contain literal strings')
+  if (rule.streaming !== undefined && typeof rule.streaming !== 'boolean') throw new Error('Streaming must be boolean')
   if (!rule.name.trim()) throw new Error('Text Transform Rule name cannot be empty')
   if (!Number.isInteger(rule.orderIndex)) throw new Error('Text Transform Rule orderIndex must be an integer')
   if (!rule.targets.length) throw new Error('Text Transform Rule must select at least one target')
@@ -208,6 +222,7 @@ export function projectHistoryEntries<Source extends TextProjectionSource>(input
   entries: HistoryTextEntry<Source>[]
   rules: TextTransformRuleEntry[]
   preserveRuleOrder?: boolean
+  streaming?: boolean
   traceEntryId?: string
   entryIds?: readonly string[]
   budget?: Partial<HistoryProjectionBudget>
@@ -225,7 +240,7 @@ export function projectHistoryEntries<Source extends TextProjectionSource>(input
 
   const target = input.source.kind === 'card-opening' ? 'narrative' : input.source.kind
   const selectedRules = input.rules
-    .filter(rule => rule.enabled && rule.targets.includes(target) && rule.phases.includes(input.phase))
+    .filter(rule => rule.enabled && rule.targets.includes(target) && rule.phases.includes(input.phase) && (!input.streaming || input.phase === 'display' && rule.streaming === true))
   if (!input.preserveRuleOrder) selectedRules.sort(compareRules)
   const applicableRules = selectedRules.filter(rule => {
     try {
@@ -343,6 +358,7 @@ function applyRule(input: {
   while ((match = input.regex.exec(input.text)) !== null) {
     found.push(match)
     if (found.length > input.maxMatches) throw new Error(`Text Transform Rule match budget exceeded: ${input.rule.id}`)
+    if (!input.rule.matcher.flags.includes('g')) break
     if (match[0].length === 0) {
       const codePoint = input.text.codePointAt(input.regex.lastIndex)
       input.regex.lastIndex += (input.regex.unicode || input.regex.unicodeSets) && codePoint !== undefined && codePoint > 0xffff ? 2 : 1
@@ -393,7 +409,7 @@ function applyRule(input: {
     }
   }
   const replacement = input.rule.effect.kind === 'replace' ? input.rule.effect.replacement : ''
-  const replaced = replaceMatches(input.text, found, replacement)
+  const replaced = replaceMatches(input.text, found, replacement, input.rule.captureRemove)
   if (input.rule.effect.kind === 'replace') {
     return {
       matched: true,
@@ -442,12 +458,12 @@ function createMatchId(input: {
   ])).digest('hex')}`
 }
 
-function replaceMatches(text: string, matches: RegExpExecArray[], replacement: string): { text: string; edits: TextEdit[] } {
+function replaceMatches(text: string, matches: RegExpExecArray[], replacement: string, captureRemove: string[] = []): { text: string; edits: TextEdit[] } {
   let cursor = 0
   let output = ''
   const edits: TextEdit[] = []
   for (const match of matches) {
-    const expanded = expandReplacement(replacement, match, text)
+    const expanded = expandReplacement(replacement, match, text, captureRemove)
     output += text.slice(cursor, match.index) + expanded
     edits.push({ start: match.index, end: match.index + match[0].length, replacementLength: expanded.length })
     cursor = match.index + match[0].length
@@ -455,15 +471,16 @@ function replaceMatches(text: string, matches: RegExpExecArray[], replacement: s
   return { text: output + text.slice(cursor), edits }
 }
 
-function expandReplacement(replacement: string, match: RegExpExecArray, input: string): string {
+function expandReplacement(replacement: string, match: RegExpExecArray, input: string, captureRemove: string[]): string {
+  const clean = (value: string) => captureRemove.reduce((text, literal) => text.replaceAll(literal, ''), value)
   return replacement.replace(/\$([$&'`]|\d{1,2}|<[^>]*>)/g, (token, reference: string) => {
     if (reference === '$') return '$'
-    if (reference === '&') return match[0]
+    if (reference === '&') return clean(match[0])
     if (reference === '`') return input.slice(0, match.index)
     if (reference === "'") return input.slice(match.index + match[0].length)
     if (reference.startsWith('<')) {
       if (!match.groups) return token
-      return match.groups[reference.slice(1, -1)] ?? ''
+      return clean(match.groups[reference.slice(1, -1)] ?? '')
     }
     const captureCount = match.length - 1
     let captureIndex = Number(reference)
@@ -473,7 +490,7 @@ function expandReplacement(replacement: string, match: RegExpExecArray, input: s
       suffix = reference[1] ?? ''
     }
     if (captureIndex < 1 || captureIndex > captureCount) return token
-    return (match[captureIndex] ?? '') + suffix
+    return clean(match[captureIndex] ?? '') + suffix
   })
 }
 
@@ -521,7 +538,7 @@ function isDepthSelected(depth: number, range: TextTransformRuleDraft['range']):
 }
 
 function compareRules(left: TextTransformRuleEntry, right: TextTransformRuleEntry): number {
-  return left.orderIndex - right.orderIndex || left.id.localeCompare(right.id)
+  return (left.orderGroup ?? 0) - (right.orderGroup ?? 0) || (left.orderGroupKey ?? '').localeCompare(right.orderGroupKey ?? '') || left.orderIndex - right.orderIndex || (left.localOrder ?? 0) - (right.localOrder ?? 0) || left.id.localeCompare(right.id)
 }
 
 export type TextExtractorStrategy = 'latest-valid' | 'all-matches'

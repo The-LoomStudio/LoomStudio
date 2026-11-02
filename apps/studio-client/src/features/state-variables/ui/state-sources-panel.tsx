@@ -1,7 +1,8 @@
+import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
 import { ExtensionIcon, useExtensionIdentities } from '../../../shared/ui/extension-icon/extension-icon.js'
 import { useEffect, useState, type ReactNode } from 'react'
 import { BookOpen, Database, Folder, RefreshCw } from 'lucide-react'
-import type { StateContribution } from '@loom-studio/shared'
+import { playerEntityPath, playerProfilePath, type StateContribution } from '@loom-studio/shared'
 import type { Card } from '../../../entities/card.js'
 import type { ExtensionInstallationSource } from '../../../entities/extension.js'
 import type { StateSourcesInspection, StateTarget } from '../../../entities/state.js'
@@ -46,18 +47,22 @@ export function StateSourcesPanel(props: Props) {
   }, [api, key])
 
   const nodes: FileTreeNode[] = data ? [
-    ...(data.timeline ? [{ id: 'timeline', kind: 'entry' as const, label: t('stateSources.accepted'), meta: data.timeline.target.timelineId }] : []),
-    { id: 'card', kind: 'entry', label: t('stateSources.card'), meta: data.card?.name ?? t('stateSources.noCard') },
-    { id: 'definitions', kind: 'folder', label: t('stateSources.definitions'), meta: String(data.definitions.length),
-      children: data.definitions.map(definition => ({
-        id: `definition:${definition.id}`, kind: 'entry', label: definition.label || definition.id,
-        meta: definition.kind === 'global' ? t('stateVariables.globalState') : t('stateSources.template'),
-      })) },
-    { id: 'extensions', kind: 'folder', label: t('stateSources.extensions'), meta: String(data.extensions.length),
+    ...(data.timeline ? [{ id: 'section:timeline', isSection: true, label: 'Timeline', children: [
+      { id: 'timeline', kind: 'entry', label: t('stateSources.accepted'), meta: data.timeline.target.timelineId },
+    ] }] : []),
+    { id: 'section:card', isSection: true, label: t('registrySource.card'), children: [
+      { id: 'card', kind: 'entry', label: data.card?.name ?? t('stateSources.noCard') },
+    ] },
+    ...(data.extensions.length ? [{ id: 'extensions', isSection: true, label: t('registrySource.extension'),
       children: data.extensions.map(source => ({
         id: source.installationId, kind: 'entry', label: identities.find(item => item.packageId === source.packageId)?.displayName ?? source.packageId,
         meta: `${scopeLabel(source, t)} · ${participationLabel(source, Boolean(data.timeline), t)}`,
-      })) },
+      })) }] : []),
+    ...(data.definitions.length ? [{ id: 'definitions', isSection: true, label: t('registrySource.personal'),
+      children: data.definitions.map(definition => ({
+        id: `definition:${definition.id}`, kind: 'entry', label: definition.label || definition.id,
+        meta: definition.kind === 'global' ? t('stateVariables.globalState') : t('stateSources.template'),
+      })) }] : []),
   ] : []
   const selectedDefinition = data?.definitions.find(item => `definition:${item.id}` === selectedId)
   const selectedExtension = data?.extensions.find(item => item.installationId === selectedId)
@@ -104,7 +109,7 @@ export function StateSourcesPanel(props: Props) {
                 <p>{t('stateSources.definitions')} · {selectedDefinition.kind === 'global' ? t('stateVariables.globalState') : t('stateSources.template')}</p>
                 <SourceCode value={selectedDefinition} />
               </> : selection === 'timeline' && data.timeline ? <>
-                <h3>{t('stateSources.accepted')}</h3>
+                <h3>{t('stateSources.accepted')} {data.timeline.context && <InfoDialog title={t('stateSources.acceptedContext')}><SourceCode value={data.timeline.context} /></InfoDialog>}</h3>
                 <dl className={styles.facts}>
                   <dt>Timeline</dt><dd>{data.timeline.target.timelineId}</dd>
                   <dt>Branch</dt><dd>{data.timeline.target.branchId}</dd>
@@ -114,7 +119,7 @@ export function StateSourcesPanel(props: Props) {
                     : t('stateSources.contextMissing')}</dd>
                 </dl>
                 <PathList paths={data.timeline.paths} t={t} />
-                {data.timeline.context ? <details><summary>{t('stateSources.acceptedContext')}</summary><SourceCode value={data.timeline.context} /></details> : null}
+
               </> : data ? <CardDetail data={data} t={t} /> : null}
           </div>}
     </MasterDetailWorkbench>
@@ -126,7 +131,7 @@ function CardDetail({ data, t }: { data: StateSourcesInspection; t: Translator }
   if (!card) return <p>{t('stateSources.noCard')}</p>
   return <>
     <h3>{card.name} · v{card.version}</h3>
-    <h4>{t('stateSources.card')}</h4>
+    <h4>{t('stateSources.card')} <InfoDialog title={t('stateSources.declaration')}><SourceCode value={card.declaration} /></InfoDialog></h4>
     <Declaration declaration={card.declaration} t={t} />
     <h4>{t('stateSources.definitionRefs')}</h4>
     <ul className={styles.references}>{card.definitionIds.map(id => {
@@ -169,7 +174,7 @@ function ExtensionDetail({ source, timeline, t }: { source: ExtensionSource; tim
 
 function Contributions({ values, t }: { values: ExtensionSource['registered']; t: Translator }) {
   return values.map(value => <section className={styles.contribution} key={value.contributionId}>
-    <h5>{value.contributionId}</h5>
+    <h5>{value.contributionId} <InfoDialog title={t('stateSources.declaration')}><SourceCode value={value.declaration} /></InfoDialog></h5>
     <p>{value.moduleId} · v{value.packageVersion}</p>
     <Declaration declaration={value.declaration} t={t} />
   </section>)
@@ -184,7 +189,7 @@ function Declaration({ declaration, t }: { declaration: StateContribution; t: Tr
       <dt>{t('stateAuthoring.mounts')}</dt><dd>{declaration.componentMounts.length}</dd>
       <dt>{t('stateAuthoring.rawBindings')}</dt><dd>{declaration.bindings.length}</dd>
     </dl>
-    <details><summary>{t('stateSources.declaration')}</summary><SourceCode value={declaration} /></details>
+
   </>
 }
 
@@ -194,7 +199,7 @@ function PathList({ paths, t }: { paths: NonNullable<StateSourcesInspection['tim
     {!paths.length ? <p>{t('stateSources.noPaths')}</p> : <ul className={styles.paths}>
       {paths.map(path => <li key={`${path.kind}:${path.path}`} data-state-presence={path.present ? 'present' : 'missing'}>
         <code>{path.path}</code>
-        <span>{t(`stateSources.${path.kind}`)} · {t(path.present ? 'stateSources.present' : 'stateSources.missing')}</span>
+        <span>{t(`stateSources.${path.kind}`)} · {t(path.present ? 'stateSources.present' : 'stateSources.missing')}{!path.installationId && (path.path === playerEntityPath || path.path === playerProfilePath) ? ` · ${t('directory.builtinResource')}` : ''}</span>
       </li>)}
     </ul>}
   </section>

@@ -35,6 +35,22 @@ async function setup(actions?: FileTreeBatchAction[]) {
 }
 function row(id: string) { return container.querySelector<HTMLElement>(`[data-file-tree-node-id="${id}"]`)! }
 function selected() { return [...container.querySelectorAll<HTMLElement>('[role="treeitem"][aria-selected="true"]')].map(item => item.dataset.fileTreeNodeId) }
+it('reveals a target after its ancestors expand and keeps later refreshes from stealing focus', async () => {
+  const nodes: FileTreeNode[] = [{ id: 'root', label: 'Root', children: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }] }]
+  const render = (expandedIds: string[]) => root.render(createElement(FileTree, {
+    ariaLabel: 'State', nodes: [...nodes], expandedIds, revealId: 'b',
+    onExpandedIdsChange: vi.fn(), onSelect: vi.fn(),
+    getDisclosureLabel: node => node.label, getDragLabel: node => node.label, moreActionsLabel: 'More',
+  }))
+  await act(async () => render([]))
+  expect(document.activeElement).not.toBe(row('b'))
+  await act(async () => render(['root']))
+  await vi.waitFor(() => expect(document.activeElement).toBe(row('b')))
+  row('a').focus()
+  await act(async () => render(['root']))
+  expect(document.activeElement).toBe(row('a'))
+})
+
 async function stroke(start: string, end?: string, shift = false) {
   await act(async () => row(start).dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1, ctrlKey: !shift, shiftKey: shift })))
   if (end) await act(async () => row(end).dispatchEvent(new PointerEvent('pointermove', { bubbles: true, buttons: 1, pointerId: 1 })))
@@ -105,3 +121,28 @@ it('uses the whole selection in the context menu', async () => {
   await act(async () => menuItem.click())
   expect(run.mock.calls[0]?.[0].map((node: FileTreeNode) => node.id)).toEqual(['a', 'b', 'c'])
 })
+
+ it('expands folders without selecting them and opens details only through the explicit action', async () => {
+  const onSelect = vi.fn()
+  const onExpandedIdsChange = vi.fn()
+  const folder: FileTreeNode = { id: 'folder', label: 'Folder', kind: 'folder', children: [{ id: 'file', label: 'File', kind: 'entry' }] }
+  await act(async () => root.render(createElement(FileTree, {
+    ariaLabel: 'Resources', nodes: [folder], expandedIds: ['folder'], onExpandedIdsChange, onSelect,
+    canOpenFolderDetails: () => true,
+    getDisclosureLabel: node => node.label, getDragLabel: node => node.label, moreActionsLabel: 'More',
+  })))
+  await act(async () => row('folder').click())
+  expect(onExpandedIdsChange).toHaveBeenLastCalledWith([])
+  expect(onSelect).not.toHaveBeenCalled()
+  onExpandedIdsChange.mockClear()
+  const details = row('folder').querySelector<HTMLButtonElement>('button[title]')!
+  await act(async () => details.click())
+  expect(onSelect).toHaveBeenLastCalledWith(folder)
+  expect(onExpandedIdsChange).not.toHaveBeenCalled()
+  await act(async () => row('file').click())
+  expect(onSelect).toHaveBeenLastCalledWith(folder.children![0])
+ })
+ it('does not offer details for category folders', async () => {
+  await setup()
+  expect(row('folder').querySelector('svg.lucide-info')).toBeNull()
+ })

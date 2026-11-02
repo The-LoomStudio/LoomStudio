@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/images/nom-banner-015.png" alt="Loom Studio 与看板娘诺姆" width="960" />
+<img src="docs/images/nom-banner-015.png" alt="Loom Studio 与看板娘诺姆" width="960" />
 
 # Loom Studio
 

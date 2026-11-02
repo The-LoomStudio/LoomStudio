@@ -1,4 +1,14 @@
 export const messages = {
+  "settings.links.website": "官方网站",
+  "settings.links.websiteDescription": "产品介绍与最新动态",
+  "settings.links.docs": "文档",
+  "settings.links.docsDescription": "使用指南与架构说明",
+  "settings.links.download": "下载与发布",
+  "settings.links.downloadDescription": "安装启动与版本发布",
+  "settings.links.marketplace": "生态市场",
+  "settings.links.marketplaceDescription": "扩展、预设与创作工具",
+  "settings.links.github": "GitHub",
+  "settings.links.githubDescription": "源代码、问题反馈与项目协作",
   "appearance.extensionBackgroundGroup": "扩展包 · {{name}}",
   "appearance.cardBackgroundGroup": "角色包 · {{name}}",
 

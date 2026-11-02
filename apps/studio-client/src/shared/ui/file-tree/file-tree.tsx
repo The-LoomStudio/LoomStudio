@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Info, GripVertical, MoreHorizontal, X } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
 import { Button, Dialog, ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, type MenuAction } from '@loom-studio/ui'
@@ -48,12 +48,14 @@ type FileTreeProps = {
   onEditCancel?: (id: string) => void
   onExpandedIdsChange: (expandedIds: string[]) => void
   onSelect: (node: FileTreeNode) => void
+  canOpenFolderDetails?: (node: FileTreeNode) => boolean
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
   renderLabelSuffix?: (node: FileTreeNode) => ReactNode
   renderMetaLeading?: (node: FileTreeNode) => ReactNode
   renderTrailing?: (node: FileTreeNode) => ReactNode
   renderExpandedRow?: (node: FileTreeNode) => ReactNode
   selectedId?: string
+  revealId?: string
   variant?: 'tree' | 'flat'
   virtualized?: boolean
 }
@@ -69,6 +71,7 @@ export function FileTree(props: FileTreeProps) {
   const treeRef = useRef<HTMLDivElement>(null)
   const virtualContentRef = useRef<HTMLDivElement>(null)
   const treeItemRefs = useRef(new Map<string, HTMLDivElement>())
+  const revealedIdRef = useRef<string | undefined>(undefined)
   const virtualRowRefs = useRef(new Map<string, HTMLDivElement>())
   const virtualFirstPositionsRef = useRef(new Map<string, number>())
   const virtualAnimationsRef = useRef(new Map<string, Animation>())
@@ -224,6 +227,21 @@ export function FileTree(props: FileTreeProps) {
     requestAnimationFrame(() => treeItemRefs.current.get(id)?.focus())
   }
 
+  useEffect(() => {
+    if (!props.revealId) {
+      revealedIdRef.current = undefined
+      return
+    }
+    if (revealedIdRef.current === props.revealId || !visibleNodes.some(item => item.node.id === props.revealId)) return
+    revealedIdRef.current = props.revealId
+    focusNode(props.revealId)
+  }, [props.revealId, visibleNodes])
+
+  function selectNode(node: FileTreeNode) {
+    if (node.kind !== 'folder' || node.isSection) props.onSelect(node)
+    if (node.kind === 'folder' && node.children && !node.isSection) toggleExpand(node.id)
+  }
+
   function handleTreeItemKeyDown(event: KeyboardEvent<HTMLDivElement>, node: FileTreeNode) {
     if (props.getBatchActions && !batchLocked && event.key === ' ' && (event.ctrlKey || event.metaKey || event.shiftKey)) {
       event.preventDefault()
@@ -239,7 +257,7 @@ export function FileTree(props: FileTreeProps) {
     }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      props.onSelect(node)
+      selectNode(node)
       return
     }
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
@@ -412,13 +430,18 @@ export function FileTree(props: FileTreeProps) {
         onDrop={handleDrop}
         onEditCommit={props.onEditCommit}
         onEditCancel={props.onEditCancel}
-        onSelect={props.onSelect}
+        onSelect={selectNode}
         onToggleExpand={toggleExpand}
         renderChildren={renderChildren}
         renderIcon={props.renderIcon}
         renderLabelSuffix={props.renderLabelSuffix}
         renderMetaLeading={props.renderMetaLeading}
-        renderTrailing={props.renderTrailing}
+        renderTrailing={node => node.kind === 'folder' && !node.isSection && props.canOpenFolderDetails?.(node) ? <>
+            <button type="button" className={styles.folderDetails} title={t('fileTree.folderDetails')}
+              aria-label={`${t('fileTree.folderDetails')}: ${node.label}`}
+              onClick={event => { event.stopPropagation(); props.onSelect(node) }}><Info size={16} aria-hidden="true" /></button>
+          {props.renderTrailing?.(node)}
+        </> : props.renderTrailing?.(node)}
         renderExpandedRow={props.renderExpandedRow}
         rovingId={rovingId}
         selectedId={props.selectedId}
@@ -835,9 +858,7 @@ function FileTreeRow(props: {
           onDragOver={event => props.onDragOver(event, props.node)}
           onDrop={event => props.onDrop(event, props.node)}
         >
-          <div className={styles.sectionDivider} />
           <span className={styles.sectionLabel}>{props.renderLabel ? props.renderLabel(props.node) : props.formatLabel ? props.formatLabel(props.node) : props.node.label}</span>
-          <div className={styles.sectionDivider} />
         </div>
       ) : (
         <>

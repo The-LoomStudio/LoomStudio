@@ -1,3 +1,4 @@
+import type { ThemeTransitionOrigin } from './theme-transition.js'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ManagedExtensionPackage } from '../../../entities/extension.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
@@ -29,12 +30,12 @@ export function useThemeRuntime(input: {
   const latest = useRef({ entries, preferences })
   latest.current = { entries, preferences }
 
-  const apply = useCallback(async (selection: ThemeSelection, overrides: ThemeOverrides = useThemeStore.getState().overrides) => {
+  const apply = useCallback(async (selection: ThemeSelection, overrides: ThemeOverrides = useThemeStore.getState().overrides, origin?: ThemeTransitionOrigin) => {
     if (!runtime.current) return
     const sequence = ++request.current
     setBusy(true); setError(undefined)
     try {
-      const success = await runtime.current.apply(latest.current.entries, selection, overrides)
+      const success = await runtime.current.apply(latest.current.entries, selection, overrides, origin)
       if (sequence === request.current && success) useThemeStore.getState().commit(selection, overrides)
     } catch (reason) {
       if (sequence === request.current) setError(reason instanceof Error ? reason.message : String(reason))
@@ -102,7 +103,7 @@ export function useThemeRuntime(input: {
 
   return {
     entries, selection: preferences.selection, busy, error, startupReady,
-    apply,
+    apply: (selection, origin) => apply(selection, undefined, origin),
     async authorize(entry) {
       if (!entry.module) return
       setBusy(true); setError(undefined)

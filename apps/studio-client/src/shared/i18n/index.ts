@@ -1,6 +1,3 @@
-import { enUS } from './en-us.js'
-import { jaJP } from './ja-jp.js'
-import { koKR } from './ko-kr.js'
 import { zhCN } from './zh-cn.js'
 
 type MessageKey = keyof typeof zhCN
@@ -8,12 +5,21 @@ type Messages = Record<MessageKey, string>
 export type Locale = 'zh-CN' | 'en-US' | 'ja-JP' | 'ko-KR'
 export type Translator = (key: MessageKey, params?: Record<string, string | number>) => string
 
-const resources = {
+const resources: Partial<Record<Locale, Messages>> = {
   'zh-CN': zhCN,
-  'en-US': enUS,
-  'ja-JP': jaJP,
-  'ko-KR': koKR,
-} satisfies Record<Locale, Messages>
+}
+
+const localeLoaders = {
+  'en-US': async () => (await import('./en-us.js')).enUS,
+  'ja-JP': async () => (await import('./ja-jp.js')).jaJP,
+  'ko-KR': async () => (await import('./ko-kr.js')).koKR,
+} satisfies Record<Exclude<Locale, 'zh-CN'>, () => Promise<Messages>>
+
+/** Load before creating a translator or committing a locale change. */
+export async function loadLocale(locale: Locale): Promise<void> {
+  if (locale === 'zh-CN' || resources[locale]) return
+  resources[locale] = await localeLoaders[locale]()
+}
 
 export const localeLabels: Record<Locale, string> = {
   'zh-CN': '中文',
@@ -22,15 +28,17 @@ export const localeLabels: Record<Locale, string> = {
   'ko-KR': '한국어',
 }
 
-export const supportedLocales = Object.keys(resources) as Locale[]
+export const supportedLocales = Object.keys(localeLabels) as Locale[]
 
 export function t(key: MessageKey, params?: Record<string, string | number>): string {
   return createTranslator('zh-CN')(key, params)
 }
 
 export function createTranslator(locale: Locale): Translator {
+  const messages = resources[locale]
+  if (!messages) throw new Error(`Locale ${locale} has not been loaded`)
   return (key, params) => {
-    const template = resources[locale][key] ?? resources['zh-CN'][key]
+    const template = messages[key] ?? zhCN[key]
     if (!params) return template
 
     let result: string = template

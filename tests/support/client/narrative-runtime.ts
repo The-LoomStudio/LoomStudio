@@ -113,6 +113,18 @@ export function fixture() {
     session, mutation: { changesetId: 'create-session' },
   }))
   const createRun = vi.fn<StudioApi['agentSessions']['createRun']>(async () => ({ runId: 'run' }))
+  const submitInterjection = vi.fn<StudioApi['agentSessions']['submitInterjection']>(async request => {
+    const entry: AgentTranscriptEntry = { id: request.requestId, agentSessionId: request.agentSessionId, sequence: 1, createdAt: timeline.createdAt,
+      entry: { kind: 'user-interjection', requestId: request.requestId, content: request.input, mode: request.mode, attachments: request.attachments, narrativeTarget: request.narrativeTarget } }
+    // Model the server's accepted idle boundary; the client must not append a node itself.
+    if (request.mode === 'narrative') {
+      const node = { id: 'input-node', entryId: 'user', kind: 'user-input' as const, floor: 1, timelineId: timeline.id,
+        stateRevisionId: 'state', workspaceRevisionId: 'workspace', body: { format: 'loom-markdown.v1' as const, raw: request.input.trim() }, createdAt: timeline.createdAt }
+      Object.assign(branch, { headNodeId: node.id })
+      Object.assign(narrative, { nodes: [node] })
+    }
+    return { runId: 'run', entry, pending: true }
+  })
   const subscribeRun = vi.fn<StudioApi['agentSessions']['subscribeRun']>(async (_runId, _cursor, sessionId) => ({
     events: [{ type: 'completed', runId: 'run', result: sessionId === timeline.id ? rootResult : result }], nextCursor: 1, done: true, state: 'completed',
   }))
@@ -137,7 +149,7 @@ export function fixture() {
         list: vi.fn<StudioApi['narratives']['list']>(async () => ({ timelines: [] })),
       },
       agentSessions: {
-        create: createSession, createRun, subscribeRun, getTranscript, resumeRun, acknowledgeRunCompletion,
+        create: createSession, createRun, submitInterjection, subscribeRun, getTranscript, resumeRun, acknowledgeRunCompletion,
         update: vi.fn(async patch => { Object.assign(rootSession, patch); return { session: rootSession, mutation: { changesetId: 'configure-root' } } }),
         runState: vi.fn(async () => ({ runId: 'run', state: 'suspended' })),
       },
@@ -169,7 +181,7 @@ export function fixture() {
   }
   const loadRoot = async () => { render(); for (let i = 0; i < 12; i++) await Promise.resolve(); return render() }
   const event = { preventDefault: vi.fn() } as unknown as FormEvent
-  return { render, loadRoot, rootSession, rootEntries, rootGetTranscript, event, input, result, rootResult, appendInput, createTimeline, createSession, createRun, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
+  return { render, loadRoot, rootSession, rootEntries, rootGetTranscript, event, input, result, rootResult, appendInput, createTimeline, createSession, createRun, submitInterjection, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
 }
 
 export async function primaryFixture() {

@@ -232,8 +232,7 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.galleryActions > button:last-child,
-.startActions > button {
+.galleryActions > button:last-child {
   min-height: 28px;
   display: inline-flex;
   align-items: center;
@@ -274,7 +273,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 108px);
+  grid-template-columns: repeat(auto-fill, minmax(min(108px, 100%), 1fr));
   gap: 12px 10px;
   justify-content: start;
   padding: 0 12px 20px;
@@ -289,7 +288,8 @@
 }
 
 .gridCard {
-  width: 108px;
+  width: 100%;
+  min-width: 0;
   contain: layout style;
   transform: translateZ(0);
   will-change: transform, opacity;
@@ -492,7 +492,8 @@
   grid-column: 1 / -1;
   min-height: 22px;
   display: grid;
-  place-items: end center;
+  place-items: center;
+  text-align: center;
   padding: 5px 0 2px;
   color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-1);
@@ -695,21 +696,12 @@
 }
 
 .profileIdentity > .startActions {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 
-  > button {
-    white-space: normal;
-    text-align: start;
-
-    > svg {
-      width: 16px;
-      height: 16px;
-      flex-shrink: 0;
-    }
-  }
+  > button { color: var(--loom-color-accent-strong); }
 }
 
 .inlineNameInput {
@@ -1213,7 +1205,7 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--loom-radius-card);
-  background: var(--loom-color-surface-subtle);
+  background: transparent;
   transition: background-color 0.15s ease;
 }
 
@@ -1249,29 +1241,6 @@
   transform: rotate(90deg);
 }
 
-.sessionCardHeader {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-  gap: 2px;
-}
-
-.sessionCardTitleRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.sessionCardTitleRow strong {
-  color: var(--loom-color-text);
-  font-size: var(--loom-font-size-3);
-  font-weight: var(--loom-font-weight-5);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .currentBadge {
   display: inline-flex;
   align-items: center;
@@ -1282,11 +1251,6 @@
   background: color-mix(in srgb, var(--loom-color-accent) 20%, transparent);
   color: var(--loom-color-accent);
   line-height: 1.3;
-}
-
-.sessionCardHeader small {
-  color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
 }
 
 .sessionCardBody {
@@ -1328,10 +1292,6 @@
     color: var(--loom-color-accent) !important;
   }
 
-  .sessionCardTitleRow strong {
-    color: var(--loom-color-accent);
-    font-weight: var(--loom-font-weight-6);
-  }
 }
 
 .cardPlayButton {
@@ -1418,10 +1378,6 @@
     padding-inline: 10px;
   }
 
-  .startActions > button {
-    padding-inline: 4px;
-  }
-
   .profileContent,
   .sessions {
     margin-inline: 10px;
@@ -1439,10 +1395,12 @@
 
 :global(html[data-loom-glass-panels='true']),
 :global(html[data-loom-preview-background]) {
-  .characterPanel,
+  .characterPanel { background: transparent; }
   .galleryToolbar,
   .profileToolbar {
-    background: transparent;
+    background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 62%), transparent);
+    backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+    -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
   }
 
   .profileHeroShade {
@@ -1452,4 +1410,8 @@
       color-mix(in srgb, var(--loom-color-background) 32%, transparent)
     );
   }
+}
+
+@media (max-width: 768px) {
+  .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
+import { renderToReadableStream, renderToStaticMarkup } from 'react-dom/server'
 import { parseMessageSegments } from '../../../apps/studio-client/src/features/message-content/model/message-segments.js'
 import { buildHtmlDocument, HTML_PREVIEW_CSP, readHtmlHeight } from '../../../apps/studio-client/src/features/message-content/model/html-document.js'
 import { MarkdownContent } from '../../../apps/studio-client/src/shared/ui/markdown-content/markdown-content.js'
@@ -10,10 +10,14 @@ import { projectHistoryEntries } from '@loom-studio/application-runtime'
 import { messageHtmlExamples, nextPreviewStreamOffset } from '../../fixtures/client/message-html-examples.js'
 
 const labels = { copy: 'Copy', copied: 'Copied', copyFailed: 'Failed', enableWrap: 'Wrap', disableWrap: 'Unwrap' }
-const html = (value: string, safeHtml = true) => renderToStaticMarkup(createElement(MarkdownContent, { value, safeHtml, codeBlockLabels: labels }))
+async function html(value: string, safeHtml = true) {
+  const stream = await renderToReadableStream(createElement(MarkdownContent, { value, safeHtml, codeBlockLabels: labels }))
+  await stream.allReady
+  return new Response(stream).text()
+}
 
 describe('message HTML classification', () => {
-  it('keeps capture replacements as an inline fragment', () => {
+  it('keeps capture replacements as an inline fragment', async () => {
     const source = { kind: 'agent-session', sessionId: 'test' } as const
     const raw = '<Status>\n姓名:青\n年龄:25\n</Status>'
     const snapshot = projectHistoryEntries({
@@ -29,7 +33,7 @@ describe('message HTML classification', () => {
     const value = displayText({ entries: new Map(snapshot.entries.map(entry => [entry.id, entry])), pending: false }, '1', raw)!
     expect(snapshot.entries[0]?.originalText).toBe(raw)
     expect(parseMessageSegments(value)).toEqual([{ kind: 'fragment', value, start: 0 }])
-    expect(html(value)).toContain('<details><summary>青</summary><small>25</small></details>')
+    expect(await html(value)).toContain('<details><summary>青</summary><small>25</small></details>')
   })
 
   it('preserves a non-fenced nested document including blank lines and JS macros', () => {
@@ -139,12 +143,21 @@ describe('message HTML classification', () => {
     }
   })
 
-  it('unwraps HTML code blocks enclosed by custom tags without leaking wrapper markers', () => {
+  it('preserves unmatched think and Status tags in both source segments and rendered text', () => {
+    const value = '<think>正文会出现 <Status> 标签。</think>\n公开正文。'
+    expect(parseMessageSegments(value)).toEqual([{ kind: 'markdown', value, start: 0 }])
+    const rendered = renderToStaticMarkup(createElement(MessageContent, { value, role: 'assistant', codeBlockLabels: labels }))
+    expect(rendered).toContain('&lt;think&gt;正文会出现 &lt;Status&gt; 标签。&lt;/think&gt;')
+    expect(rendered).toContain('公开正文。')
+  })
+
+  it('recognizes wrapped HTML code blocks while preserving their custom wrapper text', () => {
     const wrapped = '<opening>\n```html\n<div>UI</div>\n```\n</opening>'
     const parts = parseMessageSegments(wrapped)
     expect(parts.filter(part => part.kind === 'document')).toHaveLength(1)
     expect(parts.find(part => part.kind === 'document')?.value).toBe('<div>UI</div>')
-    expect(parts.some(part => part.value.includes('<opening>'))).toBe(false)
+    expect(parts.some(part => part.value.includes('<opening>'))).toBe(true)
+    expect(parts.some(part => part.value.includes('</opening>'))).toBe(true)
 
     const inlineWrapped = '<opening> ```html\n<div>Inline UI</div>\n``` </opening>'
     const inlineParts = parseMessageSegments(inlineWrapped)
@@ -155,24 +168,25 @@ describe('message HTML classification', () => {
     expect(proseParts.find(part => part.kind === 'document')?.value).toBe('<div>UI</div>')
     expect(proseParts.find(part => part.value.includes('前置说明'))).toBeTruthy()
     expect(proseParts.find(part => part.value.includes('后置说明'))).toBeTruthy()
-    expect(proseParts.some(part => part.value.includes('<opening>') || part.value.includes('</opening>'))).toBe(false)
+    expect(proseParts.some(part => part.value.includes('<opening>'))).toBe(true)
+    expect(proseParts.some(part => part.value.includes('</opening>'))).toBe(true)
   })
 })
 
 describe('safe in-message fragments', () => {
-  it('allows details and constrained typography but strips active content and unsafe CSS', () => {
-    const rendered = html('<details open><summary style="font-size:12px;position:fixed;background:url(https://bad);color:red" onclick="alert(1)">A</summary><script>alert(1)</script><iframe src="https://bad"></iframe><a href="javascript:alert(1)">B</a></details>')
+  it('allows details and constrained typography but strips active content and unsafe CSS', async () => {
+    const rendered = await html('<details open><summary style="font-size:12px;position:fixed;background:url(https://bad);color:red" onclick="alert(1)">A</summary><script>alert(1)</script><iframe src="https://bad"></iframe><a href="javascript:alert(1)">B</a></details>')
     expect(rendered).toContain('<details open="">')
     expect(rendered).toContain('font-size:12px;color:red')
     expect(rendered).not.toMatch(/onclick|<script|<iframe|position:fixed|url\(|javascript:/)
   })
 
-  it('preserves unknown tags inside safe fragments as visible text', () => {
-    expect(html('<div><Status>姓名:青</Status></div>')).toContain('&lt;Status&gt;姓名:青&lt;/Status&gt;')
+  it('preserves unknown tags inside safe fragments as visible text', async () => {
+    expect(await html('<div><Status>姓名:青</Status></div>')).toContain('&lt;Status&gt;姓名:青&lt;/Status&gt;')
   })
 
-  it('does not enable HTML globally', () => {
-    expect(html('<details><summary>A</summary>B</details>', false)).not.toContain('<details>')
+  it('does not enable HTML globally', async () => {
+    expect(await html('<details><summary>A</summary>B</details>', false)).not.toContain('<details>')
   })
 })
 

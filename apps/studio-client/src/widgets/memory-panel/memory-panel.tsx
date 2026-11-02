@@ -36,7 +36,7 @@ export function MemoryPanel(props: Props) {
   const currentTarget = timelineId === currentScope.timelineId && branchId === currentScope.branchId
   const hasMemoryRenderer = currentTarget && props.rendererHost.list('memory.panel').some(renderer =>
     renderer.definition.instanceScope === 'timeline' && props.rendererHost.canUse(rendererContributionKey(renderer), scope))
-  return <section className={styles.panel} aria-label="记忆">
+  return <section data-loom-mobile-tab-scope="" className={styles.panel} aria-label="记忆">
     <header className={styles.header}>
       <PanelTabs activeId={props.view} ariaLabel="记忆类型" items={[
         { id: 'plot', label: '剧情记忆' }, { id: 'workspace', label: '共享工作区' },

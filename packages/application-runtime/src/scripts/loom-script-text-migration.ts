@@ -1,3 +1,4 @@
+import { isLoomScriptFileName, loomScriptMediaType, serializeMarkdownTextRule } from '@loom-studio/shared/loom-scripts'
 import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { resolveLoomScriptSettings, resolveTextTransformContributionRule, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
@@ -11,7 +12,7 @@ import { collectPages } from '../foundation/pagination.js'
 import { validateTextTransformRuleDraft, type TextRuleOwner, type TextTransformRuleContent, type TextTransformRuleDraft, type TextTransformRuleEntry } from '../transforms/history-text.js'
 import type { BlobStorage, ExtensionInstallationContent, RuntimeRequestContext } from '../types.js'
 import type { PromptResourceContent } from '../cards/workspace-types.js'
-import { parseLoomScriptSource, serializeLoomScriptMetadata } from './loom-script-codec.js'
+import { parseLoomScriptSource } from './loom-script-codec.js'
 import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent, LoomScriptMountTarget, LoomScriptOwner } from './loom-script-contracts.js'
 
 type Context = Pick<ApplicationRuntimeContext, 'documents' | 'blobs' | 'dataEngine' | 'now' | 'createId'>
@@ -21,11 +22,12 @@ type Metadata = ReturnType<typeof parseLoomScriptSource>
 /** Existing transformRules package slots may carry a complete Script without changing their reference address. */
 export function readPackagedTextRuleScript(value: JsonValue) {
   if (!isObject(value) || value.format !== 'loom.script') return undefined
-  const allowed = new Set(['format', 'schemaVersion', 'fileName', 'source', 'primaryContributionId', 'settings', 'enabled', 'orderIndex'])
+  const allowed = new Set(['format', 'schemaVersion', 'fileName', 'source', 'primaryContributionId', 'settings', 'enabled', 'orderIndex', 'groupOrder'])
   if (Object.keys(value).some(key => !allowed.has(key)) || value.schemaVersion !== 1
-    || typeof value.fileName !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.loom\.js$/.test(value.fileName)
+    || typeof value.fileName !== 'string' || !isLoomScriptFileName(value.fileName)
     || typeof value.source !== 'string' || typeof value.primaryContributionId !== 'string'
     || (value.enabled !== undefined && typeof value.enabled !== 'boolean')
+    || (value.groupOrder !== undefined && !Number.isSafeInteger(value.groupOrder))
     || (value.orderIndex !== undefined && !Number.isSafeInteger(value.orderIndex))) throw new Error('Invalid packaged text-rule Script artifact')
   const metadata = parseLoomScriptSource(value.source)
   const contribution = metadata.contributions.find(item => item.kind === 'text-transform' && item.id === value.primaryContributionId)
@@ -34,7 +36,7 @@ export function readPackagedTextRuleScript(value: JsonValue) {
     typeof item !== 'string' && typeof item !== 'boolean' && (typeof item !== 'number' || !Number.isFinite(item))))) throw new Error('Invalid packaged Script settings')
   const settings = value.settings as LoomScriptSettings | undefined
   const resolved = resolveLoomScriptSettings(metadata.settings, settings)
-  return { source: value.source, fileName: value.fileName, primaryContributionId: value.primaryContributionId, metadata, settings,
+  return { source: value.source, fileName: value.fileName, primaryContributionId: value.primaryContributionId, metadata, settings, groupOrder: value.groupOrder as number | undefined,
     rule: { ...resolveTextTransformContributionRule(contribution, resolved),
       ...(typeof value.enabled === 'boolean' ? { enabled: value.enabled } : {}),
       ...(typeof value.orderIndex === 'number' ? { orderIndex: value.orderIndex } : {}),
@@ -81,25 +83,21 @@ export function remapImportedTextUses(uses: PromptResourceContent['textUses'], r
 /** Legacy import formats are converted at the boundary; their Rule IDs remain reference addresses. */
 export function textTransformScriptSource(rule: TextTransformRuleContent): string {
   const { owner: _owner, origin: _origin, createdAt: _created, updatedAt: _updated, ...definition } = rule
-  return `${serializeLoomScriptMetadata({
-    formatVersion: 1, metadataId: 'imported.text-rule', scriptVersion: '1.0.0',
-    name: rule.name.replace(/[\r\n]+/g, ' '), runtime: 'declarative', requestedCapabilities: [],
-    contributions: [{ kind: 'text-transform', id: 'rule', rule: { ...definition, enabled: true } }],
-  })}\n`
+  return serializeMarkdownTextRule({ ...definition, enabled: true })
 }
 
 export async function prepareTextTransformScript(blobs: BlobStorage, rule: TextTransformRuleContent) {
   validateTextTransformRuleDraft(rule)
   const source = textTransformScriptSource(rule)
   return { metadata: parseLoomScriptSource(source), prepared: await blobs.prepareWrite({
-    source: new TextEncoder().encode(source), mediaType: 'text/javascript',
+    source: new TextEncoder().encode(source), mediaType: 'text/markdown',
   }) }
 }
 
 export async function writePreparedTextTransformScript(documents: DocumentTransaction, input: {
   scriptId: string; ruleId: string; rule: TextTransformRuleContent; blob: StoredBlob; metadata: Metadata
   expectedVersion?: number; mountId: string; mountTarget?: LoomScriptMountTarget
-  fileName?: string; primaryContributionId?: string; settings?: LoomScriptSettings
+  fileName?: string; primaryContributionId?: string; settings?: LoomScriptSettings; groupOrder?: number
 }) {
   const owner = scriptOwner(input.rule)
   const target = input.mountTarget ?? await ruleTarget(documents, input.rule)
@@ -108,7 +106,7 @@ export async function writePreparedTextTransformScript(documents: DocumentTransa
     id: input.scriptId, type: applicationDocumentTypes.loomScript, expectedVersion: input.expectedVersion ?? 'new',
     content: {
       owner, ...input.metadata,
-      source: { blobId: input.blob.id, mediaType: 'text/javascript', fileName: input.fileName ?? 'text-rule.loom.js' },
+      source: { blobId: input.blob.id, mediaType: loomScriptMediaType(input.fileName ?? 'text-rule.rule.md'), fileName: input.fileName ?? 'text-rule.rule.md' },
       sourceDigest: input.blob.sha256, textResourceIds: { [input.primaryContributionId ?? 'rule']: input.ruleId }, textResourceOwner: input.rule.owner,
       ...(input.rule.origin ? { textResourceOrigin: input.rule.origin } : {}),
       createdAt: previous ? (previous.content as LoomScriptContent).createdAt : input.rule.createdAt,
@@ -122,7 +120,7 @@ export async function writePreparedTextTransformScript(documents: DocumentTransa
       content: { target, scriptDocumentId: script.id, enabled: input.rule.enabled, orderIndex: input.rule.orderIndex,
         adoptedDocumentVersion: script.version,
         ...(input.settings ? { settings: input.settings, adoptedSettings: resolveLoomScriptSettings(input.metadata.settings, input.settings) } : {}),
-        grantedCapabilities: [], origin: { ...(input.rule.origin ?? {}), legacyRuleId: input.ruleId, legacyPresetInheritance: true },
+        grantedCapabilities: [], origin: { ...(input.rule.origin ?? {}), ...(input.fileName ? { orderOverride: true } : {}), ...(input.groupOrder !== undefined ? { groupOrder: input.groupOrder } : {}), legacyRuleId: input.ruleId, legacyPresetInheritance: true },
         createdAt: input.rule.createdAt, updatedAt: input.rule.updatedAt },
     })
   }
@@ -136,7 +134,7 @@ export async function migrateLegacyTextTransformRules(ctx: Context): Promise<voi
     const source = textTransformScriptSource(rule.content)
     const metadata = parseLoomScriptSource(source)
     await executeBlobDocumentMutation(ctx, undefined, 'application.migrateTextRuleToScript', {
-      bytes: new TextEncoder().encode(source), mediaType: 'text/javascript',
+      bytes: new TextEncoder().encode(source), mediaType: 'text/markdown',
     }, async (documents, blob) => {
       const current = await documents.get(rule.id)
       if (!current) return
@@ -198,7 +196,7 @@ export async function upsertTextTransformRuleScript(ctx: Context, input: {
   const source = textTransformScriptSource(rule)
   const metadata = parseLoomScriptSource(source)
   const result = await executeBlobDocumentMutation(ctx, requestContext, 'application.importTextRuleScript', {
-    bytes: new TextEncoder().encode(source), mediaType: 'text/javascript',
+    bytes: new TextEncoder().encode(source), mediaType: 'text/markdown',
   }, async (documents, blob) => {
     if ((await listScriptTextTransformRules(documents)).some(rule => rule.id === input.ruleId)) throw new Error(`Text Transform Rule already exists: ${input.ruleId}`)
     const existing = await documents.get(input.ruleId)

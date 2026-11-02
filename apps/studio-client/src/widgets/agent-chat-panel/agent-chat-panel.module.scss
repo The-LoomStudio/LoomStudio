@@ -400,7 +400,7 @@
   color: var(--loom-color-text);
 
   :global(.loom-ui-menu-leading) {
-    visibility: hidden;
+    visibility: visible;
   }
 
   &:hover,
@@ -569,3 +569,8 @@
 .followLatest { align-self: flex-end; display: flex; align-items: center; gap: 4px; border: 0; padding: 5px 12px; background: transparent; color: var(--loom-color-accent); font: inherit; font-size: 11px; cursor: pointer; svg { width: 12px; height: 12px; } }
 
 [data-smooth-follow] .conversation { overflow-anchor: none; overscroll-behavior: contain; scroll-behavior: auto; }
+.profileSearch { position: sticky; top: 0; z-index: 2; box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--loom-color-border); border-radius: var(--loom-radius-control); color: var(--loom-color-text); background: var(--loom-color-surface); font: inherit; }
+.profileSource { padding: 12px 8px 4px; color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-1); }
+.profileName { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--loom-color-text); }
+.profileName svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--loom-color-accent); }
+.profileOption :global(.loom-ui-menu-label) { flex: 1; min-width: 0; }

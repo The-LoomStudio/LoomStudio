@@ -37,7 +37,7 @@ it('preserves the reading list, message, iframe and expanded work while a new pr
     t: createTranslator('zh-CN'), presetName: 'Preset A',
     timeline: [{ id: 'node', entryId: 'body', kind: 'narrative', floor: 1, timelineId: 'story', body: { format: 'loom-markdown.v1', raw: 'raw' }, createdAt: '' }],
     workEntries: [
-      { id: 'work', roundId: 'round', agentSessionId: 'story', runId: 'run', sequence: 1, createdAt: '', entry: { kind: 'tool-invocation', invocationId: 'read', toolId: 'read' } },
+      { id: 'work', roundId: 'round', agentSessionId: 'story', runId: 'run', sequence: 1, createdAt: '', entry: { exposedName: 'read', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'read', toolId: 'read' } },
       { id: 'body', roundId: 'round', agentSessionId: 'story', runId: 'run', sequence: 2, createdAt: '', entry: { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'raw' } },
       { id: 'guide', roundId: 'round', agentSessionId: 'story', runId: 'discuss', sequence: 3, createdAt: '', entry: { kind: 'message', role: 'user', content: 'Test new prose' } },
     ],

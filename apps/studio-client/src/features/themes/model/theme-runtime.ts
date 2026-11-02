@@ -1,3 +1,4 @@
+import { transitionTheme, type ThemeTransitionOrigin } from './theme-transition.js'
 import type { ExtensionRegistrationHandle, StyleParameterValue } from '@loom-studio/extension-sdk'
 import { parameterCss, type ThemeEntry } from './theme-catalog.js'
 import { loadStyleSheet, type PreparedStyle } from './style-loader.js'
@@ -182,7 +183,7 @@ export function createThemeRuntime(onError: (message: string) => void) {
 
   return {
     signature: () => current?.signature,
-    apply(catalog: readonly ThemeEntry[], selection: ThemeSelection, overrides: ThemeOverrides): Promise<boolean> {
+    apply(catalog: readonly ThemeEntry[], selection: ThemeSelection, overrides: ThemeOverrides, origin?: ThemeTransitionOrigin): Promise<boolean> {
       pending?.abort()
       const controller = new AbortController()
       pending = controller
@@ -191,29 +192,32 @@ export function createThemeRuntime(onError: (message: string) => void) {
         if (disposed || controller.signal.aborted) return
         const candidate = await prepare(catalog, structuredClone(selection), structuredClone(overrides), controller.signal)
         const previous = current
-        try {
-          if (previous) {
-            await stop(previous)
-            for (const item of previous.entries) item.sheet.deactivate()
-            previous.parameters.media = 'not all'
-          }
-          await activate(candidate, controller.signal)
-          current = candidate
-          if (previous) remove(previous)
-          success = true
-        } catch (error) {
-          await stop(candidate).catch(cleanupError => onError(String(cleanupError)))
-          remove(candidate)
-          if (previous && !disposed && current === previous) {
-            try { await activate(previous); current = previous }
-            catch (recoveryError) {
-              await stop(previous).catch(cleanupError => onError(String(cleanupError)))
-              remove(previous); current = undefined; updateMotion()
-              throw new AggregateError([error, recoveryError], 'New theme failed and the previous JavaScript module is no longer available; native appearance restored')
+        await transitionTheme(async () => {
+          try {
+            controller.signal.throwIfAborted()
+            if (previous) {
+              await stop(previous)
+              for (const item of previous.entries) item.sheet.deactivate()
+              previous.parameters.media = 'not all'
             }
-          } else { current = undefined; updateMotion() }
-          throw error
-        }
+            await activate(candidate, controller.signal)
+            current = candidate
+            if (previous) remove(previous)
+            success = true
+          } catch (error) {
+            await stop(candidate).catch(cleanupError => onError(String(cleanupError)))
+            remove(candidate)
+            if (previous && !disposed && current === previous) {
+              try { await activate(previous); current = previous }
+              catch (recoveryError) {
+                await stop(previous).catch(cleanupError => onError(String(cleanupError)))
+                remove(previous); current = undefined; updateMotion()
+                throw new AggregateError([error, recoveryError], 'New theme failed and the previous JavaScript module is no longer available; native appearance restored', { cause: recoveryError })
+              }
+            } else { current = undefined; updateMotion() }
+            throw error
+          }
+        }, origin)
       })
       queue = next.catch(() => {})
       return next.then(() => success)

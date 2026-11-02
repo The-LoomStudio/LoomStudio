@@ -158,7 +158,7 @@ function restoreObservation(value: unknown, entryBytes: number, ttl: number): Ob
   if (!['run', 'build', 'api', 'request'].includes(entry.kind as string)
     || !['running', 'completed', 'failed', 'aborted', 'suspended'].includes(entry.status as string)
     || !['recorded', 'partial'].includes(entry.availability as string)) throw new Error('Invalid observation snapshot identity/status')
-  for (const key of ['parentId', 'agentSessionId', 'timelineId', 'branchId', 'buildId', 'diagnostic']) {
+  for (const key of ['parentId', 'agentPresetId', 'agentSessionId', 'timelineId', 'branchId', 'buildId', 'diagnostic']) {
     if (entry[key] !== undefined && typeof entry[key] !== 'string') throw new Error(`Invalid observation snapshot ${key}`)
   }
   for (const key of ['build', 'request', 'origin', 'output']) {

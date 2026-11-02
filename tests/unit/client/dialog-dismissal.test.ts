@@ -13,6 +13,7 @@ function mount(overrides: Partial<DialogProps> = {}) {
   const onClose = vi.fn()
   act(() => root.render(createElement(Dialog, { open: true, title: 'Resources', onClose, ...overrides }, createElement('p', null, 'Content'))))
   const dialog = container.querySelector('dialog')!
+  Object.defineProperty(dialog, 'clientHeight', { value: 200 })
   vi.spyOn(dialog, 'getBoundingClientRect').mockReturnValue({ left: 100, right: 400, top: 100, bottom: 300 } as DOMRect)
   function click(startX: number, endX = startX) {
     act(() => {
@@ -32,6 +33,57 @@ describe('shared Dialog dismissal', () => {
       act(() => { f.dialog.dispatchEvent(new Event('cancel', { cancelable: true })) })
       expect(f.onClose).toHaveBeenCalledTimes(2)
     } finally { f.dispose() }
+  })
+
+  it.each(['default', 'workbench'] as const)('dismisses a mobile %s sheet only after dragging its handle far enough', layout => {
+    const f = mount({ layout })
+    try {
+      const handle = f.container.querySelector<HTMLButtonElement>('[data-loom-ui-sheet-handle]')!
+      handle.setPointerCapture = vi.fn()
+      let time = 0
+      const pointer = (type: string, y: number) => act(() => {
+        const event = new PointerEvent(type, { bubbles: true, pointerType: 'touch', pointerId: 1, isPrimary: true, clientY: y })
+        Object.defineProperty(event, 'timeStamp', { value: time += 1000 })
+        handle.dispatchEvent(event)
+      })
+      pointer('pointerdown', 100)
+      pointer('pointermove', 140)
+      expect(f.dialog.style.getPropertyValue('--loom-sheet-offset')).toBe('40px')
+      pointer('pointerup', 140)
+      expect(f.onClose).not.toHaveBeenCalled()
+      expect(f.onClose).not.toHaveBeenCalled()
+      pointer('pointerdown', 100)
+      pointer('pointermove', 190)
+      pointer('pointerup', 190)
+      pointer('lostpointercapture', 190)
+      expect(f.onClose).toHaveBeenCalledOnce()
+      expect(f.dialog.style.getPropertyValue('--loom-sheet-offset')).toBe('90px')
+    } finally { f.dispose() }
+  })
+
+  it('keeps the release offset while an asynchronous route close is pending', async () => {
+    let finish!: () => void
+    const pending = new Promise<void>(resolve => { finish = resolve })
+    const f = mount({ layout: 'workbench', onClose: () => pending })
+    const frame = vi.spyOn(window, 'requestAnimationFrame')
+    try {
+      const handle = f.container.querySelector<HTMLButtonElement>('[data-loom-ui-sheet-handle]')!
+      handle.setPointerCapture = vi.fn()
+      let time = 0
+      const pointer = (type: string, y: number) => act(() => {
+        const event = new PointerEvent(type, { bubbles: true, pointerType: 'touch', pointerId: 1, isPrimary: true, clientY: y })
+        Object.defineProperty(event, 'timeStamp', { value: time += 1000 })
+        handle.dispatchEvent(event)
+      })
+      pointer('pointerdown', 100)
+      pointer('pointermove', 300)
+      pointer('pointerup', 300)
+      pointer('lostpointercapture', 300)
+      expect(f.dialog.style.getPropertyValue('--loom-sheet-offset')).toBe('200px')
+      expect(frame).not.toHaveBeenCalled()
+      await act(async () => { finish(); await pending })
+      expect(frame).toHaveBeenCalledOnce()
+    } finally { f.dispose(); frame.mockRestore() }
   })
 
   it('closes on a backdrop click, but keeps surface clicks and outward drags open', () => {

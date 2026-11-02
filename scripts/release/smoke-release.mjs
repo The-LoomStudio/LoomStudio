@@ -4,7 +4,7 @@ import { access, cp, mkdtempDisposable, readFile, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolveLoomStudioLocalPaths } from '../../apps/studio-server/dist/platform/local-paths.js'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -85,6 +85,17 @@ try {
   })
   if (install.error) throw install.error
   assert.equal(install.status, 0, 'Release-only dependency install failed')
+  const memoryDirectory = join(directory, 'official/extensions/story-memory')
+  for (const path of ['images', 'fonts', 'videos', 'ui', 'docs', 'build.mjs', 'startup.css', 'favicon.ico']) {
+    await assert.rejects(access(join(memoryDirectory, path)), { code: 'ENOENT' }, `Development asset leaked into story-memory: ${path}`)
+  }
+  await assert.rejects(access(join(directory, 'node_modules/quickjs-emscripten')), { code: 'ENOENT' }, 'Umbrella QuickJS dependency leaked into release')
+  const { runCodeActSandbox } = await import(pathToFileURL(join(directory, 'packages/application-runtime/dist/agents/codeact/sandbox.js')).href)
+  assert.deepEqual(await runCodeActSandbox({
+    source: 'print(await ctx.read("release"));',
+    methods: { read: async args => `read:${args[0]}` },
+    signal: new AbortController().signal,
+  }), { status: 'completed', output: 'read:release' }, 'Release CodeAct Worker failed')
   let origin = await start()
   for (const path of ['/', '/studio', '/studio/characters', '/studio/chat/smoke/branch/main']) {
     const response = await fetch(`${origin}${path}`, { headers: { accept: 'text/html' }, signal: AbortSignal.timeout(10000) })

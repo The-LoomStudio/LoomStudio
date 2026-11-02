@@ -1,5 +1,10 @@
 import { lazy, Suspense } from 'react'
 
+const RegexLabPreview = lazy(async () => {
+  isolatePreviewStorage()
+  return { default: (await import('./regex-lab-preview.js')).RegexLabPreview }
+})
+
 const DashboardPreview = lazy(async () => ({ default: (await import('./dashboard-preview.js')).DashboardPreview }))
 
 const NarrativeSessionPreview = lazy(async () => {
@@ -34,6 +39,7 @@ function isolatePreviewStorage() {
 
 // Explicit registration only. No business API, authentication, or persistent layout bootstrap.
 export function DevPreview({ pathname }: { pathname: string }) {
+  if (pathname === '/dev/preview/regex') return <Suspense fallback={null}><RegexLabPreview /></Suspense>
   if (pathname === '/dev/preview/dashboard') return <Suspense fallback={null}><DashboardPreview /></Suspense>
   if (pathname === '/dev/preview/presets') return <Suspense fallback={null}><PresetLibraryPreview /></Suspense>
   if (pathname === '/dev/preview/scripts') return <Suspense fallback={null}><ScriptManagementPreview /></Suspense>

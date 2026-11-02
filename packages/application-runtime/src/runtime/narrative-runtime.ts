@@ -1,11 +1,15 @@
+import { validateMessageAttachments } from '../agents/message-attachments.js'
+import { withCardFramework } from '../cards/card-framework.js'
 import { assertAgentSessionNotExecuting } from './agents-runtime.js'
-import { readUserProfiles, resolveCurrentUserProfile } from '../profiles/user-profiles.js'
+import { readUserProfiles, resolveCurrentUserProfile, validateProfileAvatar } from '../profiles/user-profiles.js'
+import { createPlayerStateContribution, hasPlayerProfile } from '../profiles/player-state.js'
+import { readPlayerProfile } from '@loom-studio/shared'
 import { workspaceBinaryLimit } from './workspace-runtime.js'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { JsonObject } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
-import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
+import { readDocument, writeDocument } from '../foundation/document-store.js'
 import { normalizeCardContent, parseCardExtensionAdoptions, readOpening } from '../cards/card.js'
 import { composeStateContributions, createCardStateContribution, materializeStateContribution } from '../state/state-contribution.js'
 import { expandTimelineStateBindings } from '../state/state-definition.js'
@@ -17,7 +21,7 @@ import { readAvailableExtensionInstallations, isExtensionResourceAvailable } fro
 import type { ExtensionStateInitializationContext } from '@loom-studio/extension-sdk'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { timelineExtensionParticipationId } from '../extensions/timeline-participation.js'
-import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
+import { readTimelineRuntimeContext, timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
 import { deleteTimelinePresetConfigs, listTimelinePresetConfigs, timelinePresetConfigId } from '../prompt/timeline-preset-config.js'
 import { isRecord, normalizeMacroSelections } from '@loom-studio/shared'
 import { createAgentStore, type AgentTranscriptEntryData, type NarrativeSwipeGroup } from '@loom-studio/application-data'
@@ -62,7 +66,7 @@ import {
 import { executeDocumentMutation } from '../foundation/mutation.js'
 
 type NarrativeRuntimeContext = Pick<ApplicationRuntimeContext,
-  'swipes' | 'workspaces' | 'blobs' | 'agents' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'narrativeActivity' | 'narrativeContext' | 'now' | 'promptResources' | 'stateContributions' | 'states' | 'timelineArchiveParticipants'
+  'swipes' | 'workspaces' | 'blobs' | 'mediaAssets' | 'agents' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'narrativeActivity' | 'narrativeContext' | 'now' | 'promptResources' | 'stateContributions' | 'states' | 'timelineArchiveParticipants'
 >
 
 export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
@@ -89,9 +93,10 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
       const content = normalizeCardContent(card.content)
       const revision = await ctx.states.getRevision(branch.stateHeadRevisionId)
       if (!revision) throw new Error('Narrative State revision not found')
-      const variables = await readAgentTurnVariables(ctx, revision.snapshot, content.name)
+      const runtime = await readTimelineRuntimeContext(ctx, timeline.id)
+      const variables = await readAgentTurnVariables(ctx, revision.snapshot, content.name, hasPlayerProfile(runtime))
       const selected = input.openingContent === undefined ? readOpening(content, variables, input.openingId) : undefined
-      const openingContent = input.openingContent ?? selected!.content
+      const openingContent = input.openingContent !== undefined ? renderVariableMacros(input.openingContent, variables) : selected!.content
       requestContext?.abortSignal?.throwIfAborted()
       const result = await ctx.dataEngine.transact(
         narrativeWriteContext(requestContext, 'application.replaceNarrativeOpening'),
@@ -149,6 +154,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         if (activeIndex >= 0) throw new Error(`Unresolved archived participant conflicts with current data: ${block.namespace}`)
         participants.push(block)
       }
+      const runtimeContext = await readTimelineRuntimeContext(ctx, timeline.id)
       return { archive: {
         format: 'loom-timeline-archive.v2',
         agent: { session: (await agents.getSession(timeline.id))!, entries: await agents.listEntries(timeline.id), swipeGroups: await ctx.swipes.listForSession(timeline.id) },
@@ -160,6 +166,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         state: { scope, revisions },
         workspace: { revisions: workspaceRevisions, blobs: workspaceBlobs },
         participants,
+        ...(hasPlayerProfile(runtimeContext) ? { runtimeContext } : {}),
         macroConfigurations: (await listTimelinePresetConfigs(ctx.documents, timeline.id)).map(record => ({
           presetId: record.content.presetId, macroSelections: record.content.macroSelections,
         })),
@@ -255,6 +262,12 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
             opening: archive.timeline.opening ? { ...archive.timeline.opening, locked: true,
               nodeId: archive.timeline.opening.nodeId ? idMap.nodeIds[archive.timeline.opening.nodeId] : undefined } : undefined,
           })
+          if (archive.runtimeContext) {
+            await writeDocument<TimelineRuntimeContextContent>(documents, {
+              id: timelineRuntimeContextId(timelineId), type: applicationDocumentTypes.timelineRuntimeContext,
+              content: { ...structuredClone(archive.runtimeContext), timelineId }, expectedVersion: 'new',
+            })
+          }
           const agentTx = agents.transaction(dataTx)
           if (archivedAgent) {
             agentTx.updateSession({ agentSessionId: timelineId, ...(preset?.resourceKind === 'preset' ? { agentPresetId: preset.id } : {}),
@@ -373,9 +386,11 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
     },
 
     appendNarrativeInput: async (input: AppendNarrativeInput, requestContext?: RuntimeRequestContext): Promise<AppendNarrativeInputResult> => {
-      if (!input.content.trim()) throw new Error('Narrative input content cannot be empty')
+      const attachments = await validateMessageAttachments(ctx.mediaAssets, input.attachments)
+      if (!input.content.trim() && !attachments.length) throw new Error('Narrative input content cannot be empty')
       const result = await requireNarratives(ctx).appendInput({
         ...narrativeWriteContext(requestContext, 'application.appendNarrativeInput'),
+        attachments,
         timelineId: input.timelineId,
         branchId: input.branchId,
         nodeId: input.nodeId,
@@ -575,10 +590,14 @@ async function createTimelineFromCard(
   if (input.openingId !== undefined && input.openingContent !== undefined)
     throw new Error('Choose an opening ID or custom opening content, not both')
   const baseContribution = createCardStateContribution(card.id, cardContent, templates)
+  const selectedProfile = input.playerProfile ?? resolveCurrentUserProfile(await readUserProfiles(ctx.documents))
+  if (selectedProfile.avatarAssetId !== undefined) await validateProfileAvatar(ctx, selectedProfile.avatarAssetId)
+  const playerContribution = createPlayerStateContribution({ name: selectedProfile.name, description: selectedProfile.description,
+    ...(selectedProfile.avatarAssetId !== undefined ? { avatarAssetId: selectedProfile.avatarAssetId } : {}) })
   const baseState = materializeStateContribution(composeStateContributions(`initial:${card.id}`, [
-    baseContribution, ...contributionSources.map(source => source.contribution),
+    playerContribution, baseContribution, ...contributionSources.map(source => source.contribution),
   ])).snapshot
-  const variables = await readAgentTurnVariables(ctx, baseState, cardContent.name)
+  const variables = await readAgentTurnVariables(ctx, baseState, cardContent.name, true)
   const selectedOpening = input.openingContent === undefined ? readOpening(cardContent, variables, input.openingId) : undefined
   const initialOpening = input.openingContent !== undefined ? renderVariableMacros(input.openingContent, variables) : selectedOpening!.content
   const initializationInstallations = new Map(await readAvailableExtensionInstallations(ctx.documents, card.id, null))
@@ -598,6 +617,7 @@ async function createTimelineFromCard(
     }))
   }
   const composedContribution = composeStateContributions(`timeline:${card.id}`, [
+    playerContribution,
     baseContribution,
     ...initializedContributions,
   ])
@@ -628,9 +648,10 @@ async function createTimelineFromCard(
     contributionSources,
   })
   const openingVariables = createVariableRenderContext({ ...variables.snapshot, timeline: initialState })
-  const openingContent = input.openingContent ?? readOpening(cardContent, openingVariables, input.openingId).content
+  const openingContent = input.openingContent !== undefined ? renderVariableMacros(input.openingContent, openingVariables)
+    : readOpening(cardContent, openingVariables, input.openingId).content
   requestContext?.abortSignal?.throwIfAborted()
-  const transaction = await ctx.dataEngine.transact(
+  const transaction = await withCardFramework(ctx, cardContent, framework => ctx.dataEngine.transact(
     narrativeWriteContext(requestContext, reason),
     async dataTx => requireDocumentParticipant(ctx).participateTransaction(dataTx, async documents => {
       const currentCard = await readDocument<CardSourceContent>(documents, card.id, applicationDocumentTypes.cardSource)
@@ -686,6 +707,10 @@ async function createTimelineFromCard(
         opening: { id: selectedOpening?.id, locked: history !== undefined },
         openingNode: openingContent.trim() ? { body: { format: 'loom-markdown.v1', raw: openingContent } } : undefined,
       })
+      if (framework.presetId) {
+        if (!ctx.agents) throw new Error('Agent store is unavailable')
+        ctx.agents.transaction(dataTx).updateSession({ agentSessionId: timelineId, agentPresetId: framework.presetId })
+      }
       if (history === undefined) return created
       const nodes: NarrativeNode[] = []
       for (const message of history) {
@@ -699,7 +724,7 @@ async function createTimelineFromCard(
       narrativeTx.restoreArchivePaths({ timelineId, nodes, branches: [branch] })
       return { timeline: narrativeTx.getTimeline(timelineId)!, nodes: nodes.map(node => narrativeTx.getNode(node.id)!), branch: narrativeTx.getBranch(branchId)! }
     }),
-  )
+  ))
   return {
     ...transaction.value.value,
     mutation: { changesetId: transaction.commit.changesetId },
@@ -737,10 +762,13 @@ export async function readAgentTurnVariables(
   ctx: Pick<ApplicationRuntimeContext, 'now' | 'states' | 'documents'>,
   timeline?: JsonObject,
   characterName?: string,
+  requirePlayerProfile = false,
 ): Promise<VariableRenderContext> {
   const globalSnapshot = await ctx.states.getGlobalSnapshot()
   const global = structuredClone(globalSnapshot?.revision.snapshot ?? {}) as JsonObject
-  const user = resolveCurrentUserProfile(await readUserProfiles(ctx.documents))
+  // ponytail: Legacy Timelines keep global profiles until an explicit history/branch migration is defined.
+  const user = requirePlayerProfile ? readPlayerProfile(timeline!)
+    : resolveCurrentUserProfile(await readUserProfiles(ctx.documents))
   return createVariableRenderContext({
     global,
     ...(timeline ? { timeline } : {}),

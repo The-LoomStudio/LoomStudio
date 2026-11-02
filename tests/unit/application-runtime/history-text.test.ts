@@ -44,7 +44,7 @@ describe('history text projection', () => {
         expect(result.diagnostics).toEqual([])
       }
       const all = projectHistoryEntries({ source, phase, entries: [entry('message', 1, '😀')],
-        rules: [rule({ id: 'empty', phases: [phase], matcher: { kind: 'regex', pattern: '(?:)', flags },
+        rules: [rule({ id: 'empty', phases: [phase], matcher: { kind: 'regex', pattern: '(?:)', flags: `${flags}g` },
           effect: { kind: 'replace', replacement: '|' } })] })
       expect(all.entries[0]!.text).toBe('|😀|')
     }

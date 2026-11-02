@@ -77,10 +77,10 @@
     "no-unsafe-optional-chaining": "error",
     "no-unused-labels": "error",
     "no-unused-private-class-members": "error",
-    // Explicit options keep underscore-prefixed unused names checked.
+    // Underscore names explicitly mark intentionally unused arguments and omitted fields.
     "no-unused-vars": [
       "error",
-      {}
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
     ],
     "no-useless-assignment": "error",
     "no-useless-backreference": "error",
@@ -92,7 +92,7 @@
     "use-isnan": "error",
     "valid-typeof": "error",
     "no-array-constructor": "error",
-    "no-unused-expressions": "error",
+    "no-unused-expressions": ["error", { "allowShortCircuit": true, "allowTernary": true }],
     "typescript/ban-ts-comment": "error",
     "typescript/no-duplicate-enum-values": "error",
     "typescript/no-empty-object-type": "error",
@@ -112,6 +112,10 @@
     "typescript/triple-slash-reference": "error"
   },
   "overrides": [
+    {
+      "files": ["docs/architecture/extensions/examples/*.loom.js"],
+      "env": { "browser": true }
+    },
     {
       "files": [
         "official/extensions/*/src/client/**/*.{js,mjs}"

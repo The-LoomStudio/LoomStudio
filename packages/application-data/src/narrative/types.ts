@@ -1,6 +1,6 @@
+import type { ChatAttachment } from '@loom-studio/shared'
 import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type {
-  DataActorRef,
   DataCommitFact,
   SqliteDataTransaction,
 } from '@loom-studio/data-engine'
@@ -102,6 +102,7 @@ export type CreateNarrativeTimelineResult = {
 }
 
 export type AppendNarrativeNodeInput = NarrativeWriteContext & {
+  attachments?: ChatAttachment[]
   kind?: NarrativeNode['kind']
   timelineId: string
   branchId: string
@@ -120,6 +121,7 @@ export type AppendNarrativeNodeResult = {
 }
 
 export type AppendNarrativeUserInput = NarrativeWriteContext & {
+  attachments?: ChatAttachment[]
   timelineId: string
   branchId: string
   nodeId: string
@@ -300,6 +302,7 @@ export type NarrativeStore = {
 }
 
 export type EditBranchNodeInput = NarrativeWriteContext & {
+  executionRunId?: string
   timelineId: string
   branchId: string
   nodeId: string

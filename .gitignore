@@ -24,3 +24,6 @@ drafts/
 /official/extensions/st-data-compat/
 /official/extensions/backgrounds/
 /extensions/
+
+# 诺姆助手本地独立维护，待建立独立仓库。
+/official/extensions/loom-assistant/

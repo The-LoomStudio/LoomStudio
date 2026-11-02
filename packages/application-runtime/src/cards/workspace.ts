@@ -1,3 +1,5 @@
+import { parseCardFrameworkFields, withCardFramework } from './card-framework.js'
+import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
 import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
 import type { PromptResourceStore } from '@loom-studio/application-data'
 import { createId, nowIso } from '@loom-studio/shared'
@@ -103,7 +105,7 @@ export async function importCardBundle(input: {
     return { attachment, metadata, textResourceIds: allocateImportedTextResourceIds(metadata, attachment, createId),
       prepared: await input.blobs!.prepareWrite({
       source: new TextEncoder().encode(attachment.script.source),
-      mediaType: 'text/javascript',
+      mediaType: loomScriptMediaType(attachment.script.fileName),
     }) }
   }))
   const preparedScripts = preparedScriptResults.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
@@ -126,7 +128,7 @@ export async function importCardBundle(input: {
     throw failedPackagePreparation.reason
   }
 
-  const transaction = await input.dataEngine.transact({
+  const transaction = await withCardFramework(input, artifact.card, () => input.dataEngine.transact({
       actor: input.context?.actor
         ?? (input.context?.clientId ? { kind: 'client', id: input.context.clientId } : applicationActor),
       reason: 'application.importCardBundle',
@@ -200,7 +202,7 @@ export async function importCardBundle(input: {
             ...item.metadata,
             source: {
               blobId: blob.id,
-              mediaType: 'text/javascript',
+              mediaType: loomScriptMediaType(item.attachment.script.fileName),
               fileName: item.attachment.script.fileName,
             },
             sourceDigest: blob.sha256,
@@ -223,6 +225,7 @@ export async function importCardBundle(input: {
             ...(item.attachment.settings ? { settings: item.attachment.settings } : {}),
             origin: {
               kind: 'card-bundle-import', artifactId: artifact.artifactId,
+              orderOverride: true, ...(item.attachment.groupOrder !== undefined ? { groupOrder: item.attachment.groupOrder } : {}),
               ...(item.attachment.resourceOrigin !== undefined ? { resourceOrigin: item.attachment.resourceOrigin } : {}),
             },
             createdAt: timestamp,
@@ -277,6 +280,7 @@ export async function importCardBundle(input: {
           artifactId: artifact.artifactId,
           ...(artifact.derivedFrom ? { derivedFrom: structuredClone(artifact.derivedFrom) } : {}),
           ...normalizeCardEditableFields(artifact.card),
+          ...parseCardFrameworkFields(artifact.card),
           media: artifact.card.media,
           importBundleId,
           portableExtensionPayloadIds,
@@ -326,7 +330,7 @@ export async function importCardBundle(input: {
       })
       return { card, importBundle }
     })
-    })
+    }))
 
   return {
     card: toVersioned(transaction.value.value.card),
@@ -402,6 +406,7 @@ export async function exportCardArtifact(input: {
         source: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       },
       orderIndex: mount.content.orderIndex,
+      ...(typeof mount.content.origin.groupOrder === 'number' ? { groupOrder: mount.content.origin.groupOrder } : {}),
       ...(mount.content.settings ? { settings: mount.content.settings } : {}),
       textResourceIds: exportScriptTextResourceIds(script.id, script.content),
       ...(script.content.textResourceReferences ? { textResourceReferences: script.content.textResourceReferences } : {}),
@@ -481,6 +486,9 @@ function buildExportArtifact(input: {
     card: {
       ...sourceArtifact?.card,
       ...readCardEditableFields(cardContent),
+      extensionDependencies: cardContent.extensionDependencies,
+      defaultPreset: cardContent.defaultPreset,
+      catalogSource: cardContent.catalogSource,
       media: cardContent.media,
       stateContributionIds: cardContent.stateContributionIds,
       ...(cardContent.extensionAdoptions !== undefined ? { extensionAdoptions: structuredClone(cardContent.extensionAdoptions) } : {}),

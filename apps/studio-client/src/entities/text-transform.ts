@@ -8,12 +8,6 @@ export type HistorySource =
 
 export type TextTransformPhase = 'classify' | 'prompt' | 'display'
 
-type TextPipelineConsumer = {
-  agentSessionId: string
-  agentPresetId: string
-  presetId: string
-}
-
 export type TextPipelineOverride = {
   id: string
   version: number
@@ -53,10 +47,6 @@ export type TextTransformRuleDraft = {
 export type TextTransformRule = TextTransformRuleDraft & { id: string; version: number; createdAt: string; updatedAt: string; scriptDocumentId?: string; contributionId?: string }
   & { origin?: ExtensionPackageResourceOrigin }
 
-// Runtime inspection entries share the persisted CRUD shape, but are kept as
-// explicit aliases so the client does not assemble an effective rule set.
-type TextTransformRuleEntry = TextTransformRule
-
 export type TextExtractorDraft = {
   name: string
   owner: TextRuleOwner
@@ -79,8 +69,6 @@ type ExtensionPackageResourceOrigin = {
   packageVersion: string
   contributionId: string
 }
-
-type TextExtractorEntry = TextExtractor
 
 export type HistoryProjectionSnapshot = StudioRpcOutputs['application']['projectHistory']['snapshot']
 

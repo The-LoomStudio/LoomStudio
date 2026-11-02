@@ -1,3 +1,4 @@
+import { InfoDialog } from '../../shared/ui/info-dialog/info-dialog.js'
 import type { UserBackgroundLibrary } from '../../features/backgrounds/model/use-user-backgrounds.js'
 import { useMemo, useState } from 'react'
 import { Button } from '@loom-studio/ui'
@@ -77,11 +78,9 @@ export function UserResourcesPanel(props: {
     {rules.isError ? <p role="alert">{rules.error.message}</p> : null}
     {props.invalidResources?.length ? <div role="alert">
       <p>{props.t('promptResource.invalidResources')}</p>
-      {props.invalidResources.map(resource => <details key={resource.id}>
-        <summary>{resource.label} · {resource.resourceKind}</summary>
-        <p>{resource.id} · v{resource.version}</p>
-        <p>{resource.error}</p>
-      </details>)}
+      {props.invalidResources.map(resource => <div key={resource.id}><span>{resource.label} · {resource.resourceKind}</span><InfoDialog title={resource.label}>
+        <dl><dt>ID</dt><dd>{resource.id}</dd><dt>版本</dt><dd>{resource.version}</dd></dl><p>{resource.error}</p>
+      </InfoDialog></div>)}
       <p>{props.t('promptResource.invalidResourcesHelp')}</p>
       <Button onClick={() => { void props.onRefresh?.().catch(() => undefined) }}>{props.t('appError.reload')}</Button>
     </div> : null}

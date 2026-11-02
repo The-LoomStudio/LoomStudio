@@ -3,6 +3,7 @@ import type { Translator } from '../../shared/i18n/index.js'
 import type { RecentCharacter } from '../../features/recent-characters/model/recent-characters.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import { useSlidingHover } from '../../shared/hooks/use-sliding-hover.js'
+import { useScrollEdgeFade } from '../../shared/hooks/use-scroll-edge-fade.js'
 import styles from './recent-play-rail.module.scss'
 
 type Props = {
@@ -20,6 +21,7 @@ export function RecentPlayRail(props: Props) {
     return card ? [{ visit, card }] : []
   }).slice(0, 8)
   const slidingHover = useSlidingHover<HTMLDivElement>()
+  useScrollEdgeFade(slidingHover.containerRef)
   return <div ref={slidingHover.containerRef} className={styles.root} data-loom-component="rail-recent-play"
     onPointerOver={slidingHover.onPointerOver} onPointerLeave={slidingHover.onPointerLeave}>
     <div className={styles.hoverIndicator} style={slidingHover.indicatorStyle} aria-hidden="true" />

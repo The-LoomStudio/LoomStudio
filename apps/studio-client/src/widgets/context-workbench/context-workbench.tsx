@@ -1,7 +1,8 @@
+import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
 import { ResourceUnavailable } from '../../shared/ui/resource-unavailable/resource-unavailable.js'
 import type { ResourceSearchReveal } from '../../shared/lib/search-match.js'
-import { useEffect, useId, useMemo, useState } from 'react'
-import { Trash2, X } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { ScanEye, Trash2, X } from 'lucide-react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
@@ -15,7 +16,7 @@ import { Dialog, SearchField } from '@loom-studio/ui'
 import type { Card, ContextAssetNode, PromptResource, LoreMount, LoreMountSource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import styles from './context-workbench.module.scss'
-import { readLoreTreeMeta, resolveLoreScope, resolveLoreTarget } from './lore-target.js'
+import { loreRevealExpandedIds, readLoreTreeMeta, resolveLoreScope, resolveLoreTarget } from './lore-target.js'
 
 type ContextWorkbenchProps = {
   extensionInstallations?: import('../../entities/index.js').ListExtensionInstallationsResult['installations']
@@ -79,7 +80,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const [temporarySelection, setTemporarySelection] = useState<{
     resourceId: string; nodeId: string; routeAssetId?: string; requestId?: number
   }>()
-  const [temporaryExpandedIds, setTemporaryExpandedIds] = useState<string[]>([])
+  const [temporaryExpansion, setTemporaryExpansion] = useState<{ key: string; ids: string[] }>()
+  const revealedRoute = useRef<string | undefined>(undefined)
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.resources[props.workspaceId] ?? 'explorer')
 
   const loreResources = useMemo(
@@ -94,7 +96,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     return loreResources.find(r => r.id === props.routeAssetId || Boolean(findContextAssetNode([r.rootNode], props.routeAssetId)))
   }, [props.routeResourceId, props.routeAssetId, loreResources])
 
-  const [scopeFilter, setScopeFilter] = useState<'current' | 'global'>('current')
+  const [scopeFilter, setScopeFilter] = useWorkbenchView<'current' | 'global'>('lore.scope', 'current', ['current', 'global'])
 
   const globalMountIds = useMemo(() => new Set(
     props.loreMounts
@@ -107,10 +109,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   ), [loreResources, globalMountIds, cardResourceIds, props.extensionInstallations, scopeFilter])
   const target = resolveLoreTarget(collection, loreResources, props.routeResourceId)
   const targetResources = target.resources
-  const temporaryOrigin = target.target?.origin?.kind === 'extension-package'
-    ? `${props.t('directory.extensionContribution')} · ${target.target.origin.packageId}`
-    : target.target?.origin?.kind === 'builtin' ? props.t('directory.builtinResource')
-      : target.target?.sourceArtifactRef ? props.t('directory.cardResource') : props.t('directory.userResource')
+  const revealKey = JSON.stringify([props.routeResourceId, props.routeAssetId, props.searchMatch?.requestId])
+  const temporaryExpandedIds = temporaryExpansion?.key === revealKey ? temporaryExpansion.ids
+    : target.target ? loreRevealExpandedIds(target.target.rootNode, props.routeAssetId) : []
   const selectedId = target.temporary
     ? (temporarySelection && temporarySelection.resourceId === props.routeResourceId
       && temporarySelection.routeAssetId === props.routeAssetId
@@ -153,11 +154,11 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         label: resource.rootNode.label,
         kind: 'folder',
         category: 'lore-root',
-        meta,
+        meta: target.temporary ? undefined : meta,
         children,
       }
     })
-  }, [targetResources, globalMountIds, cardResourceIds, props.extensionInstallations, props.t])
+  }, [targetResources, target.temporary, globalMountIds, cardResourceIds, props.extensionInstallations, props.t])
 
   const workbenchNodes = displayNodes
   const selectedNode = findContextAssetNode(workbenchNodes, selectedId)
@@ -236,8 +237,16 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   }, [target.temporary, props.workspaceId, setAssetPane])
 
   useEffect(() => {
-    if (target.temporary) setTemporaryExpandedIds([])
-  }, [target.temporary, props.routeResourceId])
+    if (!target.temporary) setTemporaryExpansion(undefined)
+  }, [target.temporary])
+
+  useEffect(() => {
+    if (!props.routeResourceId) { revealedRoute.current = undefined; return }
+    if (target.temporary || !target.target || revealedRoute.current === revealKey) return
+    revealedRoute.current = revealKey
+    const previous = useStudioLayoutStore.getState().assetLayouts.resources.views[props.workspaceId]?.expandedIds ?? []
+    setExpandedIds('resources', props.workspaceId, [...new Set([...previous, ...loreRevealExpandedIds(target.target.rootNode, props.routeAssetId)])])
+  }, [props.routeResourceId, props.routeAssetId, revealKey, target.temporary, target.target, props.workspaceId, setExpandedIds])
 
   function handleSelectNode(id: string) {
     setAssetPane('resources', props.workspaceId, 'detail')
@@ -278,9 +287,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       onMobilePaneChange={pane => setAssetPane('resources', props.workspaceId, pane)}
       header={(
         <div className={styles.header}>
-        {target.temporary ? <>
-          <span>{props.t('promptResource.temporaryOpen')} · {temporaryOrigin}</span>
-        </> : null}
         <PanelTabs
           activeId={scopeFilter}
           ariaLabel={props.t('context.authoring.views')}
@@ -330,6 +336,12 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             highlightQuery={props.globalSearchQuery}
             tokenSnapshot={tokenSnapshot}
             formatMeta={readLoreTreeMeta}
+            revealId={props.routeResourceId ? props.routeAssetId ?? target.target?.rootNode.id : undefined}
+            renderLabelSuffix={node => target.temporary && node.id === target.target?.rootNode.id
+              ? <span className={styles.temporaryIndicator} tabIndex={0} role="img" aria-label={props.t('promptResource.temporaryHint')}>
+                  <ScanEye size={14} aria-hidden="true" />
+                  <span className={styles.temporaryHint} aria-hidden="true">{props.t('promptResource.temporaryHint')}</span>
+                </span> : null}
             key={target.temporary ? `temporary:${props.routeResourceId}` : 'collection'}
             displayNodes={displayNodes}
             expandedIds={target.temporary ? temporaryExpandedIds : explorerView.expandedIds}
@@ -344,7 +356,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             onDeleteNode={async (id, currentSelectedId) => {
               const resource = loreResources.find(item => item.rootNode.id === id)
               if (!resource) return props.onDeleteNode(id, currentSelectedId)
-              if (resource.origin?.kind === 'builtin') return currentSelectedId
               setDeleteError(undefined)
               setPendingDelete(resource)
               return currentSelectedId
@@ -352,7 +363,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             onBatchToggleEnabled={props.onBatchToggleEnabled}
             onDuplicateNode={props.onDuplicateNode}
             onRenameNode={props.onRenameNode}
-            onExpandedIdsChange={expandedIds => target.temporary ? setTemporaryExpandedIds(expandedIds) : setExpandedIds('resources', props.workspaceId, expandedIds)}
+            onExpandedIdsChange={expandedIds => target.temporary ? setTemporaryExpansion({ key: revealKey, ids: expandedIds }) : setExpandedIds('resources', props.workspaceId, expandedIds)}
             onMoveNode={(draggedId, targetId, position) => {
               props.onMoveNode(draggedId, targetId, position)
             }}
@@ -388,9 +399,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         role="tabpanel"
         aria-labelledby={`${viewId}-lore`}
       >
-        {target.temporary ? <div className={styles.temporaryDetailHeader}>
-          <span>{props.t('promptResource.temporaryOpen')} · {temporaryOrigin} · {target.target?.rootNode.label}</span>
-        </div> : null}
         <ContextAssetEditor
           activationEditable={selectedNode?.category === 'lore'}
           presets={props.resources.filter(resource => resource.resourceKind === 'preset')}

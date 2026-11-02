@@ -1,3 +1,6 @@
+import { sameChatAttachments } from '@loom-studio/shared'
+import { branchTranscriptEntries, pendingInterjections, withInterjectionLock } from '../agents/interjections.js'
+import { validateMessageAttachments, mountMessageAttachments } from '../agents/message-attachments.js'
 import { observationOrigin } from '../observability/origin.js'
 import type { ObservationBuild } from '../observability/types.js'
 import { createVariableRenderContext } from '../prompt/variables.js'
@@ -14,7 +17,7 @@ import type {
 } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
-import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
+import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
 import { createAgentToolRegistry, type ToolDefinition } from '../agents/tool-registry.js'
 import { createAgentToolScope } from '../agents/agent-tool-scope.js'
 import {
@@ -29,8 +32,8 @@ import { collectPromptExtensionDependencies } from '../extensions/prompt-depende
 import { assertTimelineExtensionLease } from '../extensions/timeline-participation.js'
 import { createSessionSummaryCoordinator, defaultSessionSummaryPolicy, planSessionSummary, summaryInstruction, type SummaryPlan } from '../agents/session-summary.js'
 import { readSessionHistory } from '../agents/session-history.js'
-import { readAgentRunRecovery, readAgentRunState, registerAgentExecutor } from '../agents/run-recovery.js'
-import { readDiscussionRetry } from '../agents/discussion-retry.js'
+import { readAgentRunRecovery, readAgentRunState, readInterruptedAgentRuns, registerAgentExecutor } from '../agents/run-recovery.js'
+import { readDiscussionRetry, restoreDiscussionRetryInTransaction } from '../agents/discussion-retry.js'
 import { assertNonEmpty, assertProviderModelExists } from '../agents/agent.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from '../providers/provider-payload.js'
 import { fromStoredResource, readMappedResource, toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
@@ -92,6 +95,7 @@ import {
   tombstoneExtensionStorageScope,
 } from './context.js'
 import { readAgentTurnVariables } from './narrative-runtime.js'
+import { hasPlayerProfile } from '../profiles/player-state.js'
 import {
   assertNarrativeExecutionSource,
   beginNarrativeSwipeRun,
@@ -126,6 +130,7 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'now'
   | 'promptResources'
   | 'providerAdapters'
+  | 'mediaAssets'
   | 'states'
   | 'swipes'
   | 'onStateChanged'
@@ -133,7 +138,108 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
 
 export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
   const summaries = createSessionSummaryCoordinator(ctx)
+  const manualSummaryExecutions = new Map<string, Promise<void>>()
   return {
+    reviseAgentInput: async (input: Parameters<import('../types.js').ApplicationRuntime['reviseAgentInput']>[0], request?: RuntimeRequestContext) => {
+      const agents = requireAgents(ctx)
+      const attachments = await validateMessageAttachments(ctx.mediaAssets, input.attachments)
+      const deleting = !input.content.trim() && !attachments.length
+      if ((await agents.getEntry(input.entryId))?.entry.kind === 'message') await summaries.wait(input.agentSessionId)
+      return withInterjectionLock(agents, input.agentSessionId, async () => {
+        const session = await agents.getSession(input.agentSessionId)
+        if (!session) throw new Error('Session not found')
+        const all = await agents.listEntries(session.id)
+        const active = branchTranscriptEntries(all, session.headEntryId)
+        const pending = pendingInterjections(all)
+        const target = all.find(item => item.id === input.entryId)
+        const latest = pending.at(-1) ?? active.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')
+        const lastState = all.findLast(item => item.entry.kind === 'run-state')
+        const justAbandoned = session.kind === 'timeline' && !pending.length && lastState?.entry.kind === 'run-state' && lastState.entry.state === 'discarded'
+          && all.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')?.id === target?.id
+        if (!target || latest?.id !== target.id && !justAbandoned || (target.entry.kind !== 'message' && target.entry.kind !== 'user-interjection')) throw new Error('只能编辑最新一条用户输入，请刷新后重试')
+        const original = target.entry
+        if (original.content !== input.expectedContent || !sameChatAttachments(original.attachments, input.expectedAttachments)) throw new Error('输入已被修改，请重新打开编辑')
+        if (original.content === input.content && sameChatAttachments(original.attachments, attachments)) throw new Error('输入没有变化')
+        if (original.kind === 'message' && (original.role !== 'user' || original.purpose === 'narrative')) throw new Error('请使用正文输入的编辑入口')
+        const isPending = original.kind === 'user-interjection' && pending.some(item => item.id === target.id)
+        if (original.kind === 'user-interjection' && !isPending) throw new Error('这条输入已经接入，请刷新后重试')
+        const suspendedRuns: string[] = []
+        if (!isPending) {
+          const states = new Map<string, string>()
+          for (const item of all) if (item.runId && item.entry.kind === 'run-state') {
+            states.set(item.runId, item.entry.state)
+            if (item.entry.sourceRunId) states.set(item.entry.sourceRunId, 'transferred')
+          }
+          if ([...states.values()].some(state => ['created', 'running'].includes(state))) throw new Error('请等待执行结束或暂停后再提交编辑')
+          for (const [id, state] of states) if (state === 'suspended') suspendedRuns.push(id)
+        }
+        const retry = !isPending && session.kind === 'timeline'
+          ? await readDiscussionRetry(ctx, { agentSessionId: session.id, input: input.content.trim() ? input.content : '删除输入', attachments, retry: { entryId: target.id } }, request, true) : undefined
+        const result = await ctx.dataEngine.transact(narrativeWriteContext(request, 'application.reviseAgentInput'), async tx => {
+          const store = agents.transaction(tx)
+          const current = store.getSession(session.id)
+          if (!current || current.entryCount !== session.entryCount || current.headEntryId !== session.headEntryId) throw new Error('会话已变化，请重新提交编辑')
+          if (isPending) {
+            return store.reviseInterjection({ entryId: target.id, expected: original,
+              replacement: { ...original, content: deleting ? original.content : input.content, attachments: deleting ? original.attachments : attachments, withdrawn: deleting } })
+          }
+          if (retry) restoreDiscussionRetryInTransaction(ctx, retry, tx)
+          else store.rewindStandalone({ agentSessionId: session.id, expectedHeadEntryId: session.headEntryId, headEntryId: target.parentEntryId })
+          const receipt = original.kind === 'message' && original.interjectionRequestId
+            ? all.find(item => item.entry.kind === 'user-interjection' && item.entry.requestId === original.interjectionRequestId) : undefined
+          if (receipt?.entry.kind === 'user-interjection') store.reviseInterjection({ entryId: receipt.id, expected: receipt.entry, replacement: { ...receipt.entry, withdrawn: true } })
+          if (retry) {
+            const swipes = ctx.swipes.transaction(tx)
+            const group = swipes.getLatest(retry.branch.id)
+            if (group && !group.closed) swipes.save({ ...group, closed: true, generation: group.generation + 1,
+              activeRunId: undefined, activeCandidateId: undefined,
+              candidates: group.candidates.map(candidate => candidate.id === group.activeCandidateId ? { ...candidate, status: 'discarded' as const } : candidate),
+            }, { expectedRevision: group.revision })
+          }
+          if (suspendedRuns.length) store.appendEntries({ agentSessionId: session.id, expectedEntryCount: session.entryCount,
+            entries: suspendedRuns.map(runId => ({ runId, entry: { kind: 'run-state' as const, state: 'discarded' as const } })) })
+          if (deleting) return target
+          return store.appendEntries({ agentSessionId: session.id, expectedEntryCount: session.entryCount + suspendedRuns.length, entries: [{ entry: {
+            ...(receipt?.entry.kind === 'user-interjection' ? receipt.entry : {}),
+            kind: 'user-interjection', requestId: ctx.createId('edit'), content: input.content, attachments, mode: 'discussion', withdrawn: false,
+            ...(retry ? { narrativeTarget: { timelineId: session.id, branchId: retry.branch.id } } : {}),
+          } }] }).entries[0]!
+        })
+        return { entry: result.value, rerun: !isPending && !deleting }
+      })
+    },
+    submitAgentInterjection: async (input: import('../types.js').SubmitAgentInterjectionInput, request?: RuntimeRequestContext) => {
+      if (!/^[a-zA-Z0-9-]{1,128}$/.test(input.requestId)) throw new Error('Invalid interjection request ID')
+      const attachments = await validateMessageAttachments(ctx.mediaAssets, input.attachments)
+      if (!input.input.trim() && !attachments.length) throw new Error('User input cannot be empty')
+      const agents = requireAgents(ctx)
+      return withInterjectionLock(agents, input.agentSessionId, async () => {
+        const session = await agents.getSession(input.agentSessionId)
+        if (!session) throw new Error('Agent Session not found')
+        if (session.timelineId && !input.narrativeTarget) {
+          const timeline = await ctx.narratives!.getTimeline(session.timelineId)
+          if (!timeline) throw new Error('Timeline no longer exists')
+          input = { ...input, narrativeTarget: { timelineId: timeline.id, branchId: timeline.activeBranchId } }
+        }
+        if (input.mode === 'narrative' && (!input.narrativeTarget || session.kind !== 'timeline')) throw new Error('Narrative input requires a Timeline Session and branch')
+        if (input.narrativeTarget) {
+          const branch = await ctx.narratives?.getBranch(input.narrativeTarget.branchId)
+          if (!branch || branch.timelineId !== session.timelineId || input.narrativeTarget.timelineId !== session.timelineId) throw new Error('Interjection target does not belong to the Session')
+        }
+        const entry = { kind: 'user-interjection' as const, requestId: input.requestId, content: input.input, mode: input.mode,
+          ...(input.narrativeTarget ? { narrativeTarget: input.narrativeTarget } : {}), ...(attachments.length ? { attachments } : {}),
+          ...(input.macroSelections ? { macroSelections: input.macroSelections } : {}), ...(input.activationFacts ? { activationFacts: input.activationFacts } : {}) }
+        const history = await agents.listEntries(session.id)
+        const existing = history.find(item => item.entry.kind === 'user-interjection' && item.entry.requestId === input.requestId)
+        if (existing) {
+          if (JSON.stringify(existing.entry) !== JSON.stringify(entry)) throw new Error('Interjection request ID was reused with different input')
+          return { entry: existing, pending: pendingInterjections(history).some(item => item.id === existing.id) }
+        }
+        const result = await agents.appendEntries({ ...narrativeWriteContext(request, 'application.submitAgentInterjection'),
+          agentSessionId: session.id, expectedEntryCount: session.entryCount, entries: [{ entry }] })
+        return { entry: result.entries[0]!, pending: true }
+      })
+    },
     getAgentSessionMemory: async (input: { agentSessionId: string; branchId?: string }) => {
       const session = await requireAgents(ctx).getSession(input.agentSessionId)
       if (!session) throw new Error('Agent Session not found')
@@ -194,6 +300,8 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       if (executing.has(input.agentSessionId) || summaries.status(input.agentSessionId).state === 'preparing')
         throw new Error('Agent Session already has active work')
       executing.add(input.agentSessionId)
+      const settled = Promise.withResolvers<void>()
+      manualSummaryExecutions.set(input.agentSessionId, settled.promise)
       try {
         const session = await agents.getSession(input.agentSessionId)
         if (!session) throw new Error('Agent Session not found')
@@ -208,7 +316,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           'runtime', request, undefined, plan.boundary.narrative)
         await summaries.start(plan, { messages: snapshot.agentStepMessages, model: snapshot.model, entries: snapshot.agentPage.entries, entryCount: snapshot.session.entryCount }, request)
         return await summaries.adopt(session.id, request)
-      } finally { executing.delete(input.agentSessionId) }
+      } finally { executing.delete(input.agentSessionId); manualSummaryExecutions.delete(input.agentSessionId); settled.resolve() }
     },
     findAgentRunCheckpoint: (input: { agentSessionId: string; runId: string }) => requireAgents(ctx).findRunCheckpoint(input),
     inspectAgentRunState: async (input: { agentSessionId: string; runId: string }) => readAgentRunState(requireAgents(ctx), {
@@ -481,6 +589,9 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
 
     invokeAgentTurn: async (input: InvokeAgentTurnInput, requestContext?: RuntimeRequestContext): Promise<InvokeAgentTurnResult> => {
       input = structuredClone(input)
+      await manualSummaryExecutions.get(input.agentSessionId)
+      requestContext?.abortSignal?.throwIfAborted()
+      input.attachments = await validateMessageAttachments(ctx.mediaAssets, input.attachments)
       const agents = requireAgents(ctx)
       let executing = executingSessions.get(agents)
       if (!executing) {
@@ -512,9 +623,24 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         data: { ...references, outcome: 'running', detail: 'Agent Session transcript' },
       })
       try {
+        const stale = requestContext?.agentRun?.continuation ? { interrupted: [], entryCount: 0 }
+          : await readInterruptedAgentRuns(agents, input.agentSessionId, runId)
+        if (stale.interrupted.length) {
+          await ctx.dataEngine.transact(narrativeWriteContext(requestContext, 'application.reconcileAgentRuns'), async tx => {
+            agents.transaction(tx).appendEntries({ agentSessionId: input.agentSessionId, expectedEntryCount: stale.entryCount,
+              entries: stale.interrupted.map(id => ({ runId: id, entry: { kind: 'run-state' as const, state: 'aborted' as const,
+                reason: 'Execution interrupted: the original executor has stopped; superseded by a new request' } })) })
+          })
+          runLogger?.warn('Recovered interrupted Agent execution markers', {
+            event: 'run.reconciled', ...logContext,
+            data: { ...references, interruptedRunIds: stale.interrupted },
+          })
+        }
         for (const lease of requestContext?.agentRun?.continuation?.recovery?.promptExtensionLeases ?? []) {
           await assertTimelineExtensionLease(ctx, ctx.documents, lease)
         }
+        await summaries.wait(input.agentSessionId)
+        requestContext?.abortSignal?.throwIfAborted()
         const discussionRetry = await readDiscussionRetry(ctx, input, requestContext)
         if (input.contextMode !== 'isolated' && !input.retry && !input.narrativeTarget?.swipe && !requestContext?.agentRun?.continuation) {
           await summaries.adopt(input.agentSessionId, requestContext)
@@ -531,7 +657,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
             const inputNode = input.narrativeTarget?.inputNodeId ? page?.nodes.find(node => node.id === input.narrativeTarget!.inputNodeId) : undefined
             if (input.narrativeTarget?.inputNodeId && (!inputNode || page?.branch.headNodeId !== inputNode.id))
               throw new Error('The writing input must be the latest Narrative node')
-            if (!inputNode && !input.input.trim()) throw new Error('Agent turn input cannot be empty')
+            if (!inputNode && !input.input.trim() && !input.attachments?.length) throw new Error('Agent turn input cannot be empty')
             const sourcePreset = await readPresetResource(ctx.promptResources, requireSessionPreset(sourceSession))
             const plan = (sourcePreset.historyPolicy ?? 'persistent') === 'persistent'
               ? await planSessionSummary(ctx, {
@@ -569,7 +695,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           preset,
         } = prepared
         ctx.observations.capture(() => ctx.observations.patch(runId, {
-          title: preset.rootNode.label || 'Agent Run', timelineId: narrativePage?.timeline.id ?? session.timelineId,
+          agentPresetId: preset.id, title: preset.rootNode.label || 'Agent Run', timelineId: narrativePage?.timeline.id ?? session.timelineId,
           branchId: narrativePage?.branch.id, buildId: prompt.promptBuildTrace.buildId,
         }))
         const savedInput = session.kind === 'timeline' && input.narrativeTarget?.inputNodeId
@@ -593,6 +719,9 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
             } } : {}),
           },
           userInput: prepared.userInput,
+          attachments: prepared.attachments,
+          beforeInterjections: async () => { await summaries.wait(session.id) },
+          initialInterjection: input.interjectionRequestId ? (await agents.listEntries(session.id)).find(item => item.entry.kind === 'user-interjection' && item.entry.requestId === input.interjectionRequestId) : undefined,
           ...(discussionRetry?.user.roundId ? { retryRoundId: discussionRetry.user.roundId } : {}),
           materialBaseline: discussionRetry?.baseline ?? requestContext?.agentRun?.continuation?.recovery?.materialBaseline
             ?? (session.kind === 'timeline' && narrativePage && !input.narrativeTarget?.inputNodeId ? {
@@ -790,11 +919,6 @@ async function readPresetResource(
   return preset
 }
 
-function assertResolvedTools(ctx: Pick<ApplicationRuntimeContext, 'agentTools'>, toolIds: string[]): void {
-  const error = ctx.agentTools.resolve(toolIds).diagnostics.find(diagnostic => diagnostic.severity === 'error')
-  if (error) throw new Error(error.message)
-}
-
 export function toAgentToolContent(
   definition: ToolDefinition,
   createdAt: string,
@@ -953,6 +1077,8 @@ async function prepareAgentTurn(
   input: {
     agentSessionId: string
     input: string
+    attachments?: import('@loom-studio/shared').ChatAttachment[]
+    interjectionRequestId?: string
     resume?: boolean
     activationFacts?: ActivationFacts
     contextMode?: InvokeAgentTurnInput['contextMode']
@@ -985,7 +1111,7 @@ async function prepareAgentTurn(
     })
     ctx.observations.capture(() => ctx.observations.patch(buildId, {
       availability: observation.diagnostics?.some(item => item && typeof item === 'object' && 'code' in item && String(item.code).startsWith('observation.')) ? 'partial' : 'recorded',
-      title: prepared.preset.rootNode.label || 'Prompt Build', status: 'completed',
+      agentPresetId: prepared.preset.id, title: prepared.preset.rootNode.label || 'Prompt Build', status: 'completed',
       timelineId: prepared.narrativePage?.timeline.id ?? prepared.session.timelineId,
       branchId: prepared.narrativePage?.branch.id, durationMs: readDurationMs(startedAt),
       build: { ...observation, messages: prepared.agentStepMessages },
@@ -1006,6 +1132,8 @@ async function prepareAgentTurnContent(
   input: {
     agentSessionId: string
     input: string
+    attachments?: import('@loom-studio/shared').ChatAttachment[]
+    interjectionRequestId?: string
     resume?: boolean
     activationFacts?: ActivationFacts
     contextMode?: InvokeAgentTurnInput['contextMode']
@@ -1066,6 +1194,9 @@ async function prepareAgentTurnContent(
     })
   }
   const inputNodeId = input.narrativeTarget?.inputNodeId
+  const initialReceipt = input.interjectionRequestId ? (await requireAgents(ctx).listEntries(session.id))
+    .find(entry => entry.entry.kind === 'user-interjection' && entry.entry.requestId === input.interjectionRequestId)?.entry : undefined
+  const narrativeInput = Boolean(inputNodeId || initialReceipt?.kind === 'user-interjection' && initialReceipt.mode === 'narrative')
   const inputPage = inputNodeId !== undefined && narrativePage
     ? await narratives!.getPage({
         timelineId: narrativePage.timeline.id,
@@ -1078,7 +1209,9 @@ async function prepareAgentTurnContent(
     throw new Error(`Narrative input node not found on branch: ${inputNodeId}`)
   }
   const userInput = inputPage ? inputPage.nodes[0]!.body.raw : input.input
-  if (userInput.trim().length === 0 && !requestContext?.agentRun?.continuation) throw new Error('Agent turn input cannot be empty')
+  const savedInputEntry = inputPage?.nodes[0]?.entryId ? await requireAgents(ctx).getEntry(inputPage.nodes[0].entryId!) : undefined
+  const attachments = await validateMessageAttachments(ctx.mediaAssets, savedInputEntry?.entry.kind === 'message' ? savedInputEntry.entry.attachments : input.attachments)
+  if (userInput.trim().length === 0 && !attachments.length && !requestContext?.agentRun?.continuation) throw new Error('Agent turn input cannot be empty')
   const narrativeContext = narrativePage
     ? await ctx.narrativeContext.resolve({
       timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
@@ -1224,6 +1357,7 @@ async function prepareAgentTurnContent(
     ctx,
     timelineState?.value,
     card?.name ?? timelineRuntimeContext?.cardName,
+    hasPlayerProfile(timelineRuntimeContext),
   )
   const macroSelections = input.macroSelections !== undefined
     ? normalizeMacroSelections(input.macroSelections)
@@ -1285,7 +1419,7 @@ async function prepareAgentTurnContent(
         displayName: 'Timeline output contract', orderIndex: 0, kind: 'virtual' })
       runtimeInputs.contributions.push({ id, sourceRef: { kind: 'runtime', sourceId: session.id, sourceNodeId: id },
         content: (session.narrativeMode ?? 'declared') === 'automatic'
-          ? inputNodeId ? '当前为扮演的自动正文模式：每条普通 Assistant 文本都会成为剧情正文。工具调用、工具结果和 reasoning 属于工作过程。'
+          ? narrativeInput ? '当前为扮演的自动正文模式：每条普通 Assistant 文本都会成为剧情正文。工具调用、工具结果和 reasoning 属于工作过程。'
             : '当前为指导与讨论：普通 Assistant 回复是工作记录，不会自动成为剧情。需要修订正文时使用编辑能力。'
           : '当前为声明式写作模式：declare_narrative 仅声明下一条普通 Assistant 文本为正文。正文之后可以继续工具工作；未声明的普通回复结束执行。讨论与指导不自动成为正文。',
         capabilities: { targetAnchorId: '@tools.dynamic', localDepth: 0, roleHint: 'system' },
@@ -1312,6 +1446,7 @@ async function prepareAgentTurnContent(
       } : undefined,
       preset,
       userInput,
+      attachments,
       buildId,
       runId,
       agentSessionId: session.id,
@@ -1371,6 +1506,11 @@ async function prepareAgentTurnContent(
       narrativeSource,
       requestContext,
     })
+    const attachmentHistory = branchTranscriptEntries(await requireAgents(ctx).listEntries(session.id), session.kind === 'timeline' ? narrativePage?.branch.headEntryId : session.headEntryId)
+    mountMessageAttachments(prompt.toolExecutionScope, ctx.mediaAssets,
+      [...attachmentHistory.flatMap(entry => entry.entry.kind === 'message' ? entry.entry.attachments ?? [] : []),
+        ...(requestContext?.agentRun?.continuation?.messages.flatMap(message => message.role === 'user' ? message.attachments ?? [] : []) ?? []), ...attachments],
+      compiledToolSet.tools.some(tool => tool.definition.id === 'official/codeact' || tool.definition.id === 'official/codeact_json'))
     if (isolated) {
       delete prompt.toolExecutionScope.state
     }
@@ -1399,6 +1539,7 @@ async function prepareAgentTurnContent(
     classificationRules: (await resolveEffectiveTextPipeline(ctx,
       { kind: 'agent-session', sessionId: session.id }, 'classify')).rules,
     userInput,
+    attachments,
     preset,
     model,
     tokenMultiplier: model
@@ -1434,7 +1575,6 @@ async function buildProviderPayloadPreview(input: {
     modelId: input.model.modelId,
   })
 }
-
 
 function readDurationMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100

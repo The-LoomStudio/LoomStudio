@@ -5,7 +5,7 @@ import { LongTextEditor, type LongTextEditorHandle } from '../../../shared/ui/lo
 import type { Translator } from '../../../shared/i18n/index.js'
 import styles from './loom-script-source-fields.module.scss'
 
-export type ScriptPreviewInput = { source: string; text: string; phase: 'display' | 'prompt' | 'classify' }
+export type ScriptPreviewInput = { source: string; text: string; phase: 'display' | 'prompt' | 'classify'; streaming?: boolean }
 export type ScriptPreviewResult = {
   output: string
   matches: Array<{ ruleId: string; match: string }>
@@ -26,19 +26,20 @@ export function LoomScriptSourceFields(props: {
   const requestRef = useRef(0)
   const [sample, setSample] = useState('')
   const [phase, setPhase] = useState<ScriptPreviewInput['phase']>('display')
+  const [streaming, setStreaming] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [result, setResult] = useState<{ source: string; text: string; phase: string; value?: ScriptPreviewResult; error?: string }>()
+  const [result, setResult] = useState<{ source: string; text: string; phase: string; streaming?: boolean; value?: ScriptPreviewResult; error?: string }>()
   const parsed = useMemo(() => {
     try { return { metadata: parseLoomScriptSource(props.source) } }
     catch (cause) { return { error: cause instanceof Error ? cause.message : String(cause) } }
   }, [props.source])
   const rules = parsed.metadata?.contributions.filter(contribution => contribution.kind !== 'renderer') ?? []
-  const currentResult = result?.source === props.source && result.text === sample && result.phase === phase ? result : undefined
+  const currentResult = result?.source === props.source && result.text === sample && result.phase === phase && result.streaming === streaming ? result : undefined
 
   async function testRules() {
     if (!props.onPreview || testing) return
     const request = ++requestRef.current
-    const input = { source: props.source, text: sample, phase }
+    const input = { source: props.source, text: sample, phase, streaming }
     setTesting(true)
     try {
       const value = await props.onPreview(input)
@@ -68,7 +69,7 @@ export function LoomScriptSourceFields(props: {
       })}
     </div>}
     <div className={styles.editor}>
-      <LongTextEditor ref={editorRef} sourceOnly mode="source" language="loom-script" label={props.t('textTransform.source')}
+      <LongTextEditor ref={editorRef} sourceOnly mode="source" language={props.fileName.endsWith('.md') ? 'loom-rule' : 'loom-script'} label={props.t('textTransform.source')}
         disabled={props.disabled} spellCheck={false} minHeight={360} value={props.source}
         onChange={props.onSourceChange} onCommit={() => {}}
         clearLabel="清空源码" clearedLabel="源码已清空，可撤销" copyLabel="复制完整脚本" copiedLabel="已复制" copyFailedLabel="复制失败"
@@ -77,9 +78,10 @@ export function LoomScriptSourceFields(props: {
     {rules.length > 0 && props.onPreview && <details className={styles.testing}>
       <summary>规则测试</summary>
       <p className={styles.metaLine}>使用当前源码和配置默认值测试，不保存脚本、不执行 JavaScript。</p>
-      <label>处理阶段<select value={phase} onChange={event => setPhase(event.target.value as ScriptPreviewInput['phase'])}>
+      <label>处理阶段<select value={phase} onChange={event => { setPhase(event.target.value as ScriptPreviewInput['phase']); setStreaming(false) }}>
         <option value="display">显示</option><option value="prompt">提示词</option><option value="classify">分类</option>
       </select></label>
+      <label><input type="checkbox" checked={streaming} disabled={phase !== 'display'} onChange={event => setStreaming(event.target.checked)} />测试流式快照（仅运行开启流式的显示规则）</label>
       <label>样本文本<textarea aria-label="规则测试样本文本" className={styles.rawJsonTextarea} value={sample} onChange={event => setSample(event.target.value)} /></label>
       <Button size="small" disabled={testing || props.disabled || Boolean(parsed.error)} onClick={() => void testRules()}>{testing ? '测试中…' : '测试规则'}</Button>
       {currentResult?.error && <p role="alert" className={styles.error}>{currentResult.error}</p>}

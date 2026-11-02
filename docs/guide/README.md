@@ -13,6 +13,7 @@
 - [`design-method.md`](design-method.md) — 领域发现、场景模拟、ADR / Spec 收口与最小实现验证的方法
 - [`architecture-rules.md`](architecture-rules.md) — 涉及模块边界与包依赖时查阅
 - [`code-style.md`](code-style.md) — 编码规范、命名规则
+- [`runtime-diagnostics.md`](runtime-diagnostics.md) — 运行异常取证：日志、浏览器与只读数据库的使用顺序
 - [`testing.md`](testing.md) — 测试分类与准则
 - [`code-review.md`](code-review.md) — PR 与审查边界
 - [`audit-workflow.md`](audit-workflow.md) — 系统审计的可选阅读入口：流程、证据和精简/修复顺序；按需进入[前端专项](audit-frontend.md)与[后端专项](audit-backend.md)

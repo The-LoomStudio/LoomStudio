@@ -73,6 +73,10 @@ Window 内部使用 Column Layout 表达水平并列区域。Rail、Explorer、D
 
 当前 Panel、Timeline/Branch、明确的资源目标与查看条件由导航的 History State 持有，并按 endpoint 恢复最后工作区位置；普通目录节点的局部编辑器选择仍归工作台。资源 URI 标识目标，外部深链解析后归一化到 `/studio`，不把资源正文或未提交草稿放进导航。Session 的查看入口和工具浮层按各自导航合同处理，边界详见 [`navigation-and-routing.md`](navigation-and-routing.md)。
 
+子 Tab、分类等枚举浏览偏好统一使用 `shared/studio-shell/use-workbench-view.ts`，由同一个 `useStudioLayoutStore.viewPreferences` 持久化。调用方声明稳定 key、默认值和当前可用值；移除或不可用的 Tab 回退到默认值。普通重挂载不重置偏好，明确的路由目标仍由宿主优先处理。不要把业务草稿、加载结果、错误或 Dialog 开关接入此 Hook。
+
+同次客户端会话中，`useStudioNavigation` 在离开位置前把面板的 `search/resourceId/assetId`、工具浮层的 `toolSearch` 保存到 `panelPositions`，按 endpoint、角色与面板隔离；普通面板入口恢复该位置，明确 URI / 资源跳转不套用记忆。这份位置表不写入 localStorage，重载后的最后工作区仍沿用既有 workspace 恢复合同，避免持久化第二份完整导航历史。
+
 持久化是客户端体验状态，不是领域数据。浏览器存储不可用、内容损坏或版本迁移失败时，必须安全回退到默认布局，不能阻止 Studio 启动。
 
 ## 6. 启动恢复与开发 Fixtures

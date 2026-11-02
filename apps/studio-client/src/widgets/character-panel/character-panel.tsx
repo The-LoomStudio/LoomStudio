@@ -1,3 +1,4 @@
+import { StoryHero } from '../../shared/ui/story-hero/story-hero.js'
 import { CardDeleteConfirmation } from '../../features/cards/ui/card-delete-confirmation.js'
 import { ArrowDownUp, ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, Circle, CloudDownload, Combine, Download, FileArchive, Folder, GitFork, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
@@ -427,7 +428,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                 const files = Array.from(event.target.files ?? [])
                 event.target.value = ''
                 if (files.length > 0) void props.onImportCards(files).catch(err => {
-                  notify.error(err instanceof Error ? err.message : String(err))
+                  notify.failure('角色操作未完成', err)
                 })
               }}
             />
@@ -449,7 +450,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                       <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.import')} type="button" onClick={() => cardImportInputRef.current?.click()}><Upload aria-hidden="true" /></button>
                       <button aria-label={props.t('character.importRemote')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.importRemote')} type="button" onClick={() => setRemoteImportOpen(true)}><CloudDownload aria-hidden="true" /></button>
                       <button aria-label={props.t('character.create')} className={styles.createButton} disabled={props.busy} title={props.t('character.create')} type="button" onClick={() => void props.onCreateCard().catch(err => {
-                        notify.error(err instanceof Error ? err.message : String(err))
+                        notify.failure('角色操作未完成', err)
                       })}><Plus aria-hidden="true" /></button>
                     </div>
                     <div className={styles.viewSwitcher} role="group" aria-label={props.t('character.gallery')}>
@@ -527,9 +528,9 @@ export function CharacterPanel(props: CharacterPanelProps) {
             <section className={styles.profileIdentity}>
               <div><h2>{selected.name}</h2><p>{props.t('character.invalidCard')}</p></div>
               <div className={styles.startActions}>
-                <button disabled type="button"><Play aria-hidden="true" />{props.t('character.continueNarrative')}</button>
-                <button disabled type="button"><Plus aria-hidden="true" />{props.t('character.newNarrative')}</button>
-                <button disabled type="button"><BookOpen aria-hidden="true" />{props.t('character.preview')}</button>
+                <button className={styles.toolbarButton} aria-label={props.t('character.continueNarrative')} title={props.t('character.continueNarrative')} disabled type="button"><Play aria-hidden="true" /></button>
+                <button className={styles.toolbarButton} aria-label={props.t('character.newNarrative')} title={props.t('character.newNarrative')} disabled type="button"><Plus aria-hidden="true" /></button>
+                <button className={styles.toolbarButton} aria-label={props.t('character.preview')} title={props.t('character.preview')} disabled type="button"><BookOpen aria-hidden="true" /></button>
               </div>
             </section>
             <p role="alert" className={styles.invalidReason}>{selected.validationError}</p>
@@ -630,14 +631,14 @@ export function CharacterPanel(props: CharacterPanelProps) {
                 />
               </div>
               <div className={styles.startActions}>
-                <button disabled={props.busy || !latestTimeline} type="button" onClick={() => {
+                <button className={styles.toolbarButton} aria-label={props.t('character.continueNarrative')} title={props.t('character.continueNarrative')} disabled={props.busy || !latestTimeline} type="button" onClick={() => {
                   if (latestTimeline) props.onOpenTimeline(latestTimeline, selected.id)
-                }}><Play aria-hidden="true" />{props.t('character.continueNarrative')}</button>
-                <button disabled={props.busy} type="button" onClick={() => {
+                }}><Play aria-hidden="true" /></button>
+                <button className={styles.toolbarButton} aria-label={props.t('character.newNarrative')} title={props.t('character.newNarrative')} disabled={props.busy} type="button" onClick={() => {
                   void props.onCreateTimelineFromCard(selected.id, selected.opening ? { kind: 'card', id: selected.opening.id } : { kind: 'empty' }, selected.version)
-                }}><Plus aria-hidden="true" />{props.t('character.newNarrative')}</button>
-                <button disabled={props.busy} type="button" onClick={() => props.onPreviewCard(selected.id)}>
-                  <BookOpen aria-hidden="true" />{props.t('character.preview')}</button>
+                }}><Plus aria-hidden="true" /></button>
+                <button className={styles.toolbarButton} aria-label={props.t('character.preview')} title={props.t('character.preview')} disabled={props.busy} type="button" onClick={() => props.onPreviewCard(selected.id)}>
+                  <BookOpen aria-hidden="true" /></button>
               </div>
             </section>
             {mediaNotice ? <p aria-live="polite" className={styles.mediaNotice}>{mediaNotice}</p> : null}
@@ -797,6 +798,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                     <TimelineCard
                       key={timeline.id}
                       timeline={timeline}
+                      character={selected}
                       busy={props.busy}
                       current={timeline.id === props.timeline?.id}
                       onOpen={() => props.onOpenTimeline(timeline, selected.id)}
@@ -962,20 +964,14 @@ function pageTransitionDelay(): number {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : PAGE_TRANSITION_MS
 }
 
-function TimelineCard(props: { timeline: NarrativeTimelineView; busy: boolean; current: boolean; onOpen(): void; t: Translator }) {
+function TimelineCard(props: { character: CharacterCardSummary; timeline: NarrativeTimelineView; busy: boolean; current: boolean; onOpen(): void; t: Translator }) {
   return (
     <details className={`${styles.sessionCard} ${props.current ? styles.sessionCardCurrent : ''}`} open={props.current}>
       <summary>
         <ChevronRight aria-hidden="true" />
-        <div className={styles.sessionCardHeader}>
-          <div className={styles.sessionCardTitleRow}>
-            <strong>{props.timeline.title ?? props.t('branch.default')}</strong>
-            {props.current ? (
-              <span className={styles.currentBadge}>{props.t('character.activeBadge')}</span>
-            ) : null}
-          </div>
-          <small>{formatTimelineDate(props.timeline.updatedAt)}</small>
-        </div>
+        <StoryHero compact character={props.character} title={props.timeline.title ?? props.t('branch.default')}
+          label={props.current ? <span className={styles.currentBadge}>{props.t('character.activeBadge')}</span> : undefined}
+          metadata={formatTimelineDate(props.timeline.updatedAt)} />
         <button
           className={styles.cardPlayButton}
           disabled={props.busy}

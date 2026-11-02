@@ -1,3 +1,4 @@
+import { buildRenderItems } from '../../sessions/model/transcript-render-items.js'
 import type { AgentTranscriptEntry, NarrativeNode } from '../../../entities/index.js'
 import type { ActiveAgentRun } from './agent-run-observer.js'
 import type { NarrativeSessionExecution } from './narrative-execution-view.js'
@@ -22,19 +23,20 @@ export type TimelineSessionRound = {
 
 /** Reading order comes from adopted prose; work keeps its canonical position inside each round. */
 export function projectTimelineRounds(entries: AgentTranscriptEntry[], nodes: NarrativeNode[], preset: string, activeRun?: ActiveAgentRun, narrativeMode: 'declared' | 'automatic' = 'declared'): TimelineSessionRound[] {
+  const toolItems = new Map(buildRenderItems(entries, activeRun).flatMap(item => item.kind === 'tool-group' ? item.tools.map(tool => [tool.id, tool] as const) : []))
   const byEntry = new Map(entries.map(entry => [entry.id, entry]))
   const byNodeEntry = new Map(nodes.flatMap(node => node.entryId ? [[node.entryId, node] as const] : []))
-  const continued = new Set(entries.flatMap(item => item.entry.kind === 'message' && typeof item.entry.continuesEntryId === 'string' ? [item.entry.continuesEntryId] : []))
-  const results = new Map(entries.flatMap(item => item.entry.kind === 'tool-result' ? [[item.entry.invocationId, item] as const] : []))
+  const continued = new Set(entries.flatMap(item => item.entry.kind === 'message' && item.entry.continuesEntryId !== undefined ? [item.entry.continuesEntryId] : []))
+  const results = new Map(entries.flatMap(item => item.entry.kind === 'tool-result' ? [[item.entry.invocationId, item.entry] as const] : []))
   const firstNarrativeEntries = new Map<string, AgentTranscriptEntry>()
   for (const item of entries) if (item.entry.kind === 'message' && item.entry.purpose === 'narrative'
-    && typeof item.entry.narrativeId === 'string' && !firstNarrativeEntries.has(item.entry.narrativeId)) firstNarrativeEntries.set(item.entry.narrativeId, item)
+    && item.entry.narrativeId !== undefined && !firstNarrativeEntries.has(item.entry.narrativeId)) firstNarrativeEntries.set(item.entry.narrativeId, item)
   const originalEntry = (node: NarrativeNode) => (node.source?.agentMessageId ? byEntry.get(node.source.agentMessageId) : undefined)
     ?? firstNarrativeEntries.get(node.id) ?? (node.entryId ? byEntry.get(node.entryId) : undefined)
   const roundNumbers = new Map<string, number>()
   let number = 0
   for (const item of entries) if (item.entry.kind === 'message' && item.entry.role === 'user' && item.entry.purpose === 'narrative') {
-    if (typeof item.entry.narrativeId === 'string' && firstNarrativeEntries.get(item.entry.narrativeId) !== item) continue
+    if (item.entry.narrativeId !== undefined && firstNarrativeEntries.get(item.entry.narrativeId) !== item) continue
     roundNumbers.set(item.roundId ?? item.id, ++number)
   }
   const makeExecution = (id: string): NarrativeSessionExecution => ({ id, preset, state: 'completed', steps: [] })
@@ -57,10 +59,6 @@ export function projectTimelineRounds(entries: AgentTranscriptEntry[], nodes: Na
     nodeRounds.set(node.id, current)
   }
   const byRound = new Map(rounds.map(round => [round.id, round]))
-  for (const node of nodes) {
-    const record = originalEntry(node)
-    if (record?.roundId && !byRound.has(record.roundId)) byRound.set(record.roundId, nodeRounds.get(node.id)!)
-  }
   // A branch-local revision has a new content Entry while retaining its original
   // writer Run. Use that Run's positions only when the whole set is loaded.
   const nodesByRun = new Map<string, NarrativeNode[]>()
@@ -81,14 +79,23 @@ export function projectTimelineRounds(entries: AgentTranscriptEntry[], nodes: Na
     const messages = messagesByRun.get(runId) ?? []
     if (messages.length === runNodes.length) messages.forEach((entry, index) => originNodes.set(entry.id, runNodes[index]!))
   }
+  const anchoredNodes = new Set([...originNodes.values()].map(node => node.id))
   for (const node of nodes) {
     const original = originalEntry(node)
-    if (original) originNodes.set(original.id, node)
+    if (original && !anchoredNodes.has(node.id)) originNodes.set(original.id, node)
+  }
+  // A revision's current entry belongs to the editing Run, not the original prose round.
+  for (const [entryId, node] of originNodes) {
+    const record = byEntry.get(entryId)
+    if (node.source?.runId && record?.runId !== node.source.runId) continue
+    if (record?.roundId && !byRound.has(record.roundId)) byRound.set(record.roundId, nodeRounds.get(node.id)!)
   }
   const rendered = new Set<string>()
   const executionsByRun = new Map<string, NarrativeSessionExecution>()
   const declared = new Set<string>()
-  const latestUserEntryId = entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')?.id
+  const settledInputs = new Set(entries.flatMap(item => item.entry.kind === 'interjection-applied' || item.entry.kind === 'interjection-discarded' ? [item.entry.requestId] : []))
+  const latestPendingId = entries.findLast(item => item.entry.kind === 'user-interjection' && !item.entry.withdrawn && !settledInputs.has(item.entry.requestId))?.id
+  const latestUserEntryId = latestPendingId ?? entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')?.id
   const latestNodes = new Map<TimelineSessionRound, string>()
   // A discussion keeps the adopted position at its input, even if that Run appends prose.
   const discussionAnchors = new Map<NarrativeSessionExecution, string | undefined>()
@@ -109,7 +116,14 @@ export function projectTimelineRounds(entries: AgentTranscriptEntry[], nodes: Na
     const node = originNodes.get(item.id) ?? byNodeEntry.get(item.id)
     if (node) {
       if (rendered.has(node.id)) continue
-      current = nodeRounds.get(node.id)!
+      const owner = nodeRounds.get(node.id)!
+      // Historical edits update prose in place without moving the execution cursor backwards.
+      if (current && rounds.indexOf(owner) < rounds.indexOf(current)) {
+        if (node.kind === 'narrative') owner.execution.steps.push({ id: node.id, kind: 'narrative', title: '正文', content: node.body.raw, state: 'completed' })
+        rendered.add(node.id)
+        continue
+      }
+      current = owner
       latestNodes.set(current, node.id)
       if (item.candidateId) current.candidateId = item.candidateId
       if (item.runId && node.kind === 'narrative') declared.delete(item.runId)
@@ -127,18 +141,27 @@ export function projectTimelineRounds(entries: AgentTranscriptEntry[], nodes: Na
     }
     if (data.kind === 'message' && data.purpose === 'narrative' && data.state !== 'partial') continue
     if (!current) {
-      if (item.roundId || !['message', 'reasoning', 'tool-invocation', 'tool-input'].includes(data.kind)) continue
+      if (item.roundId || !['message', 'user-interjection', 'reasoning', 'tool-invocation', 'tool-input'].includes(data.kind)) continue
       current = preparation()
     }
     if (item.candidateId) current.candidateId = item.candidateId
     const runKey = item.runId ?? current.execution.id
     let execution = executionsByRun.get(runKey)
-    if (!execution && data.kind === 'run-state' && typeof data.sourceRunId === 'string') {
+    if (!execution && data.kind === 'run-state' && data.sourceRunId !== undefined) {
       execution = executionsByRun.get(data.sourceRunId)
       if (execution) executionsByRun.set(runKey, execution)
     }
-    if (data.kind === 'message' && data.role === 'user' && typeof data.content === 'string') {
-      execution = { ...makeExecution(runKey), input: data.content, inputEntryId: item.id, retryable: item.id === latestUserEntryId }
+    if (data.kind === 'user-interjection') {
+      if (data.withdrawn) continue;
+      if (!entries.some(entry => entry.entry.kind === 'interjection-applied' && entry.entry.requestId === data.requestId)) {
+        const pending = { ...makeExecution(item.id), inputEntryId: item.id, retryable: item.id === latestUserEntryId, input: data.content, inputAttachments: data.attachments, interjectionStatus: entries.some(entry => entry.entry.kind === 'interjection-discarded' && entry.entry.requestId === data.requestId) ? 'discarded' as const : 'pending' as const }
+        current.discussions.push(pending)
+        discussionAnchors.set(pending, latestNodes.get(current))
+      }
+      continue
+    }
+    if (data.kind === 'message' && data.role === 'user') {
+      execution = { ...makeExecution(data.interjectionRequestId ? entries.find(entry => entry.entry.kind === 'user-interjection' && entry.entry.requestId === data.interjectionRequestId)?.id ?? runKey : runKey), input: data.content, inputAttachments: data.attachments, inputEntryId: item.id, retryable: item.id === latestUserEntryId }
       current.discussions.push(execution)
       discussionAnchors.set(execution, latestNodes.get(current))
       executionsByRun.set(runKey, execution)
@@ -149,32 +172,32 @@ export function projectTimelineRounds(entries: AgentTranscriptEntry[], nodes: Na
     }
     if (item.runId) execution.runId = item.runId
     if (data.kind === 'run-state') {
-      const checkpoint = data.recovery && typeof data.recovery === 'object' && !Array.isArray(data.recovery) ? data.recovery : undefined
-      if (data.state === 'failed') (execution.failures ??= []).push({ id: item.id, message: typeof data.reason === 'string' ? data.reason : '请求失败，未收到完整输出' })
+      const checkpoint = data.recovery
+      if (data.state === 'failed') (execution.failures ??= []).push({ id: item.id, message: data.reason ?? '请求失败，未收到完整输出' })
       execution.resumable = (data.state === 'suspended' || data.state === 'failed') && !!checkpoint
       execution.state = data.state === 'running' || data.state === 'created' ? 'running'
         : execution.resumable ? 'paused' : data.state === 'failed' ? 'failed'
         : data.state === 'aborted' || data.state === 'discarded' ? 'cancelled' : 'completed'
-      if (typeof data.reason === 'string' && data.reason !== 'user-pause') execution.error = data.reason
+      if (data.reason !== undefined && data.reason !== 'user-pause') execution.error = data.reason
     }
     if (activeRun && activeRun.runId === item.runId) {
       execution.state = activeRun.status === 'running' ? 'running' : activeRun.status === 'suspended' ? 'paused' : activeRun.status
       execution.resumable = activeRun.status === 'suspended'
       execution.error = activeRun.error ?? execution.error
     }
-    if (data.kind === 'reasoning' && data.visibility !== 'hidden' && typeof data.content === 'string' && data.content) execution.steps.push({
+    if (data.kind === 'reasoning' && data.visibility !== 'hidden' && data.content) execution.steps.push({
       id: item.presentationId ?? item.id, kind: 'thinking', title: '思考', content: data.content,
       state: item.id.startsWith('streaming-') && data.state !== 'completed' && activeRun?.runId === item.runId && activeRun?.status === 'running' ? 'running' : 'completed',
     })
     if (data.kind === 'tool-invocation' || data.kind === 'tool-input') {
-      const result = results.get(data.invocationId)
+      const result = data.kind === 'tool-invocation' ? results.get(data.invocationId) : undefined
       const live = activeRun && activeRun.runId === item.runId && activeRun.status === 'running'
-      execution.steps.push({ id: item.presentationId ?? item.id, kind: 'tool', title: String(data.exposedName ?? data.toolId ?? '工具'),
-        content: [data.rawInput ?? JSON.stringify(data.arguments, null, 2), result ? JSON.stringify(result.entry.content, null, 2) : undefined].filter(Boolean).join('\n\n'),
+      execution.steps.push({ id: item.presentationId ?? item.id, kind: 'tool', tool: toolItems.get(item.presentationId ?? item.id) ?? toolItems.get(item.id), title: data.exposedName ?? (data.kind === 'tool-invocation' ? data.toolId : '工具'),
+        content: [data.rawInput ?? (data.kind === 'tool-invocation' ? JSON.stringify(data.arguments, null, 2) : undefined), result ? [result.status === 'completed' ? '已完成' : result.status === 'aborted' ? '已中断' : '执行失败', result.error?.message ?? JSON.stringify(result.content, null, 2)].join('\n') : undefined].filter(Boolean).join('\n\n'),
         state: live && (data.kind === 'tool-input' || !result) ? 'running' : 'completed' })
     }
     if (data.kind === 'tool-result' && data.toolId === 'official/declare_narrative' && data.status === 'completed') declared.add(runKey)
-    if (data.kind === 'message' && data.role === 'assistant' && typeof data.content === 'string' && data.content) {
+    if (data.kind === 'message' && data.role === 'assistant' && data.content) {
       const streaming = item.id.startsWith('streaming-') || data.state === 'partial'
       const narrative = data.purpose === 'narrative' || streaming && (declared.has(runKey) || narrativeMode === 'automatic' && execution === current.execution)
       const output = narrative ? current.execution : execution
@@ -211,7 +234,14 @@ export function projectTimelineRounds(entries: AgentTranscriptEntry[], nodes: Na
       return group
     }
     for (const node of round.nodes) groupAt(node.id)
-    for (const step of round.execution.steps) if (step.kind === 'reply') groupAt(replyAnchors.get(step.id)).execution.steps.push(step)
+    if (!round.execution.steps.some(step => step.kind === 'narrative')) {
+      // A reply-only run owns its work trace; it does not create a prose placeholder.
+      const reply = round.execution.steps.find(step => step.kind === 'reply')
+      groupAt(reply ? replyAnchors.get(reply.id) : round.inputNode?.id).execution.steps.push(...round.execution.steps)
+      round.execution = { ...round.execution, steps: [] }
+    } else {
+      for (const step of round.execution.steps) if (step.kind === 'reply') groupAt(replyAnchors.get(step.id)).execution.steps.push(step)
+    }
     for (const discussion of round.discussions) groupAt(discussionAnchors.get(discussion)).discussions.push(discussion)
     if (!round.nodes.length && !groups.size) groupAt(undefined)
     round.communications = [...groups.values()]

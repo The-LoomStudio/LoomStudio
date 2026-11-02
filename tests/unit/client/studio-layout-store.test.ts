@@ -22,6 +22,21 @@ describe('studio layout store', () => {
 
   afterEach(() => vi.unstubAllGlobals())
 
+  it('persists view preferences while keeping route positions session-only', async () => {
+    const store = useStudioLayoutStore.getState()
+    store.setViewPreference('preset.configuration', 'tools')
+    store.rememberPanelPosition('endpoint/card/logs', { search: 'logView=model' })
+    const key = useStudioLayoutStore.persist.getOptions().name
+    const saved = storedValues.get(key)!
+    expect(JSON.parse(saved).state.viewPreferences).toEqual({ 'preset.configuration': 'tools' })
+    expect(JSON.parse(saved).state.panelPositions).toBeUndefined()
+    useStudioLayoutStore.setState({ viewPreferences: {} })
+    storedValues.set(key, saved)
+    await useStudioLayoutStore.persist.rehydrate()
+    expect(useStudioLayoutStore.getState().viewPreferences['preset.configuration']).toBe('tools')
+    expect(sanitizeStudioLayout({ viewPreferences: { valid: 'tools', invalid: {} } }).viewPreferences).toEqual({ valid: 'tools' })
+  })
+
   it('pins the Composer by default without overriding an explicit immersive preference', () => {
     expect(createDefaultStudioLayout().composerPinned).toBe(true)
     expect(sanitizeStudioLayout({}).composerPinned).toBe(true)

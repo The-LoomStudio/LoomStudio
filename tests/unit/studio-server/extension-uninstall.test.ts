@@ -116,7 +116,7 @@ function createRuntime(paths: Awaited<ReturnType<typeof createFixture>>, cardArc
       return { packageId: input.packageId, promptResourceIds: [], agentToolIds: [], textTransformRuleIds: [], textExtractorIds: [], detachedReferences: { cards: 0, timelines: 0, presetToolMounts: 0 } }
     },
   })
-  return { host, manager, stateStore, registrations, diagnostics }
+  return { host, manager, stateStore, registrations, diagnostics, installations }
 }
 
 describe('Extension Package uninstall failure recovery', () => {
@@ -313,6 +313,36 @@ describe('Extension module catalog reload identity', () => {
     for (const moduleId of Object.keys(aAfter)) expect(aReinstalled[moduleId]).not.toBe(aAfter[moduleId])
     expect(listedReloadIds(manager, b)).toEqual(bBefore)
     expect(listedReloadIds(manager)).toEqual(globalBefore)
+  })
+
+  it('rejects same-Card dependency uninstall and incompatible updates before stopping modules', async () => {
+    const paths = await createFixture({ healthy: true })
+    const files = Object.fromEntries(await Promise.all(['manifest.json', 'index.mjs'].map(async path =>
+      [path, await readFile(join(paths.sourceDirectory, path))] as const)))
+    const archive = { packageId, version: '1.0.0', archiveBase64: Buffer.from(zipSync(files)).toString('base64') }
+    const { manager, stateStore, installations, host } = createRuntime(paths, archive)
+    await manager.initialize()
+    const target = { kind: 'card' as const, cardId: 'A' }
+    await manager.installCardPackage({ cardId: 'A', packageId, expectedCardVersion: 1 })
+    await manager.enableModule(packageId, 'second', undefined, target)
+    const before = listedReloadIds(manager, target)
+    const dependent = {
+      id: 'dependent-A', version: 1, packageId: 'example.consumer', packageVersion: '1.0.0', target,
+      dependencies: [{ id: packageId, version: '^1.0.0' }],
+      createdAt: '2026-09-22T00:00:00.000Z', updatedAt: '2026-09-22T00:00:00.000Z',
+    }
+    installations.push(dependent)
+    await expect(manager.uninstallCardPackage({ cardId: 'A', packageId, expectedInstallationVersion: 1 })).rejects.toThrow('Card dependents')
+    const nextManifest = { ...JSON.parse(files['manifest.json']!.toString()), version: '2.0.0' }
+    archive.version = '2.0.0'
+    archive.archiveBase64 = Buffer.from(zipSync({ ...files, 'manifest.json': Buffer.from(JSON.stringify(nextManifest)) })).toString('base64')
+    await expect(manager.updateCardPackage({ cardId: 'A', packageId, expectedCardVersion: 1, expectedInstallationVersion: 1, packageVersion: '2.0.0' })).rejects.toThrow('Card dependents')
+    expect(stateStore.get(packageId, 'second', target)?.enabled).toBe(true)
+    expect(listedReloadIds(manager, target)).toEqual(before)
+    expect(host.list().find(item => item.packageId === packageId && item.moduleId === 'second' && item.target.kind === 'card' && item.target.cardId === 'A')?.state).toBe('active')
+    // A declaration on another Card must not block this installation.
+    dependent.target = { kind: 'card', cardId: 'B' }
+    await expect(manager.uninstallCardPackage({ cardId: 'A', packageId, expectedInstallationVersion: 1 })).resolves.toMatchObject({ removed: true })
   })
 
   it('drops Global lifecycle markers with the catalog owner on uninstall and creates fresh ones on reinstall', async () => {

@@ -1,3 +1,5 @@
+import { authoringApplySchema } from '@loom-studio/shared'
+import { z } from 'zod'
 import type {
   ApplicationRuntime,
 
@@ -26,6 +28,9 @@ import {
 import { jsonInput, procedure } from '../context.js'
 
 export const workspacesProcedures = {
+  captureResourceAuthoring: procedure.input(z.object({ resourceId: z.string().min(1) })).query(({ ctx, input }) => ctx.runtime.captureResourceAuthoring(input)),
+  diffResourceAuthoring: procedure.input(authoringApplySchema).query(({ ctx, input }) => ctx.runtime.diffResourceAuthoring(input)),
+  applyResourceAuthoring: procedure.input(authoringApplySchema).mutation(({ ctx, input }) => ctx.runtime.applyResourceAuthoring(input, ctx.request)),
   'listExtensionInstallations': procedure.query(({ ctx }) => ctx.runtime.listExtensionInstallations()),
   'getPromptResource': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['getPromptResource']>[0] => {
     return {

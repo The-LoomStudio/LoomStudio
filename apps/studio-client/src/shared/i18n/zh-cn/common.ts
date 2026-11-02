@@ -1,4 +1,5 @@
 export const messages = {
+  'fileTree.folderDetails': '查看文件夹详情',
   'history.tabRecent': '最近',
   'history.tabTimelines': '剧情',
   'history.tabSessions': '会话',

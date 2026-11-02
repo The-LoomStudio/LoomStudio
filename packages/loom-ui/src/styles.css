@@ -509,6 +509,14 @@ input[type='radio'][data-loom-ui-radio]:disabled {
   box-shadow: 0 8px 24px rgb(0 0 0 / 22%);
   animation: loom-ui-menu-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+/* Shared floating surfaces follow the application's panel material preference. */
+html[data-loom-glass-panels='true'] [data-loom-ui-dialog]:not([data-layout='media']),
+html[data-loom-glass-panels='true'] .loom-ui-menu {
+  background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 62%), transparent);
+  -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+  backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+}
+
 .loom-ui-menu[data-menu-kind='context'] { transform-origin: var(--radix-context-menu-content-transform-origin); }
 .loom-ui-menu[data-menu-kind='dropdown'] { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
 .loom-ui-menu-hover-indicator {
@@ -830,7 +838,6 @@ input[type='radio'][data-loom-ui-radio]:disabled {
 
 [data-loom-ui-tabs] [data-loom-ui-tabs-button][data-active='true'] {
   color: var(--loom-color-text);
-  font-weight: var(--loom-font-weight-5, 600);
 }
 
 [data-loom-ui-tabs] [data-loom-ui-tabs-button]:focus-visible {
@@ -882,3 +889,66 @@ input[type='radio'][data-loom-ui-radio]:disabled {
 :root[data-loom-motion='reduce'] [data-loom-ui-tabs] [data-loom-ui-tabs-indicator] {
   transition: opacity 120ms ease !important;
 }
+
+[data-loom-ui-sheet-handle] { display: none; }
+@media (max-width: 768px) {
+  [data-loom-ui-dialog][data-mobile-sheet='true'] {
+    position: fixed;
+    inset: auto 0 0;
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(var(--loom-viewport-height, 100dvh) - max(48px, env(safe-area-inset-top)));
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    transform: translateY(var(--loom-sheet-offset, 0px));
+  }
+  [data-loom-ui-dialog][data-mobile-sheet='true'][open] { animation: loom-ui-sheet-enter 220ms ease-out; }
+  [data-loom-ui-sheet-handle] {
+    display: block;
+    justify-self: center;
+    width: 64px;
+    height: 16px;
+    padding: 6px 14px;
+    border: 0;
+    background: transparent;
+    touch-action: none;
+  }
+  [data-loom-ui-sheet-handle]::after {
+    content: ''; display: block; width: 36px; height: 4px;
+    border-radius: 2px; background: var(--loom-color-text-muted);
+  }
+  [data-loom-ui-dialog][data-layout='workbench'] {
+    width: 100%; max-width: 100%; height: calc(var(--loom-viewport-height, 100dvh) - max(8px, env(safe-area-inset-top, 0px)));
+    max-height: calc(var(--loom-viewport-height, 100dvh) - max(8px, env(safe-area-inset-top, 0px))); margin: 0; border-radius: 20px 20px 0 0;
+  }
+}
+@keyframes loom-ui-sheet-enter { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  [data-loom-ui-dialog][data-mobile-sheet='true'][open] { animation: none; }
+}
+html[data-loom-motion='reduce'] [data-loom-ui-dialog][data-mobile-sheet='true'][open] { animation: none; }
+
+@media (max-width: 768px) {
+  [data-loom-ui-dialog][data-layout='workbench'][open] { animation: loom-ui-sheet-enter 220ms cubic-bezier(0.2, 0, 0, 1); }
+}
+html[data-loom-motion='reduce'] [data-loom-ui-dialog][data-layout='workbench'][open] { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-loom-motion='full']) [data-loom-ui-dialog][data-layout='workbench'][open] { animation: none; }
+}
+
+@media (max-width: 768px) {
+  [data-loom-ui-dialog][data-mobile-sheet='true'] > [data-loom-ui-dialog-frame] > [data-loom-ui-dialog-header] {
+    padding-top: 0;
+    padding-bottom: 6px;
+    row-gap: 0;
+  }
+}
+
+[data-loom-ui-sheet-open-handle] {
+  position: absolute; z-index: 46; bottom: 0; left: calc(50% - 36px);
+  width: 72px; height: max(20px, env(safe-area-inset-bottom, 0px));
+  display: grid; place-items: center; padding: 0; border: 0; background: transparent; touch-action: none;
+}
+[data-loom-ui-sheet-open-handle]::after { content: ''; width: 36px; height: 4px; border-radius: 2px; background: var(--loom-color-text-muted); }
+[data-loom-ui-dialog][open][data-sheet-dragging='true'] { animation: none; }

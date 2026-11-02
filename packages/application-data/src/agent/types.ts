@@ -1,10 +1,9 @@
 import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type {
-  DataActorRef,
   DataCommitFact,
   SqliteDataTransaction,
 } from '@loom-studio/data-engine'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { ChatAttachment, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { TokenCount, TokenUsage } from '@loom-studio/tokenizer/contracts'
 
 export type SessionSummaryPolicy = {
@@ -51,6 +50,19 @@ export type AgentToolResultStatus =
 
 export type AgentTranscriptEntryData =
   | {
+      kind: 'user-interjection'
+      withdrawn?: boolean
+      requestId: string
+      content: string
+      mode: 'discussion' | 'narrative'
+      narrativeTarget?: { timelineId: string; branchId: string }
+      attachments?: ChatAttachment[]
+      macroSelections?: import('@loom-studio/shared').MacroSelectionMap
+      activationFacts?: JsonObject
+    }
+  | { kind: 'interjection-applied'; requestId: string }
+  | { kind: 'interjection-discarded'; requestId: string }
+  | {
       /** Saved handoff; retired history stays stored. Legacy entries retire their preceding segment. */
       kind: 'work-summary'
       content: string
@@ -64,10 +76,13 @@ export type AgentTranscriptEntryData =
     }
   | {
       kind: 'message'
+      editBaseline?: JsonObject
       purpose?: 'narrative' | 'discussion'
       narrativeId?: string
       role: 'user' | 'assistant'
       content: string
+      attachments?: ChatAttachment[]
+      interjectionRequestId?: string
       state?: AgentMessageState
       continuesEntryId?: string
     }
@@ -238,6 +253,8 @@ export type AgentSummaryTask = {
 }
 
 export type AgentTransaction = {
+  reviseInterjection(input: { entryId: string; expected: AgentTranscriptEntryData; replacement: AgentTranscriptEntryData }): AgentTranscriptEntry
+  rewindStandalone(input: { agentSessionId: string; expectedHeadEntryId?: string; headEntryId?: string }): void
   restoreTimelineEntries(input: { agentSessionId: string; entries: AgentTranscriptEntry[]; headEntryId?: string; entryCount: number }): AgentSession
   getEntry(id: string): AgentTranscriptEntry | null
   createTimelineSession(input: { id: string; title?: string; agentPresetId?: string }): AgentSession

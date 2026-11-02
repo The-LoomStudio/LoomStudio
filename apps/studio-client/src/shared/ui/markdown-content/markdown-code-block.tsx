@@ -4,6 +4,7 @@ import { IconButton } from '@loom-studio/ui'
 import { useCopyFeedback } from '../../hooks/use-copy-feedback.js'
 import styles from './markdown-content.module.scss'
 import { ContentErrorBoundary } from '../content-error-boundary.js'
+import { readCodeHighlightLanguage } from './code-highlight-language.js'
 
 const CodeHighlight = lazy(() => import('./code-highlight.js'))
 
@@ -49,7 +50,9 @@ export function MarkdownCodeBlock(props: {
           {copyState === 'copied' ? <Check aria-hidden="true" /> : copyState === 'failed' ? <X aria-hidden="true" /> : <Copy aria-hidden="true" />}
         </IconButton>
       </div>
-      <pre><code data-language={props.language}><ContentErrorBoundary fallback={props.code} resetKey={props.code}><Suspense fallback={props.code}><CodeHighlight code={props.code} language={props.language} /></Suspense></ContentErrorBoundary></code></pre>
+      <pre><code data-language={props.language}>{readCodeHighlightLanguage(props.language)
+        ? <ContentErrorBoundary fallback={props.code} resetKey={props.code}><Suspense fallback={props.code}><CodeHighlight code={props.code} language={props.language} /></Suspense></ContentErrorBoundary>
+        : props.code}</code></pre>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { SearchField } from '@loom-studio/ui'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { buildContextAssetSearchIndex, searchContextAssets } from '../../model/context-asset-search.js'
+import { readContextAssetDisabledAncestors } from '../../model/context-asset-tree.js'
 import styles from './context-asset-search.module.scss'
 
 type ContextAssetSearchProps = {
@@ -21,6 +22,7 @@ export function ContextAssetSearch(props: ContextAssetSearchProps) {
   const deferredQuery = useDeferredValue(props.query)
   const index = useMemo(() => buildContextAssetSearchIndex(props.nodes), [props.nodes])
   const results = useMemo(() => searchContextAssets(index, deferredQuery), [deferredQuery, index])
+  const disabledAncestors = useMemo(() => readContextAssetDisabledAncestors(props.nodes), [props.nodes])
   const searching = props.query.trim().length > 0
 
   return (
@@ -41,11 +43,12 @@ export function ContextAssetSearch(props: ContextAssetSearchProps) {
             <div aria-label={props.t('context.search.results')} className={styles.results} role="list">
               {results.map(result => (
                 <div key={result.id} role="listitem">
-                  <button className={styles.result} type="button" onClick={() => props.onSelect(result.node)}>
+                  <button className={styles.result} data-inactive={result.node.enabled === false || disabledAncestors.has(result.id) || undefined} type="button" onClick={() => props.onSelect(result.node)}>
                     <span className={styles.resultIcon}>{renderResultIcon(result.kind)}</span>
                     <span className={styles.resultText}>
                       <strong><SearchHighlight text={result.label} query={deferredQuery} /></strong>
                       <small><SearchHighlight text={result.path} query={deferredQuery} /></small>
+                      {disabledAncestors.has(result.id) && <small>{props.t('context.disabledByAncestor', { label: disabledAncestors.get(result.id)!.label })}</small>}
                       {result.excerpt ? <span><SearchHighlight text={result.excerpt} query={deferredQuery} /></span> : null}
                     </span>
                   </button>

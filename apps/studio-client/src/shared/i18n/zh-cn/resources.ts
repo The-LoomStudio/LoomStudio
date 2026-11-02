@@ -1,4 +1,5 @@
 export const messages = {
+  'promptResource.temporaryHint': "临时查看，不会自动加入当前角色。",
   'dashboard.open': '数据总览',
   'promptResource.processingWarning': '提示词处理出现警告，部分 Lore 可能已跳过。请查看构建诊断。',
   'promptResource.invalidResources': '以下资源暂时无法读取；其他资源仍可使用。',
@@ -180,6 +181,10 @@ export const messages = {
   'context.actionDelete': '删除条目',
   'context.actionMore': '更多操作',
   'context.lifecycleAlwaysIndicator': '常驻',
+  'context.actionEnableGroup': '启用此组',
+  'context.actionDisableGroup': '停用此组',
+  'context.disabledByAncestor': '受上级「{{label}}」停用',
+  'context.groupEnableHint': '仅控制此组是否参与构建，保留子项各自的启用状态。',
   'context.actionEnable': '启用条目',
   'context.actionDisable': '停用条目',
   'context.actionMoveUp': '上移一位',

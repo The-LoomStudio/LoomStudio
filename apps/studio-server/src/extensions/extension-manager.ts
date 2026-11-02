@@ -19,7 +19,7 @@ import type {
   RemovedExtensionPackageResources,
 } from '@loom-studio/kernel'
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
-import type { JsonValue } from '@loom-studio/shared'
+import { promptResourceDisplayMetadataSchema, type JsonValue } from '@loom-studio/shared'
 import { extensionInstallationId, type ExtensionInstallationTarget, type ListExtensionInstallationsResult } from '@loom-studio/application-runtime'
 import { parseExtensionManifest } from '@loom-studio/extension-host'
 import { serializeError } from '@loom-studio/shared'
@@ -61,6 +61,8 @@ class ExtensionInstallFailure extends Error {
 }
 
 export type ServerExtensionManager = ExtensionManagementService & {
+  readCharacterPackage(packageId: string): { manifest: ExtensionManifest; fileUrl(path: string): string; read(path: string): Promise<Uint8Array> }
+  validatePackageAsset(input: { packageId: string; packageVersion: string; target: ExtensionInstallationTarget; path: string }): Promise<void>
   withCardDeletions<T>(cardIds: string[], commit: () => Promise<T>): Promise<T>
   readCardPackageFile(cardId: string, packageId: string, version: string, archiveDigest: string, path: string): Promise<{ bytes: Uint8Array; mediaType: string }>
   initialize(): Promise<void>
@@ -91,15 +93,17 @@ export function createServerExtensionManager(options: {
   exportExtensionArchive?: import('@loom-studio/application-runtime').ApplicationRuntimeOptions['exportExtensionArchive']
   readCardPackage(input: { cardId: string; packageId: string; source?: 'installed' }): Promise<{ cardVersion: number; archive: { packageId: string; version: string; archiveBase64: string } }>
   listInstallations(): Promise<ListExtensionInstallationsResult>
+  assertDependencyConsumers?(packageId: string, target: ExtensionInstallationTarget, nextVersion?: string): Promise<void>
   importPackageResources(input: {
     participation?: 'timeline'
     source?: import('@loom-studio/application-runtime').ExtensionInstallationSource
-    loomScripts?: Array<{ contribution: { id: string; source: string }; source: string }>
+    loomScripts?: Array<{ contribution: { id: string; source: string; orderIndex?: number; groupOrder?: number }; source: string }>
     target?: ExtensionInstallationTarget
     expectedCardVersion?: number
     update?: { expectedInstallationVersion: number }
     packageId: string
     packageVersion: string
+    dependencies?: import('@loom-studio/extension-sdk').ExtensionManifest['dependencies']
     promptResources: Array<{
       contribution: ExtensionPromptResourceContribution
       artifact: JsonValue
@@ -120,6 +124,8 @@ export function createServerExtensionManager(options: {
   removePackageResources(input: { packageId: string; target?: ExtensionInstallationTarget; expectedInstallationVersion?: number; uninstall?: true }): Promise<import('@loom-studio/application-runtime').RemoveExtensionPackageResourcesResult>
 }): ServerExtensionManager {
   const catalog = new Map<string, PackageCatalogRecord>()
+  const importingAssetSources = new Map<string, PackageCatalogRecord>()
+  const assetSourceKey = (packageId: string, target: ExtensionInstallationTarget, version: string) => JSON.stringify([extensionInstallationId(packageId, target), version])
   const cardCatalog = new Map<string, { target: Extract<ExtensionInstallationTarget, { kind: 'card' }>; record: PackageCatalogRecord }>()
   let initialized = false
   type PreparedInstall = { root: string; candidates: ExtensionCandidate[]; replacement?: string; expected: string; timer: ReturnType<typeof setTimeout> }
@@ -170,6 +176,7 @@ export function createServerExtensionManager(options: {
         }
         visiting.add(manifest.id)
         for (const item of manifest.dependencies ?? []) {
+          if (item.target === 'card') throw new Error('Global extension cannot depend on a Card installation')
           if (visiting.has(item.id)) throw new Error(`Extension dependency cycle: ${item.id}`)
           const known = candidates.get(item.id)
           const installed = catalog.get(item.id)
@@ -252,6 +259,7 @@ export function createServerExtensionManager(options: {
       const dependency = dependent.manifest.dependencies?.find(item => item.id === id)
       if (dependentId !== id && dependency && !satisfiesExtensionVersion(candidate.manifest.version, dependency.version)) throw new Error(`Update conflicts with dependency required by ${dependentId}: ${id}@${dependency.version}`)
     }
+    await options.assertDependencyConsumers?.(id, { kind: 'global' }, candidate.manifest.version)
     const candidateRoot = join(options.installedDirectory, '.staging', randomUUID())
     const next = await installExtensionPackageFromDirectory({ sourceDirectory: candidate.directory, installedDirectory: candidateRoot, flat: true })
     const oldMetadata = previous ? await readDownloadMetadata(previous.directory) : undefined
@@ -405,6 +413,35 @@ export function createServerExtensionManager(options: {
     cardCatalog.delete(extensionInstallationId(record.manifest.id, target))
   }
 
+  async function validateDependencies(manifest: ExtensionManifest, target: ExtensionInstallationTarget = { kind: 'global' }, explicitOnly = false): Promise<void> {
+    const installations = (await options.listInstallations()).installations
+    for (const dependency of manifest.dependencies ?? []) {
+      if (explicitOnly && !dependency.target) continue
+      if (dependency.target === 'card' && target.kind !== 'card') throw new Error('Global extension cannot depend on a Card installation')
+      const selected = dependency.target === 'card' ? target : { kind: 'global' as const }
+      const record = selected.kind === 'global' ? catalog.get(dependency.id) : cardCatalog.get(extensionInstallationId(dependency.id, selected))?.record
+      if (!record?.available || !satisfiesExtensionVersion(record.manifest.version, dependency.version)) {
+        throw new Error(`Dependency ${dependency.id}@${dependency.version} is missing or incompatible in ${selected.kind}`)
+      }
+      if (dependency.target && !installations.some(item => item.id === extensionInstallationId(dependency.id, selected)
+        && satisfiesExtensionVersion(item.packageVersion, dependency.version))) {
+        throw new Error(`Dependency resources are not installed: ${dependency.id} (${selected.kind})`)
+      }
+    }
+  }
+
+  async function restoreModule(record: PackageCatalogRecord, moduleId: string, target: ExtensionInstallationTarget): Promise<void> {
+    try {
+      await validateDependencies(record.manifest, target)
+    } catch (error) {
+      options.diagnostics.add({ severity: 'error', code: 'extension.dependency_unavailable', source: 'extension-manager',
+        packageId: record.manifest.id, message: `Extension dependency unavailable: ${record.manifest.id}`,
+        details: { target, error: serializeError(error, 'extension.dependency_unavailable') } })
+      return
+    }
+    await options.host.activate(record.manifest.id, moduleId, target)
+  }
+
   async function importResources(
     packageId: string,
     update?: { expectedInstallationVersion: number; packageVersion: string },
@@ -413,9 +450,24 @@ export function createServerExtensionManager(options: {
     assertInitialized(initialized)
     const record = cardSource?.record ?? requireAvailablePackage(catalog, packageId)
     if (update && record.manifest.version !== update.packageVersion) throw new Error('Extension package changed; review the update again')
+    const target: ExtensionInstallationTarget = cardSource ? { kind: 'card', cardId: cardSource.cardId } : { kind: 'global' }
+    await validateDependencies(record.manifest, target, true)
+    const promptResources = await Promise.all((record.manifest.contributes?.promptResources ?? []).map(async contribution => {
+      const artifact = await loadPromptResourceFiles(await readPackageJson(record, contribution.source),
+        async path => (await readFileFromPackage(record, posix.join(posix.dirname(contribution.source), path))).bytes)
+      if (artifact && typeof artifact === 'object' && !Array.isArray(artifact) && artifact.metadata) {
+        const { icon } = promptResourceDisplayMetadataSchema.parse(artifact.metadata)
+        if (icon?.packageId === packageId) await readFileFromPackage(record, icon.path)
+      }
+      return { contribution, artifact }
+    }))
+    const assetKey = assetSourceKey(packageId, target, record.manifest.version)
+    importingAssetSources.set(assetKey, record)
+    try {
     const imported = await options.importPackageResources({
       packageId,
       packageVersion: record.manifest.version,
+      ...(record.manifest.dependencies ? { dependencies: structuredClone(record.manifest.dependencies) } : {}),
       ...(record.manifest.participation ? { participation: record.manifest.participation } : {}),
       source: cardSource ? { kind: 'card' }
         : record.remote ? { kind: record.remote.source.kind, url: record.remote.source.url }
@@ -425,10 +477,7 @@ export function createServerExtensionManager(options: {
       }))),
       ...(cardSource ? { target: { kind: 'card' as const, cardId: cardSource.cardId }, expectedCardVersion: cardSource.expectedCardVersion } : {}),
       ...(update ? { update: { expectedInstallationVersion: update.expectedInstallationVersion } } : {}),
-      promptResources: await Promise.all((record.manifest.contributes?.promptResources ?? []).map(async contribution => ({
-        contribution, artifact: await loadPromptResourceFiles(await readPackageJson(record, contribution.source),
-          async path => (await readFileFromPackage(record, posix.join(posix.dirname(contribution.source), path))).bytes),
-      }))),
+      promptResources,
       agentTools: await Promise.all((record.manifest.contributes?.agentTools ?? []).map(async contribution => ({
         contribution, definition: await readPackageJson(record, contribution.source),
       }))),
@@ -440,14 +489,12 @@ export function createServerExtensionManager(options: {
       }))),
     })
     return { packageId, version: record.manifest.version, ...imported }
+    } finally { importingAssetSources.delete(assetKey) }
   }
 
   async function importNewGlobalResources(packageId: string): Promise<void> {
-    const record = requireAvailablePackage(catalog, packageId)
-    const resources = record.manifest.contributes
-    if (record.manifest.participation !== 'timeline'
-      && ![resources?.promptResources, resources?.agentTools, resources?.transformRules, resources?.textExtractors, resources?.loomScripts]
-      .some(items => items?.length)) return
+    requireAvailablePackage(catalog, packageId)
+    // Asset-only packages also need an installation identity for dependency and scope checks.
     const { installations } = await options.listInstallations()
     if (installations.some(item => item.packageId === packageId && item.target.kind === 'global')) return
     try {
@@ -683,13 +730,13 @@ export function createServerExtensionManager(options: {
         if (!record.available) continue
         for (const moduleManifest of serverModules(record.manifest)) {
           if (!options.stateStore.get(packageId, moduleManifest.id)?.enabled) continue
-          await options.host.activate(packageId, moduleManifest.id)
+          await restoreModule(record, moduleManifest.id, { kind: 'global' })
         }
       }
       for (const { record, target } of cardCatalog.values()) {
         for (const moduleManifest of serverModules(record.manifest)) {
           if (options.stateStore.get(record.manifest.id, moduleManifest.id, target)?.enabled) {
-            await options.host.activate(record.manifest.id, moduleManifest.id, target)
+            await restoreModule(record, moduleManifest.id, target)
           }
         }
       }
@@ -721,10 +768,12 @@ export function createServerExtensionManager(options: {
       assertInitialized(initialized)
       const target = { kind: 'card' as const, cardId: input.cardId }
       const previous = packageRecord(input.packageId, target)
-      const installation = (await options.listInstallations()).installations.find(item => item.id === extensionInstallationId(input.packageId, target))
+      const installations = (await options.listInstallations()).installations
+      const installation = installations.find(item => item.id === extensionInstallationId(input.packageId, target))
       if (installation?.version !== input.expectedInstallationVersion) throw new Error('Extension installation changed before update')
       const next = await prepareCardPackage(input)
       if (next.manifest.version !== input.packageVersion) throw new Error('Extension package changed; review the update again')
+      assertCardDependentsCompatible(installations, input.packageId, target.cardId, next.manifest.version)
       const previousStates = new Map((previous.manifest.modules ?? []).map(module => [
         module.id, { module, desired: readDesiredState(options.stateStore, input.packageId, module.id, target) },
       ]))
@@ -762,8 +811,10 @@ export function createServerExtensionManager(options: {
       assertInitialized(initialized)
       const target = { kind: 'card' as const, cardId: input.cardId }
       const record = packageRecord(input.packageId, target)
-      const installation = (await options.listInstallations()).installations.find(item => item.id === extensionInstallationId(input.packageId, target))
+      const installations = (await options.listInstallations()).installations
+      const installation = installations.find(item => item.id === extensionInstallationId(input.packageId, target))
       if (installation?.version !== input.expectedInstallationVersion) throw new Error('Extension installation changed before uninstall')
+      assertCardDependentsCompatible(installations, input.packageId, target.cardId)
       await stopCardPackage(record, target)
       await options.removePackageResources({ packageId: input.packageId, target, expectedInstallationVersion: input.expectedInstallationVersion, uninstall: true })
       await forgetCardPackage(record, target)
@@ -779,7 +830,7 @@ export function createServerExtensionManager(options: {
         flat: true,
       })
       try {
-        validateInstalledDependencies(installed.manifest, catalog)
+        await validateDependencies(installed.manifest)
         if (catalog.has(installed.manifest.id)) {
           throw new Error(`Extension Package source already exists: ${installed.manifest.id}`)
         }
@@ -815,7 +866,7 @@ export function createServerExtensionManager(options: {
         flat: true,
       })
       try {
-        validateInstalledDependencies(installed.manifest, catalog)
+        await validateDependencies(installed.manifest)
         await writeFile(join(installed.directory, '.loom-zip-install'), 'installed\n')
         if (catalog.has(installed.manifest.id)) {
           throw new Error(`Extension Package source already exists: ${installed.manifest.id}`)
@@ -848,6 +899,7 @@ export function createServerExtensionManager(options: {
       assertInitialized(initialized)
       const record = requirePackage(catalog, packageId)
       if (deleteData && !options.deleteData) throw new Error('Extension data deletion is unavailable')
+      await options.assertDependencyConsumers?.(packageId, { kind: 'global' })
       const dependents = [...catalog].filter(([id, entry]) => id !== packageId && entry.manifest.dependencies?.some(item => item.id === packageId)).map(([id]) => id)
       if (dependents.length) throw new Error(`Extension is required by: ${dependents.join(', ')}. Uninstall dependent extensions first.`)
       if (version !== undefined && version !== record.manifest.version) {
@@ -905,7 +957,7 @@ export function createServerExtensionManager(options: {
       assertInitialized(initialized)
       const record = packageRecord(packageId, target)
       if (!record.available) throw new Error(`Extension package is unavailable: ${packageId}`)
-      validateInstalledDependencies(record.manifest, catalog)
+      await validateDependencies(record.manifest, target)
       const moduleManifest = requireModule(record.manifest, moduleId)
       if (target?.kind === 'card') await options.readCardPackage({ cardId: target.cardId, packageId, source: 'installed' })
       const previous = readDesiredState(options.stateStore, packageId, moduleId, target)
@@ -1022,6 +1074,13 @@ export function createServerExtensionManager(options: {
       if (!initialized) return []
       return readDesiredState(options.stateStore, packageId, moduleId, target).grantedAssetCapabilities
     },
+    readCharacterPackage: packageId => {
+      assertInitialized(initialized)
+      const record = requireAvailablePackage(catalog, packageId)
+      return { manifest: structuredClone(record.manifest),
+        fileUrl: path => packageFileUrl(packageId, record.fileRevision ?? record.manifest.version, path),
+        read: async path => (await readFileFromPackage(record, path)).bytes }
+    },
     readPackageIcon: async (packageId, version) => {
       assertInitialized(initialized)
       const record = requireAvailablePackage(catalog, packageId)
@@ -1041,6 +1100,16 @@ export function createServerExtensionManager(options: {
         bytes: await readFile(iconPath),
         mediaType: iconMediaType(iconPath),
       }
+    },
+    validatePackageAsset: async input => {
+      assertInitialized(initialized)
+      // Called from resource import as well as RPC: do not recursively acquire serialize().
+      const record = importingAssetSources.get(assetSourceKey(input.packageId, input.target, input.packageVersion))
+        ?? (input.target.kind === 'card'
+          ? await prepareCardPackage({ cardId: input.target.cardId, packageId: input.packageId, source: 'installed' })
+          : requireAvailablePackage(catalog, input.packageId))
+      if (record.manifest.version !== input.packageVersion) throw new Error('Package asset version does not match its installation')
+      await readFileFromPackage(record, input.path)
     },
     readPackageFile: async (packageId, version, path) => {
       assertInitialized(initialized)
@@ -1273,14 +1342,15 @@ function packageFileMediaType(filename: string): string {
   }
 }
 
-function validateInstalledDependencies(manifest: ExtensionManifest, catalog: Map<string, PackageCatalogRecord>): void {
-  for (const dependency of manifest.dependencies ?? []) {
-    const installed = catalog.get(dependency.id)
-    if (!installed?.available || !satisfiesExtensionVersion(installed.manifest.version, dependency.version)) {
-      throw new Error(`Dependency ${dependency.id}@${dependency.version} is missing or incompatible. Use the installation preview to review missing dependencies.`)
-    }
-  }
+function assertCardDependentsCompatible(
+  installations: ListExtensionInstallationsResult['installations'], packageId: string, cardId: string, nextVersion?: string,
+): void {
+  const blocked = installations.filter(item => item.packageId !== packageId && item.target.kind === 'card' && item.target.cardId === cardId
+    && item.dependencies?.some(dependency => dependency.id === packageId && dependency.target !== 'global'
+      && (nextVersion === undefined || !satisfiesExtensionVersion(nextVersion, dependency.version))))
+  if (blocked.length) throw new Error(`Extension is required by incompatible Card dependents: ${blocked.map(item => item.packageId).join(', ')}`)
 }
+
 
 function requirePackage(catalog: Map<string, PackageCatalogRecord>, packageId: string): PackageCatalogRecord {
   const record = catalog.get(packageId)

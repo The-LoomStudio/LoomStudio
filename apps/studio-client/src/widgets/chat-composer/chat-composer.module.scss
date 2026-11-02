@@ -17,7 +17,7 @@
   display: grid;
   grid-template-rows: auto auto;
   gap: 2px;
-  border: 1px solid color-mix(in srgb, var(--loom-color-border) 74%, transparent);
+  border: 0;
   border-radius: var(--loom-radius-window);
   padding: 8px 10px 6px;
   background: var(--loom-color-surface);
@@ -99,9 +99,9 @@
   place-items: center;
   border-radius: var(--loom-radius-full);
   padding: 0;
-  color: var(--loom-color-accent-foreground);
-  border-color: var(--loom-color-accent);
-  background: var(--loom-color-text);
+  color: var(--loom-color-text);
+  border: 1px solid var(--loom-color-border);
+  background: var(--loom-color-surface-subtle);
   cursor: pointer;
   transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 
@@ -110,24 +110,11 @@
     opacity: 0.45;
   }
 
-  &[data-run='running'] {
-    background: var(--loom-color-surface-raised, #27272a);
-    color: var(--loom-color-text);
-    border: 1px solid var(--loom-color-border);
-
-    &:hover {
-      background: color-mix(in srgb, var(--loom-color-surface-raised, #27272a) 80%, white 20%);
-    }
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--loom-color-surface-subtle) 85%, var(--loom-color-text) 15%);
   }
+  &:focus-visible { outline: 2px solid var(--loom-color-accent); outline-offset: 2px; }
 
-  &[data-run='suspended'] {
-    background: var(--loom-color-accent);
-    color: var(--loom-color-accent-foreground, #ffffff);
-
-    &:hover {
-      filter: brightness(1.1);
-    }
-  }
 }
 
 .composer .utilityButton {
@@ -183,3 +170,8 @@
     transition: none;
   }
 }
+
+
+.inputSurface[data-dragging] { position: relative; outline: 2px dashed var(--loom-color-accent); outline-offset: -2px; }
+.dropHint { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; pointer-events: none; border-radius: inherit; background: color-mix(in srgb, var(--loom-color-surface) 90%, transparent); color: var(--loom-color-text); }
+.attachmentNotice { margin: 4px 8px; font-size: 12px; color: var(--loom-color-text-muted); overflow-wrap: anywhere; }

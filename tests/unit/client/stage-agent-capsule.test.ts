@@ -9,7 +9,7 @@ describe('resolveAgentRuntimePhase', () => {
     expect(resolveAgentRuntimePhase({ runId: 'r1', status: 'completed' } as ActiveAgentRun, [])).toEqual({ kind: 'idle' })
   })
 
-  it('detects approval requirement when approval is present or suspended', () => {
+  it('only reports approval when an approval request exists', () => {
     const approvalRun: ActiveAgentRun = {
       runId: 'r1',
       status: 'running',
@@ -24,10 +24,7 @@ describe('resolveAgentRuntimePhase', () => {
       runId: 'r2',
       status: 'suspended',
     }
-    expect(resolveAgentRuntimePhase(suspendedRun, [])).toEqual({
-      kind: 'approval',
-      text: '等待确认',
-    })
+    expect(resolveAgentRuntimePhase(suspendedRun, [])).toEqual({ kind: 'idle' })
   })
 
   it('detects active reasoning in running state', () => {
@@ -38,7 +35,7 @@ describe('resolveAgentRuntimePhase', () => {
         agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
-        entry: { kind: 'reasoning', content: 'Thinking...' },
+        entry: { source: 'provider-native' as const, visibility: 'collapsed' as const, replay: 'omit' as const, kind: 'reasoning' as const, content: 'Thinking...' },
       },
     ]
 
@@ -58,7 +55,7 @@ describe('resolveAgentRuntimePhase', () => {
         agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
-        entry: { kind: 'tool-invocation', invocationId: 'inv1', toolId: 'web_search', exposedName: '网页搜索' },
+        entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'inv1', toolId: 'web_search', exposedName: '网页搜索' },
       },
     ]
     expect(resolveAgentRuntimePhase(runningRun, searchMessages)).toEqual({
@@ -73,7 +70,7 @@ describe('resolveAgentRuntimePhase', () => {
         agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
-        entry: { kind: 'tool-invocation', invocationId: 'inv2', toolId: 'read_worldbook', exposedName: '读取世界书' },
+        entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'inv2', toolId: 'read_worldbook', exposedName: '读取世界书' },
       },
     ]
     expect(resolveAgentRuntimePhase(runningRun, readMessages)).toEqual({
@@ -88,7 +85,7 @@ describe('resolveAgentRuntimePhase', () => {
         agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
-        entry: { kind: 'tool-invocation', invocationId: 'inv3', toolId: 'codeact_edit', exposedName: '编辑代码' },
+        entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'inv3', toolId: 'codeact_edit', exposedName: '编辑代码' },
       },
     ]
     expect(resolveAgentRuntimePhase(runningRun, writeMessages)).toEqual({
@@ -106,21 +103,21 @@ describe('resolveAgentRuntimePhase', () => {
         agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:00Z',
-        entry: { kind: 'reasoning', content: 'thinking after tool' },
+        entry: { source: 'provider-native' as const, visibility: 'collapsed' as const, replay: 'omit' as const, kind: 'reasoning' as const, content: 'thinking after tool' },
       },
       {
         id: 'm2',
         agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:01Z',
-        entry: { kind: 'tool-invocation', invocationId: 'inv1', toolId: 'read_file' },
+        entry: { exposedName: 'read_file', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'inv1', toolId: 'read_file' },
       },
       {
         id: 'm3',
         agentSessionId: 's1', sequence: 1,
         runId: 'r1',
         createdAt: '2026-10-11T00:00:02Z',
-        entry: { kind: 'tool-result', invocationId: 'inv1', content: 'file content' },
+        entry: { toolId: 'read', status: 'completed' as const, kind: 'tool-result' as const, invocationId: 'inv1', content: [{ type: 'text' as const, text: 'file content' }] },
       },
     ]
 

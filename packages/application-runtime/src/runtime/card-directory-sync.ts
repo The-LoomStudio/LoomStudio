@@ -1,3 +1,5 @@
+import { parseCardFrameworkFields, validateCardFramework } from '../cards/card-framework.js'
+import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
 import { isDeepStrictEqual } from 'node:util'
 import type { PromptResource, PromptResourceTransaction, PromptResourceTreeNode } from '@loom-studio/application-data'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
@@ -102,6 +104,7 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
         const current = await capture(input.cardId)
         if (!equal(input.snapshot, current.snapshot)) throw new Error('Card directory version conflict; save or recapture before Apply')
         const artifact = normalizeCardBundleArtifact(input.artifact)
+        await validateCardFramework(ctx.documents, ctx.promptResources, artifact.card)
         const old = current.artifact
         for (const key of ['artifactId', 'derivedFrom', 'displayName', 'description', 'textTransformRules', 'textExtractors', 'extensionPackages', 'metadata'] as const) {
           if (!equal(baseline(artifact)[key], baseline(old)[key])) throw new Error(`Card directory does not support changing ${key}`)
@@ -161,7 +164,7 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
           }
           if (!ctx.blobs) throw new Error('Blob Store is required for Card directory Script changes')
           preparedScripts.push({ ...item, attachment, metadata, sourceChanged, prepared: sourceChanged ? await ctx.blobs.prepareWrite({
-            source: new TextEncoder().encode(attachment.script.source), mediaType: 'text/javascript',
+            source: new TextEncoder().encode(attachment.script.source), mediaType: loomScriptMediaType(attachment.script.fileName),
           }) : undefined })
         }
         if (artifact.card.media !== undefined && !equal(artifact.card.media, old.card.media)) throw new Error('Card directory cannot change Media Asset references')
@@ -198,7 +201,7 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
               if (item.prepared) {
                 const blob = ctx.blobs!.participateWrite(tx, item.prepared).blob
                 await writeDocument(documents, { id: item.script.id, type: types.loomScript, expectedVersion: item.script.version,
-                  content: { ...item.script.content, ...item.metadata, source: { blobId: blob.id, mediaType: 'text/javascript', fileName: item.attachment.script.fileName }, sourceDigest: blob.sha256, updatedAt: timestamp } })
+                  content: { ...item.script.content, ...item.metadata, source: { blobId: blob.id, mediaType: loomScriptMediaType(item.attachment.script.fileName), fileName: item.attachment.script.fileName }, sourceDigest: blob.sha256, updatedAt: timestamp } })
               }
               const origin = { ...item.mount.content.origin }
               if (item.attachment.resourceOrigin === undefined) delete origin.resourceOrigin
@@ -212,6 +215,8 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
             const next = normalizeCardContent({
               ...current.card.content,
               ...normalizeCardEditableFields(artifact.card),
+              extensionDependencies: undefined, defaultPreset: undefined,
+              ...parseCardFrameworkFields(artifact.card),
               promptResourceIds: artifact.contextAssets.map(node => prompts.get(node.id)!.id),
               ...(artifact.externalContextAssetIds !== undefined || current.card.content.externalPromptResourceIds !== undefined ? {
                 externalPromptResourceIds: (artifact.externalContextAssetIds ?? []).map(id => prompts.get(id)!.id),

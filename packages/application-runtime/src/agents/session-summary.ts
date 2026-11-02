@@ -204,8 +204,9 @@ export function createSessionSummaryCoordinator(ctx: Context) {
     const signal = request?.abortSignal ? AbortSignal.any([request.abortSignal, task.controller.signal]) : task.controller.signal
     task.promise = (async () => {
       try {
-        if (source.entryCount !== plan.expectedEntryCount
-          || Math.max(...source.entries.map(entry => entry.sequence)) !== plan.boundary.sourceThroughSequence) throw new Error('Session changed while preparing its summary snapshot')
+        if (source.entryCount < plan.expectedEntryCount
+          || source.entries.some(entry => entry.sequence > plan.boundary.sourceThroughSequence && entry.entry.kind !== 'user-interjection')
+          || Math.max(...source.entries.filter(entry => entry.sequence <= plan.boundary.sourceThroughSequence).map(entry => entry.sequence)) !== plan.boundary.sourceThroughSequence) throw new Error('Session changed while preparing its summary snapshot')
         await record(task, 'preparing', '正在整理此 Session 的工作交接。', request)
         const messages = markHistoryBoundary(plan, source.messages, source.entries)
         const profile = await ctx.documents.get(source.model.providerProfileId)
@@ -316,7 +317,7 @@ export function createSessionSummaryCoordinator(ctx: Context) {
     }
     return status(sessionId)
   }
-  return { status, start, adopt, forget: (sessionId: string) => {
+  return { status, start, adopt, wait: async (sessionId: string) => { await pending.get(sessionId)?.promise }, forget: (sessionId: string) => {
     pending.get(sessionId)?.controller.abort('Session deleted')
     pending.delete(sessionId)
   }, cancel: async (sessionId: string) => {

@@ -1,6 +1,6 @@
 import { memo, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { STUDIO_PANEL_IDS, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
-import { LoadingText } from '@loom-studio/ui'
+import { StudioPanelLoading } from './studio-panel-loading.js'
 import styles from './studio-page.module.scss'
 
 type StudioPanelHostProps = {
@@ -45,7 +45,7 @@ const StudioPanelStage = memo(function StudioPanelStage(props: {
       data-loom-object={`${props.panel}-panel`}
     >
       {visited || props.active ? (
-        <Suspense fallback={<div aria-busy="true" className={styles.panelLoading}><LoadingText /></div>}>
+        <Suspense fallback={<StudioPanelLoading />}>
           {props.render(props.active)}
         </Suspense>
       ) : null}

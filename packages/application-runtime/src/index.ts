@@ -254,3 +254,5 @@ export { readUserBackgrounds, userBackgroundsDocumentId } from './profiles/user-
 export type { UserBackground, UserBackgroundsContent, UserBackgroundsConfig, AddUserBackgroundInput, RemoveUserBackgroundInput } from './profiles/user-backgrounds.js'
 
 export { officialDeclareNarrativeTool } from './agents/official-tools/index.js'
+export { resolvePackageDependency } from './extensions/package-dependency.js'
+export type { ResolvePackageDependencyInput, ResolvedPackageDependency } from './extensions/package-dependency.js'

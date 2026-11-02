@@ -1,10 +1,10 @@
 {
   "manifestVersion": 2,
   "id": "official.themes",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "displayName": "官方主题",
   "icon": "./icon.png",
-  "description": "纸页与潮汐主题，以及轻动效、薄荷和琥珀样式增强。",
+  "description": "经典配色与极简黑白主题，包含界面及代码高亮颜色；样式增强独立选择。",
   "author": "Loom Studio",
   "engines": {
     "studio": "^0.1.0"
@@ -19,61 +19,135 @@
   "contributes": {
     "themes": [
       {
-        "id": "paper",
-        "label": "纸页",
-        "description": "暖色叙事画布、包内纹理与设置图标，不需要运行代码。",
-        "css": "./paper.css",
+        "id": "catppuccin",
+        "label": "Catppuccin Mocha",
+        "description": "Studio 原有的紫色强调与暖灰暗色配色，包含状态色和编辑器语法色。",
+        "css": "./catppuccin.css",
         "nativeMotion": "retain",
-        "parameters": [
-          {
-            "id": "canvas-width",
-            "label": "正文画布宽度",
-            "variable": "--loom-canvas-width",
-            "type": "number",
-            "default": 760,
-            "min": 540,
-            "max": 1120,
-            "step": 20,
-            "unit": "px"
-          },
-          {
-            "id": "blur",
-            "label": "面板模糊",
-            "variable": "--loom-preview-blur",
-            "type": "number",
-            "default": 12,
-            "min": 0,
-            "max": 32,
-            "step": 1,
-            "unit": "px"
-          },
-          {
-            "id": "texture",
-            "label": "纸张纹理强度",
-            "variable": "--extension-paper-texture",
-            "type": "number",
-            "default": 0.5,
-            "min": 0,
-            "max": 1,
-            "step": 0.05
-          }
+        "previewColors": [
+          "#1e1e2e",
+          "#313244",
+          "#cba6f7"
         ]
       },
       {
-        "id": "tide",
-        "label": "潮汐",
-        "css": "./tide.css",
-        "parameters": [
-          {
-            "id": "radius",
-            "label": "输入框圆角",
-            "variable": "--extension-tide-radius",
-            "type": "number",
-            "default": 12,
-            "min": 0,
-            "max": 24,
-            "unit": "px"
-          }
+        "id": "indigo-dark",
+        "label": "靛蓝深色",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./indigo-dark.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#282a2e",
+          "#1e1f22",
+          "#5865f2"
+        ]
+      },
+      {
+        "id": "indigo-light",
+        "label": "靛蓝浅色",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./indigo-light.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#f7f8fb",
+          "#ffffff",
+          "#5865f2"
+        ]
+      },
+      {
+        "id": "warm-orange",
+        "label": "暖灰陶橙",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./warm-orange.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "oklch(0.2679 0.0036 106.6427)",
+          "oklch(0.2679 0.0036 106.6427)",
+          "oklch(0.6724 0.1308 38.7559)"
+        ]
+      },
+      {
+        "id": "nord",
+        "label": "Nord",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./nord.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#2e3440",
+          "#3b4252",
+          "#88c0d0"
+        ]
+      },
+      {
+        "id": "everforest",
+        "label": "Everforest",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./everforest.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#2d353b",
+          "#343f44",
+          "#a7c080"
+        ]
+      },
+      {
+        "id": "yozakura-night",
+        "label": "Yozakura Night",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./yozakura-night.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#14101f",
+          "#1e172e",
+          "#db7cf0"
+        ]
+      },
+      {
+        "id": "tokyo-night",
+        "label": "Tokyo Night",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./tokyo-night.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#1a1b26",
+          "#24283b",
+          "#7aa2f7"
+        ]
+      },
+      {
+        "id": "black-blue",
+        "label": "曜黑亮蓝",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./black-blue.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#000000",
+          "#000000",
+          "#1d9bf0"
+        ]
+      },
+      {
+        "id": "mono-dark",
+        "label": "极简黑",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./mono-dark.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#09090b",
+          "#18181b",
+          "#fafafa"
+        ]
+      },
+      {
+        "id": "mono-light",
+        "label": "极简白",
+        "description": "界面与代码高亮配色；保留当前布局、字体和材质。",
+        "css": "./mono-light.css",
+        "nativeMotion": "retain",
+        "previewColors": [
+          "#ffffff",
+          "#fafafa",
+          "#18181b"
         ]
       }
     ],

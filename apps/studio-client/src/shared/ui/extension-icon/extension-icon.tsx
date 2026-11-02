@@ -1,3 +1,4 @@
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { PromptResourceDisplayMetadata } from '@loom-studio/shared'
 import { createContext, useContext, useState } from 'react'
 import { Package } from 'lucide-react'
@@ -7,10 +8,12 @@ type ExtensionIdentity = {
   target?: { kind: 'global' } | { kind: 'card'; cardId: string }; archiveDigest?: string
 }
 
-export function presetIconUrl(preset: { metadata?: PromptResourceDisplayMetadata; origin?: { kind: string; packageId?: string } }, packages: readonly ExtensionIdentity[]): string | undefined {
+export function presetIconUrl(preset: { metadata?: PromptResourceDisplayMetadata; origin?: { kind: string; packageId?: string; installationId?: string } }, packages: readonly ExtensionIdentity[]): string | undefined {
   const icon = preset.metadata?.icon
   if (icon) {
-    const target = icon.target
+    // Legacy global icons predate target binding. Card references always require an exact Card target.
+    const target = icon.target ?? (icon.scope === 'card' ? undefined : { kind: 'global' as const })
+    if (!target) return undefined
     const pkg = packages.find(item => item.packageId === icon.packageId && (target?.kind === 'card'
       ? item.target?.kind === 'card' && item.target.cardId === target.cardId
       : item.target?.kind !== 'card'))
@@ -20,8 +23,13 @@ export function presetIconUrl(preset: { metadata?: PromptResourceDisplayMetadata
         if (pkg.archiveDigest) return `/card-extensions/${encodeURIComponent(target.cardId)}/${encodeURIComponent(pkg.packageId)}/${encodeURIComponent(pkg.version)}/${pkg.archiveDigest}/files/${path}`
       } else return `/extensions/${encodeURIComponent(pkg.packageId)}/${encodeURIComponent(pkg.fileRevision ?? pkg.version)}/files/${path}`
     }
+    return undefined
   }
-  return packages.find(item => item.packageId === preset.origin?.packageId)?.iconUrl
+  const origin = preset.origin
+  if (!origin?.packageId) return undefined
+  const installationId = origin.installationId ?? extensionInstallationId(origin.packageId, { kind: 'global' })
+  return packages.find(item => item.packageId === origin.packageId
+    && extensionInstallationId(item.packageId, item.target ?? { kind: 'global' }) === installationId)?.iconUrl
 }
 
 // Reuse the runtime's discovered package metadata without issuing per-view requests.

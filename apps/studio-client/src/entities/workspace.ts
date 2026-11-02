@@ -7,8 +7,6 @@ export type {
   LoreMountSource,
 } from '@loom-studio/shared'
 import type { MutationReceipt } from './common.js'
-import type { Card } from './card.js'
-import type { ContextAssetNode } from './context-asset.js'
 
 export type CardBundleArtifact = StudioRpcOutputs['application']['exportCardBundle']['artifact']
 
@@ -51,19 +49,7 @@ export type PromptResource = StudioRpcOutputs['application']['getPromptResource'
 
 export type { PresetToolMount, PresetToolMountInput, ListPresetToolMountsResult, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
 
-
 export type PromptResourceArtifact = StudioRpcOutputs['application']['exportPromptResource']['artifact']
-
-type ImportBundle = {
-  id: string
-  version: number
-  cardId: string
-  documentIds: string[]
-  sourceArtifact: CardBundleArtifact
-  sourceArtifactRef: ClientJsonValue
-  bindings: ClientJsonValue[]
-  importedAt: string
-}
 
 export type GetPromptResourceResult = {
   resource: PromptResource

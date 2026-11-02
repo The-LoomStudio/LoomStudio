@@ -1,8 +1,8 @@
+@use '../../../shared/styles/floating-material';
+
 .panel {
   min-width: 0;
-  padding: 6px 14px 18px;
-  border-radius: var(--loom-radius-window) var(--loom-radius-window) 0 0;
-  background: var(--loom-color-surface-subtle);
+  flex: 1;
   color: var(--loom-color-text);
 }
 
@@ -86,7 +86,7 @@
 .toggle { flex-shrink: 0; }
 .chevron { transition: transform 240ms ease; }
 .panel[data-open='true'] .chevron { transform: rotate(180deg); }
-.expansion { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms cubic-bezier(.22, 1, .36, 1), opacity 180ms ease; }
+.expansion { position: absolute; bottom: calc(100% + 10px); left: 0; width: min(560px, calc(100vw - 48px)); box-sizing: border-box; border-radius: var(--loom-radius-window); background: var(--loom-color-surface); box-shadow: 0 6px 24px #0003; padding-inline: 14px; display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 240ms cubic-bezier(.22, 1, .36, 1), opacity 180ms ease; }
 .expansion[data-open='true'] { grid-template-rows: 1fr; opacity: 1; transition-duration: 300ms, 260ms; }
 .clip { min-height: 0; overflow: hidden; }
 .details { padding-top: 6px; }
@@ -98,4 +98,17 @@
   :global(html:not([data-loom-motion='full'])) .expansion,
   :global(html:not([data-loom-motion='full'])) .chevron { transition: none; }
 }
-@media (max-width: 480px) { .bar { flex-wrap: wrap; gap: 0; } .summary { width: 100%; padding-bottom: 4px; } }
+@media (max-width: 768px) {
+  .bar { flex-direction: column; align-items: flex-start; gap: 0; }
+  .toggle { max-width: 100%; text-align: left; }
+  .summary { width: 100%; padding-bottom: 4px; white-space: normal; overflow-wrap: anywhere; }
+}
+
+.runningIcon { animation: task-running 1.2s linear infinite; }
+@keyframes task-running { to { transform: rotate(360deg); } }
+:global(html[data-loom-motion='reduce']) .runningIcon { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-loom-motion='full'])) .runningIcon { animation: none; }
+}
+
+.expansion { @include floating-material.glass; }

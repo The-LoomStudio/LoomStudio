@@ -53,11 +53,11 @@ async function readLegacyProviderFailureBaseline(
   }
 }
 
-export async function readDiscussionRetry(ctx: RetryContext, input: InvokeAgentTurnInput, request?: RuntimeRequestContext): Promise<DiscussionRetry | undefined> {
+export async function readDiscussionRetry(ctx: RetryContext, input: InvokeAgentTurnInput, request?: RuntimeRequestContext, allowSuspended = false): Promise<DiscussionRetry | undefined> {
   if (!input.retry) return undefined
   if (input.contextMode === 'isolated' || input.resume || request?.agentRun?.continuation || input.narrativeTarget?.inputNodeId || input.narrativeTarget?.swipe)
     throw retryError('invalid_target', 'Discussion retry cannot be combined with continuation or story generation')
-  if (!input.input.trim()) throw retryError('empty_input', 'Retry input cannot be empty')
+  if (!input.input.trim() && !input.attachments?.length) throw retryError('empty_input', 'Retry input cannot be empty')
   const agents = requireAgents(ctx)
   const session = await agents.getSession(input.agentSessionId)
   if (session?.kind !== 'timeline') throw retryError('invalid_target', 'Discussion retry requires the Timeline Session')
@@ -83,13 +83,13 @@ export async function readDiscussionRetry(ctx: RetryContext, input: InvokeAgentT
   const user = await agents.getEntry(input.retry.entryId)
   if (!user || user.agentSessionId !== session.id || user.entry.kind !== 'message' || user.entry.role !== 'user' || user.entry.purpose === 'narrative' || !user.runId)
     throw retryError('superseded', 'Only the latest adopted discussion input can be retried')
-  if ([...states.values()].some(state => ['created', 'running', 'suspended'].includes(state)))
+  if ([...states.values()].some(state => (allowSuspended ? ['created', 'running'] : ['created', 'running', 'suspended']).includes(state)))
     throw retryError('unfinished', 'Finish or abandon the interrupted Run before retrying')
   const checkpoint = await agents.findRunCheckpoint({ agentSessionId: session.id, runId: user.runId })
   const recovery = checkpoint?.entry.kind === 'run-state' ? checkpoint.entry.recovery : undefined
-  if (recovery?.materialBaseline && recovery.userEntryId !== user.id)
+  if (!user.entry.editBaseline && recovery?.materialBaseline && recovery.userEntryId !== user.id)
     throw retryError('baseline_missing', 'The saved material baseline does not identify this user input')
-  const baseline = recovery?.materialBaseline
+  const baseline = user.entry.editBaseline ? parseAgentRunMaterialBaseline(user.entry.editBaseline) : recovery?.materialBaseline
     ? parseAgentRunMaterialBaseline(recovery.materialBaseline)
     : await readLegacyProviderFailureBaseline(ctx, user, latestUser, afterUser, page.branch, session.entryCount)
   if (baseline.timelineId !== session.id || baseline.branchId !== page.branch.id || baseline.headEntryId !== (user.parentEntryId ?? null))

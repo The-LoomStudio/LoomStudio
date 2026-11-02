@@ -37,12 +37,12 @@ describe('mergeAgentRunEntries', () => {
     const user = entry('user', 1, { kind: 'message', role: 'user', content: 'Go' })
     const running = entry('run-state', 2, { kind: 'run-state', state: 'running' })
     const call = entry('call', 4, {
-      kind: 'tool-invocation', invocationId: 'call-1', toolId: 'read',
-      exposedName: 'read', transport: 'native-function', status: 'proposed',
+      kind: 'tool-invocation' as const, invocationId: 'call-1', toolId: 'read',
+      exposedName: 'read', transport: 'native-function' as const, status: 'proposed' as const,
     })
     const result = entry('result', 5, {
-      kind: 'tool-result', invocationId: 'call-1', toolId: 'read',
-      status: 'completed', content: [{ type: 'text', text: 'done' }],
+      kind: 'tool-result' as const, invocationId: 'call-1', toolId: 'read',
+      status: 'completed' as const, content: [{ type: 'text', text: 'done' }],
     })
     const initial = mergeAgentRunEntries([optimistic, streaming], [user, running], run)
     expect(initial.map(item => item.id)).toEqual(['user', 'run-state', 'streaming'])
@@ -157,7 +157,7 @@ describe('Timeline execution placement', () => {
     const projection = projectTimelineRounds([
       entry('preparation', { kind: 'message', role: 'user', content: 'Preparation' }, 'earlier'),
       entry('input', { kind: 'message', role: 'user', purpose: 'narrative', narrativeId: 'logical-input', content: 'Act' }),
-      entry('work', { kind: 'reasoning', visibility: 'visible', content: 'Think' }),
+      entry('work', { source: 'provider-native' as const, replay: 'omit' as const, kind: 'reasoning' as const, visibility: 'visible' as const, content: 'Think' }),
       { ...entry('canonical-story', { kind: 'message', role: 'assistant', purpose: 'narrative', narrativeId: 'independent-logical-id', content: 'Story' }), agentSessionId: 'helper' },
     ], nodes, 'Writer')
     expect(projection[0]?.discussions.map(run => run.input)).toEqual(['Preparation'])
@@ -170,7 +170,7 @@ describe('Timeline execution placement', () => {
       entry('partial-2', { kind: 'message', role: 'assistant', content: 'First second', state: 'partial', continuesEntryId: 'partial-1' }),
       entry('final', { kind: 'message', role: 'assistant', content: 'First second final', continuesEntryId: 'partial-2' }),
     ], [], 'Writer')
-    expect(projection.flatMap(round => round.execution.steps.map(step => step.content))).toEqual(['First second final'])
+    expect(projection.flatMap(round => round.communications.flatMap(group => group.execution.steps.map(step => step.content)))).toEqual(['First second final'])
   })
 })
 
@@ -187,8 +187,8 @@ describe('Timeline round reading projection', () => {
 
   it('preserves work/prose order in one execution and keeps guidance in its own candidate communication', () => {
     const rounds = projectTimelineRounds([user,
-      entry('read', { kind: 'tool-invocation', invocationId: 'read', toolId: 'read', arguments: {} }), story,
-      entry('change', { kind: 'tool-invocation', invocationId: 'change', toolId: 'change', arguments: {} }),
+      entry('read', { exposedName: 'read', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'read', toolId: 'read', arguments: {} }), story,
+      entry('change', { exposedName: 'change', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'change', toolId: 'change', arguments: {} }),
       entry('done', { kind: 'message', role: 'assistant', content: 'Done' }),
       entry('guide', { kind: 'message', role: 'user', content: 'Revise this' }, 'round', 'discuss'),
       entry('response', { kind: 'message', role: 'assistant', content: 'Revised' }, 'round', 'discuss'),
@@ -203,7 +203,7 @@ describe('Timeline round reading projection', () => {
     const opening = node('opening', 'narrative')
     const start = entry('opening', { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Opening' })
     const guidance = entry('guide', { kind: 'message', role: 'user', content: 'Test prose' }, 'round', 'discuss')
-    const declare = entry('declare', { kind: 'tool-invocation', invocationId: 'declare', toolId: 'official/declare_narrative' }, 'round', 'discuss')
+    const declare = entry('declare', { exposedName: 'official/declare_narrative', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'declare', toolId: 'official/declare_narrative' }, 'round', 'discuss')
     const prose = entry('second', { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Second' }, 'round', 'discuss')
     const report = entry('report', { kind: 'message', role: 'assistant', content: 'Done' }, 'round', 'discuss')
     const before = projectTimelineRounds([start, guidance, declare], [opening], 'Writer')
@@ -218,7 +218,7 @@ describe('Timeline round reading projection', () => {
   it('renders newly declared streaming prose in the reading flow while its discussion stays at the old floor', () => {
     const rounds = projectTimelineRounds([user, story,
       entry('guide', { kind: 'message', role: 'user', content: 'Add prose' }, 'round', 'discuss'),
-      entry('declare', { kind: 'tool-result', invocationId: 'declare', toolId: 'official/declare_narrative', status: 'completed' }, 'round', 'discuss'),
+      entry('declare', { content: [], kind: 'tool-result' as const, invocationId: 'declare', toolId: 'official/declare_narrative', status: 'completed' as const }, 'round', 'discuss'),
       entry('streaming-prose', { kind: 'message', role: 'assistant', content: 'New prose' }, 'round', 'discuss'),
     ], [node('input', 'user-input'), node('story', 'narrative')], 'Writer', { runId: 'discuss', status: 'running' })
     expect(rounds[0]?.execution.steps.map(step => step.kind)).toEqual(['narrative', 'narrative'])
@@ -242,7 +242,7 @@ describe('Timeline round reading projection', () => {
   it('does not show work from rounds outside the loaded prose window', () => {
     const rounds = projectTimelineRounds([
       entry('old-guide', { kind: 'message', role: 'user', content: 'Old discussion' }, 'old'),
-      entry('old-tool', { kind: 'tool-invocation', invocationId: 'old-tool', toolId: 'old' }, 'old'), user, story,
+      entry('old-tool', { exposedName: 'old', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'old-tool', toolId: 'old' }, 'old'), user, story,
     ], [node('input', 'user-input'), node('story', 'narrative')], 'Writer')
     expect(rounds).toHaveLength(1)
     expect(rounds[0]?.execution.steps.map(step => step.content)).toEqual(['story'])
@@ -252,8 +252,8 @@ describe('Timeline round reading projection', () => {
   it('shows revised prose in the original work position without repeating the late revision Entry', () => {
     const revision = { ...node('revision', 'narrative', 'write'), body: { format: 'loom-markdown.v1' as const, raw: 'Edited story' } }
     const rounds = projectTimelineRounds([user,
-      entry('read', { kind: 'tool-invocation', invocationId: 'read', toolId: 'read' }), story,
-      entry('after', { kind: 'tool-invocation', invocationId: 'after', toolId: 'after' }),
+      entry('read', { exposedName: 'read', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'read', toolId: 'read' }), story,
+      entry('after', { exposedName: 'after', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'after', toolId: 'after' }),
       entry('revision', { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Edited story' }, 'round', 'revision-run'),
     ], [node('input', 'user-input'), revision], 'Writer')
     expect(rounds[0]?.execution.steps.map(step => step.kind)).toEqual(['tool', 'narrative', 'tool'])
@@ -265,7 +265,7 @@ describe('Timeline round reading projection', () => {
     const revised = { ...original, entryId: 'late-edit', body: { ...original.body, raw: 'Edited' } }
     const rounds = projectTimelineRounds([user, story,
       entry('next-input', { kind: 'message', role: 'user', purpose: 'narrative', content: 'Next' }, 'next', 'next-write'),
-      entry('next-tool', { kind: 'tool-invocation', invocationId: 'next-tool', toolId: 'read' }, 'next', 'next-write'),
+      entry('next-tool', { exposedName: 'read', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'next-tool', toolId: 'read' }, 'next', 'next-write'),
       entry('next-story', { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Next story' }, 'next', 'next-write'),
       entry('late-edit', { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Edited' }, 'next', 'edit'),
     ], [node('input', 'user-input'), revised, node('next-input', 'user-input'), node('next-story', 'narrative', 'next-write')], 'Writer')
@@ -275,7 +275,7 @@ describe('Timeline round reading projection', () => {
 
   it('consumes a declaration once adopted prose arrives so later ordinary streaming remains communication', () => {
     const rounds = projectTimelineRounds([user,
-      entry('declare', { kind: 'tool-result', invocationId: 'declare', toolId: 'official/declare_narrative', status: 'completed' }), story,
+      entry('declare', { content: [], kind: 'tool-result' as const, invocationId: 'declare', toolId: 'official/declare_narrative', status: 'completed' as const }), story,
       entry('streaming-final', { kind: 'message', role: 'assistant', content: 'Finishing up' }),
     ], [node('input', 'user-input'), node('story', 'narrative')], 'Writer')
     expect(rounds[0]?.execution.steps.map(step => step.kind)).toEqual(['narrative', 'reply'])

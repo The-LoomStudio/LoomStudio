@@ -536,7 +536,7 @@ async function readLoomCityArtifact(): Promise<CardBundleArtifact> {
 }
 
 async function readOfficialContentInput() {
-  const catalog = JSON.parse(await readFile(join(process.cwd(), 'official/starter/catalog.json'), 'utf8')) as {
+  const catalog = JSON.parse(await readFile(join(process.cwd(), 'tests/fixtures/legacy-official-starter/catalog.json'), 'utf8')) as {
     id: string
     version: string
     resources: Array<{ id: string; path: string }>
@@ -547,7 +547,7 @@ async function readOfficialContentInput() {
     packageVersion: catalog.version,
     resources: await Promise.all(catalog.resources.map(async resource => ({
       id: resource.id,
-      artifact: JSON.parse(await readFile(join(process.cwd(), 'official/starter', resource.path), 'utf8')),
+      artifact: JSON.parse(await readFile(join(process.cwd(), 'tests/fixtures/legacy-official-starter', resource.path), 'utf8')),
     }))),
     loreMounts: catalog.loreMounts,
   }

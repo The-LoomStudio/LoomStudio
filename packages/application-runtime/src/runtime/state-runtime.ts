@@ -1,4 +1,7 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { readPlayerProfile } from '@loom-studio/shared'
+import { hasPlayerProfile } from '../profiles/player-state.js'
+import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
 import { listStateDefinitionDocuments } from '@loom-studio/application-data'
 import { assertExtensionTimelineAccess } from './extension-resource-access.js'
 import { inspectStateSources } from '../state/state-source-inspection.js'
@@ -50,7 +53,9 @@ export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
     getStateSnapshot: async (input: GetStateSnapshotInput): Promise<GetStateSnapshotResult> => {
       input = structuredClone(input)
       await assertExtensionTimelineAccess(ctx.narratives, input.extensionTarget, input.target.scope === 'timeline' ? input.target.timelineId : undefined)
-      return { snapshot: await getApplicationStateSnapshot(ctx, input.target) }
+      const snapshot = await getApplicationStateSnapshot(ctx, input.target)
+      const context = input.target.scope === 'timeline' ? await readTimelineRuntimeContext(ctx, input.target.timelineId) : undefined
+      return { snapshot, ...(hasPlayerProfile(context) ? { playerProfile: readPlayerProfile(snapshot.value) } : {}) }
     },
 
     applyStateMutation: (input: ApplyStateMutationInput, requestContext?: RuntimeRequestContext): Promise<ApplyStateMutationResult> =>

@@ -6,7 +6,7 @@ import type { Translator } from '../../../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
 import { Toggle } from '@loom-studio/ui'
 import { resolveContextAssetUri } from '../../model/context-asset-tree.js'
-import { readContextAssetBadgeInfo } from '../context-asset-tree.js'
+import { readContextAssetBadgeInfo, readContextAssetToggleLabel } from '../context-asset-tree.js'
 import styles from './context-asset-detail-header.module.scss'
 
 type ContextAssetDetailHeaderProps = {
@@ -25,7 +25,8 @@ type ContextAssetDetailHeaderProps = {
 export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
   const [copied, setCopied] = useState(false)
   const copyTimeoutRef = useRef<number | null>(null)
-  const muted = props.node?.kind === 'entry' && props.node.enabled === false
+  const disabledBy = props.pathNodes?.find(parent => parent.id !== props.node?.id && parent.enabled === false)
+  const muted = props.node?.enabled === false || !!disabledBy
 
   useEffect(() => {
     return () => {
@@ -56,7 +57,7 @@ export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
         {props.toggleEnabled && props.node ? (
           <Toggle
             checked={props.node.enabled !== false}
-            label={props.t(props.node.enabled === false ? 'context.actionEnable' : 'context.actionDisable')}
+            label={readContextAssetToggleLabel(props.node, props.t)}
             onChange={props.onEnabledChange}
           />
         ) : null}
@@ -74,6 +75,8 @@ export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
           </button>
         ) : null}
       </div>
+      {disabledBy && <p className={styles.enablementHint} role="status">{props.t('context.disabledByAncestor', { label: disabledBy.label })}</p>}
+      {props.toggleEnabled && props.node?.kind === 'folder' && <p className={styles.enablementHint}>{props.t('context.groupEnableHint')}</p>}
       <div className={styles.titleRow}>
         {props.node ? (
           <div className={styles.titleWrapper}>

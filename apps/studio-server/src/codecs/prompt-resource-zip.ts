@@ -35,7 +35,14 @@ export function decodePromptResourceZip(source: Uint8Array): PromptResourceArtif
   const artifactBytes = files[manifest.artifactPath]
   if (!artifactBytes) throw new Error('Prompt Resource ZIP is missing its manifest or resource')
   const stored = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(artifactBytes))
-  const artifact = !legacy && isPromptResourceFilesIndex(stored) ? restorePromptResourceFiles(stored, new Map(Object.entries(files))) : legacy ? stored : undefined
-  if (!isPromptResourceArtifact(artifact) || artifact.resourceKind !== manifest.resourceKind) throw new Error('Invalid Prompt Resource ZIP artifact')
+  let artifact: PromptResourceArtifact
+  if (legacy) {
+    if (!isPromptResourceArtifact(stored)) throw new Error('Invalid Prompt Resource ZIP artifact')
+    artifact = stored
+  } else {
+    if (!isPromptResourceFilesIndex(stored)) throw new Error('Invalid Prompt Resource ZIP artifact')
+    artifact = restorePromptResourceFiles(stored, new Map(Object.entries(files)))
+  }
+  if (artifact.resourceKind !== manifest.resourceKind) throw new Error('Invalid Prompt Resource ZIP artifact')
   return artifact
 }

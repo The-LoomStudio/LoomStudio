@@ -157,10 +157,12 @@ export async function processPrompt(input: PromptDataModel, processing: {
         message: `Prompt processor cleanup failed: ${owners[index]}: ${String(result.reason)}` })
       return [result.reason]
     })
+    // eslint-disable-next-line no-unsafe-finally -- Preserve the primary failure together with cleanup failures.
     if (failed && errors.length) throw new AggregateError([primaryError, ...errors], primaryError instanceof Error ? primaryError.message : String(primaryError), { cause: primaryError })
     if (!failed) {
       signal.throwIfAborted()
       const blocking = errors.find(isBlockingProcessingError)
+      // eslint-disable-next-line no-unsafe-finally -- A blocking cleanup failure must prevent an otherwise successful result.
       if (blocking !== undefined) throw blocking
     }
   }

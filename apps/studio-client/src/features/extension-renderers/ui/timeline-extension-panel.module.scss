@@ -6,13 +6,6 @@
   color: var(--loom-color-text);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .panel h3 {
   font-size: 15px;
   overflow-wrap: anywhere;
@@ -95,9 +88,6 @@
   .actions { grid-column: 1 / -1; }
 }
 
-.source { color: var(--loom-color-text-muted); font-size: 12px; }
-.source summary { cursor: pointer; }
-.source code, .source small { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 .hint { color: var(--loom-color-text-muted); font-size: 12px; line-height: 1.6; }
 
 @media (max-width: 760px) {
@@ -107,3 +97,15 @@
 
 .choiceRow { padding: 12px 0; border-bottom: 1px solid var(--loom-color-divider); }
 .choiceRow > label { width: 100%; align-items: flex-start; }
+
+.packageHeading { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.sourceFacts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px 24px;
+  margin: 0;
+}
+
+.sourceFacts dt { color: var(--loom-color-text-muted); }
+.sourceFacts dd { margin: 0; overflow-wrap: anywhere; }

@@ -1,9 +1,20 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { MasterDetailWorkbench } from '../../../apps/studio-client/src/shared/ui/master-detail-workbench/master-detail-workbench.js'
 
 describe('MasterDetailWorkbench', () => {
+  it('starts in mobile single-pane layout instead of animating from desktop columns on tab mount', () => {
+    vi.stubGlobal('window', { innerWidth: 390 })
+    try {
+      const html = renderToStaticMarkup(createElement(MasterDetailWorkbench, {
+        master: '目录', children: '详情', mobilePane: 'master',
+      }))
+      expect(html).toContain('data-single-pane="true"')
+      expect(html).toContain('data-pane="master"')
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it('includes both panes and marks the hidden pane inert in drilldown with and without selection', () => {
     const markup = (hasSelection: boolean) => renderToStaticMarkup(createElement(MasterDetailWorkbench, {
       master: createElement('div', { id: 'directory' }, 'Directory'),

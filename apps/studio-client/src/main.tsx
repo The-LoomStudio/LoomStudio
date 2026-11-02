@@ -1,4 +1,6 @@
-import { createId } from '@loom-studio/shared'
+import { createId } from '@loom-studio/shared/id'
+import { loadLocale } from './shared/i18n/index.js'
+import { readStudioLocale } from './features/onboarding/model/onboarding-preferences.js'
 import { StartupReady } from './app/startup-curtain.js'
 import { StartupFailurePage } from './app/startup-failure-page.js'
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
@@ -64,7 +66,7 @@ if (!root) {
 
 async function startStudioClient(rootElement: HTMLElement): Promise<void> {
   const reactRoot = createRoot(rootElement)
-  if (import.meta.env.DEV && ['/dev/preview/narrative-session', '/dev/preview/observability', '/dev/preview/scene-card', '/dev/preview/scripts', '/dev/preview/presets', '/dev/preview/dashboard'].includes(window.location.pathname)) {
+  if (import.meta.env.DEV && ['/dev/preview/regex', '/dev/preview/narrative-session', '/dev/preview/observability', '/dev/preview/scene-card', '/dev/preview/scripts', '/dev/preview/presets', '/dev/preview/dashboard'].includes(window.location.pathname)) {
     const { DevPreview } = await import('./dev-preview/preview-entry.js')
     reactRoot.render(<DevPreview pathname={window.location.pathname} />)
     return
@@ -80,7 +82,7 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
     })
     if (!response.ok) throw new Error(`Application session bootstrap failed (${response.status})`)
 
-    const { App } = await import('./app/app.js')
+    const [{ App }] = await Promise.all([import('./app/app.js'), loadLocale(readStudioLocale())])
     systemLogger.info('Studio client started', { event: 'client.started' })
     const studio = (
       <QueryClientProvider client={queryClient}>

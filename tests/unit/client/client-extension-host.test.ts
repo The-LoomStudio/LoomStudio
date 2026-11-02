@@ -29,6 +29,26 @@ function extensionPackage(enabled = true): ManagedClientExtensionPackage {
 }
 
 describe('Client Extension Host', () => {
+  it('forwards inline projection anchors from a Client Renderer', async () => {
+    const rendererHost = createClientRendererHost()
+    const pkg = extensionPackage()
+    const definition = { id: 'dialogue', name: 'Dialogue', surface: 'narrative.entry.inline' as const, instanceScope: 'node' as const, adapter: 'shadow' as const }
+    pkg.modules[0]!.contributions.renderers = [definition]
+    const projection = { matches: new Map([['one', { start: 0, end: 5 }]]), mounts: [] }
+    const host = createClientExtensionHost({ rendererHost, data: createUnavailableClientExtensionDataApi(),
+      loadModule: async () => ({ activate: ctx => { ctx.renderers.register(definition, {
+        mount() {}, projectNodeWithAnchors: async () => projection,
+      }) } }),
+    })
+    try {
+      await host.reconcile([pkg])
+      const registration = rendererHost.list('narrative.entry.inline')[0]!
+      expect(await registration.projectNodeWithAnchors!({ surface: 'narrative', nodeId: 'node', timelineId: 'story', rawText: 'hello', displayText: 'hello', signal: new AbortController().signal })).toEqual(projection)
+      await host.dispose()
+      expect(rendererHost.list('narrative.entry.inline')).toEqual([])
+    } finally { await host.dispose() }
+  })
+
   it('blocks Timeline State in preview and rejects reads completing after returning to preview', async () => {
     const rendererHost = createClientRendererHost()
     const target = { scope: 'timeline' as const, timelineId: 'story', branchId: 'main' }

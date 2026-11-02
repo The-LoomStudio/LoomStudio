@@ -1,6 +1,18 @@
 import type { messages as zhCN } from '../zh-cn/sessions.js'
 
 export const messages = {
+  'play.filterCharacter': "캐릭터를 선택해 기록 보기",
+  'play.resumeStory': "지난 이야기 이어하기",
+  'play.continueStory': "이야기 계속",
+  'play.updated': "업데이트 · {{date}}",
+  'play.recentActivity': "최근 활동",
+  'play.recordCount': "{{count}}개",
+  'play.clearFilters': "필터 지우기",
+  'play.noMatches': "일치하는 기록이 없습니다",
+  'play.emptyHistory': "이야기의 흔적이 남는 곳",
+  'play.tryFilters': "다른 검색어를 입력하거나 필터를 지워 주세요.",
+  'play.emptyHistoryHint': "이야기나 대화를 시작하면 여기서 이어갈 수 있습니다.",
+
   'sessions.defaultTimelineName': '이야기',
   'sessions.defaultSessionName': '세션',
   'sessions.characterUnavailable': '캐릭터 사용 불가',

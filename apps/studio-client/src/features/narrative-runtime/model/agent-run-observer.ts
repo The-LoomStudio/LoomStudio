@@ -101,6 +101,7 @@ export async function runAgentTurn(
   updateMessages: (update: (entries: AgentTranscriptEntry[]) => AgentTranscriptEntry[]) => void,
   updateRun: (run: ActiveAgentRun | undefined) => void,
   onConnected: () => void,
+  onNarrativeCommitted?: () => Promise<void>,
 ): Promise<InvokeAgentTurnResult | undefined> {
   const { api, runId, streamingId } = run
   let lastApprovalId: string | undefined
@@ -121,7 +122,7 @@ export async function runAgentTurn(
         }
       }
       const committedDuringRead = batch !== snapshot && batch.events.some(event =>
-        event.type === 'transcript-appended' && Array.isArray(event.entries)
+        event.type === 'transcript-appended'
         && event.entries.some(entry =>
           entry.runId === runId && (entry.entry.kind === 'tool-invocation' || entry.entry.kind === 'reasoning'
             || entry.entry.kind === 'message' && entry.entry.role === 'assistant')))
@@ -161,17 +162,21 @@ export async function runAgentTurn(
       if (event.type === 'completed' || event.type === 'failed' || event.type === 'cancelled' || event.type === 'suspended') {
         updateMessages(entries => interruptToolInputs(entries, runId))
       }
-      if (event.type === 'transcript-appended' && Array.isArray(event.entries)) {
+      if (event.type === 'transcript-appended') {
         const appended = event.entries
         updateMessages(current => mergeAgentRunEntries(current, appended, run))
+        if (appended.some(item => item.entry.kind === 'message' && item.entry.purpose === 'narrative' && item.entry.state !== 'partial')) {
+          await onNarrativeCommitted?.()
+          if (!isCurrent()) return undefined
+        }
       }
       if (event.type === 'reasoning-delta' && streamingId) {
         const id = `streaming-reasoning-${runId}`
         updateMessages(entries => {
           const existing = entries.find(entry => entry.id === id)
-          if (existing) return entries.map(entry => entry.id === id
+          if (existing) return entries.map(entry => entry.id === id && entry.entry.kind === 'reasoning'
             ? { ...entry, entry: { ...entry.entry, content: `${entry.entry.content ?? ''}${event.delta}`, state: 'partial' } } : entry)
-          const placeholder = entries.find(entry => entry.id === streamingId && !entry.entry.content)
+          const placeholder = entries.find(entry => entry.id === streamingId && entry.entry.kind === 'message' && !entry.entry.content)
           const before = entries.filter(entry => entry !== placeholder)
           const sequence = (before.at(-1)?.sequence ?? 0) + 1
           return [...before, { id, presentationId: `${id}:${event.providerRunId}`, agentSessionId: run.sessionId, runId,
@@ -180,7 +185,7 @@ export async function runAgentTurn(
             ...(placeholder ? [{ ...placeholder, sequence: sequence + 1 }] : [])]
         })
       }
-      if (event.type === 'text-delta' && typeof event.delta === 'string' && streamingId) {
+      if (event.type === 'text-delta' && streamingId) {
         updateMessages(current => {
           const entries = settleReasoning(current, runId)
           const placeholder = entries.find(entry => entry.id === streamingId)
@@ -189,16 +194,13 @@ export async function runAgentTurn(
             sequence: placeholder?.sequence ?? (entries.at(-1)?.sequence ?? 0) + 1,
             createdAt: placeholder?.createdAt ?? new Date().toISOString(),
             presentationId: placeholder?.presentationId ?? `${streamingId}:${event.providerRunId}`,
-            entry: { kind: 'message', role: 'assistant', state: 'partial', content: `${placeholder?.entry.content ?? ''}${event.delta}` },
+            entry: { kind: 'message', role: 'assistant', state: 'partial', content: `${placeholder?.entry.kind === 'message' ? placeholder.entry.content : ''}${event.delta}` },
           }
           return placeholder ? entries.map(item => item.id === streamingId ? entry : item) : [...entries, entry]
         })
       }
       if (event.type === 'mutation-approval-requested'
-        && typeof event.requestId === 'string'
-        && event.preview
-        && typeof event.preview === 'object'
-        && (!pendingApprovals || pendingApprovals[0] && 'requestId' in pendingApprovals[0] && pendingApprovals[0].requestId === event.requestId)
+        && (!pendingApprovals || pendingApprovals[0] && pendingApprovals[0].requestId === event.requestId)
         && event.requestId !== lastApprovalId) {
         lastApprovalId = event.requestId
         updateRun({
@@ -211,8 +213,7 @@ export async function runAgentTurn(
         })
       }
       if (event.type === 'history-read-approval-requested'
-        && typeof event.requestId === 'string' && event.action && typeof event.action === 'object'
-        && (!pendingApprovals || pendingApprovals[0] && 'requestId' in pendingApprovals[0] && pendingApprovals[0].requestId === event.requestId)
+        && (!pendingApprovals || pendingApprovals[0] && pendingApprovals[0].requestId === event.requestId)
         && event.requestId !== lastApprovalId) {
         lastApprovalId = event.requestId
         updateRun({
@@ -223,7 +224,7 @@ export async function runAgentTurn(
           },
         })
       }
-      if (event.type === 'completed' && event.result && typeof event.result === 'object') {
+      if (event.type === 'completed') {
         run.status = 'completed'
         updateRun({ runId, status: 'completed' })
         return event.result
@@ -231,9 +232,7 @@ export async function runAgentTurn(
       if (event.type === 'failed') {
         run.status = 'failed'
         updateRun({ runId, status: 'failed' })
-        throw new Error(typeof event.error === 'object' && event.error && 'message' in event.error
-          ? String(event.error.message)
-          : 'Agent turn failed')
+        throw new Error(event.error.message)
       }
       if (event.type === 'cancelled') {
         run.status = 'cancelled'
@@ -271,7 +270,7 @@ type ToolInput = Extract<Awaited<ReturnType<StudioApi['agentSessions']['subscrib
 function appendToolInput(entries: AgentTranscriptEntry[], input: ToolInput, run: Pick<ObservedRun, 'runId' | 'sessionId'>): AgentTranscriptEntry[] {
   const id = `streaming-tool-${JSON.stringify([run.runId, input.providerRunId, input.toolCallId])}`
   const existing = entries.find(entry => entry.id === id)
-  if (existing) return entries.map(entry => entry.id === id ? {
+  if (existing) return entries.map(entry => entry.id === id && entry.entry.kind === 'tool-input' ? {
     ...entry, entry: { ...entry.entry, rawInput: `${entry.entry.rawInput ?? ''}${input.delta}`,
       exposedName: input.toolName ?? entry.entry.exposedName },
   } : entry)
@@ -284,7 +283,7 @@ function appendToolInput(entries: AgentTranscriptEntry[], input: ToolInput, run:
 }
 
 function settleReasoning(entries: AgentTranscriptEntry[], runId: string): AgentTranscriptEntry[] {
-  return entries.map(entry => entry.runId === runId && entry.id.startsWith('streaming-reasoning-')
+  return entries.map(entry => entry.runId === runId && entry.entry.kind === 'reasoning' && entry.id.startsWith('streaming-reasoning-')
     ? { ...entry, entry: { ...entry.entry, state: 'completed' } } : entry)
 }
 
@@ -298,12 +297,13 @@ export function retainRunPresentation(current: AgentTranscriptEntry[], incoming:
   const drafts = current.filter(entry => entry.entry.kind === 'tool-input')
   return incoming.map(entry => {
     const previous = byId.get(entry.id)
-    const draft = entry.entry.kind === 'tool-invocation' ? drafts.find(item => item.runId === entry.runId
-      && item.entry.providerItemId === (entry.entry.providerItemId ?? entry.entry.invocationId)) : undefined
-    const live = entry.entry.kind === 'reasoning' && entry.entry.source === 'provider-native'
-      ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming-reasoning-') && item.entry.content === entry.entry.content)
-      : entry.entry.kind === 'message' && entry.entry.role === 'assistant'
-        ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming') && item.entry.kind === 'message' && Boolean(item.entry.content) && item.entry.content === entry.entry.content)
+    const data = entry.entry
+    const draft = data.kind === 'tool-invocation' ? drafts.find(item => item.runId === entry.runId
+      && item.entry.kind === 'tool-input' && item.entry.providerItemId === (data.providerItemId ?? data.invocationId)) : undefined
+    const live = data.kind === 'reasoning' && data.source === 'provider-native'
+      ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming-reasoning-') && item.entry.kind === 'reasoning' && item.entry.content === data.content)
+      : data.kind === 'message' && data.role === 'assistant'
+        ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming') && item.entry.kind === 'message' && Boolean(item.entry.content) && item.entry.content === data.content)
         : undefined
     const presentationId = previous?.presentationId ?? draft?.id ?? live?.presentationId ?? live?.id
     return presentationId ? { ...entry, presentationId } : entry
@@ -317,12 +317,12 @@ export function mergeAgentRunEntries(
 ): AgentTranscriptEntry[] {
   const receivedIds = new Set(appended.map(entry => entry.id))
   const hasUser = appended.some(entry => entry.entry.kind === 'message' && entry.entry.role === 'user')
-  const committedStep = appended.some(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant'
+  const committedStep = appended.some(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant' && entry.entry.purpose !== 'narrative'
     || entry.entry.kind === 'tool-invocation')
   const reasoningRuns = new Set(appended.filter(entry => entry.entry.kind === 'reasoning' && entry.entry.source === 'provider-native').map(entry => entry.runId))
   const placeholder = current.find(entry => entry.id === run.streamingId)
   const committedRuns = new Set(appended.filter(entry => entry.entry.kind === 'tool-invocation'
-    || entry.entry.kind === 'message' && entry.entry.role === 'assistant').map(entry => entry.runId))
+    || entry.entry.kind === 'message' && entry.entry.role === 'assistant' && entry.entry.purpose !== 'narrative').map(entry => entry.runId))
   const entries = [
     ...current.filter(entry => entry.id !== run.streamingId && !receivedIds.has(entry.id)
       && !(entry.entry.kind === 'tool-input' && committedRuns.has(entry.runId))

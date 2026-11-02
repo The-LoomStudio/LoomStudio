@@ -39,7 +39,6 @@ export async function loadStyleSheet(url: string, signal: AbortSignal, layer: st
   }
 
   await new Promise<void>((resolve, reject) => {
-    let timeout: ReturnType<typeof setTimeout>
     const cleanup = () => {
       clearTimeout(timeout)
       element.onload = null
@@ -65,7 +64,7 @@ export async function loadStyleSheet(url: string, signal: AbortSignal, layer: st
       }
     }
     signal.addEventListener('abort', abort, { once: true })
-    timeout = setTimeout(() => fail(new Error(`Theme CSS loading timed out after 15 seconds: ${source.href}`)), 15_000)
+    const timeout = setTimeout(() => fail(new Error(`Theme CSS loading timed out after 15 seconds: ${source.href}`)), 15_000)
     document.head.append(element)
   })
 

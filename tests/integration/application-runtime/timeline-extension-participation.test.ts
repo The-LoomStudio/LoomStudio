@@ -16,6 +16,11 @@ import {
 import { readAvailableExtensionInstallations } from '../../../packages/application-runtime/src/runtime/extension-resource-access.js'
 import { callApplicationRpc as handleStatesRpc } from '../../support/trpc-caller.js'
 
+const builtinPlayerPaths = [
+  { path: '$loom.players.User', kind: 'entity', present: true },
+  { path: '$loom.players.User.components.loom_profile', kind: 'component', present: true },
+]
+
 async function setup() {
   let nextId = 0
   const createId = (prefix: string) => `${prefix}-${++nextId}`
@@ -159,7 +164,9 @@ describe('Timeline extension participation', () => {
       })
       expect(inspected.timeline).toMatchObject({
         revisionId: snapshot.snapshot.revisionId,
-        paths: [{ path: 'memory', kind: 'binding', installationId: f.installationId, present: true }],
+        paths: [...builtinPlayerPaths,
+          { path: 'memory', kind: 'binding', installationId: f.installationId, present: true },
+        ],
       })
       expect(inspected.card!.version).toBeGreaterThan(inspected.timeline!.context!.sourceCardVersion)
       current.dispose()
@@ -204,7 +211,7 @@ describe('Timeline extension participation', () => {
       const notAdopted = await f.runtime.inspectStateSources({ target })
       expect(notAdopted.extensions[0]).toMatchObject({ cardDefault: true, adoption: null, eligible: false, accepted: [] })
       expect(notAdopted.extensions[0]!.registered).toHaveLength(2)
-      expect(notAdopted.timeline!.paths).toEqual([])
+      expect(notAdopted.timeline!.paths).toEqual(builtinPlayerPaths)
       await f.runtime.adoptTimelineExtension(await f.runtime.previewTimelineExtensionAdoption({
         timelineId: target.timelineId, branchId: target.branchId, installationId: f.installationId,
       }))
@@ -218,7 +225,8 @@ describe('Timeline extension participation', () => {
         { path: 'worlds.main', kind: 'entity', installationId: f.installationId, present: false },
         { path: 'worlds.main.components.clock', kind: 'component', installationId: f.installationId, present: false },
       ]))
-      expect(old.timeline!.paths.every(path => !path.present)).toBe(true)
+      expect(old.timeline!.paths.filter(path => path.installationId === f.installationId).every(path => !path.present)).toBe(true)
+      expect(old.timeline!.paths.filter(path => !path.installationId)).toEqual(builtinPlayerPaths)
       expect(current.timeline!.paths.every(path => path.present)).toBe(true)
       expect(current.extensions[0]!.adoption).toEqual(old.extensions[0]!.adoption)
       expect(await f.runtime.getStateSnapshot({ target: oldTarget })).toEqual(before)

@@ -5,7 +5,7 @@ import type { PromptResourceArtifact } from '@loom-studio/application-runtime'
 import { compilePromptDataModel } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
 
 const officialAssistantPreset = JSON.parse(readFileSync(
-  join(process.cwd(), 'official/starter/presets/assistant.json'),
+  join(process.cwd(), 'tests/fixtures/legacy-official-starter/presets/assistant.json'),
   'utf8',
 )) as PromptResourceArtifact
 

@@ -118,5 +118,5 @@ export function createCardTransferService({ applicationRuntime, assets, director
       },
     } : undefined,
   }
-  return { readCardExport, importCardArchive, ...http }
+  return { readCardExport, importCardArchive, importArchiveAndSave, ...http }
 }

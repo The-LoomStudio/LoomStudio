@@ -1,7 +1,10 @@
-import { useId, useRef, useState, type ReactNode } from 'react'
+import { HeroArtwork } from '../../shared/ui/story-hero/hero-artwork.js'
+import { StoryHero } from '../../shared/ui/story-hero/story-hero.js'
+import type { CardSummary } from '../../entities/index.js'
+import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button, Dialog, Tabs } from '@loom-studio/ui'
-import { ArrowRightLeft, Camera, Check, Globe2, Plus, Search, Trash2, UserRound } from 'lucide-react'
-import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-editor.js'
+import { ArrowRightLeft, ArrowUpRight, Camera, Check, Plus, Search, Trash2, UserRound, Pencil } from 'lucide-react'
 import { t as defaultT, type Translator } from '../../shared/i18n/index.js'
 import styles from './my-profile.module.scss'
 
@@ -16,6 +19,7 @@ export type MyProfileProps = {
   profiles: readonly UserProfileView[]
   currentProfileId: string | null
   resources: ReactNode
+  currentStory?: { title?: string; character?: CardSummary; onOpen(): void | Promise<void> }
   t?: Translator
   busy?: boolean
   saving?: boolean
@@ -34,11 +38,11 @@ export type MyProfileProps = {
   onAvatarClear(id: string): void
 }
 
-function Avatar({ profile }: { profile: UserProfileView }) {
+function Avatar({ profile, hero = false }: { profile: UserProfileView; hero?: boolean }) {
   const [failedUrl, setFailedUrl] = useState<string>()
   return profile.avatarUrl && profile.avatarUrl !== failedUrl
-    ? <img src={profile.avatarUrl} alt="" onError={() => setFailedUrl(profile.avatarUrl)} />
-    : <span aria-hidden="true">{Array.from(profile.name.trim())[0] || <UserRound size={32} />}</span>
+    ? hero ? <HeroArtwork src={profile.avatarUrl} onError={() => setFailedUrl(profile.avatarUrl)} /> : <img src={profile.avatarUrl} alt="" onError={() => setFailedUrl(profile.avatarUrl)} />
+    : <span data-monogram="" aria-hidden="true">{Array.from(profile.name.trim())[0] || <UserRound size={32} />}</span>
 }
 
 // Persistence stays in the feature controller; the developer preview uses memory only.
@@ -46,13 +50,25 @@ export function MyProfile(props: MyProfileProps) {
   const t = props.t ?? defaultT
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [refreshOpen, setRefreshOpen] = useState(false)
-  const [tab, setTab] = useState<'profile' | 'resources'>('profile')
+  const [tab, setTab] = useWorkbenchView('profile.tab', 'profile', ['profile', 'resources'] as const)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [editorMode, setEditorMode] = useState<'source' | 'preview'>('source')
+  const [editing, setEditing] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
   const nameId = useId()
   const current = props.profiles.find(profile => profile.id === props.currentProfileId)
+  const latest = useRef(props)
+  latest.current = props
+  useEffect(() => {
+    if (!props.dirty || props.busy || props.error) return
+    const timer = window.setTimeout(() => latest.current.onCommit?.(), 600)
+    return () => window.clearTimeout(timer)
+  }, [current?.id, current?.name, current?.description, props.dirty, props.busy, props.error])
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const field = descriptionRef.current
+    if (field) { field.style.height = 'auto'; field.style.height = `${field.scrollHeight}px` }
+  }, [editing, current?.description])
   const matches = props.profiles.filter(profile => profile.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
 
   async function createProfile() {
@@ -61,60 +77,72 @@ export function MyProfile(props: MyProfileProps) {
     setPickerOpen(false)
   }
 
-  return <section className={styles.panel} aria-label={t('userProfile.title')}>
+  return <section data-loom-mobile-tab-scope="" className={styles.panel} aria-label={t('userProfile.title')}>
     <div className={styles.content}>
       <header className={styles.hero}>
-        <div className={styles.identity}>
-          {current ? <>
-            <button className={styles.avatar} type="button" disabled={props.busy} aria-label={t('userProfile.changeAvatar')} onClick={() => uploadRef.current?.click()}>
-              <Avatar profile={current} />
-              <span className={styles.camera}><Camera size={16} /></span>
-            </button>
-            <input ref={uploadRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => {
-              const file = event.currentTarget.files?.[0]
-              if (file) props.onAvatarChange(current.id, file)
-              event.currentTarget.value = ''
-            }} />
-            <div className={styles.identityText}>
-              <label className={styles.eyebrow} htmlFor={nameId}>{t('userProfile.name')}</label>
-              <input id={nameId} className={styles.name} disabled={props.busy} onBlur={() => props.onCommit?.()} value={current.name} placeholder="User" onChange={event => props.onChange(current.id, { name: event.target.value })} />
-              <p className={styles.scope}><Globe2 size={13} aria-hidden="true" />{t('userProfile.scope')}</p>
-              {current.avatarUrl ? <button className={styles.clearAvatar} type="button" disabled={props.busy} onClick={() => props.onAvatarClear(current.id)}>{t('userProfile.removeAvatar')}</button> : null}
+        {current ? <>
+          <button className={styles.portrait} type="button" disabled={props.busy} aria-label={t('userProfile.edit')} onClick={() => setEditing(true)}>
+            <Avatar profile={current} hero />
+          </button>
+          <div className={styles.heroContent}>
+            <span className={styles.eyebrow}>{t('userProfile.title')} · {t('userProfile.profileTab')}</span>
+            <h1>{current.name.trim() || 'User'}</h1>
+            <p className={styles.bio}>{current.description || t('userProfile.aboutHint')}</p>
+            <div className={styles.heroActions}>
+              <Button variant="ghost" disabled={props.busy} onClick={() => setEditing(true)}><Pencil size={15} />{t('userProfile.edit')}</Button>
+              <Button disabled={props.busy} variant="ghost" onClick={() => { setQuery(''); setPickerOpen(true) }}><ArrowRightLeft size={15} />{t('userProfile.switch')}<span className={styles.count}>{props.profiles.length}</span></Button>
+              <span className={styles.saveStatus} role="status">{props.saving ? t('userProfile.saving') : props.feedback}</span>
             </div>
-          </> : <>
-            <div className={styles.avatar}><UserRound size={36} aria-hidden="true" /></div>
-            <div className={styles.identityText}><h1>{t('userProfile.emptyHeading')}</h1><p className={styles.scope}>{t('userProfile.emptyIntro')}</p></div>
-          </>}
-        </div>
-        {props.profiles.length > 0 ? <Button disabled={props.busy} variant="secondary" onClick={() => { setQuery(''); setPickerOpen(true) }}><ArrowRightLeft size={15} />{t('userProfile.switch')}<span className={styles.count}>{props.profiles.length}</span></Button>
-          : <Button disabled={props.busy || props.loading || props.ready === false} onClick={createProfile}><Plus size={16} />{t('userProfile.create')}</Button>}
+          </div>
+        </> : <div className={styles.heroContent}>
+          <span className={styles.eyebrow}>{t('userProfile.title')}</span><h1>{t('userProfile.emptyHeading')}</h1>
+          <p className={styles.bio}>{t(props.loading ? 'userProfile.loading' : props.ready === false ? 'userProfile.loadFailed' : 'userProfile.emptyIntro')}</p>
+          <Button disabled={props.busy || props.loading || props.ready === false} onClick={createProfile}><Plus size={16} />{t('userProfile.create')}</Button>
+        </div>}
       </header>
+      <input ref={uploadRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => {
+        const file = event.currentTarget.files?.[0]
+        if (file && current) props.onAvatarChange(current.id, file)
+        event.currentTarget.value = ''
+      }} />
+      {props.error ? <div className={styles.error} role="alert"><p>{props.error}</p>
+        {props.dirty && props.onCommit && <Button variant="ghost" disabled={props.busy || props.saving} onClick={props.onCommit}>{t('userProfile.retry')}</Button>}
+        {props.onRefresh && <Button variant="ghost" disabled={props.busy || props.saving} onClick={() => props.dirty ? setRefreshOpen(true) : props.onRefresh?.()}>{t('userProfile.refresh')}</Button>}
+      </div> : null}
 
-      <Tabs ariaLabel={t('userProfile.title')} bordered activeId={tab} onChange={setTab} items={[{ id: 'profile', label: t('userProfile.profileTab') }, { id: 'resources', label: t('userProfile.resourcesTab') }]} />
+      <Tabs ariaLabel={t('userProfile.title')} activeId={tab} onChange={setTab} items={[{ id: 'profile', label: t('userProfile.profileTab') }, { id: 'resources', label: t('userProfile.resourcesTab') }]} />
+      {tab === 'profile' && props.currentStory ? <div className={styles.currentStory}><StoryHero
+        character={props.currentStory.character} label={t('userProfile.currentStory')}
+        title={props.currentStory.title || t('userProfile.currentStory')} description={t('userProfile.currentStoryHint')}
+        actions={<Button className={styles.storyLink} variant="ghost" disabled={props.busy} onClick={() => { void props.currentStory?.onOpen() }}>
+          {t('userProfile.openCurrentStory')}<ArrowUpRight size={15} aria-hidden="true" />
+        </Button>} />
+      </div> : null}
 
-      <div className={styles.body} role="tabpanel" aria-label={tab === 'profile' ? t('userProfile.profileTab') : t('userProfile.resourcesTab')}>
-        {tab === 'profile' ? <div className={styles.actions}>
-          {current && props.onCommit ? <Button disabled={props.busy || props.saving || !props.dirty} variant="secondary" onClick={props.onCommit}>{t(props.error ? 'userProfile.retry' : 'userProfile.save')}</Button> : null}
-          {props.onRefresh ? <Button disabled={props.busy || props.saving} variant="ghost" onClick={() => props.dirty ? setRefreshOpen(true) : props.onRefresh?.()}>{t('userProfile.refresh')}</Button> : null}
-          {current && props.onDelete ? <Button disabled={props.busy} variant="ghost" onClick={() => setDeleteOpen(true)}><Trash2 size={14} />{t('userProfile.delete')}</Button> : null}
-        </div> : null}
-        {tab === 'profile' ? props.loading || props.ready === false ? <p role="status">{t(props.loading ? 'userProfile.loading' : 'userProfile.loadFailed')}</p> : current ? <>
-          <div className={styles.sectionHeading}><div><h2>{t('userProfile.about')}</h2><p>{t('userProfile.aboutHint')}</p></div><span className={styles.characterCount}>{t('userProfile.characters', { count: current.description.length })}</span></div>
-          <LongTextEditor key={current.id} label={t('userProfile.description')} hideLabel value={current.description} onChange={description => props.onChange(current.id, { description })}
-            onCommit={() => props.onCommit?.()} disabled={props.busy} mode={editorMode} onModeChange={setEditorMode} minHeight={320} showLineNumbers={false}
-            placeholder={t('userProfile.placeholder')}
-            clearLabel={t('longTextEditor.clear')} clearedLabel={t('longTextEditor.cleared')} copiedLabel={t('longTextEditor.copied')} copyFailedLabel={t('longTextEditor.copyFailed')} copyLabel={t('longTextEditor.copy')}
-            restoreInitialLabel={t('longTextEditor.restoreInitial')} undoEditLabel={t('longTextEditor.undoEdit')} undoLabel={t('longTextEditor.undoClear')}
-            disableCodeWrapLabel={t('markdown.code.disableWrap')} enableCodeWrapLabel={t('markdown.code.enableWrap')} previewEmptyLabel={t('longTextEditor.previewEmpty')} previewModeLabel={t('longTextEditor.previewMode')} sourceModeLabel={t('longTextEditor.sourceMode')} />
-          <div className={styles.editorFooter}><span>{t('userProfile.fixedHint')}</span><span role="status">{props.saving ? t('userProfile.saving') : props.feedback}</span></div>
-        </> : <div className={styles.empty}><UserRound size={28} /><h2>{t('userProfile.emptyTitle')}</h2><p>{t('userProfile.emptyBody')}</p><Button disabled={props.busy} onClick={createProfile}><Plus size={15} />{t('userProfile.first')}</Button></div>
-          : props.resources}
-        {props.error ? <p className={styles.error} role="alert">{props.error}</p> : null}
-      </div>
+      {tab === 'resources' ? <div className={styles.body}>{props.resources}</div> : null}
     </div>
 
+    <Dialog open={editing && !!current} onClose={() => { props.onCommit?.(); setEditing(false) }} title={t('userProfile.edit')} className={styles.editDialog}>
+      {current && <div className={styles.editFields}>
+        <label htmlFor={nameId}>{t('userProfile.name')}</label>
+        <input id={nameId} className={styles.editName} value={current.name} disabled={props.busy} onChange={event => props.onChange(current.id, { name: event.target.value })} onBlur={() => props.onCommit?.()} />
+        <label htmlFor={`${nameId}-description`}>{t('userProfile.about')}</label>
+        <textarea ref={descriptionRef} id={`${nameId}-description`} className={styles.descriptionInput} value={current.description} disabled={props.busy} placeholder={t('userProfile.placeholder')}
+          onChange={event => props.onChange(current.id, { description: event.target.value })} onBlur={() => props.onCommit?.()} />
+        <div className={styles.editActions}>
+          <Button variant="ghost" disabled={props.busy} onClick={() => uploadRef.current?.click()}><Camera size={15} />{t('userProfile.changeAvatar')}</Button>
+          {current.avatarUrl && <Button variant="ghost" disabled={props.busy} onClick={() => props.onAvatarClear(current.id)}>{t('userProfile.removeAvatar')}</Button>}
+          {props.onDelete && <Button variant="ghost" disabled={props.busy} onClick={() => setDeleteOpen(true)}><Trash2 size={15} />{t('userProfile.delete')}</Button>}
+        </div>
+        <span role="status" className={styles.saveStatus}>{props.saving ? t('userProfile.saving') : props.feedback}</span>
+        {props.error && <div className={styles.error} role="alert">{props.error}
+          <Button variant="ghost" disabled={props.busy || props.saving} onClick={props.onCommit}>{t('userProfile.retry')}</Button>
+          {props.onRefresh && <Button variant="ghost" disabled={props.busy || props.saving} onClick={() => setRefreshOpen(true)}>{t('userProfile.refresh')}</Button>}
+        </div>}
+      </div>}
+    </Dialog>
     <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} title={t('userProfile.deleteTitle', { name: current?.name.trim() || 'User' })} description={t('userProfile.deleteHint')}
-      actions={<><Button disabled={props.busy} variant="secondary" onClick={() => setDeleteOpen(false)}>{t('userProfile.cancel')}</Button><Button disabled={props.busy} onClick={async () => { if (current && await props.onDelete?.(current.id) !== false) setDeleteOpen(false) }}>{t('userProfile.delete')}</Button></>}>{props.error ? <p className={styles.error} role="alert">{props.error}</p> : null}</Dialog>
+      actions={<><Button disabled={props.busy} variant="secondary" onClick={() => setDeleteOpen(false)}>{t('userProfile.cancel')}</Button><Button disabled={props.busy} onClick={async () => { if (current && await props.onDelete?.(current.id) !== false) { setDeleteOpen(false); setEditing(false) } }}>{t('userProfile.delete')}</Button></>}>{props.error ? <p className={styles.error} role="alert">{props.error}</p> : null}</Dialog>
     <Dialog open={refreshOpen} onClose={() => setRefreshOpen(false)} title={t('userProfile.refreshTitle')} description={t('userProfile.refreshHint')}
       actions={<><Button variant="secondary" onClick={() => setRefreshOpen(false)}>{t('userProfile.cancel')}</Button><Button onClick={() => { props.onRefresh?.(); setRefreshOpen(false) }}>{t('userProfile.refresh')}</Button></>} />
     <Dialog open={pickerOpen} onClose={() => setPickerOpen(false)} title={t('userProfile.switchTitle')} description={t('userProfile.switchHint')} className={styles.picker}

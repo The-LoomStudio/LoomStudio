@@ -1,7 +1,14 @@
+import { MobileTabPages } from '../../../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
+import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
+import { UserIdentity } from '../../../shared/ui/user-identity/user-identity.js'
+import { cardMediaUrl } from '../../../shared/lib/card-media.js'
+import type { PackageResourceEntry } from '../model/package-resource-preview.js'
+import { ExtensionPackageResources, ExtensionPackageTabs } from './extension-package-resources.js'
+import { ExtensionCharacterCatalog } from './extension-character-catalog.js'
 import { ExtensionIcon } from '../../../shared/ui/extension-icon/extension-icon.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { ClientActionPlacement, ClientCommandDeclaration, ExtensionInstallationTarget, RendererContributionDefinition } from '@loom-studio/extension-sdk'
-import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, Folder, Package, PackageMinus, PackagePlus, Power, RefreshCw, TerminalSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, BookOpen, Component, ExternalLink, Package, PackageMinus, PackageOpen, PackagePlus, Power, RefreshCw, TerminalSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { buildStudioLogPath } from '../../../shared/studio-shell/studio-route.js'
@@ -18,7 +25,6 @@ import { ClientActionIcon } from './client-action-icon.js'
 import { RendererSurfaceHost } from './renderer-surface-host.js'
 import { ExtensionSettingsForm } from './extension-settings-form.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
-import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { toggleExtensionPackage } from '../model/toggle-extension-package.js'
 import { ExtensionRemoteControls, RemoteExtensionInstall } from './remote-extension-install.js'
 import { Button, Dialog } from '@loom-studio/ui'
@@ -32,8 +38,6 @@ type ExtensionWorkspaceSelection =
   | { kind: 'card-module'; packageId: string; moduleId: string; cardId: string }
   | { kind: 'package'; packageId: string }
   | { kind: 'card-package'; packageId: string; cardId: string }
-  | { kind: 'card-resource'; packageId: string; cardId: string; resourceKind: 'prompt' | 'tool' | 'rule' | 'extractor' | 'script'; id: string }
-  | { kind: 'resource'; packageId: string; resourceKind: 'prompt' | 'tool' | 'rule' | 'extractor' | 'script'; id: string }
   | { kind: 'module'; packageId: string; moduleId: string }
   | { kind: 'renderer'; packageId: string; moduleId: string; id: string }
   | { kind: 'command'; packageId: string; moduleId: string; id: string }
@@ -53,6 +57,7 @@ export function ExtensionWorkspace(props: {
   extensionApi: StudioApi['extensions']
   renderScripts(header: ReactNode): ReactNode
   onRefreshExtensions(): Promise<unknown>
+  onCharacterImported(): Promise<unknown>
   runtimeError?: string
   configRevision: number
   settingScopeContext: { cardId?: string; timelineId?: string; agentSessionId?: string }
@@ -62,7 +67,7 @@ export function ExtensionWorkspace(props: {
   onEnable(packageId: string, moduleId: string, grants?: Parameters<StudioApi['extensions']['enable']>[2], target?: ExtensionInstallationTarget): Promise<unknown>
   onImportResources(packageId: string): Promise<unknown>
   onAttachPackage(cardId: string, packageId: string, version: string): Promise<unknown>
-  embeddedPackageCard?: Pick<Card, 'id' | 'version' | 'name' | 'extensionPackages'>
+  embeddedPackageCard?: Pick<Card, 'id' | 'version' | 'name' | 'media' | 'extensionPackages'>
   onDetachPackage(cardId: string, expectedVersion: number, packageId: string): Promise<unknown>
   onInstallCardPackage(input: Parameters<StudioApi['extensions']['installCard']>[0]): Promise<unknown>
   onUpdateCardPackage(input: Parameters<StudioApi['extensions']['updateCard']>[0]): Promise<unknown>
@@ -71,7 +76,7 @@ export function ExtensionWorkspace(props: {
   installations: ListExtensionInstallationsResult['installations']
   timelineParticipation: Omit<TimelineExtensionPanelProps, 'installations' | 't'>
   promptResources: PromptResource[]
-  onOpenPromptResource(resource: PromptResource): void
+  onOpenPackageResource(pkg: ManagedExtensionPackage, entry: PackageResourceEntry): Promise<void>
   onUpdateResources(input: Parameters<StudioApi['extensions']['updateResources']>[0]): Promise<unknown>
   onRemoveResources(packageId: string): Promise<unknown>
   onReload(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<unknown>
@@ -97,12 +102,10 @@ export function ExtensionWorkspace(props: {
   const setView = (next: 'packages' | 'participation' | 'scripts') => {
     const params = new URLSearchParams(searchParams)
     params.set('extensionView', next)
+    params.delete('scriptId')
+    setMobilePane('master')
     navigate(`/studio/extensions?${params}`)
   }
-  const [expandedIds, setExpandedIds] = useState<string[]>(() => [...props.packages, ...props.cardPackages].flatMap(item => {
-    const prefix = `${item.target?.kind === 'card' ? item.target.cardId : 'global'}:${item.packageId}:`
-    return [`${prefix}resources`, `${prefix}modules`, ...['prompt', 'tool', 'rule', 'extractor'].map(kind => `${prefix}resources:${kind}`)]
-  }))
   const [toggleReport, setToggleReport] = useState<{ key: string; completed: string[]; failed: Array<{ moduleId: string; message: string }> }>()
   const registrations = props.host.list('shell.workspace-panel')
   const activeKey = props.host.activeContributionKey('shell.workspace-panel', WORKSPACE_SCOPE_KEY)
@@ -130,7 +133,7 @@ export function ExtensionWorkspace(props: {
   }
   if (props.mode === 'workspace' && active) {
     return (
-      <section className={styles.panel} data-runtime-error={Boolean(props.runtimeError)} data-loom-component="renderer-workspace-panel">
+      <section className={styles.panel} data-runtime-error={Boolean(props.runtimeError)} data-loom-component="renderer-workspace-panel" data-loom-mobile-page="">
         <header className={styles.header}>
           <button type="button" onClick={() => {
             props.host.release('shell.workspace-panel', WORKSPACE_SCOPE_KEY, activeKey)
@@ -161,8 +164,7 @@ export function ExtensionWorkspace(props: {
   const commandRegistrations = props.extensionHost.commandRegistrations()
   const cardSelection = selection?.kind === 'card-module' ? selection : undefined
   const cardPackageSelection = selection?.kind === 'card-package' ? selection : undefined
-  const cardResourceSelection = selection?.kind === 'card-resource' ? selection : undefined
-  const cardTargetSelection = cardSelection ?? cardPackageSelection ?? cardResourceSelection
+  const cardTargetSelection = cardSelection ?? cardPackageSelection
   const cardPackage = cardTargetSelection && props.cardPackages.find(item => item.packageId === cardTargetSelection.packageId
     && item.target?.kind === 'card' && item.target.cardId === cardTargetSelection.cardId)
   const cardModule = cardPackage?.modules.find(item => item.moduleId === cardSelection?.moduleId)
@@ -173,6 +175,22 @@ export function ExtensionWorkspace(props: {
   function select(next: ExtensionWorkspaceSelection) {
     setSelection(next)
     setMobilePane('detail')
+  }
+
+  function resourcePanel(pkg: ManagedExtensionPackage) {
+    const installed = props.installations.find(item => item.packageId === pkg.packageId && (pkg.target?.kind === 'card'
+      ? item.target.kind === 'card' && item.target.cardId === pkg.target.cardId
+      : item.target.kind === 'global'))
+    const resources = props.promptResources.filter(resource => resource.origin?.kind === 'extension-package'
+      && resource.origin.packageId === pkg.packageId
+      && (pkg.target?.kind === 'card' ? Boolean(installed && resource.origin.installationId === installed.id)
+        : !resource.origin.installationId || resource.origin.installationId === installed?.id))
+    return <ExtensionPackageResources extensionPackage={pkg} promptResources={resources} onOpenResource={entry => props.onOpenPackageResource(pkg, entry)} t={props.t} />
+  }
+
+  function settingsPanel(pkg: ManagedExtensionPackage) {
+    return pkg.resources?.settings?.length ? <ExtensionSettingsForm api={props.extensionRuntime} configRevision={props.configRevision}
+      packageId={pkg.packageId} scopeContext={props.settingScopeContext} settings={pkg.resources.settings} t={props.t} /> : null
   }
 
   async function run(key: string, operation: () => Promise<unknown>) {
@@ -256,21 +274,33 @@ export function ExtensionWorkspace(props: {
     }
   }
 
-  if (view === 'scripts') return <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel">
+  const mobileTabs = <div data-loom-primary-tabs="" className={styles.packageTreeHeader}>
+    <PanelTabs activeId={view} onChange={setView} ariaLabel={props.t('renderer.workspaceTitle')} items={[
+      { id: 'packages', label: props.t('renderer.packages') },
+      { id: 'scripts', label: '脚本' },
+      { id: 'participation', label: props.t('participation.title') },
+    ]} />
+    {view === 'packages' ? <button type="button" className={styles.installPackageBtn}
+      onClick={() => setInstallOpen(true)} title={props.t('renderer.install')} aria-label={props.t('renderer.install')}>
+      <PackagePlus size={14} aria-hidden="true" /><span>{props.t('renderer.install')}</span>
+    </button> : null}
+  </div>
+
+  const scriptsPage = <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel" data-loom-mobile-page="">
     {runtimeAlert}
-    {props.renderScripts(<div className={styles.packageTreeHeader}><PanelTabs activeId={view} onChange={setView} ariaLabel={props.t('renderer.workspaceTitle')} items={[
+    {props.renderScripts(<div data-mobile-tab-inline-header="" data-loom-primary-tabs="" className={styles.packageTreeHeader}><PanelTabs activeId={view} onChange={setView} ariaLabel={props.t('renderer.workspaceTitle')} items={[
       { id: 'packages', label: props.t('renderer.packages') },
       { id: 'scripts', label: '脚本' },
       { id: 'participation', label: props.t('participation.title') },
     ]} /></div>)}
   </section>
 
-  return (
-    <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel">
+  const packagePage = (view: 'packages' | 'participation') => (
+    <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel" data-loom-mobile-page="">
       {runtimeAlert}
-      {installOpen ? <RemoteExtensionInstall api={props.extensionApi} t={props.t}
+      {view === 'packages' && installOpen ? <RemoteExtensionInstall api={props.extensionApi} t={props.t}
         onClose={() => setInstallOpen(false)} onInstalled={props.onRefreshExtensions} /> : null}
-      {removal ? <Dialog open title={props.t('renderer.uninstall')} dismissible={!busyKey} onClose={() => setRemoval(undefined)}
+      {view === 'packages' && removal ? <Dialog open title={props.t('renderer.uninstall')} dismissible={!busyKey} onClose={() => setRemoval(undefined)}
         actions={<>
           <Button disabled={!!busyKey} onClick={() => setRemoval(undefined)}>{props.t('renderer.remote.cancel')}</Button>
           <Button variant="danger" disabled={!!busyKey} onClick={() => void confirmUninstall()}><Trash2 size={16} aria-hidden="true" />{props.t('renderer.uninstall')}</Button>
@@ -285,14 +315,11 @@ export function ExtensionWorkspace(props: {
         mobilePane={mobilePane}
         onMobilePaneChange={setMobilePane}
         master={(
-          <nav aria-label={props.t('renderer.workspaceTitle')} className={styles.packageTree}>
-            <div className={styles.packageTreeHeader}>
+          <nav aria-label={props.t('renderer.workspaceTitle')} data-loom-mobile-tab-scope="" className={styles.packageTree}>
+            <div data-mobile-tab-inline-header="" data-loom-primary-tabs="" className={styles.packageTreeHeader}>
               <PanelTabs
                 activeId={view}
-                onChange={nextView => {
-                  setView(nextView)
-                  setMobilePane('detail')
-                }}
+                onChange={setView}
                 ariaLabel={props.t('renderer.workspaceTitle')}
                 items={[
                   { id: 'packages', label: props.t('renderer.packages') },
@@ -315,18 +342,18 @@ export function ExtensionWorkspace(props: {
             </div>
             <div className={styles.packageTreeBody}>
               {view === 'participation' ? (
-                <div className={styles.participationSidebarNotice}>
-                  <strong>{props.embeddedPackageCard?.name ?? props.t('participation.timeline')}</strong>
-                  <p>{props.timelineParticipation.timeline?.title ?? props.timelineParticipation.timeline?.id ?? props.t('participation.noTimeline')}</p>
+                <button type="button" className={`${styles.characterSummary} ${styles.participationSidebarNotice}`} onClick={() => setMobilePane('detail')}>
+                  <div className={styles.cardHeading}><UserIdentity name={props.embeddedPackageCard?.name ?? props.t('participation.timeline')} avatarUrl={props.embeddedPackageCard ? cardMediaUrl(props.embeddedPackageCard.id, 'avatar', props.embeddedPackageCard.media?.avatarAssetId, props.embeddedPackageCard.version) : undefined} /></div>
+                  <p className={styles.storySummary}><BookOpen size={14} aria-hidden="true" /><span>{props.timelineParticipation.timeline?.title || props.t(props.timelineParticipation.timeline ? 'participation.timeline' : 'participation.noTimeline')}</span></p>
                   <small>管理此故事的扩展；新叙事开始时会单独选择。</small>
-                </div>
+                </button>
               ) : props.packages.length === 0 ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : props.packages.map(extensionPackage => {
               const isEnabled = extensionPackage.modules.length > 0 && extensionPackage.modules.every(module => module.desired.enabled)
               return (
               <section className={styles.treePackage} key={extensionPackage.packageId}>
                 <div className={styles.packageItemRow}>
                   <button
-                    aria-current={selectedItem?.kind === 'package' && extensionPackage.packageId === selected?.packageId ? 'page' : undefined}
+                    aria-current={!cardTargetSelection && extensionPackage.packageId === selected?.packageId ? 'page' : undefined}
                     className={styles.packageItem}
                     type="button"
                     onClick={() => select({ kind: 'package', packageId: extensionPackage.packageId })}
@@ -351,24 +378,12 @@ export function ExtensionWorkspace(props: {
                     </button>
                   ) : null}
                 </div>
-                {extensionPackage.packageId === selected?.packageId ? (
-                  <div className={styles.treeChildren}>
-                    {props.promptResources.filter(resource => {
-                      const origin = resource.origin
-                      if (origin?.kind !== 'extension-package' || origin.packageId !== extensionPackage.packageId) return false
-                      const installed = props.installations.find(item => item.id === origin.installationId)
-                      return installed?.target.kind === 'global' || !origin.installationId
-                    }).map(resource => <TreeItem key={`installed:${resource.id}`} active={false} icon={Braces}
-                      label={resource.rootNode.label} onClick={() => props.onOpenPromptResource(resource)} />)}
-                    <ExtensionFiles extensionPackage={extensionPackage} expandedIds={expandedIds}
-                      onExpandedIdsChange={setExpandedIds} selection={selectedItem} select={select} t={props.t} />
-                  </div>
-                ) : null}
+
               </section>
             )})}
             {view === 'packages' && props.embeddedPackageCard ? (
-              <details className={styles.embeddedPackages} key={props.embeddedPackageCard.id}>
-                <summary>{props.t('renderer.embeddedPackages', { name: props.embeddedPackageCard.name })}</summary>
+              <section className={styles.characterSummary} key={props.embeddedPackageCard.id}>
+                <h3 className={styles.cardHeading}><UserIdentity name={props.embeddedPackageCard.name} avatarUrl={cardMediaUrl(props.embeddedPackageCard.id, 'avatar', props.embeddedPackageCard.media?.avatarAssetId, props.embeddedPackageCard.version)} /></h3>
                 {(props.embeddedPackageCard.extensionPackages ?? []).map(archive => {
                   const card = props.embeddedPackageCard!
                   const installed = props.installations.find(item => item.packageId === archive.packageId && item.target.kind === 'card' && item.target.cardId === card.id)
@@ -433,8 +448,8 @@ export function ExtensionWorkspace(props: {
                     ><Trash2 aria-hidden="true" size={16} /></button>
                   </div>
                 )})}
-                {!props.embeddedPackageCard.extensionPackages?.length ? <p className={styles.empty}>{props.t('renderer.noEmbeddedPackages')}</p> : null}
-              </details>
+                {!props.embeddedPackageCard.extensionPackages?.length ? <p className={styles.summaryEmpty}><Package size={14} aria-hidden="true" /><span>{props.t('renderer.noEmbeddedPackages')}</span></p> : null}
+              </section>
             ) : null}
             {props.cardPackages.length > 0 ? (
               <details className={styles.embeddedPackages} open>
@@ -460,17 +475,9 @@ export function ExtensionWorkspace(props: {
                           }}><Trash2 aria-hidden="true" size={16} /></button>
                       </div>
                       <button className={styles.packageItem} type="button" onClick={() => select({ kind: 'card-package', packageId: extensionPackage.packageId, cardId: target.cardId })}>
-                        <Package aria-hidden="true" />{props.t('renderer.settings')}
+                        <Package aria-hidden="true" />{props.t('renderer.packageDetails')}
                       </button>
-                      <div className={styles.treeChildren}>
-                        {props.promptResources.filter(resource => resource.origin?.kind === 'extension-package'
-                          && resource.origin.packageId === extensionPackage.packageId
-                          && installed && resource.origin.installationId === installed.id
-                        ).map(resource => <TreeItem key={resource.id} active={false} icon={Braces}
-                          label={resource.rootNode.label} onClick={() => props.onOpenPromptResource(resource)} />)}
-                        <ExtensionFiles extensionPackage={extensionPackage} expandedIds={expandedIds}
-                          onExpandedIdsChange={setExpandedIds} selection={selection} select={select} t={props.t} />
-                      </div>
+
                     </section>
                   )
                 })}
@@ -489,19 +496,29 @@ export function ExtensionWorkspace(props: {
           />
         ) : (
           <div className={styles.detail}>
+          {selection && selection.kind !== 'package' && selection.kind !== 'card-package' ? <Button size="small" onClick={() => select(cardPackage?.target?.kind === 'card'
+            ? { kind: 'card-package', packageId: cardPackage.packageId, cardId: cardPackage.target.cardId }
+            : { kind: 'package', packageId: selection.packageId })}><ArrowLeft size={14} aria-hidden="true" />{props.t('renderer.packageDetails')}</Button> : null}
           {cardSelection ? (
             cardPackage && cardModule ? <ModuleDetail busyKey={busyKey} clientSummaries={clientSummaries}
               extensionPackage={cardPackage} module={cardModule} t={props.t} /> : <p className={styles.empty}>{props.t('renderer.moduleUnavailable')}</p>
-          ) : cardResourceSelection && cardPackage ? (
-            <PackageResourceDetail extensionPackage={cardPackage} selection={cardResourceSelection} t={props.t} />
+
           ) : cardPackageSelection && cardPackage ? (
-            <PackageControls extensionPackage={cardPackage} clientSummaries={clientSummaries} busy={Boolean(busyKey)} report={toggleReport}
-              onGrant={(module, grants) => run(`${cardPackage.packageId}/${module.moduleId}/grant`, () => props.onEnable(cardPackage.packageId, module.moduleId, grants, cardPackage.target))}
-              onToggle={togglePackage} settings={(cardPackage.resources?.settings?.length ?? 0) > 0
-                ? <ExtensionSettingsForm api={props.extensionRuntime} configRevision={props.configRevision}
-                  packageId={cardPackage.packageId} scopeContext={props.settingScopeContext} settings={cardPackage.resources?.settings ?? []} t={props.t} />
-                : null}
-              t={props.t} />
+            <>
+              <header className={styles.packageHeader}><h3>{cardPackage.displayName}</h3><code>{cardPackage.packageId}@{cardPackage.version}</code>
+                <Button disabled={Boolean(busyKey) || !cardPackage.available || !cardPackage.modules.length} onClick={() => void togglePackage(cardPackage)}>
+                  {props.t(cardPackage.modules.every(module => module.desired.enabled) ? 'renderer.disablePackage' : 'renderer.enablePackage')}
+                </Button>
+              </header>
+              <ExtensionPackageTabs key={`${cardPackage.target?.kind === 'card' ? cardPackage.target.cardId : ''}:${cardPackage.packageId}`} t={props.t}
+                resources={resourcePanel(cardPackage)} settings={settingsPanel(cardPackage)} overview={<>
+                  {cardPackage.description ? <p>{cardPackage.description}</p> : null}
+                  <PackageControls extensionPackage={cardPackage} clientSummaries={clientSummaries} busy={Boolean(busyKey)} report={toggleReport}
+                    onGrant={(module, grants) => run(`${cardPackage.packageId}/${module.moduleId}/grant`, () => props.onEnable(cardPackage.packageId, module.moduleId, grants, cardPackage.target))}
+                    onToggle={togglePackage} t={props.t} />
+                  <ModuleNavigation extensionPackage={cardPackage} select={select} t={props.t} />
+                </>} />
+            </>
           ) : <>
           {selected && selectedItem?.kind === 'package' ? (
             <>
@@ -534,9 +551,9 @@ export function ExtensionWorkspace(props: {
                       </div>
                     </div>
                     <div className={styles.packageToolbarRow}>
-                      <button type="button" className={styles.actionBtn} onClick={() => navigate(buildStudioLogPath({ packageId: selected.packageId }))} title={props.t('logs.viewExtension')}>
+                      {props.serverDiagnostics.length > 0 && <InfoDialog title={`${props.t('renderer.serverDiagnostics')} · ${props.serverDiagnostics.length}`}><pre>{JSON.stringify(props.serverDiagnostics, null, 2)}</pre></InfoDialog>}
+                      <button type="button" className={styles.actionBtn} onClick={() => navigate(buildStudioLogPath({ packageId: selected.packageId }))} title={props.t('logs.viewExtension')} aria-label={props.t('logs.viewExtension')}>
                         <TerminalSquare aria-hidden="true" />
-                        <span>{props.t('logs.viewExtension')}</span>
                       </button>
                       {props.settingScopeContext.cardId ? (
                         <button
@@ -551,10 +568,9 @@ export function ExtensionWorkspace(props: {
                               notify.success(props.t('renderer.packageAttached'))
                             })
                           }}
-                          title={props.t('renderer.attachPackage')}
+                          title={props.t('renderer.attachPackage')} aria-label={props.t('renderer.attachPackage')}
                         >
                           <PackagePlus aria-hidden="true" />
-                          <span>{props.t('renderer.attachPackage')}</span>
                         </button>
                       ) : null}
                       {installation ? (
@@ -575,51 +591,45 @@ export function ExtensionWorkspace(props: {
                               notify.success(props.t('renderer.resourcesUpdated'))
                             })
                           }}
-                          title={props.t('renderer.updateResources')}
+                          title={props.t('renderer.updateResources')} aria-label={props.t('renderer.updateResources')}
                         >
                           <RefreshCw aria-hidden="true" />
-                          <span>{props.t('renderer.updateResources')}</span>
                         </button>
                       ) : null}
                       {packageResourceCount(selected) > 0 ? (
                         <>
-                          <button className={styles.actionBtn} disabled={busyKey === `${selected.packageId}/resources`} type="button" onClick={() => void run(`${selected.packageId}/resources`, () => importResources(selected.packageId))}>
-                            <PackagePlus aria-hidden="true" />
-                            <span>{props.t('renderer.importResources')}</span>
+                          <button className={styles.actionBtn} disabled={busyKey === `${selected.packageId}/resources`} type="button" onClick={() => void run(`${selected.packageId}/resources`, () => importResources(selected.packageId))} title={props.t('renderer.importResources')} aria-label={props.t('renderer.importResources')}>
+                            <PackageOpen aria-hidden="true" />
                           </button>
-                          <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} disabled={busyKey === `${selected.packageId}/resources`} type="button" onClick={() => void run(`${selected.packageId}/resources`, () => removeResources(selected.packageId))}>
+                          <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} disabled={busyKey === `${selected.packageId}/resources`} type="button" onClick={() => void run(`${selected.packageId}/resources`, () => removeResources(selected.packageId))} title={props.t('renderer.removeResources')} aria-label={props.t('renderer.removeResources')}>
                             <Trash2 aria-hidden="true" />
-                            <span>{props.t('renderer.removeResources')}</span>
                           </button>
                         </>
                       ) : null}
                       {selected.sourceKinds.length === 1 && (selected.sourceKinds[0] === 'installed' || selected.sourceKinds[0] === 'dev-link') ? (
-                        <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} disabled={busyKey === `${selected.packageId}/uninstall`} type="button" onClick={() => void run(`${selected.packageId}/uninstall`, () => uninstallPackage(selected.packageId, selected.version))}>
-                          <Trash2 aria-hidden="true" />
-                          <span>{props.t('renderer.uninstall')}</span>
+                        <button className={`${styles.actionBtn} ${styles.actionBtnDanger}`} disabled={busyKey === `${selected.packageId}/uninstall`} type="button" onClick={() => void run(`${selected.packageId}/uninstall`, () => uninstallPackage(selected.packageId, selected.version))} title={props.t('renderer.uninstall')} aria-label={props.t('renderer.uninstall')}>
+                          <PackageMinus aria-hidden="true" />
                         </button>
                       ) : null}
                     </div>
                   </header>
                 )
               })()}
+              <ExtensionPackageTabs key={selected.packageId} t={props.t} resources={resourcePanel(selected)} settings={settingsPanel(selected)} overview={<>
+              {selected.description ? <p>{selected.description}</p> : null}
               <ExtensionRemoteControls key={selected.packageId} api={props.extensionApi} t={props.t}
                 selected={selected} onInstalled={props.onRefreshExtensions} />
-              {props.serverDiagnostics.length > 0 ? (
-                <details className={styles.diagnostics}>
-                  <summary>{props.t('renderer.serverDiagnostics')} · {props.serverDiagnostics.length}</summary>
-                  <pre>{JSON.stringify(props.serverDiagnostics, null, 2)}</pre>
-                </details>
-              ) : null}
+              <ExtensionCharacterCatalog key={`${selected.packageId}:${selected.version}`} packageId={selected.packageId}
+                api={props.extensionApi} t={props.t} onImported={props.onCharacterImported}
+                onOpen={cardId => navigate(`/studio/characters/${encodeURIComponent(cardId)}`)} />
+
               <PackageControls extensionPackage={selected} clientSummaries={clientSummaries} busy={Boolean(busyKey)} report={toggleReport}
                 onGrant={(module, grants) => run(`${selected.packageId}/${module.moduleId}/grant`, () => props.onEnable(selected.packageId, module.moduleId, grants, selected.target))}
-                onToggle={togglePackage} settings={(selected.resources?.settings?.length ?? 0) > 0
-                  ? <ExtensionSettingsForm api={props.extensionRuntime} configRevision={props.configRevision}
-                    packageId={selected.packageId} scopeContext={props.settingScopeContext} settings={selected.resources?.settings ?? []} t={props.t} />
-                  : null} t={props.t} />
+                onToggle={togglePackage} t={props.t} />
+              <ModuleNavigation extensionPackage={selected} select={select} t={props.t} />
+              </>} />
             </>
           ) : null}
-          {selected && selectedItem?.kind === 'resource' ? <PackageResourceDetail extensionPackage={selected} selection={selectedItem} t={props.t} /> : null}
           {selected && selectedModule && selectedItem?.kind === 'module' ? (
             <ModuleDetail
               busyKey={busyKey}
@@ -673,6 +683,11 @@ export function ExtensionWorkspace(props: {
       </MasterDetailWorkbench>
     </section>
   )
+  return <MobileTabPages activeId={view} onChange={setView} header={mobileTabs} pages={[
+    { id: 'packages', content: packagePage('packages') },
+    { id: 'scripts', content: scriptsPage },
+    { id: 'participation', content: packagePage('participation') },
+  ]} />
 }
 
 function extensionIconUrl(extensionPackage: ManagedExtensionPackage): string | undefined {
@@ -697,75 +712,21 @@ function packageResourceCount(extensionPackage: ManagedExtensionPackage): number
     + (extensionPackage.resources?.loomScripts?.length ?? 0)
 }
 
-function ExtensionFiles(props: {
-  extensionPackage: ManagedExtensionPackage
-  expandedIds: string[]
-  onExpandedIdsChange(ids: string[]): void
-  selection?: ExtensionWorkspaceSelection
-  select(selection: ExtensionWorkspaceSelection): void
-  t: Translator
-}) {
-  const extensionPackage = props.extensionPackage
-  const prefix = `${extensionPackage.target?.kind === 'card' ? extensionPackage.target.cardId : 'global'}:${extensionPackage.packageId}:`
-  const selections = new Map<string, ExtensionWorkspaceSelection>()
-  const resources: FileTreeNode[] = []
-  for (const [kind, label, entries] of [
-    ['prompt', props.t('renderer.promptResource'), extensionPackage.resources?.promptResources ?? []],
-    ['tool', props.t('renderer.agentTool'), extensionPackage.resources?.agentTools ?? []],
-    ['rule', props.t('renderer.transformRule'), extensionPackage.resources?.transformRules ?? []],
-    ['extractor', props.t('renderer.textExtractor'), extensionPackage.resources?.textExtractors ?? []],
-    ['script', props.t('renderer.loomScript'), extensionPackage.resources?.loomScripts ?? []],
-  ] as const) {
-    const children: FileTreeNode[] = []
-    for (const resource of entries) {
-      const id = `${prefix}${kind}:${resource.id}`
-      children.push({ id, label: resource.id.startsWith(`${extensionPackage.packageId}/`)
-        ? resource.id.slice(extensionPackage.packageId.length + 1) : resource.id, kind })
-      selections.set(id, extensionPackage.target?.kind === 'card'
-        ? { kind: 'card-resource', packageId: extensionPackage.packageId, cardId: extensionPackage.target.cardId, resourceKind: kind, id: resource.id }
-        : { kind: 'resource', packageId: extensionPackage.packageId, resourceKind: kind, id: resource.id })
-    }
-    if (children.length) resources.push({ id: `${prefix}resources:${kind}`, label, kind: 'folder', children })
-  }
-  const modules: FileTreeNode[] = extensionPackage.modules.map(module => {
-    const id = `${prefix}module:${module.moduleId}`
-    selections.set(id, extensionPackage.target?.kind === 'card'
-      ? { kind: 'card-module', packageId: extensionPackage.packageId, cardId: extensionPackage.target.cardId, moduleId: module.moduleId }
-      : { kind: 'module', packageId: extensionPackage.packageId, moduleId: module.moduleId })
-    const children: FileTreeNode[] = []
-    if (extensionPackage.target?.kind !== 'card') {
-      for (const definition of module.contributions.renderers ?? []) {
-        const childId = `${id}:renderer:${definition.id}`
-        children.push({ id: childId, label: definition.name, kind: 'renderer' })
-        selections.set(childId, { kind: 'renderer', packageId: extensionPackage.packageId, moduleId: module.moduleId, id: definition.id })
-      }
-      for (const command of module.contributions.commands ?? []) {
-        const childId = `${id}:command:${command.id}`
-        children.push({ id: childId, label: command.title, kind: 'command' })
-        selections.set(childId, { kind: 'command', packageId: extensionPackage.packageId, moduleId: module.moduleId, id: command.id })
-      }
-    }
-    return { id, label: module.moduleId, kind: 'module', ...(children.length ? { children } : {}) }
-  })
-  const nodes: FileTreeNode[] = [
-    ...(resources.length ? [{ id: `${prefix}resources`, label: props.t('renderer.packageResources'), kind: 'folder', children: resources }] : []),
-    ...(modules.length ? [{ id: `${prefix}modules`, label: props.t('renderer.modules'), kind: 'folder', children: modules }] : []),
-  ]
-  const selectedId = [...selections].find(([, item]) => JSON.stringify(item) === JSON.stringify(props.selection))?.[0]
-  return <FileTree ariaLabel={extensionPackage.displayName} nodes={nodes} expandedIds={props.expandedIds}
-    onExpandedIdsChange={props.onExpandedIdsChange} selectedId={selectedId}
-    getDisclosureLabel={node => node.label} getDragLabel={node => node.label} moreActionsLabel={props.t('context.actionMore')}
-    onSelect={node => {
-      if (node.children) {
-        props.onExpandedIdsChange(props.expandedIds.includes(node.id)
-          ? props.expandedIds.filter(id => id !== node.id) : [...props.expandedIds, node.id])
-      } else {
-        const item = selections.get(node.id)
-        if (item) props.select(item)
-      }
-    }}
-    renderIcon={node => node.kind === 'folder' ? <Folder size={16} /> : node.kind === 'module' ? <Component size={16} />
-      : node.kind === 'command' || node.kind === 'tool' ? <TerminalSquare size={16} /> : <Braces size={16} />} />
+function ModuleNavigation(props: { extensionPackage: ManagedExtensionPackage; select(selection: ExtensionWorkspaceSelection): void; t: Translator }) {
+  const pkg = props.extensionPackage
+  return <section aria-label={props.t('renderer.modules')}>
+    {pkg.modules.map(module => <div className={styles.moduleLinks} key={module.moduleId}>
+      <TreeItem active={false} icon={Component} label={module.moduleId} onClick={() => props.select(pkg.target?.kind === 'card'
+        ? { kind: 'card-module', packageId: pkg.packageId, cardId: pkg.target.cardId, moduleId: module.moduleId }
+        : { kind: 'module', packageId: pkg.packageId, moduleId: module.moduleId })} />
+      {pkg.target?.kind !== 'card' ? <>
+        {(module.contributions.renderers ?? []).map(item => <TreeItem key={`renderer:${item.id}`} active={false} icon={Component} label={item.name}
+          onClick={() => props.select({ kind: 'renderer', packageId: pkg.packageId, moduleId: module.moduleId, id: item.id })} />)}
+        {(module.contributions.commands ?? []).map(item => <TreeItem key={`command:${item.id}`} active={false} icon={TerminalSquare} label={item.title}
+          onClick={() => props.select({ kind: 'command', packageId: pkg.packageId, moduleId: module.moduleId, id: item.id })} />)}
+      </> : null}
+    </div>)}
+  </section>
 }
 
 function PackageControls(props: {
@@ -775,7 +736,6 @@ function PackageControls(props: {
   report?: { key: string; completed: string[]; failed: Array<{ moduleId: string; message: string }> }
   onToggle(extensionPackage: ManagedExtensionPackage): Promise<void>
   onGrant(module: ManagedExtensionModule, grants: ManagedExtensionModule['desired']['grants']): Promise<void>
-  settings: React.ReactNode
   t: Translator
 }) {
   const { extensionPackage } = props
@@ -839,7 +799,6 @@ function PackageControls(props: {
         {props.report.failed.map(item => <p key={item.moduleId} role="alert">{item.moduleId}: {item.message}</p>)}
       </div> : null}
     </section> : null}
-    {props.settings}
   </>
 }
 
@@ -855,51 +814,6 @@ function TreeItem(props: {
       <Icon aria-hidden="true" />
       <span>{props.label}</span>
     </button>
-  )
-}
-
-function PackageResourceDetail(props: {
-  extensionPackage: ManagedExtensionPackage
-  selection: Extract<ExtensionWorkspaceSelection, { kind: 'resource' | 'card-resource' }>
-  t: Translator
-}) {
-  const resources = props.extensionPackage.resources
-  const resource = props.selection.resourceKind === 'prompt'
-    ? resources?.promptResources?.find(item => item.id === props.selection.id)
-    : props.selection.resourceKind === 'tool'
-      ? resources?.agentTools?.find(item => item.id === props.selection.id)
-      : props.selection.resourceKind === 'rule'
-        ? resources?.transformRules?.find(item => item.id === props.selection.id)
-        : props.selection.resourceKind === 'extractor'
-          ? resources?.textExtractors?.find(item => item.id === props.selection.id)
-          : resources?.loomScripts?.find(item => item.id === props.selection.id)
-  if (!resource) return <p className={styles.empty}>{props.t('renderer.resourceMissing')}</p>
-
-  const imported = props.selection.resourceKind === 'rule'
-    ? props.extensionPackage.importedResources?.transformRuleContributionIds.includes(resource.id)
-    : props.selection.resourceKind === 'extractor'
-      ? props.extensionPackage.importedResources?.textExtractorContributionIds.includes(resource.id)
-      : undefined
-  const kind = props.selection.resourceKind === 'prompt'
-    ? props.t('renderer.promptResource')
-    : props.selection.resourceKind === 'tool'
-      ? props.t('renderer.agentTool')
-      : props.selection.resourceKind === 'rule'
-        ? props.t('renderer.transformRule')
-        : props.selection.resourceKind === 'extractor'
-          ? props.t('renderer.textExtractor')
-          : props.t('renderer.loomScript')
-
-  return (
-    <article className={styles.resourceDetail}>
-      <header><Braces aria-hidden="true" /><div><h3>{resource.id}</h3><small>{kind}</small></div></header>
-      <dl className={styles.detailFacts}>
-        <div><dt>{props.t('renderer.owner')}</dt><dd><code>{props.extensionPackage.packageId}@{props.extensionPackage.version}</code></dd></div>
-        <div><dt>{props.t('renderer.source')}</dt><dd><code>{resource.source}</code></dd></div>
-        {imported === undefined ? null : <div><dt>{props.t('renderer.status')}</dt><dd>{props.t(imported ? 'renderer.resourceImported' : 'renderer.resourceDeclared')}</dd></div>}
-      </dl>
-      <pre>{JSON.stringify(resource, null, 2)}</pre>
-    </article>
   )
 }
 

@@ -16,13 +16,13 @@
 .coverage { display: grid; gap: 8px; padding: 12px 16px; margin-bottom: 24px; border-radius: var(--loom-radius-control); background: var(--loom-color-surface-subtle); font-size: var(--loom-font-size-1); line-height: 1.7; p { margin: 0; } strong { font-weight: 600; } }
 
 .coverageDetails {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 10px;
   font-size: var(--loom-font-size-1);
   color: var(--loom-color-text-muted);
-  > summary { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; cursor: pointer; padding: 4px 0; list-style: none; }
-  > summary::-webkit-details-marker { display: none; }
-  > summary > span:last-child { flex: none; text-decoration: underline; text-underline-offset: 3px; }
-  .coverage { margin: 8px 0 0; }
 }
 
 .tokenCount { color: var(--loom-color-text-muted); font-size: var(--loom-font-size-1); &[data-exceeded="true"] { color: var(--loom-color-danger); } }

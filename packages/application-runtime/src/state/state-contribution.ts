@@ -1,4 +1,6 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { playerEntity, playerEntityType } from '@loom-studio/shared'
+import { assertAuthorPlayerState } from '../profiles/player-state.js'
 import type {
   CardSourceContent,
   MaterializedStateContribution,
@@ -30,6 +32,7 @@ export class StateContributionError extends Error {
 }
 
 export function createStateArtifact(contribution: StateContribution): StateArtifact {
+  assertAuthorPlayerState(contribution)
   validateStateContribution(contribution)
   return {
     kind: 'loom.state',
@@ -43,7 +46,7 @@ export function createCardStateContribution(
   content: CardSourceContent,
   templates: Map<string, TimelineStateTemplateDraft>,
 ): StateContribution {
-  return {
+  const contribution: StateContribution = {
     id: `card:${cardId}`,
     entityTypes: structuredClone(content.stateEntityTypes ?? []),
     templates: [...templates].map(([id, template]) => ({
@@ -59,6 +62,8 @@ export function createCardStateContribution(
     componentMounts: structuredClone(content.timelineComponentMounts ?? []),
     bindings: structuredClone(content.timelineStateBindings ?? []),
   }
+  assertAuthorPlayerState(contribution)
+  return contribution
 }
 
 export function parseStateArtifact(value: unknown): StateArtifact {
@@ -67,6 +72,7 @@ export function parseStateArtifact(value: unknown): StateArtifact {
   }
   const artifact = value as unknown as StateArtifact
   validateStateContribution(artifact.contribution)
+  assertAuthorPlayerState(artifact.contribution)
   return structuredClone(artifact)
 }
 
@@ -91,6 +97,7 @@ export function validateStateContribution(
     entityTypes.set(entityType.id, entityType)
     collectionPaths.add(entityType.collectionPath)
   }
+  if (!entityTypes.has(playerEntityType.id)) entityTypes.set(playerEntityType.id, playerEntityType)
 
   const templates = new Map<string, TimelineStateTemplateDraft>()
   for (const template of contribution.templates) {
@@ -121,6 +128,7 @@ export function validateStateContribution(
     if (entities.has(key)) throw duplicate('entity', key)
     entities.add(key)
   }
+  entities.add(entityKey(playerEntity))
 
   for (const mount of contribution.componentMounts) {
     validatePathSegment(mount.componentKey, 'componentKey')
@@ -164,7 +172,8 @@ export function composeStateContributions(id: string, contributions: readonly St
 
 export function materializeStateContribution(contribution: StateContribution): MaterializedStateContribution {
   validateStateContribution(contribution)
-  const entityTypes = new Map(contribution.entityTypes.map(entityType => [entityType.id, entityType]))
+  const entityTypes = new Map([[playerEntityType.id, playerEntityType],
+    ...contribution.entityTypes.map(entityType => [entityType.id, entityType] as const)])
   const templates = new Map<string, TimelineStateTemplateDraft>(contribution.templates.map(template => [template.id, {
     kind: 'timeline-template',
     templateVersion: template.templateVersion,
@@ -188,7 +197,8 @@ export function materializeStateContribution(contribution: StateContribution): M
     const batchTypeId = mount.target.kind === 'entity-type' ? mount.target.typeId : undefined
     const targets = mount.target.kind === 'entity'
       ? [mount.target.entity]
-      : contribution.entities.filter(entity => entity.typeId === batchTypeId)
+      : batchTypeId === playerEntityType.id ? [playerEntity]
+        : contribution.entities.filter(entity => entity.typeId === batchTypeId)
     for (const entity of targets) {
       const entityType = entityTypes.get(entity.typeId)!
       const path = `${entityType.collectionPath}.${entity.entityId}.components.${mount.componentKey}`

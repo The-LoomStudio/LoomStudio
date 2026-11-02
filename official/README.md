@@ -2,41 +2,19 @@
 
 本目录保存正式官方内容的作者源文件。Official 是维护来源，不是权限或自动启用资格。
 
-- `starter/`：官方问答 Agent 预设与知识 Lore，不含模型凭据。
-- `extensions/loom-assistant/`：同仓维护的助手预设与配套资源，不要求独立仓库。
+- `extensions/loom-assistant/`：本地维护的助手预设、角色与表情资源，已从主仓库停止追踪；独立仓库尚待建立。发布或运行诺姆专属集成测试前需准备此本地目录，主仓库不携带其图片。
 - ST 数据兼容、The World 等具有独立发布周期的扩展，在根目录 `extensions/` 安装和开发，不纳入主仓库跟踪；本地开发副本由 `.gitignore` 排除。
 - `official/extensions/` 只保留随主程序发行的轻量官方内容。“官方”表示维护来源，不决定独立扩展的安装目录。
 - 接口测试扩展位于 `tests/fixtures/extensions/`，正式 Server 默认不扫描该目录。开发者通过已有 dev-link 或显式 `extensionRootDirectory` 加载。
 
-## 当前可用流程
+## 内容来源与安装
 
-在仓库根目录运行 `pnpm official:pack`。输出 `.artifacts/official.starter-0.1.0.zip`，目标已存在时拒绝覆盖。也可以指定源目录和输出文件：
+诺姆助手通过 `extensions/loom-assistant/` 扩展提供预设与知识。作者目录、构建与安装说明见 [诺姆助手](extensions/loom-assistant/NOM-ASSISTANT.md)。其他官方内容沿用各自扩展 manifest 和安装流程。
 
-```sh
-pnpm official:pack official/starter /tmp/official.starter-0.1.0.zip
-```
+旧 `official.starter` 已退出产品目录、默认启动安装与发行包；历史样本仅保留在 `tests/fixtures/legacy-official-starter/` 验证兼容行为。Server 不再自动创建或恢复旧助手和知识。用户数据库中的旧资源及其来源标识、引用保持不变，可以通过普通删除确认流程移除，不自动替换为诺姆扩展的资源。
 
-Studio 的扩展工作台左侧提供「官方推荐」，选择基础内容后可确认安装、导出官方原始资源包；安装后的预设直接出现在 Agent 预设列表，绑定模型后即可使用。导出的是磁盘上的原始发行内容，不是用户修改过的作者资源；用户资源仍通过原有导出入口导出。
+旧 catalog 服务只在显式配置 `officialContentDirectory` 时提供手动导入／导出，默认列表为空且不会在启动时安装。`pnpm official:pack` 仅作为旧格式工具，必须提供显式目录，没有默认 starter 内容。
 
-包内 `catalog.json` 保存包身份、版本、文件引用及 Agent 预设对 Lore 的挂载，不再另建 Agent 模板别名。资源文件沿用 `loom.promptResource` Artifact；安装后同一资源承载编排与本地 Agent 配置，发行文件不保存 Provider、凭据或会话。目录/ZIP 中的源文件可由 Git 和外部编辑器维护，目前没有自动双向同步。
-
-Server 默认从仓库根的 `official/starter` 读取内容。部署时须携带该目录，或通过 `CreateStudioServerOptions.officialContentDirectory` 指向解包后的目录；不能只复制 Server `dist` 并假定资源会存在。当前 ZIP 是交付产物，尚未提供 UI 中上传 ZIP 的安装入口。
-
-## 数据边界
-
-Server 启动时自动安装缺失的默认预设/Lore；这属于内置基础内容，不需要先确认安装插件。启动安装与显式安装均只创建缺失身份，保留用户已有内容与 tombstone，不重写已有资源或补回被移除的挂载，也不会静默恢复删除。已有资源并不代表与最新发行内容相同，UI 的「已有资源」不是版本一致性证明。
-
-安装是一个正式 Application 事务，非法 Artifact/挂载不能留下部分资源。首次创建的官方预设只挂载包内可用知识 Lore，不自动建立全局知识挂载；创建的 Tool 挂载默认关闭。
-
-## 发布边界
-
-基础内容版本由 `starter/catalog.json` 管理；独立官方扩展自行维护版本与发行，不要求与主应用同版本发布。
-
-扩展中心已有公开 HTTPS Git、远程 ZIP 与本地 ZIP 安装入口。独立扩展的安装来源必须包含可运行产物：
-源码分支可以忽略 dist，作者另行维护发行分支或上传 Release 成品 ZIP。
-当前 STBridge 与 The World 的远程仓库尚缺完整产物，官方安装仍受此阻塞。
-可信版本索引与 Release 最新版查询尚未实现；内容摘要和 Manifest ID 都不是独立签名或来源认证。
-
-ST 转换代码只由 Extension Host 加载，Server 不再静态依赖该包。导入入口通过现有 RPC 调用当前启用实例；需先启用 ST 的 server 模块，停用/卸载后不能再转换 ST 格式，重载后使用新实例。原生 Loom 格式不依赖该扩展。这里仍绑定已知转换 RPC 协议，不是通用转换器发现系统；Server 扩展仍为可信同进程代码，不是安全沙箱。已有导入资源的显式替换不属于代码安装或更新。
+Official 是维护来源，不是只读、自动启用或自动授权资格。资源更新和删除继续保留原有确认及引用边界，不借此次退役覆盖用户编辑。
 
 ST 导入的头像只保留图像/动画数据，不保留 PNG 文本块或尾部载荷；世界书只生成一份 Prompt Resource，不再同时复制到旧 lore，也不再创建完整源卡 JSON 附件。未转换的 ST 私有字段不会通过这种原始备份随 Loom 卡分发。已有卡的历史源卡附件不会自动删除或解绑。

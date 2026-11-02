@@ -25,6 +25,7 @@ export function useScriptRuntime(input: {
   stateRead: RendererRuntimeInput['stateRead']
   notify(owner: string, notification: ClientNotification): void
   onResolved?(result: Resolution): void
+  onInspectScript?(scriptId?: string): void
 }) {
   const latest = useRef(input)
   latest.current = input
@@ -48,12 +49,15 @@ export function useScriptRuntime(input: {
     }),
   }), [input.rendererHost, input.api, input.logger])
 
+  const inspectAction = (scriptId?: string) => latest.current.onInspectScript ? { label: '查看脚本', onClick: () => latest.current.onInspectScript?.(scriptId) } : undefined
+
   const reconcile = useCallback(async () => {
     runtime.renderer.reconcile(runtime.mounts.filter(mount => mount.script.runtime === 'client-sandbox').map(mount => ({ ...mount, script: { ...mount.script, contributions: mount.script.contributions.filter(item => item.kind === 'renderer') } })))
     await runtime.client.reconcile(runtime.mounts, import.meta.env.DEV ? sceneScriptDevelopment.overrides() : undefined)
     if (!runtime.active) return
     for (const diagnostic of runtime.client.host.diagnostics()) {
-      notify.error(diagnostic.message, { id: `loom-script-client:${diagnostic.moduleId}:${diagnostic.code}` })
+      const script = runtime.mounts.find(mount => mount.mountId === diagnostic.moduleId)?.script
+      notify.failure(script ? `脚本「${script.name}」运行失败` : '客户端脚本运行失败', diagnostic.message, { id: `loom-script-client:${diagnostic.moduleId}:${diagnostic.code}`, action: inspectAction(script?.id) })
     }
   }, [runtime])
 
@@ -73,23 +77,24 @@ export function useScriptRuntime(input: {
       await reconcile()
       if (!runtime.active || request !== runtime.request) return
       for (const mount of result.unavailableMounts) {
-        if (mount.enabled) notify.warning(mount.message, { id: `loom-script-unavailable:${mount.mountId}` })
+        if (mount.enabled) notify.warning('已启用的脚本不可用', { description: mount.reason === 'script-missing' ? '原脚本已不存在，请检查脚本绑定。' : '脚本所属扩展未安装，请检查扩展安装状态。', details: mount.message, id: `loom-script-unavailable:${mount.mountId}`, action: inspectAction(mount.reason === 'script-missing' ? undefined : mount.scriptDocumentId) })
       }
       for (const instance of result.serverInstances ?? []) {
         if (instance.state === 'active') continue
         const message = instance.diagnostics.map(diagnostic => diagnostic.message).join('\n') || `脚本 ${instance.mountId}：${instance.state}`
-        notify.error(message, { id: `loom-script-server:${instance.mountId}` })
+        const script = result.mounts.find(mount => mount.mountId === instance.mountId)?.script
+        notify.failure(script ? `脚本「${script.name}」未正常运行` : '服务端脚本未正常运行', message, { id: `loom-script-server:${instance.mountId}`, action: inspectAction(script?.id) })
       }
       latest.current.onResolved?.(result)
     } catch (error) {
-      if (runtime.active && request === runtime.request) notify.error(readError(error), { id: 'loom-script-resolution' })
+      if (runtime.active && request === runtime.request) notify.failure('脚本运行配置加载失败', error, { id: 'loom-script-resolution', action: inspectAction() })
     }
   }, [input.api, input.rendererHost, reconcile, runtime])
 
   useEffect(() => {
     runtime.active = true
     const unsubscribeDevelopment = import.meta.env.DEV ? sceneScriptDevelopment.subscribe(() => {
-      void reconcile().catch(error => { if (runtime.active) notify.error(readError(error)) })
+      void reconcile().catch(error => { if (runtime.active) notify.failure('脚本运行同步失败', error, { action: inspectAction() }) })
     }) : undefined
     const pruneContext = () => {
       const scope = input.rendererHost.scopeSnapshot()
@@ -103,7 +108,7 @@ export function useScriptRuntime(input: {
         return true
       })
       // Removing a scope aborts its old Host before waiting for the next resolver request.
-      void reconcile().catch(error => { if (runtime.active) notify.error(readError(error)) })
+      void reconcile().catch(error => { if (runtime.active) notify.failure('脚本运行同步失败', error, { action: inspectAction() }) })
       void refresh()
     }
     const unsubscribeScope = input.rendererHost.subscribe(pruneContext)
@@ -112,7 +117,7 @@ export function useScriptRuntime(input: {
       events: {
         'extensions.changed': () => { void refresh() },
         'extensions.data.changed': () => {
-          void runtime.client.host.notifyStateChanged().catch(error => { if (runtime.active) notify.error(readError(error)) })
+          void runtime.client.host.notifyStateChanged().catch(error => { if (runtime.active) notify.failure('脚本运行同步失败', error, { action: inspectAction() }) })
           void refresh()
         },
       },
@@ -131,5 +136,3 @@ export function useScriptRuntime(input: {
 
   useEffect(() => { void refresh() }, [refresh, input.presetId, input.refreshToken])
 }
-
-function readError(error: unknown) { return error instanceof Error ? error.message : String(error) }

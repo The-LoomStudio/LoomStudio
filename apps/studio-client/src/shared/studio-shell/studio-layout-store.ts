@@ -28,6 +28,7 @@ type AssetLayout = {
 }
 
 type StudioLayoutData = {
+  viewPreferences: Record<string, string>
   assetMetadataOpen: boolean
   assetLayouts: Record<AssetLayoutId, AssetLayout>
   assetPanes: Record<AssetLayoutId, Record<string, AssetPane>>
@@ -38,9 +39,7 @@ type StudioLayoutData = {
   panelWindowMode: PanelWindowMode
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
   presetView: PresetView
-  playCalendarOpen: boolean
   playSelectedDate: string | undefined
-  playRecentSessionsOpen: boolean
   railWidth: number
   textEditorMode: LongTextEditorMode
   uiScale: number
@@ -55,6 +54,9 @@ export type WorkbenchNavigation = {
 }
 
 type StudioLayoutStore = StudioLayoutData & {
+  panelPositions: Record<string, { search: string; resourceId?: string; assetId?: string }>
+  rememberPanelPosition(key: string, position: { search: string; resourceId?: string; assetId?: string }): void
+  setViewPreference(key: string, value: string): void
   workbenchNavigation: WorkbenchNavigation | null
   setWorkbenchNavigation(navigation: WorkbenchNavigation | null): void
   closeDock(): void
@@ -76,9 +78,7 @@ type StudioLayoutStore = StudioLayoutData & {
   toggleDockPinned(): void
   toggleComposerPinned(): void
   togglePanelWindowMode(): void
-  setPlayCalendarOpen(open: boolean): void
   setPlaySelectedDate(date: string | undefined): void
-  setPlayRecentSessionsOpen(open: boolean): void
 }
 
 type StudioPanelStore = {
@@ -124,6 +124,7 @@ function updateAssetView(
 
 export function createDefaultStudioLayout(): StudioLayoutData {
   return {
+    viewPreferences: {},
     assetMetadataOpen: false,
     assetLayouts: {
       preset: { explorerWidth: DEFAULT_EXPLORER_WIDTH, views: {} },
@@ -141,9 +142,7 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     textEditorMode: 'source',
     uiScale: UI_SCALE_DEFAULT,
     uiScaleOverridden: false,
-    playCalendarOpen: false,
     playSelectedDate: undefined,
-    playRecentSessionsOpen: true,
   }
 }
 
@@ -157,6 +156,7 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
       : 'reference'
 
   return {
+    viewPreferences: isRecord(value.viewPreferences) ? Object.fromEntries(Object.entries(value.viewPreferences).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {},
     assetMetadataOpen: value.assetMetadataOpen === true,
     assetLayouts: {
       preset: readAssetLayout(value.assetLayouts, 'preset', defaults.assetLayouts.preset),
@@ -176,9 +176,7 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     // ponytail: Legacy storage cannot distinguish an explicit default from an automatically saved default.
     uiScaleOverridden: typeof value.uiScaleOverridden === 'boolean'
       ? value.uiScaleOverridden : readUiScale(value.uiScale) !== UI_SCALE_DEFAULT,
-    playCalendarOpen: value.playCalendarOpen === true,
     playSelectedDate: typeof value.playSelectedDate === 'string' ? value.playSelectedDate : undefined,
-    playRecentSessionsOpen: value.playRecentSessionsOpen !== false,
   }
 }
 
@@ -210,6 +208,9 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
           },
         }
       }),
+      panelPositions: {},
+      rememberPanelPosition: (key, position) => set(state => ({ panelPositions: { ...state.panelPositions, [key]: position } })),
+      setViewPreference: (key, value) => set(state => state.viewPreferences[key] === value ? state : ({ viewPreferences: { ...state.viewPreferences, [key]: value } })),
       workbenchNavigation: null,
       setWorkbenchNavigation: workbenchNavigation => set({ workbenchNavigation }),
       setAssetMetadataOpen: assetMetadataOpen => set({ assetMetadataOpen }),
@@ -241,9 +242,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         panelWindowSizes: { ...state.panelWindowSizes, [panel]: size },
       })),
       setPresetView: presetView => set({ presetView }),
-      setPlayCalendarOpen: playCalendarOpen => set({ playCalendarOpen }),
       setPlaySelectedDate: playSelectedDate => set({ playSelectedDate }),
-      setPlayRecentSessionsOpen: playRecentSessionsOpen => set({ playRecentSessionsOpen }),
       setRailWidth: railWidth => set({ railWidth: readRailWidth(railWidth) }),
       setTextEditorMode: textEditorMode => set({ textEditorMode }),
       setUiScale: uiScale => set({ uiScale: readUiScale(uiScale), uiScaleOverridden: true }),
@@ -262,6 +261,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
       migrate: persisted => sanitizeStudioLayout(persisted),
       merge: (persisted, current) => ({ ...current, ...sanitizeStudioLayout(persisted) }),
       partialize: state => ({
+        viewPreferences: state.viewPreferences,
         assetMetadataOpen: state.assetMetadataOpen,
         assetLayouts: state.assetLayouts,
         contextCategory: state.contextCategory,

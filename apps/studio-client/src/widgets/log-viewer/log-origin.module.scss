@@ -1,0 +1,18 @@
+.origin { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
+.avatar { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border-radius: var(--loom-radius-control); color: var(--loom-color-text-subtle); }
+.avatar img { width: 100%; height: 100%; object-fit: contain; }
+.avatar svg { width: 20px; height: 20px; }
+.labels { display: grid; gap: 3px; min-width: 0; }
+.labels strong { font: inherit; font-weight: var(--loom-font-weight-5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.labels small { min-width: 0; display: flex; align-items: center; gap: 5px; color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-1); }
+.labels small img, .labels small svg { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; }
+
+.placeholder { background: var(--loom-color-surface-raised); }
+.labels small span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.labels small img, .labels small svg { flex-shrink: 0; }
+.origin[data-compact] { gap: 7px; }
+.origin[data-compact] .avatar { width: 24px; height: 24px; flex-basis: 24px; }
+.origin[data-compact] .avatar svg { width: 16px; height: 16px; }
+.origin[data-compact] .labels { display: flex; align-items: center; gap: 10px; }
+.origin[data-compact] .labels strong { min-width: 0; max-width: 18em; }
+.origin[data-compact] .labels small { max-width: 10em; }

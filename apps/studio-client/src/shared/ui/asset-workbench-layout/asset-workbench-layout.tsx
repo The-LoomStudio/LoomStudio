@@ -21,7 +21,7 @@ type AssetWorkbenchLayoutProps = {
 
 export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
   const explorer = (
-    <aside className={styles.explorerPane} data-loom-component="asset-explorer">
+    <aside className={styles.explorerPane} data-loom-mobile-tab-scope="" data-loom-component="asset-explorer">
       {props.header ? (
         <div className={styles.explorerHeader} data-loom-component="explorer-header">
           {props.header}

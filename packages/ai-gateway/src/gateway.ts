@@ -2,7 +2,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import type { ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
+import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import {
   generateText,
@@ -300,7 +300,7 @@ function validateToolChoice(
   }
 }
 
-function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
+function toModelMessages(messages: AiGatewayRequest['messages']): ModelMessage[] {
   const toolNames = new Map<string, string>()
   return messages.map((message, index) => {
     if (message.role === 'system' || message.role === 'developer') {
@@ -308,6 +308,15 @@ function toModelMessages(messages: ChatMessage[]): ModelMessage[] {
       return { role: 'system', content: message.content }
     }
     if (message.role === 'user') {
+      if (message.images?.length) {
+        return {
+          role: 'user',
+          content: [
+            ...(message.content ? [{ type: 'text' as const, text: message.content }] : []),
+            ...message.images.map(image => ({ type: 'file' as const, data: image.data, mediaType: image.mediaType })),
+          ],
+        }
+      }
       assertMessageContent(message.content, index)
       return { role: 'user', content: message.content }
     }

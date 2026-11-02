@@ -2,6 +2,7 @@ import { Box, Boxes, Braces, Component, FileCode2, Folder, FolderOpen, Link2, Pl
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { notify } from '../../../shared/notifications/index.js'
 import { Button } from '@loom-studio/ui'
+import { playerEntity, playerEntityPath, playerEntityType, playerProfileComponentKey } from '@loom-studio/shared'
 import type { Card, CardStateTemplate } from '../../../entities/card.js'
 import type { JsonObject } from '../../../entities/common.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -31,6 +32,7 @@ type DraftConfig = ReturnType<typeof cardToConfig>
 type Selection =
   | { kind: 'entity-type' | 'entity' | 'component' | 'mount' | 'contribution' | 'binding'; index: number }
   | { kind: 'source' }
+  | { kind: 'builtin'; target: 'entity-type' | 'entity' }
 
 export function StateAuthoringPanel(props: StateAuthoringPanelProps) {
   return <StateAuthoringEditor key={props.card?.id} {...props} />
@@ -138,7 +140,7 @@ function StateAuthoringEditor(props: StateAuthoringPanelProps) {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)
       if (mountedRef.current) setError(message)
-      notify.error(message)
+      notify.failure('保存状态定义失败', message)
     } finally {
       savingRef.current = false
       if (mountedRef.current) setSaving(false)
@@ -211,32 +213,32 @@ function AuthoringMaster(props: { config: DraftConfig; selection: Selection; sel
     'group:entity-type', 'group:entity', 'group:component', 'group:mount', 'group:contribution', 'group:binding',
   ])
 
-  const selectedNodeId = selection.kind === 'source' ? 'source' : `${selection.kind}:${selection.index}`
+  const selectedNodeId = selection.kind === 'source' ? 'source' : selection.kind === 'builtin' ? `builtin:${selection.target}` : `${selection.kind}:${selection.index}`
 
   const nodes: FileTreeNode[] = useMemo(() => [
     {
       id: 'group:entity-type',
       label: t('stateAuthoring.entityTypes'),
       kind: 'folder',
-      meta: String(config.stateEntityTypes.length),
-      children: config.stateEntityTypes.map((item, index) => ({
+      meta: String(config.stateEntityTypes.length + 1),
+      children: [{ id: 'builtin:entity-type', label: playerEntityType.label || playerEntityType.id, kind: 'entry', meta: t('directory.builtinResource') }, ...config.stateEntityTypes.map((item, index) => ({
         id: `entity-type:${index}`,
         label: item.label || item.id,
         kind: 'entry',
         meta: item.collectionPath,
-      })),
+      }))],
     },
     {
       id: 'group:entity',
       label: t('stateAuthoring.entities'),
       kind: 'folder',
-      meta: String(config.timelineStateEntities.length),
-      children: config.timelineStateEntities.map((item, index) => ({
+      meta: String(config.timelineStateEntities.length + 1),
+      children: [{ id: 'builtin:entity', label: playerEntity.entityId, kind: 'entry', meta: t('directory.builtinResource') }, ...config.timelineStateEntities.map((item, index) => ({
         id: `entity:${index}`,
         label: item.entityId,
         kind: 'entry',
         meta: item.typeId,
-      })),
+      }))],
     },
     {
       id: 'group:component',
@@ -312,9 +314,9 @@ function AuthoringMaster(props: { config: DraftConfig; selection: Selection; sel
       select({ kind: 'component', index })
     } else if (groupId === 'group:mount') {
       const template = config.stateTemplates[0]
-      if (!template || !config.stateEntityTypes.length) return
+      if (!template) return
       const index = config.timelineComponentMounts.length
-      commit({ ...config, timelineComponentMounts: [...config.timelineComponentMounts, { templateId: template.id, templateVersion: template.templateVersion, componentKey: template.componentKey || template.id, target: { kind: 'entity-type', typeId: config.stateEntityTypes[0]!.id }, initial: {} }] })
+      commit({ ...config, timelineComponentMounts: [...config.timelineComponentMounts, { templateId: template.id, templateVersion: template.templateVersion, componentKey: template.componentKey || template.id, target: { kind: 'entity-type', typeId: availableEntityTypes(config)[0]!.id }, initial: {} }] })
       select({ kind: 'mount', index })
     } else if (groupId === 'group:contribution') {
       const index = config.stateContributionIds.length
@@ -340,12 +342,14 @@ function AuthoringMaster(props: { config: DraftConfig; selection: Selection; sel
         onSelect={node => {
           if (node.id === 'source') {
             select({ kind: 'source' })
+          } else if (node.id === 'builtin:entity-type' || node.id === 'builtin:entity') {
+            select({ kind: 'builtin', target: node.id === 'builtin:entity-type' ? 'entity-type' : 'entity' })
           } else if (node.kind === 'folder') {
             setExpandedIds(prev => prev.includes(node.id) ? prev.filter(id => id !== node.id) : [...prev, node.id])
           } else {
             const [kind, indexStr] = node.id.split(':')
             if (kind && indexStr !== undefined) {
-              select({ kind: kind as any, index: Number(indexStr) })
+              select({ kind: kind as Extract<Selection, { index: number }>['kind'], index: Number(indexStr) })
             }
           }
         }}
@@ -354,8 +358,8 @@ function AuthoringMaster(props: { config: DraftConfig; selection: Selection; sel
             return expanded ? <FolderOpen size={16} /> : <Folder size={16} />
           }
           if (node.id === 'source') return <FileCode2 size={16} />
-          if (node.id.startsWith('entity-type:')) return <Boxes size={16} />
-          if (node.id.startsWith('entity:')) return <Box size={16} />
+          if (node.id === 'builtin:entity-type' || node.id.startsWith('entity-type:')) return <Boxes size={16} />
+          if (node.id === 'builtin:entity' || node.id.startsWith('entity:')) return <Box size={16} />
           if (node.id.startsWith('component:')) return <Component size={16} />
           if (node.id.startsWith('mount:') || node.id.startsWith('contribution:')) return <Link2 size={16} />
           if (node.id.startsWith('binding:')) return <Braces size={16} />
@@ -387,6 +391,7 @@ function AuthoringMaster(props: { config: DraftConfig; selection: Selection; sel
 function AuthoringDetail(props: { config: DraftConfig; selection: Selection; commit(config: DraftConfig): void; sourceText: string; sourceError: string; updateSource(text: string): void; t: Translator }) {
   const { config, selection, commit, t } = props
   if (selection.kind === 'source') return <div className={styles.stateAuthoringSource}><h3>{t('stateAuthoring.source')}</h3><textarea aria-label={t('stateAuthoring.cardConfig')} className={styles.yamlTextarea} value={props.sourceText} onChange={event => props.updateSource(event.target.value)} />{props.sourceError ? <div className={styles.fieldError}>{props.sourceError}</div> : null}</div>
+  if (selection.kind === 'builtin') return <div className={styles.stateAuthoringEditor}><header className={styles.detailHeader}><div className={styles.headerTitle}><DetailIcon kind={selection.target} /><h3>{detailTitle(selection.target, t)}</h3></div></header><div className={styles.stateAuthoringFields}><div className={styles.scopeBanner}>{t('directory.builtinResource')}</div>{selection.target === 'entity-type' ? <><TextField label={t('stateAuthoring.typeId')} value={playerEntityType.id} readOnly /><TextField label={t('stateAuthoring.templateLabel')} value={playerEntityType.label ?? ''} readOnly /><TextField label={t('stateAuthoring.collectionPath')} value={playerEntityType.collectionPath} readOnly /></> : <><TextField label={t('stateAuthoring.entityType')} value={playerEntityType.label || playerEntityType.id} readOnly /><TextField label={t('stateAuthoring.entityId')} value={playerEntity.entityId} readOnly /></>}</div></div>
   const list = selection.kind === 'entity-type' ? config.stateEntityTypes : selection.kind === 'entity' ? config.timelineStateEntities : selection.kind === 'component' ? config.stateTemplates : selection.kind === 'mount' ? config.timelineComponentMounts : selection.kind === 'contribution' ? config.stateContributionIds : config.timelineStateBindings
   if (!list[selection.index]) return <div className={styles.emptyState}>{t('stateAuthoring.unassigned')}</div>
   const remove = () => {
@@ -403,7 +408,7 @@ function AuthoringDetail(props: { config: DraftConfig; selection: Selection; com
   return <div className={styles.stateAuthoringEditor}><header className={styles.detailHeader}><div className={styles.headerTitle}><DetailIcon kind={selection.kind} /><h3>{detailTitle(selection.kind, t)}</h3></div><Button size="small" variant="danger" type="button" onClick={remove}><Trash2 aria-hidden="true" size={14} /><span>{t('stateAuthoring.delete')}</span></Button></header><div className={styles.stateAuthoringFields}>{renderFields(config, selection, commit, t)}</div></div>
 }
 
-function renderFields(config: DraftConfig, selection: Exclude<Selection, { kind: 'source' }>, commit: (config: DraftConfig) => void, t: Translator) {
+function renderFields(config: DraftConfig, selection: Exclude<Selection, { kind: 'source' | 'builtin' }>, commit: (config: DraftConfig) => void, t: Translator) {
   const index = selection.index
   if (selection.kind === 'entity-type') {
     const item = config.stateEntityTypes[index]!
@@ -418,14 +423,14 @@ function renderFields(config: DraftConfig, selection: Exclude<Selection, { kind:
   if (selection.kind === 'component') {
     const item = config.stateTemplates[index]!
     const update = (patch: Partial<CardStateTemplate>) => commit(updateComponentTemplate(config, index, patch))
-    return <><TextField label={t('stateAuthoring.templateId')} value={item.id} onChange={id => update({ id })} /><TextField label={t('stateAuthoring.templateLabel')} value={item.label ?? ''} onChange={label => update({ label: label || undefined })} /><NumberField label={t('stateAuthoring.templateVersion')} value={item.templateVersion} onChange={templateVersion => update({ templateVersion })} /><TextField label={t('stateAuthoring.componentKey')} value={item.componentKey ?? ''} onChange={componentKey => update({ componentKey })} /><CheckboxField label={t('stateAuthoring.targetEntityTypes')} options={config.stateEntityTypes} selected={item.targetEntityTypeIds ?? []} onChange={targetEntityTypeIds => update({ targetEntityTypeIds })} /><YamlField label={t('stateAuthoring.schema')} value={item.schema} onChange={schema => update({ schema })} /><YamlField label={t('stateAuthoring.initial')} value={item.initial} onChange={initial => update({ initial })} /></>
+    return <><TextField label={t('stateAuthoring.templateId')} value={item.id} onChange={id => update({ id })} /><TextField label={t('stateAuthoring.templateLabel')} value={item.label ?? ''} onChange={label => update({ label: label || undefined })} /><NumberField label={t('stateAuthoring.templateVersion')} value={item.templateVersion} onChange={templateVersion => update({ templateVersion })} /><TextField label={t('stateAuthoring.componentKey')} value={item.componentKey ?? ''} onChange={componentKey => update({ componentKey })} /><CheckboxField label={t('stateAuthoring.targetEntityTypes')} options={availableEntityTypes(config)} selected={item.targetEntityTypeIds ?? []} onChange={targetEntityTypeIds => update({ targetEntityTypeIds })} /><YamlField label={t('stateAuthoring.schema')} value={item.schema} onChange={schema => update({ schema })} /><YamlField label={t('stateAuthoring.initial')} value={item.initial} onChange={initial => update({ initial })} /></>
   }
   if (selection.kind === 'mount') {
     const item = config.timelineComponentMounts[index]!
     const update = (patch: Partial<typeof item>) => commit({ ...config, timelineComponentMounts: config.timelineComponentMounts.map((value, i) => i === index ? { ...value, ...patch } : value) })
     const template = config.stateTemplates.find(value => value.id === item.templateId)
-    const entityOptions = config.timelineStateEntities.map(entity => ({ value: `${entity.typeId}:${entity.entityId}`, label: `${entity.entityId} · ${entity.typeId}` }))
-    return <><SelectField label={t('stateAuthoring.bindingTemplate')} value={item.templateId} options={config.stateTemplates.map(value => ({ value: value.id, label: value.label || value.id }))} onChange={templateId => { const next = config.stateTemplates.find(value => value.id === templateId); update({ templateId, templateVersion: next?.templateVersion ?? 1, componentKey: next?.componentKey || templateId }) }} /><TextField label={t('stateAuthoring.componentKey')} value={item.componentKey} onChange={componentKey => update({ componentKey })} /><SelectField label={t('stateAuthoring.mountTargetKind')} value={item.target.kind} options={[{ value: 'entity', label: t('stateAuthoring.exactEntity') }, { value: 'entity-type', label: t('stateAuthoring.entityTypeBatch') }]} onChange={kind => update({ target: kind === 'entity' && config.timelineStateEntities[0] ? { kind: 'entity', entity: config.timelineStateEntities[0] } : { kind: 'entity-type', typeId: config.stateEntityTypes[0]?.id ?? '' } })} />{item.target.kind === 'entity' ? <SelectField label={t('stateAuthoring.mountTarget')} value={`${item.target.entity.typeId}:${item.target.entity.entityId}`} options={entityOptions} onChange={value => { const [typeId, entityId] = splitEntityKey(value); update({ target: { kind: 'entity', entity: { typeId, entityId } } }) }} /> : <SelectField label={t('stateAuthoring.mountTarget')} value={item.target.typeId} options={config.stateEntityTypes.map(type => ({ value: type.id, label: type.label || type.id }))} onChange={typeId => update({ target: { kind: 'entity-type', typeId } })} />}<YamlField label={t('stateAuthoring.bindingInitial')} value={item.initial ?? {}} onChange={initial => update({ initial })} /><small>{template?.targetEntityTypeIds?.length ? `${t('stateAuthoring.targetEntityTypes')}: ${template.targetEntityTypeIds.join(', ')}` : ''}</small></>
+    const entityOptions = availableEntities(config).map(entity => ({ value: `${entity.typeId}:${entity.entityId}`, label: `${entity.entityId} · ${entity.typeId}` }))
+    return <><SelectField label={t('stateAuthoring.bindingTemplate')} value={item.templateId} options={config.stateTemplates.map(value => ({ value: value.id, label: value.label || value.id }))} onChange={templateId => { const next = config.stateTemplates.find(value => value.id === templateId); update({ templateId, templateVersion: next?.templateVersion ?? 1, componentKey: next?.componentKey || templateId }) }} /><TextField label={t('stateAuthoring.componentKey')} value={item.componentKey} onChange={componentKey => update({ componentKey })} /><SelectField label={t('stateAuthoring.mountTargetKind')} value={item.target.kind} options={[{ value: 'entity', label: t('stateAuthoring.exactEntity') }, { value: 'entity-type', label: t('stateAuthoring.entityTypeBatch') }]} onChange={kind => update({ target: kind === 'entity' ? { kind: 'entity', entity: availableEntities(config)[0]! } : { kind: 'entity-type', typeId: availableEntityTypes(config)[0]!.id } })} />{item.target.kind === 'entity' ? <SelectField label={t('stateAuthoring.mountTarget')} value={`${item.target.entity.typeId}:${item.target.entity.entityId}`} options={entityOptions} onChange={value => { const [typeId, entityId] = splitEntityKey(value); update({ target: { kind: 'entity', entity: { typeId, entityId } } }) }} /> : <SelectField label={t('stateAuthoring.mountTarget')} value={item.target.typeId} options={availableEntityTypes(config).map(type => ({ value: type.id, label: type.label || type.id }))} onChange={typeId => update({ target: { kind: 'entity-type', typeId } })} />}<YamlField label={t('stateAuthoring.bindingInitial')} value={item.initial ?? {}} onChange={initial => update({ initial })} /><small>{template?.targetEntityTypeIds?.length ? `${t('stateAuthoring.targetEntityTypes')}: ${template.targetEntityTypeIds.join(', ')}` : ''}</small></>
   }
   if (selection.kind === 'contribution') {
     const id = config.stateContributionIds[index]!
@@ -436,7 +441,7 @@ function renderFields(config: DraftConfig, selection: Exclude<Selection, { kind:
   return <><div className={styles.scopeBanner}>{t('stateAuthoring.rawBindingHint')}</div><TextField label={t('stateAuthoring.bindingPath')} value={item.path} onChange={path => update({ path })} /><SelectField label={t('stateAuthoring.bindingTemplate')} value={item.templateId} options={config.stateTemplates.map(value => ({ value: value.id, label: value.label || value.id }))} onChange={templateId => { const template = config.stateTemplates.find(value => value.id === templateId); update({ templateId, templateVersion: template?.templateVersion ?? 1 }) }} /><NumberField label={t('stateAuthoring.bindingVersion')} value={item.templateVersion} onChange={templateVersion => update({ templateVersion })} /><YamlField label={t('stateAuthoring.bindingInitial')} value={item.initial ?? {}} onChange={initial => update({ initial })} /></>
 }
 
-function TextField(props: { label: string; value: string; onChange(value: string): void }) { return <label><span>{props.label}</span><input value={props.value} onChange={event => props.onChange(event.target.value)} /></label> }
+function TextField(props: { label: string; value: string; readOnly?: boolean; onChange?(value: string): void }) { return <label><span>{props.label}</span><input value={props.value} readOnly={props.readOnly} onChange={event => props.onChange?.(event.target.value)} /></label> }
 function NumberField(props: { label: string; value: number; onChange(value: number): void }) { return <label><span>{props.label}</span><input min={1} type="number" value={props.value} onChange={event => props.onChange(Number(event.target.value))} /></label> }
 function SelectField(props: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange(value: string): void }) {
   return <label><span>{props.label}</span><select value={props.value} onChange={event => props.onChange(event.target.value)}>
@@ -447,8 +452,8 @@ function SelectField(props: { label: string; value: string; options: Array<{ val
 function CheckboxField(props: { label: string; options: NonNullable<Card['stateEntityTypes']>; selected: string[]; onChange(value: string[]): void }) { return <fieldset className={styles.checkboxField}><legend>{props.label}</legend>{props.options.map(option => <label key={option.id}><input type="checkbox" checked={props.selected.includes(option.id)} onChange={event => props.onChange(event.target.checked ? [...props.selected, option.id] : props.selected.filter(id => id !== option.id))} /><span>{option.label || option.id}</span></label>)}</fieldset> }
 function YamlField(props: { label: string; value: JsonObject; onChange(value: JsonObject): void }) { const [error, setError] = useState(''); return <label><span>{props.label}</span><textarea key={objectToYaml(props.value)} defaultValue={objectToYaml(props.value)} onBlur={event => { try { props.onChange(yamlToObject(event.target.value)); setError('') } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } }} />{error ? <small className={styles.fieldError}>{error}</small> : null}</label> }
 
-function DetailIcon(props: { kind: Exclude<Selection['kind'], 'source'> }) { return props.kind === 'entity-type' ? <Boxes size={16} /> : props.kind === 'entity' ? <Box size={16} /> : props.kind === 'component' ? <Component size={16} /> : props.kind === 'mount' || props.kind === 'contribution' ? <Link2 size={16} /> : <Braces size={16} /> }
-function detailTitle(kind: Exclude<Selection['kind'], 'source'>, t: Translator) { return kind === 'entity-type' ? t('stateAuthoring.entityTypeDetails') : kind === 'entity' ? t('stateAuthoring.entityDetails') : kind === 'component' ? t('stateAuthoring.templateDetails') : kind === 'mount' ? t('stateAuthoring.mountDetails') : kind === 'contribution' ? t('stateAuthoring.contributionDetails') : t('stateAuthoring.rawBindingDetails') }
+function DetailIcon(props: { kind: Exclude<Selection['kind'], 'source' | 'builtin'> }) { return props.kind === 'entity-type' ? <Boxes size={16} /> : props.kind === 'entity' ? <Box size={16} /> : props.kind === 'component' ? <Component size={16} /> : props.kind === 'mount' || props.kind === 'contribution' ? <Link2 size={16} /> : <Braces size={16} /> }
+function detailTitle(kind: Exclude<Selection['kind'], 'source' | 'builtin'>, t: Translator) { return kind === 'entity-type' ? t('stateAuthoring.entityTypeDetails') : kind === 'entity' ? t('stateAuthoring.entityDetails') : kind === 'component' ? t('stateAuthoring.templateDetails') : kind === 'mount' ? t('stateAuthoring.mountDetails') : kind === 'contribution' ? t('stateAuthoring.contributionDetails') : t('stateAuthoring.rawBindingDetails') }
 
 function cardToConfig(card?: Card) {
   return {
@@ -486,14 +491,17 @@ function updateComponentTemplate(config: DraftConfig, index: number, patch: Part
   }
 }
 function splitEntityKey(value: string): [string, string] { const index = value.indexOf(':'); return index < 0 ? ['', value] : [value.slice(0, index), value.slice(index + 1)] }
+function availableEntityTypes(config: DraftConfig) { return [...config.stateEntityTypes, playerEntityType] }
+function availableEntities(config: DraftConfig) { return [...config.timelineStateEntities, playerEntity] }
 function formatMountTarget(mount: NonNullable<Card['timelineComponentMounts']>[number]) { return mount.target.kind === 'entity' ? `${mount.target.entity.typeId}:${mount.target.entity.entityId}` : `${mount.target.typeId}:*` }
 
 function buildAssemblyPreview(config: DraftConfig, t: Translator) {
   const snapshot: JsonObject = {}
   const issues: string[] = []
   const rules: string[] = []
-  const types = new Map(config.stateEntityTypes.map(type => [type.id, type]))
+  const types = new Map(availableEntityTypes(config).map(type => [type.id, type]))
   const templates = new Map(config.stateTemplates.map(template => [template.id, template]))
+  setPreviewPath(snapshot, playerEntityPath.split('.'), { components: { [playerProfileComponentKey]: { name: 'User', description: '' } } }, issues, t)
   for (const entity of config.timelineStateEntities) {
     const type = types.get(entity.typeId)
     if (!type) { issues.push(t('stateAuthoring.unknownEntityType', { entity: entity.entityId, type: entity.typeId })); continue }
@@ -503,7 +511,7 @@ function buildAssemblyPreview(config: DraftConfig, t: Translator) {
     const template = templates.get(mount.templateId)
     if (!template) { issues.push(t('stateAuthoring.unknownMountComponent', { mount: mount.componentKey, component: mount.templateId })); continue }
     const targetTypeId = mount.target.kind === 'entity-type' ? mount.target.typeId : undefined
-    const targets = mount.target.kind === 'entity' ? [mount.target.entity] : config.timelineStateEntities.filter(entity => entity.typeId === targetTypeId)
+    const targets = mount.target.kind === 'entity' ? [mount.target.entity] : availableEntities(config).filter(entity => entity.typeId === targetTypeId)
     rules.push(`${mount.componentKey} → ${formatMountTarget(mount)} (${targets.length})`)
     for (const target of targets) {
       const type = types.get(target.typeId)

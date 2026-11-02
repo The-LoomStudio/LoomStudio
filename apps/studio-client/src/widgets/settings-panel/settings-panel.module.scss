@@ -191,18 +191,7 @@
   span { color: var(--loom-color-text-muted); font-size: var(--loom-font-size-3); overflow-wrap: anywhere; }
 }
 
-.aboutLink {
-  max-width: 100%;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--loom-color-accent-strong);
-  text-decoration: none;
-  font-size: var(--loom-font-size-3);
-  overflow-wrap: anywhere;
-  svg { flex-shrink: 0; }
-  &:hover { text-decoration: underline; }
-}
+
 
 @container (max-width: 380px) {
   .scaleRow {

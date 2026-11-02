@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'node:fs';
 
 const path = 'src/app/studio-panel-registry.tsx';
 let content = fs.readFileSync(path, 'utf8');

@@ -6,6 +6,12 @@ Card Bundle 可携带 `extensionPackages` 中的 Extension Package 归档，与�
 
 v4 的可选 `contextAssetSettings` 按 `contextAssets` 根节点 ID 保存资源显示元数据（含可选包图标引用）、宏、宏选项、两个 Lore 开关、历史策略与文本使用配置，文件投影与 ZIP 会保留这些配置。图标仍引用包内文件，不把图像字节嵌入资源设置。旧 v4 未携带该字段时沿用原默认值；机器本地模型绑定和授权策略不随该字段传播。重复导入发生节点 ID 冲突时，导入集合内的隐式 virtual 锚点引用同步重写，显式公共锚名保持不变。
 
+## 全局 Framework 引用
+
+Card v4 的 `card.extensionDependencies` 可声明 `{id, version, target: "global"}`；导入及目录 Apply 校验全局安装与版本，不下载、不自动启用模块。`card.defaultPreset` 使用 `{packageId, contributionId, target: "global"}`，要求对应 dependency，在新建故事时解析并绑定主 Session 的实际 Agent Preset，已有 Session 不变。引用的知识/预设不作为 `contextAssets` 再复制。
+
+扩展目录导入写入 `card.catalogSource: {packageId, characterId, version, digest}`，用于列出用户已添加的角色；角色改名不改变来源，重复导入需明确选择。模板更新不覆盖用户角色，删除角色后可再次导入。头像仍沿用 Card Bundle 媒体物化流程。
+
 ## 内容与容器
 
 ```text

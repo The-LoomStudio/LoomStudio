@@ -69,7 +69,7 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
   const reportError = (caught: unknown) => {
     const message = caught instanceof Error ? caught.message : String(caught)
     setError(message)
-    notify.error(message)
+    notify.failure('资源操作未完成', message)
   }
 
   return (
@@ -214,8 +214,8 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
         ) : null}
         <button
           aria-label={props.t('promptResource.delete')}
-          disabled={!selected || selected.origin?.kind === 'builtin'}
-          title={props.t(selected?.origin?.kind === 'builtin' ? 'promptResource.builtinReadOnly' : 'promptResource.delete')}
+          disabled={!selected}
+          title={props.t('promptResource.delete')}
           type="button"
           onClick={() => {
             setError(undefined)

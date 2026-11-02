@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type {
   ApplicationRuntime,
   TextExtractorDraft,
@@ -81,6 +82,7 @@ export const textTransformsProcedures = {
   'projectHistory': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['projectHistory']>[0] => {
     return {
       entryIds: readOptionalStringArray(params, 'entryIds'),
+      streamingEntries: z.array(z.strictObject({ id: z.string().min(1), text: z.string().max(100000), role: z.enum(['user', 'assistant']).optional() })).max(64).optional().parse(params && typeof params === 'object' && !Array.isArray(params) ? params.streamingEntries : undefined),
       extensionTarget: readOptionalInstallationTarget(params, 'extensionTarget'),
       source: readHistorySource(params),
       phase: readTextTransformPhase(params, 'phase'),

@@ -1,6 +1,18 @@
 import type { messages as zhCN } from '../zh-cn/sessions.js'
 
 export const messages = {
+  'play.filterCharacter': "Select a character to filter records",
+  'play.resumeStory': "Resume last story",
+  'play.continueStory': "Continue story",
+  'play.updated': "Updated · {{date}}",
+  'play.recentActivity': "Recent activity",
+  'play.recordCount': "{{count}} records",
+  'play.clearFilters': "Clear filters",
+  'play.noMatches': "No matching records",
+  'play.emptyHistory': "Stories leave their traces here",
+  'play.tryFilters': "Try another keyword or clear the filters.",
+  'play.emptyHistoryHint': "Start a story or create a session to continue here.",
+
   'sessions.defaultTimelineName': 'Story',
   'sessions.defaultSessionName': 'Session',
   'sessions.characterUnavailable': 'Character unavailable',

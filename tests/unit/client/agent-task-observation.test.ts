@@ -7,6 +7,7 @@ describe('Task menu Run observation', () => {
     f.render().setAgentInput('Keep this input')
     f.subscribeRun.mockResolvedValueOnce({ events: [], nextCursor: 1, done: true, state: 'cancelled' })
     await f.render().submitAgentTurn(f.event)
+    await f.loadRoot()
     await f.render().refreshTaskSession('session')
     expect(f.render().runRecovery?.input).toBe('Keep this input')
     f.render().restoreRunInput()

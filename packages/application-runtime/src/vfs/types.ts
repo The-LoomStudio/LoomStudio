@@ -7,6 +7,7 @@ export type VfsEntry = {
 }
 
 export type VfsBinding =
+  | { kind: 'session-attachment'; assetId: string }
   | { kind: 'workspace'; entryId: string; revisionId: string }
   | { kind: 'prompt-resource'; resourceId: string; nodeId: string; version: number; field: 'body' | 'metadata' }
   | { kind: 'state'; target: VfsStateTarget; revisionId: string; pointer: string }

@@ -1,7 +1,8 @@
 import { isSharedAppearanceParameter, readSharedAppearanceParameter } from '../model/appearance-parameters.js'
 import { useAppearanceStore } from '../../../shared/studio-shell/appearance-store.js'
 import { useStudioLayoutStore } from '../../../shared/studio-shell/studio-layout-store.js'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
+import type { ThemeTransitionOrigin } from '../model/theme-transition.js'
 import { Button } from '@loom-studio/ui'
 import type { StyleParameterValue } from '@loom-studio/extension-sdk'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -13,9 +14,16 @@ import styles from './theme-settings.module.scss'
 export function ThemeSettings({ controller, t }: { controller: ThemeController; t: Translator }) {
   const [draft, updateDraft] = useState(controller.selection)
   useEffect(() => { updateDraft(controller.selection) }, [controller.selection])
-  const setDraft = (selection: typeof draft) => {
+  const setDraft = (selection: typeof draft, origin?: ThemeTransitionOrigin) => {
     updateDraft(selection)
-    void controller.apply(selection)
+    void controller.apply(selection, origin)
+  }
+  function selectTheme(theme: string | null, event: MouseEvent<HTMLButtonElement>) {
+    if (theme === controller.selection.theme) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const origin = event.detail === 0 ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+      : { x: event.clientX, y: event.clientY }
+    setDraft({ ...draft, theme }, origin)
   }
   const [localError, setLocalError] = useState<string>()
   useAppearanceStore(state => state.explicitOverrides)
@@ -65,18 +73,23 @@ export function ThemeSettings({ controller, t }: { controller: ThemeController; 
 
   return <section className={styles.section} aria-busy={controller.busy}>
     <h4>{t('settings.themes')}</h4>
-    <label className={styles.field}>
-      <span>{t('settings.themeMain')}</span>
-      <select disabled={controller.busy} value={draft.theme ?? ''} onChange={event => setDraft({ ...draft, theme: event.target.value || null })}>
-        <option value="">{t('settings.themeDefault')}</option>
-        {draft.theme && !selectedTheme ? <option value={draft.theme} disabled>{t('settings.themeUnavailable')}</option> : null}
-        {themes.map(entry => <option key={entry.key} value={entry.key} disabled={!entry.available}>{entry.definition.label} · {entry.packageLabel}</option>)}
-      </select>
-    </label>
+    <div className={styles.themeGrid} role="group" aria-label={t('settings.themeMain')}>
+      <button type="button" className={styles.themeChoice} aria-pressed={draft.theme === null} disabled={controller.busy}
+        onClick={event => selectTheme(null, event)}>
+        <span>{t('settings.themeDefault')}</span><ThemeSwatches colors={['#252b31', '#394149', '#b9c7cf']} />
+      </button>
+      {themes.map(entry => <button type="button" key={entry.key} className={styles.themeChoice}
+        aria-pressed={draft.theme === entry.key} disabled={controller.busy || !entry.available}
+        title={`${entry.definition.label} · ${entry.packageLabel}`}
+        onClick={event => selectTheme(entry.key, event)}>
+        <span>{entry.definition.label}{entry.packageId !== 'official.themes' && <small>{entry.packageLabel}</small>}</span>
+        {entry.definition.previewColors && <ThemeSwatches colors={entry.definition.previewColors} />}
+      </button>)}
+    </div>
+    {draft.theme && !selectedTheme && <p role="status">{t('settings.themeUnavailable')}</p>}
     {selectedTheme ? <div className={styles.entry}>
       {selectedTheme.definition.description ? <p>{selectedTheme.definition.description}</p> : null}
       {scriptControls(selectedTheme)}
-      {draft.theme !== controller.selection.theme ? <Button type="button" disabled={controller.busy} onClick={() => setDraft(draft)}>{t('settings.themeApply')}</Button> : null}
     </div> : null}
     <h4>{t('settings.themeEnhancements')}</h4>
     {!ordered.length ? <p>{t('settings.themeEnhancementsEmpty')}</p> : null}
@@ -96,7 +109,6 @@ export function ThemeSettings({ controller, t }: { controller: ThemeController; 
         {scriptControls(entry)}
       </div>
     })}
-    {controller.busy ? <p role="status">{t('settings.themeApplying')}</p> : null}
     {(localError || controller.error) ? <p role="alert">{localError || controller.error}</p> : null}
     {active.filter(entry => entry.definition.parameters?.length).map(entry => <fieldset key={entry.key} className={styles.parameters} disabled={controller.busy}>
       <legend>{entry.definition.label} · {t('settings.themeParameters')}</legend>
@@ -123,4 +135,8 @@ export function ThemeSettings({ controller, t }: { controller: ThemeController; 
     <Button type="button" onClick={() => { setLocalError(undefined); updateDraft(defaultThemeSelection); controller.reset() }}>{t('settings.themeReset')}</Button>
     <p>{t('settings.themeRecoveryHint')}</p>
   </section>
+}
+
+function ThemeSwatches({ colors }: { colors: readonly string[] }) {
+  return <span className={styles.swatches} aria-hidden="true">{colors.map((color, index) => <span key={index} style={{ backgroundColor: color }} />)}</span>
 }

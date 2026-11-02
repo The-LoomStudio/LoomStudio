@@ -1,0 +1,9 @@
+.page { box-sizing: border-box; height: 100dvh; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 24px 32px 56px; color: var(--loom-color-text); font-family: var(--loom-font-body, sans-serif); max-width: 1500px; margin: 0 auto; h1 { font-size: 24px; margin: 0 0 8px; } p { line-height: 1.6; } }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 16px 0; select, input { font: inherit; color: inherit; background: var(--loom-color-surface); border: 1px solid var(--loom-color-border); border-radius: 6px; padding: 6px; } }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; > section { min-width: 0; } h2 { font-size: 16px; } textarea { width: 100%; min-height: 130px; box-sizing: border-box; resize: vertical; background: var(--loom-color-surface); color: inherit; padding: 12px; font: 13px/1.6 monospace; border: 1px solid var(--loom-color-border); border-radius: 8px; } }
+.editor { height: 340px; overflow: auto; border: 1px solid var(--loom-color-border); border-radius: 8px; }
+.note { color: var(--loom-color-text-muted); font-size: 13px; }
+.error { color: var(--loom-color-danger, #ef8a8a); }
+.inspect { pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 monospace; padding: 12px; background: var(--loom-color-surface); max-height: 300px; overflow: auto; } summary { cursor: pointer; padding: 12px 0; } }
+@media (max-width: 760px) { .page { padding: 16px; } .grid { grid-template-columns: minmax(0, 1fr); } }
+

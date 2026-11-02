@@ -1,0 +1,8 @@
+// Custom floating surfaces share the same opt-in as public dialogs and menus.
+@mixin glass {
+  :global(html[data-loom-glass-panels='true']) & {
+    background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 62%), transparent);
+    -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+    backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+  }
+}

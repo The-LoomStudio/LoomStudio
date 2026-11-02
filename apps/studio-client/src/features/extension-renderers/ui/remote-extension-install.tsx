@@ -82,7 +82,7 @@ export function RemoteExtensionInstall(props: {
       if (result.failed) {
         const message = `${result.installed.length} ${t('renderer.remote.completed')} · ${result.failed.packageId}: ${result.failed.message}`
         setError(message)
-        notify.error(message)
+        notify.failure('扩展安装未完成', message)
       } else {
         notify.success(t('renderer.installed'))
         props.onClose()
@@ -91,7 +91,7 @@ export function RemoteExtensionInstall(props: {
       setPreview(undefined)
       const message = error instanceof Error ? error.message : String(error)
       setError(message)
-      notify.error(message)
+      notify.failure('扩展安装未完成', message)
     } finally { setBusy(false) }
   }
   return <Dialog open title={t('renderer.install')} dismissible={!busy} onClose={props.onClose}
@@ -157,13 +157,13 @@ export function OfficialExtensionSetup(props: { api: StudioApi['extensions']; re
     let active = true
     setState(undefined)
     void props.api.officialSetup().then(result => { if (active) setState(result) })
-      .catch(error => { if (active) notify.error(String(error)) })
+      .catch(error => { if (active) notify.failure('读取扩展安装信息失败', error) })
     return () => { active = false }
   }, [props.api, props.ready])
   if (!state || state.completed || !state.items.length) return null
   async function close() {
     try { await props.api.finishOfficialSetup(); setState(undefined) }
-    catch (error) { notify.error(String(error)) }
+    catch (error) { notify.failure('读取扩展安装信息失败', error) }
   }
   return <>
     <OfficialExtensionPicker api={props.api} t={props.t} items={state.items} onClose={() => void close()} onInstalled={props.onInstalled} />

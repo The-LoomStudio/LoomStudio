@@ -335,7 +335,7 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>((props, forw
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (disabled || e.button !== 0) return
     e.preventDefault()
-    if (typeof (e.currentTarget as any)?.setPointerCapture === 'function') {
+    if (typeof e.currentTarget.setPointerCapture === 'function') {
       try {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
       } catch {
@@ -451,7 +451,7 @@ export const Slider = React.forwardRef<HTMLDivElement, SliderProps>((props, forw
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (disabled) return
     const arrowStep = e.shiftKey ? step * 10 : step
-    let next: number | null = null
+    let next: number
 
     switch (e.key) {
       case 'ArrowRight':

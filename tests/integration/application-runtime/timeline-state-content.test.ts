@@ -5,6 +5,10 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 
+const defaultPlayerState = {
+  $loom: { players: { User: { components: { loom_profile: { name: 'User', description: '' } } } } },
+}
+
 async function setup(withTools = false) {
   let id = 0
   const createId = (prefix: string) => `${prefix}-${++id}`
@@ -175,7 +179,7 @@ describe('Timeline State content acceptance', () => {
       })
       await expect(f.runtime.invokeAgentTurn(f.request)).rejects.toThrow('no longer active')
       expect(f.process).not.toHaveBeenCalled()
-      expect((await f.snapshot()).snapshot.value).toEqual({ counter: { count: 0 } })
+      expect((await f.snapshot()).snapshot.value).toEqual({ ...defaultPlayerState, counter: { count: 0 } })
     } finally { await f.engine.close() }
   })
 
@@ -185,13 +189,13 @@ describe('Timeline State content acceptance', () => {
       await f.enable(false)
       await f.runtime.invokeAgentTurn(f.request)
       expect(f.process).not.toHaveBeenCalled()
-      expect((await f.snapshot()).snapshot.value).toEqual({ counter: { count: 0 } })
+      expect((await f.snapshot()).snapshot.value).toEqual({ ...defaultPlayerState, counter: { count: 0 } })
       await f.enable(true)
       await f.runtime.invokeAgentTurn(f.request)
       expect(f.process).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
         target: { scope: 'timeline', ...f.target }, value: { count: 0 },
       }))
-      expect((await f.snapshot()).snapshot.value).toEqual({ counter: { count: 1 } })
+      expect((await f.snapshot()).snapshot.value).toEqual({ ...defaultPlayerState, counter: { count: 1 } })
     } finally { f.engine.close() }
   })
 

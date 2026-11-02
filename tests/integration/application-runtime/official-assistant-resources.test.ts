@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { createApplicationRuntime, type ImportExtensionPackageResourcesInput } from '@loom-studio/application-runtime'
+import { createApplicationRuntime, createOfficialAgentToolRegistry, type ImportExtensionPackageResourcesInput } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createId, nowIso } from '@loom-studio/shared'
@@ -21,6 +21,7 @@ function fixture() {
     dataEngine: engine,
     documents,
     promptResources,
+    agentTools: createOfficialAgentToolRegistry(),
     agents,
     narratives,
     gateway: {
@@ -66,7 +67,44 @@ function officialPackage(): ImportExtensionPackageResourcesInput {
   }
 }
 
-describe('official Loom Assistant resources', () => {
+describe.skipIf(!existsSync(new URL('../../../official/extensions/loom-assistant/manifest.json', import.meta.url)))('official Loom Assistant resources', () => {
+
+  it('builds Nom product guidance and selects topic knowledge without unrelated notes', async () => {
+    const { engine, runtime } = fixture()
+    try {
+      const input = officialPackage()
+      // Knowledge validation is independent of the concurrently changing text pipeline.
+      input.transformRules = []
+      input.textExtractors = []
+      for (const item of input.promptResources ?? []) {
+        delete item.contribution.textUses
+        delete item.contribution.scriptMounts
+      }
+      const installed = await runtime.importExtensionPackageResources(input)
+      const presetId = installed.promptResources.find(item => item.contributionId === 'official.loom-assistant.preset')!.resourceId
+      const preset = (await runtime.getAgentPreset({ agentPresetId: presetId })).agentPreset
+      const provider = await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Knowledge check', config: {}, enabledModelIds: ['knowledge-test'] })
+      await runtime.updateAgentPreset({ agentPresetId: presetId, expectedVersion: preset.version, model: { providerProfileId: provider.providerProfile.id, modelId: 'knowledge-test' } })
+      const session = await runtime.createAgentSession({ agentPresetId: presetId })
+      const text = async (input: string) => (await runtime.previewAgentTurn({ agentSessionId: session.session.id, input })).projection.messages.map(message => message.content).join('\n')
+      const toolsPreview = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: '寻找知识' })
+      expect(toolsPreview.toolExposures.map(tool => tool.toolId)).toEqual(expect.arrayContaining(['official/search_context', 'official/read_context']))
+      const authoring = await runtime.captureResourceAuthoring({ resourceId: presetId })
+      expect(authoring.resource.toolMounts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ reference: { kind: 'host', toolId: 'official/search_context' } }),
+        expect.objectContaining({ reference: { kind: 'host', toolId: 'official/read_context' } }),
+      ]))
+      const overview = await text('你好，介绍一下这个项目')
+      expect(overview).toContain('你是诺姆（Nom）')
+      expect(overview).toContain('Loom Studio 是面向 AI 角色扮演与交互叙事创作的平台')
+      expect(overview).not.toContain('<LoomNote>这里填写简短的使用建议。</LoomNote>')
+      expect(overview).not.toContain('尚未建立玩家 State 的旧故事')
+      expect(await text('修改我的玩家资料会影响已有故事吗')).toContain('已有副本不会跟随全局模板')
+      expect(await text('为什么我的知识不生效')).toContain('条目和祖先文件夹是否启用')
+      expect(await text('展示助手提示')).toContain('<LoomNote>这里填写简短的使用建议。</LoomNote>')
+    } finally { await engine.close() }
+  })
+
   it('imports the declared Setting and Display rule and projects assistant notes', async () => {
     const { engine, runtime } = fixture()
     try {

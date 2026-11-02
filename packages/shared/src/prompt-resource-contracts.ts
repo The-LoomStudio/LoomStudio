@@ -107,6 +107,7 @@ export const promptResourceDisplayMetadataSchema = z.object({
     packageId: z.string().regex(/^[A-Za-z0-9._-]+$/),
     path: z.string().min(1).refine(path => !path.startsWith('/') && !path.includes('\\')
       && !path.includes(':') && path.split('/').every(part => part !== '..' && part !== '.' && part !== ''), 'Expected a package-relative file path'),
+    scope: z.enum(['global', 'card']).optional(),
     target: z.discriminatedUnion('kind', [
       z.object({ kind: z.literal('global') }),
       z.object({ kind: z.literal('card'), cardId: z.string().min(1) }),

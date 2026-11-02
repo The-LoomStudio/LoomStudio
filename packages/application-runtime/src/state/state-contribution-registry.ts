@@ -1,6 +1,7 @@
 import type { StateContribution } from '@loom-studio/shared'
 import { extensionInstallationId, installedExtensionContributionId, type ExtensionInstallationTarget, type ExtensionStateInitializer, type ExtensionStateInitializationContext } from '@loom-studio/extension-sdk'
 import { validateStateContribution } from './state-contribution.js'
+import { assertAuthorPlayerState } from '../profiles/player-state.js'
 
 export type StateContributionSource = {
   contributionId: string
@@ -35,6 +36,7 @@ export function createStateContributionRegistry(): StateContributionRegistry {
       const contributionId = installedExtensionContributionId(input.packageId, target, input.contribution.id)
       if (sources.has(contributionId)) throw new Error(`State contribution is already registered: ${contributionId}`)
       validateStateContribution(input.contribution, { allowExternalReferences: true })
+      assertAuthorPlayerState(input.contribution)
       const { initialize, ...metadata } = input
       const source: StateContributionSource = {
         ...metadata,
@@ -79,6 +81,7 @@ export function createStateContributionRegistry(): StateContributionRegistry {
         template.initial = structuredClone(value)
       }
       validateStateContribution(contribution, { allowExternalReferences: true })
+      assertAuthorPlayerState(contribution)
       return contribution
     },
   }

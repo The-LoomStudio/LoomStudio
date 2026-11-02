@@ -1,6 +1,7 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'promptResource.temporaryHint': "一時的に表示しています。現在のキャラクターには自動追加されません。",
   'dashboard.open': 'ダッシュボード',
   'promptResource.processingWarning': 'プロンプト処理で警告が発生しました。一部の Lore がスキップされた可能性があります。構築診断を確認してください。',
   'promptResource.invalidResources': '次のリソースを読み込めません。他のリソースは引き続き利用できます。',
@@ -182,6 +183,10 @@ export const messages = {
   'context.actionDelete': 'エントリー削除',
   'context.actionMore': 'その他の操作',
   'context.lifecycleAlwaysIndicator': '常駐',
+  'context.actionEnableGroup': 'グループを有効化',
+  'context.actionDisableGroup': 'グループを無効化',
+  'context.disabledByAncestor': '上位の「{{label}}」により無効',
+  'context.groupEnableHint': 'このグループの構築への参加を切り替えます。子項目それぞれの有効状態は保持されます。',
   'context.actionEnable': 'エントリーを有効化',
   'context.actionDisable': 'エントリーを無効化',
   'context.actionMoveUp': '1つ上に移動',

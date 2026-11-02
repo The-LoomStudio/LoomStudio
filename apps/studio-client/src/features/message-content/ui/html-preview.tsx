@@ -7,11 +7,13 @@ import styles from './message-content.module.scss'
 
 export function HtmlPreview(props: { value: string }) {
   const root = useRef<HTMLDivElement>(null)
+  const active = useRef<{ dispose(): void } | undefined>(undefined)
   const [ready, setReady] = useState(false)
+  useLayoutEffect(() => () => { active.current?.dispose(); active.current = undefined }, [])
   const [failure, setFailure] = useState<{ value: string; message: string }>()
   useLayoutEffect(() => {
     setFailure(undefined)
-    setReady(false)
+    if (!active.current) setReady(false)
     const element = root.current!
     function cacheKey() {
       const html = document.documentElement
@@ -21,7 +23,15 @@ export function HtmlPreview(props: { value: string }) {
     }
     let height = htmlHeightCache.read(cacheKey()) ?? (element.getBoundingClientRect().height || 240)
     element.style.height = `${height}px`
+    // Keep the last painted document until its replacement has measured itself.
+    // This avoids flashing the loading skeleton for each streaming snapshot;
+    // arbitrary author scripts still restart (this is not a live CTX update).
+    const staging = document.createElement('div')
+    staging.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none'
+    element.append(staging)
+    let committed = false
     let instance: ReturnType<typeof mountIsolatedFrame> | undefined
+    const candidate = { dispose() { instance?.dispose(); staging.remove() } }
     const applySize = () => {
       if (!instance) return
       // Animate only the host reservation. Animating the iframe viewport would
@@ -34,13 +44,19 @@ export function HtmlPreview(props: { value: string }) {
     const layoutFrame = requestAnimationFrame(() => {
       mountFrame = requestAnimationFrame(() => {
         const token = crypto.randomUUID()
-        instance = mountIsolatedFrame(element, {
+        instance = mountIsolatedFrame(staging, {
           title: 'HTML',
           source: { html: buildHtmlDocument(props.value, token) },
-          onLoad: frame => { frame.markReady(); frame.frame.inert = false; setReady(true) },
+          onLoad: frame => { frame.markReady() },
           onMessage: data => {
             const measured = readHtmlHeight(data, token)
             if (measured === undefined) return
+            if (!committed) {
+              active.current?.dispose()
+              active.current = candidate
+              committed = true
+              staging.style.cssText = ''
+            }
             height = measured
             htmlHeightCache.write(cacheKey(), height)
             instance?.markReady()
@@ -49,11 +65,12 @@ export function HtmlPreview(props: { value: string }) {
             setReady(true)
           },
           onFailure: message => {
-            element.style.height = ''
+            if (!active.current) element.style.height = ''
             setFailure({ value: props.value, message })
           },
         })
         instance.frame.className = styles.preview
+        if (active.current) instance.frame.style.animation = 'none'
         instance.frame.inert = true
         applySize()
       })
@@ -61,7 +78,7 @@ export function HtmlPreview(props: { value: string }) {
     return () => {
       cancelAnimationFrame(layoutFrame)
       cancelAnimationFrame(mountFrame)
-      instance?.dispose()
+      if (!committed) candidate.dispose()
     }
   }, [props.value])
   return <div className={styles.previewShell} data-loom-html-preview="" data-ready={ready || undefined}>

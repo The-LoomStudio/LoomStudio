@@ -1,5 +1,14 @@
 import type { DocumentTransaction } from '@loom-studio/document-store'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
+import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
+
+const avatarMediaTypes = new Set(['image/png', 'image/apng', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'])
+
+export async function validateProfileAvatar(ctx: Pick<ApplicationRuntimeContext, 'mediaAssets'>, assetId: string): Promise<void> {
+  const asset = await ctx.mediaAssets?.get(assetId)
+  if (!asset) throw new Error(`Media Asset not found: ${assetId}`)
+  if (!asset.mediaType || !avatarMediaTypes.has(asset.mediaType)) throw new Error('User profile avatar must be a supported raster image')
+}
 
 export type UserProfile = {
   id: string

@@ -289,18 +289,18 @@ export function appendBuildEvidence<K extends 'sources' | 'variables' | 'transfo
   captureBuildEvidence(() => {
     const budget = evidenceBudgets.get(observation) ?? { remaining: 512_000, items: 8_000 }
     evidenceBudgets.set(observation, budget)
-    const measure = (item: unknown): void => {
-      if (--budget.items < 0) throw new Error('observation item budget')
+    const measure = (item: unknown): boolean => {
+      if (--budget.items < 0) return false
       if (typeof item === 'string') budget.remaining -= item.length * 2
       else if (item && typeof item === 'object') {
         for (const key in item) if (Object.hasOwn(item, key)) {
           budget.remaining -= key.length * 2
-          measure((item as Record<string, unknown>)[key])
+          if (!measure((item as Record<string, unknown>)[key])) return false
         }
       }
-      if (budget.remaining < 0) throw new Error('observation content budget')
+      return budget.remaining >= 0
     }
-    try { measure(value) } catch {
+    if (!measure(value)) {
       if (!observation.diagnostics?.some(item => (item as { code?: string })?.code === 'observation.budget_exceeded'))
         (observation.diagnostics ??= []).push({ code: 'observation.budget_exceeded', message: 'Build evidence is partial: capture budget exceeded.' })
       return

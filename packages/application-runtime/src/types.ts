@@ -1,9 +1,10 @@
+import type { ChatAttachment } from '@loom-studio/shared'
 import type { AddUserBackgroundInput, RemoveUserBackgroundInput, UserBackgroundsConfig } from './profiles/user-backgrounds.js'
 import type { ObservationStore, ObservationOrigin } from './observability/types.js'
 import type { AgentApprovalPolicy } from './agents/approval-policy.js'
 import type { CreateUserProfileInput, DeleteUserProfileInput, SelectUserProfileInput, UpdateUserProfileInput, UserProfilesConfig } from './profiles/user-profiles.js'
-import type { CreateLoomScriptMountInput, UpdateLoomScriptMountInput, ListLoomScriptMountsInput, MutateLoomScriptMountResult, ListLoomScriptMountsResult } from '@loom-studio/shared/loom-scripts'
-import type { ListPresetToolMountsInput, ListPresetToolMountsResult, PresetToolMountInput, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
+import type { LoomScriptMountTarget, CreateLoomScriptMountInput, UpdateLoomScriptMountInput, ListLoomScriptMountsInput, MutateLoomScriptMountResult, ListLoomScriptMountsResult } from '@loom-studio/shared/loom-scripts'
+import type { ListPresetToolMountsInput, ListPresetToolMountsResult, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
 export type { ListPresetToolMountsInput, ListPresetToolMountsResult, PresetToolMountInput, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
 import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
 import type { RequestTokenEstimate } from '@loom-studio/ai-gateway'
@@ -91,7 +92,7 @@ export type {
 } from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
 import type { StateStore } from '@loom-studio/application-data'
-import type { PresetToolMount, PromptResourceStore } from '@loom-studio/application-data'
+import type { PromptResourceStore } from '@loom-studio/application-data'
 export type { PresetToolMount } from '@loom-studio/application-data'
 import type { ActivationFacts, PromptActivation } from './prompt/prompt-activation.js'
 import type { AgentToolRegistry, ToolDefinition } from './agents/tool-registry.js'
@@ -186,7 +187,9 @@ export type {
   TimelineStateBinding,
 } from '@loom-studio/shared'
 
-export type ApplicationRuntime = ReturnType<typeof import('./runtime/observability-runtime.js').createObservabilityRuntimeMethods> & ReturnType<typeof import('./runtime/workspace-runtime.js').createWorkspaceRuntimeMethods> & {
+export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-authoring-runtime.js').createResourceAuthoringRuntimeMethods> & ReturnType<typeof import('./runtime/observability-runtime.js').createObservabilityRuntimeMethods> & ReturnType<typeof import('./runtime/workspace-runtime.js').createWorkspaceRuntimeMethods> & {
+  validateCardFramework(input: { card: CardFrameworkFields }): Promise<{ presetId?: string }>
+  checkExtensionDependencyConsumers(input: { packageId: string; target?: ExtensionInstallationTarget; nextVersion?: string }): Promise<void>
   getUserBackgrounds(): Promise<{ config: UserBackgroundsConfig }>
   addUserBackground(input: AddUserBackgroundInput, context?: RuntimeRequestContext): Promise<{ config: UserBackgroundsConfig; mutation: MutationReceipt }>
   removeUserBackground(input: RemoveUserBackgroundInput, context?: RuntimeRequestContext): Promise<{ config: UserBackgroundsConfig; mutation: MutationReceipt }>
@@ -236,7 +239,7 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/observabili
   getTextPipelineOverride(input: InspectTextPipelineInput): Promise<{ override: TextPipelineOverrideEntry | null }>
   upsertTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number; disabledRuleIds: string[]; orderedRuleIds: string[] }, context?: RuntimeRequestContext): Promise<{ override: TextPipelineOverrideEntry; mutation: MutationReceipt }>
   deleteTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
-  projectHistory(input: { source: HistorySource; phase: TextTransformPhase; entryIds?: string[]; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+  projectHistory(input: { source: HistorySource; phase: TextTransformPhase; entryIds?: string[]; streamingEntries?: Array<{ id: string; text: string; role?: 'user' | 'assistant' }>; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
   previewCardOpeningDisplay(input: { cardId: string; presetId?: string; text: string }): Promise<{ text: string; originalText: string; diagnostics: Array<{ code: string; message: string }> }>
   extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
   inspectTextPipeline(input: InspectTextPipelineInput): Promise<TextPipelineInspection>
@@ -247,6 +250,8 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/observabili
   getLoomScriptSettings(input: { mountId: string }): Promise<{ definitions: import('@loom-studio/shared/loom-scripts').LoomScriptSettingDefinition[]; inherited?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; effective?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; saved: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; adopted: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; documentVersion: number; adoptedDocumentVersion?: number; validationError?: string }>
   importLoomScript(input: { owner: LoomScriptOwner; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
   updateLoomScript(input: { scriptDocumentId: string; expectedVersion: number; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
+  deleteLoomScript(input: { scriptDocumentId: string; expectedVersion: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
+  reorderLoomScripts(input: { groups: Array<{ owner: LoomScriptOwner; scriptIds: string[]; groupOrder?: number }>; target?: LoomScriptMountTarget }, context?: RuntimeRequestContext): Promise<{ reordered: true; mutation: MutationReceipt }>
   getLoomScript(input: { scriptDocumentId: string }): Promise<{ script: LoomScriptEntry }>
   listLoomScripts(input?: { owner?: LoomScriptOwner }): Promise<{ scripts: LoomScriptEntry[] }>
   exportLoomScript(input: { scriptDocumentId: string }): Promise<{ artifact: LoomScriptArtifact }>
@@ -356,6 +361,8 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/observabili
   completeAgentSessionHandoff(input: CompleteAgentSessionHandoffInput, context?: RuntimeRequestContext): Promise<CompleteAgentSessionHandoffResult>
   deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
   updateAgentSession(input: UpdateAgentSessionInput, context?: RuntimeRequestContext): Promise<UpdateAgentSessionResult>
+  reviseAgentInput(input: { agentSessionId: string; entryId: string; expectedContent: string; expectedAttachments?: ChatAttachment[]; content: string; attachments?: ChatAttachment[] }, context?: RuntimeRequestContext): Promise<{ entry: AgentTranscriptEntry; rerun: boolean }>
+  submitAgentInterjection(input: SubmitAgentInterjectionInput, context?: RuntimeRequestContext): Promise<{ entry: AgentTranscriptEntry; pending: boolean }>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   findAgentRunCheckpoint(input: { agentSessionId: string; runId: string }): Promise<AgentTranscriptEntry | null>
   inspectAgentRunState(input: { agentSessionId: string; runId: string }): Promise<{ runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; entryCount: number; reason?: string }>
@@ -503,6 +510,7 @@ export type GetStateSnapshotInput = {
 
 export type GetStateSnapshotResult = {
   snapshot: StateSnapshotView
+  playerProfile?: import('@loom-studio/shared').PlayerProfileState
 }
 
 export type ApplyStateMutationInput = {
@@ -686,6 +694,7 @@ export type AgentTurnMutationReceipt = MutationReceipt & {
 }
 
 export type AppendNarrativeInput = {
+  attachments?: ChatAttachment[]
   timelineId: string
   branchId: string
   nodeId: string
@@ -702,6 +711,7 @@ export type AppendNarrativeInputResult = {
 
 export type CreateNarrativeTimelineInput = {
   cardId: string
+  playerProfile?: import('@loom-studio/shared').PlayerProfileState
   extensionAdoptions?: CardExtensionAdoption[]
   expectedCardVersion?: number
   title?: string
@@ -893,7 +903,20 @@ export type UpdateAgentSessionResult = {
   mutation: MutationReceipt
 }
 
+export type SubmitAgentInterjectionInput = {
+  macroSelections?: MacroSelectionMap
+  activationFacts?: ActivationFacts
+  agentSessionId: string
+  requestId: string
+  input: string
+  mode: 'discussion' | 'narrative'
+  narrativeTarget?: { timelineId: string; branchId: string }
+  attachments?: ChatAttachment[]
+}
+
 export type InvokeAgentTurnInput = {
+  attachments?: ChatAttachment[]
+  interjectionRequestId?: string
   /** Host task execution without story history/state; Preset-controlled Card Lore remains available. */
   contextMode?: 'isolated'
   requestId?: string
@@ -971,6 +994,7 @@ export type InspectMacrosResult = {
 export type ApplicationRuntimeOptions = {
   observations?: ObservationStore
   onStateChanged?: (event: StateChangeEvent) => void
+  validatePackageAsset?: (input: { packageId: string; packageVersion: string; target: ExtensionInstallationTarget; path: string }) => Promise<void>
   exportExtensionArchive?: (input: { archive: Uint8Array; packageId: string; version: string; installationId: string }) => Promise<Uint8Array>
   withCardDeletion?: (cardId: string, commit: () => Promise<DeleteCardResult>) => Promise<DeleteCardResult>
   withCardDeletions?: (cardIds: string[], commit: () => Promise<DeleteCardsResult>) => Promise<DeleteCardsResult>
@@ -1007,7 +1031,8 @@ export type StateChangeEvent = {
 }
 
 export type MediaAssetLookup = {
-  get(assetId: string): Promise<{ id: string; mediaType?: string } | undefined>
+  get(assetId: string): Promise<{ id: string; mediaType?: string; sizeBytes?: number; kind?: string } | undefined>
+  read?(assetId: string, options?: { maxBytes?: number }): Promise<Uint8Array>
 }
 
 export type SourceArtifactStorage = {
@@ -1118,6 +1143,7 @@ export type ProviderProfileConfig = {
 }
 
 export type OpenAICompatibleGatewayOptions = {
+  mediaAssets?: MediaAssetLookup
   providerProfile: ProviderProfileConfig
   modelId: string
   apiKey: string
@@ -1160,7 +1186,7 @@ export type ListCardsResult = {
   nextCursor?: string
 }
 
-export type CardSummary = {
+export type CardSummary = Pick<CardFrameworkFields, 'catalogSource'> & {
   id: string
   artifactId: string
   derivedFrom?: { artifactId: string }
@@ -1725,6 +1751,7 @@ export type ExtensionPackageResourceOrigin = {
 export type ExtensionInstallationTarget = import('@loom-studio/extension-sdk').ExtensionInstallationTarget
 
 export type ExtensionInstallationContent = {
+  dependencies?: import('@loom-studio/extension-sdk').ExtensionDependency[]
   packageId: string
   packageVersion: string
   participation?: 'timeline'
@@ -1821,9 +1848,10 @@ export type ListExtensionInstallationsResult = {
 }
 
 export type ImportExtensionPackageResourcesInput = {
+  dependencies?: import('@loom-studio/extension-sdk').ExtensionDependency[]
   participation?: 'timeline'
   source?: ExtensionInstallationSource
-  loomScripts?: Array<{ contribution: { id: string; source: string }; source: string }>
+  loomScripts?: Array<{ contribution: { id: string; source: string; orderIndex?: number; groupOrder?: number }; source: string }>
   expectedCardVersion?: number
   update?: { expectedInstallationVersion: number }
   packageId: string
@@ -1880,7 +1908,13 @@ export type RemoveExtensionPackageResourcesResult = {
   mutation?: MutationReceipt
 }
 
-export type CardSourceContent = {
+export type CardFrameworkFields = {
+  extensionDependencies?: Array<{ id: string; version: string; target: 'global' }>
+  defaultPreset?: { packageId: string; contributionId: string; target: 'global' }
+  catalogSource?: { packageId: string; characterId: string; version: string; digest: string }
+}
+
+export type CardSourceContent = CardFrameworkFields & {
   artifactId: string
   derivedFrom?: { artifactId: string }
   extensionAdoptions?: CardExtensionAdoption[]

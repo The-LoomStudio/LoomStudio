@@ -1,13 +1,15 @@
-import { Button, IconButton, Tabs, Toggle } from '@loom-studio/ui'
-import { Code2, Download, Folder, Plus, Power, RefreshCw, Upload, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { resolveLoomScriptSettings, type LoomScriptMountTarget, type LoomScriptSettingDefinition, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
+import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
+import { useWorkbenchView } from '../../../shared/studio-shell/use-workbench-view.js'
+import { Button, IconButton, Tabs, SearchField, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@loom-studio/ui'
+import { ChevronDown, Code2, Download, Folder, Plus, Power, ToggleLeft, ToggleRight, RefreshCw, Upload, X } from 'lucide-react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { loomScriptMediaType, resolveLoomScriptSettings, type LoomScriptMountTarget, type LoomScriptSettingDefinition, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { LoomScript, LoomScriptMount, LoomScriptOwner } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { downloadBlob } from '../../../shared/browser/download.js'
 import { notify } from '../../../shared/notifications/index.js'
-import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
+import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { LoomScriptSourceFields } from './loom-script-source-fields.js'
 import { ScriptSettingsFields } from './script-settings-fields.js'
@@ -15,6 +17,8 @@ import { scriptCapabilityLabel } from '../model/script-capabilities.js'
 import { createScriptTemplate, createTextRuleScriptTemplate } from '../model/script-template.js'
 import { sceneScriptDevelopment, sceneScriptMetadataId } from '../model/scene-script-development.js'
 import styles from './script-management-panel.module.scss'
+
+const TextRulePreviewDialog = lazy(async () => ({ default: (await import('./text-rule-preview-dialog.js')).TextRulePreviewDialog }))
 
 type ScriptDraft = { script?: LoomScript; owner: LoomScriptOwner; fileName: string; source: string; savedSource: string; savedFileName: string }
 type ScriptSettingsSnapshot = {
@@ -29,8 +33,11 @@ type ScriptSettingsSnapshot = {
 }
 
 export function ScriptManagementPanel(props: {
-  api: Pick<StudioApi['loomScripts'], 'list' | 'listMounts' | 'export' | 'import' | 'update' | 'createMount' | 'updateMount' | 'refreshMount'> & Partial<Pick<StudioApi['loomScripts'], 'preview' | 'getSettings' | 'removeMount'>>
+  api: Pick<StudioApi['loomScripts'], 'list' | 'listMounts' | 'export' | 'import' | 'update' | 'createMount' | 'updateMount' | 'refreshMount'> & Partial<Pick<StudioApi['loomScripts'], 'preview' | 'getSettings' | 'removeMount' | 'remove' | 'reorder'>>
+  initialScriptId?: string
+  initialFilter?: 'rules' | 'runtime'
   cardId?: string
+  scopes?: Array<{ owner: LoomScriptOwner; target: LoomScriptMountTarget }>
   getOwnerName?(owner: LoomScriptOwner): string | undefined
   onScriptsChanged(): void
   refreshToken?: number
@@ -38,11 +45,16 @@ export function ScriptManagementPanel(props: {
   t: Translator
 }) {
   useSyncExternalStore(sceneScriptDevelopment.subscribe, sceneScriptDevelopment.revision, sceneScriptDevelopment.revision)
+  const [filter, setFilter] = useWorkbenchView<'rules' | 'runtime'>('scripts.filter', props.initialFilter ?? 'rules', ['rules', 'runtime'])
+  useEffect(() => { if (props.initialFilter) setFilter(props.initialFilter) }, [props.initialFilter])
   const [scripts, setScripts] = useState<LoomScript[]>([])
   const [mounts, setMounts] = useState<LoomScriptMount[]>([])
   const [draft, setDraft] = useState<ScriptDraft>()
-  const [detailTab, setDetailTab] = useState<'run' | 'source'>('run')
-  const [scope, setScope] = useState<'user' | 'card'>('user')
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [detailTab, setDetailTab] = useWorkbenchView<'run' | 'source'>('scripts.detail', 'run', ['run', 'source'])
+  const [scopeTab, setScopeTab] = useWorkbenchView<'user' | 'card' | 'select'>('scripts.scope', 'user', props.cardId ? ['user', 'card', 'select'] : ['user', 'select'])
+  const [selectedOwner, setSelectedOwner] = useState<string>()
+  const scope = scopeTab === 'select' && selectedOwner ? selectedOwner : scopeTab
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [collapsedIds, setCollapsedIds] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
@@ -53,17 +65,37 @@ export function ScriptManagementPanel(props: {
   const [settingsSnapshots, setSettingsSnapshots] = useState<Record<string, ScriptSettingsSnapshot>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const requestRef = useRef(0)
-  const target: LoomScriptMountTarget = scope === 'card' && props.cardId ? { kind: 'card', cardId: props.cardId } : { kind: 'user' }
+  const initialSelectionRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!props.initialScriptId) { initialSelectionRef.current = undefined; return }
+    if (initialSelectionRef.current === props.initialScriptId || busy) return
+    const script = scripts.find(item => item.id === props.initialScriptId || item.contributions.some(contribution => contribution.kind !== 'renderer' && (item.textResourceIds?.[contribution.id] ?? `${item.id}:${contribution.id}`) === props.initialScriptId))
+    if (script) {
+      initialSelectionRef.current = props.initialScriptId
+      setScopeTab('user')
+      if (!scriptMatchesFilter(script, filter)) setFilter(scriptMatchesFilter(script, 'rules') ? 'rules' : 'runtime')
+      void selectScript(script)
+    }
+  }, [props.initialScriptId, scripts, busy])
+  const scopeOwner = scope.startsWith('owner:') ? JSON.parse(scope.slice(6)) as LoomScriptOwner : undefined
+  const creationOwner: LoomScriptOwner = scopeOwner ?? (scope === 'card' && props.cardId ? { kind: 'card', cardId: props.cardId } : { kind: 'user' })
+  function ownerTarget(owner: LoomScriptOwner): LoomScriptMountTarget {
+    if (owner.kind !== 'extension') return owner
+    return props.scopes?.find(item => JSON.stringify(item.owner) === JSON.stringify(owner))?.target
+      ?? mounts.find(mount => scripts.some(script => script.id === mount.scriptDocumentId && JSON.stringify(script.owner) === JSON.stringify(owner)))?.target ?? { kind: 'user' }
+  }
+  const target = ownerTarget(creationOwner)
+
   const selectedMounts = useMemo(() => mounts.filter(mount => mount.scriptDocumentId === draft?.script?.id), [mounts, draft?.script?.id])
   const enabledMounts = selectedMounts.filter(mount => mount.enabled)
   const dirty = Boolean(draft && (draft.source !== draft.savedSource || draft.fileName !== draft.savedFileName || !draft.script))
   const settingsDirty = selectedMounts.some(mount => settingsDrafts[mount.id] !== undefined && !sameSettings(settingsDrafts[mount.id]!, mount.settings ?? {}))
   const tags = useMemo(() => [...new Set(scripts.flatMap(script => script.tags ?? []))].sort((left, right) => left.localeCompare(right)), [scripts])
-  const scopeScripts = scripts.filter(script => scope !== 'card' || !props.cardId
+  const scopeScripts = scripts.filter(script => scope === 'select' ? false : scopeOwner ? JSON.stringify(script.owner) === JSON.stringify(scopeOwner) : scope !== 'card' || !props.cardId
     || script.owner.kind === 'card' && script.owner.cardId === props.cardId
     || mounts.some(mount => mount.scriptDocumentId === script.id
       && (mount.target.kind === 'user' || mount.target.kind === 'card' && mount.target.cardId === props.cardId)))
-  const visibleScripts = scopeScripts.filter(script => (!tag || script.tags?.includes(tag))
+  const visibleScripts = scopeScripts.filter(script => scriptMatchesFilter(script, filter) && (!tag || script.tags?.includes(tag))
     && `${script.name} ${script.metadataId} ${props.getOwnerName?.(script.owner) ?? ''} ${(script.tags ?? []).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 
   useEffect(() => { if (tag && !tags.includes(tag)) setTag('') }, [tag, tags])
@@ -105,20 +137,25 @@ export function ScriptManagementPanel(props: {
     return accepted
   }
   async function selectScript(script: LoomScript) {
-    if (busy || !canReplaceDraft()) return
+    if (busy) return
+    if (draft?.script?.id === script.id) { setMobilePane('detail'); return }
+    if (!canReplaceDraft()) return
     const request = ++requestRef.current
-    await run(async () => {
+    setError('')
+    // Reading a selection must not disable the whole registry or change its drag gutter.
+    try {
       const { artifact } = await props.api.export(script.id)
       if (request !== requestRef.current) return
       setDraft({ script, owner: script.owner, fileName: artifact.fileName, source: artifact.source, savedSource: artifact.source, savedFileName: artifact.fileName })
-      setDetailTab('run')
       setMobilePane('detail')
-    })
+    } catch (cause) {
+      if (request === requestRef.current) setError(readError(cause))
+    }
   }
   function startNew(rule = false) {
     if (!canReplaceDraft()) return
     requestRef.current++
-    setDraft({ owner: target, fileName: rule ? 'rule.loom.js' : 'script.loom.js', source: rule ? createTextRuleScriptTemplate() : createScriptTemplate(), savedSource: '', savedFileName: '' })
+    setDraft({ owner: creationOwner, fileName: rule ? 'rule.md' : 'script.loom.js', source: rule ? createTextRuleScriptTemplate() : createScriptTemplate(), savedSource: '', savedFileName: '' })
     setDetailTab('source')
     setMobilePane('detail')
     setError('')
@@ -126,7 +163,7 @@ export function ScriptManagementPanel(props: {
   function startSceneExample() {
     if (busy || !canReplaceDraft()) return
     requestRef.current++
-    setDraft({ owner: target, fileName: 'scene-background-card.loom.js', source: sceneScriptDevelopment.source(), savedSource: '', savedFileName: '' })
+    setDraft({ owner: creationOwner, fileName: 'scene-background-card.loom.js', source: sceneScriptDevelopment.source(), savedSource: '', savedFileName: '' })
     setDetailTab('source')
     setMobilePane('detail')
     setError('')
@@ -135,10 +172,11 @@ export function ScriptManagementPanel(props: {
     if (!canReplaceDraft()) return
     await run(async () => {
       const source = await file.text()
-      const { script } = await props.api.import({ owner: target, fileName: file.name, source })
+      const { script } = await props.api.import({ owner: creationOwner, fileName: file.name, source })
       setDraft({ script, owner: script.owner, fileName: file.name, source, savedSource: source, savedFileName: file.name })
       setMobilePane('detail')
       setDetailTab('run')
+      await props.api.createMount({ target: ownerTarget(script.owner), scriptDocumentId: script.id, orderIndex: declaredOrder(script) })
       await load()
       notify.success(props.t('notify.success.imported'))
     })
@@ -151,7 +189,9 @@ export function ScriptManagementPanel(props: {
         ? await props.api.update({ ...input, scriptDocumentId: draft.script.id, expectedVersion: draft.script.version })
         : await props.api.import({ ...input, owner: draft.owner })
       setDraft({ ...draft, script, owner: script.owner, savedSource: draft.source, savedFileName: draft.fileName })
+      if (!draft.script) await props.api.createMount({ target: ownerTarget(script.owner), scriptDocumentId: script.id, orderIndex: declaredOrder(script) })
       await load()
+      props.onScriptsChanged()
       notify.success(props.t('notify.success.saved'))
     })
   }
@@ -214,60 +254,180 @@ export function ScriptManagementPanel(props: {
     const name = props.getOwnerName?.(owner)
     return name ? `${({ user: '个人', card: '角色', extension: '扩展', workspace: '工作区', preset: '预设' })[owner.kind]} · ${name}` : scriptOwnerLabel(owner)
   }
-  const owners = new Map(visibleScripts.map(script => [JSON.stringify(script.owner), script.owner]))
-  const nodes = [...owners].map(([key, owner]) => ({
-    id: `owner:${key}`,
-    kind: 'folder' as const,
-    label: ownerLabel(owner),
-    children: visibleScripts.filter(script => JSON.stringify(script.owner) === key).map(script => {
+  function declaredOrder(script: LoomScript): number {
+    const rule = script.contributions.find(item => item.kind === 'text-transform')
+    return rule?.kind === 'text-transform' && typeof rule.rule.orderIndex === 'number' ? rule.rule.orderIndex : 0
+  }
+  function orderingMount(script: LoomScript) {
+    const destination = scope === 'card' ? target : ownerTarget(script.owner)
+    return mounts.find(mount => mount.scriptDocumentId === script.id && sameTarget(mount.target, destination))
+  }
+  function groupOrder(owner: LoomScriptOwner) {
+    const member = scripts.find(script => JSON.stringify(script.owner) === JSON.stringify(owner) && typeof orderingMount(script)?.origin.groupOrder === 'number')
+    return member ? Number(orderingMount(member)!.origin.groupOrder) : ({ preset: 0, card: 1, extension: 2, user: 3, workspace: 3 })[owner.kind]
+  }
+  function canOrderScripts(ids: string[]) {
+    return scope !== 'card' || ids.every(id => { const script = scripts.find(item => item.id === id)!; return Boolean(orderingMount(script)) || script.owner.kind !== 'extension' && sameTarget(script.owner, target) })
+  }
+  function ownerScripts(owner: LoomScriptOwner) {
+    return scripts.filter(script => JSON.stringify(script.owner) === JSON.stringify(owner))
+      .sort((a, b) => (orderingMount(a)?.orderIndex ?? declaredOrder(a)) - (orderingMount(b)?.orderIndex ?? declaredOrder(b)) || a.id.localeCompare(b.id))
+  }
+  async function moveNode(id: string, targetId: string, position: 'before' | 'inside' | 'after') {
+    if (!props.api.reorder || position === 'inside') return
+    let groups: Array<{ owner: LoomScriptOwner; scriptIds: string[]; groupOrder?: number }>
+    if (id.startsWith('owner:') && targetId.startsWith('owner:')) {
+      const owners = [...orderedOwners]
+      const from = owners.findIndex(([key]) => `owner:${key}` === id)
+      const [owner] = owners.splice(from, 1)
+      owners.splice(owners.findIndex(([key]) => `owner:${key}` === targetId) + (position === 'after' ? 1 : 0), 0, owner!)
+      groups = owners.map(([, owner], index) => ({ owner, scriptIds: ownerScripts(owner).map(script => script.id), groupOrder: index }))
+    } else {
+      const entry = entries.get(id)
+      const destination = entries.get(targetId)
+      if (!entry || !destination || entry.parent !== destination.parent) return
+      const siblings = [...entries.values()].filter(item => item.parent === entry.parent).map(item => item.script.id)
+      const reordered = siblings.filter(value => value !== entry.script.id)
+      reordered.splice(reordered.indexOf(destination.script.id) + (position === 'after' ? 1 : 0), 0, entry.script.id)
+      let index = 0
+      const visible = new Set(siblings)
+      const scriptIds = ownerScripts(entry.script.owner).map(script => visible.has(script.id) ? reordered[index++]! : script.id)
+      groups = [{ owner: entry.script.owner, scriptIds }]
+    }
+    await run(async () => { await props.api.reorder!({ groups, ...(scope === 'card' ? { target } : {}) }); await load(); props.onScriptsChanged() })
+  }
+  async function deleteScript() {
+    if (!draft?.script || !props.api.remove || !canReplaceDraft()) return
+    if (!window.confirm(`删除“${draft.script.name}”及其采用配置？`)) return
+    const script = draft.script
+    await run(async () => { await props.api.remove!({ scriptDocumentId: script.id, expectedVersion: script.version }); setDraft(undefined); setMobilePane('master'); await load(); props.onScriptsChanged() })
+  }
+  const owners = new Map(scopeScripts.map(script => [JSON.stringify(script.owner), script.owner]))
+  const orderedOwners = [...owners].sort((a, b) => groupOrder(a[1]) - groupOrder(b[1]) || a[0].localeCompare(b[0]))
+  const entries = new Map<string, { script: LoomScript; parent: string }>()
+  const folderIds: string[] = []
+  const nodes: FileTreeNode[] = orderedOwners.flatMap(([key, owner]) => {
+    const members = ownerScripts(owner).filter(script => visibleScripts.includes(script))
+    if (!members.length) return []
+    const ownerId = `owner:${key}`
+    folderIds.push(ownerId)
+    const children: FileTreeNode[] = members.map(script => {
+      const id = script.id
+      entries.set(id, { script, parent: ownerId })
       const count = mounts.filter(mount => mount.scriptDocumentId === script.id && mount.enabled).length
-      return { id: script.id, kind: 'entry' as const, label: script.name, meta: `${count ? `${count} 个范围已启用` : '未启用'} · v${script.version}${script.tags?.length ? ` · ${script.tags.join(' · ')}` : ''}` }
-    }),
-  }))
-  function changeScope(next: 'user' | 'card') {
+      return { id, kind: 'entry', label: script.name, meta: `${count ? `${count} 个范围已启用` : '未启用'} · v${script.version}${script.tags?.length ? ` · ${script.tags.join(' · ')}` : ''}` }
+    })
+    const label = props.getOwnerName?.(owner) ?? ownerLabel(owner).replace(/^(个人|角色|扩展|工作区|预设)[：·\s]+/, '')
+    return [{ id: ownerId, kind: 'folder', label, children }]
+  })
+  // Sections follow the persisted order, including repeated kinds after a cross-source move.
+  const sections: FileTreeNode[] = []
+  let previousKind: LoomScriptOwner['kind'] | undefined
+  for (const node of nodes) {
+    const owner = JSON.parse(node.id.slice(6)) as LoomScriptOwner
+    if (owner.kind !== previousKind) {
+      sections.push({ id: `section:${node.id}`, isSection: true, label: ({ user: '个人', card: '角色', extension: '扩展', workspace: '工作区', preset: '预设' })[owner.kind], children: [] })
+      previousKind = owner.kind
+    }
+    sections[sections.length - 1]!.children!.push(node)
+  }
+  const draftIsRule = draft?.script ? scriptMatchesFilter(draft.script, 'rules') && !scriptMatchesFilter(draft.script, 'runtime') : draft?.fileName.endsWith('.md')
+  function changeScope(next: string) {
     if (!canReplaceDraft()) return
     requestRef.current++
-    setScope(next)
+    setSelectedOwner(next.startsWith('owner:') ? next : undefined)
+    setScopeTab(next.startsWith('owner:') ? 'select' : next as 'user' | 'card' | 'select')
     setDraft(undefined)
     setMobilePane('master')
   }
 
 
-  return <MasterDetailWorkbench navigationScope="local" masterWidth={260} mobilePane={mobilePane} onMobilePaneChange={setMobilePane} hasSelection={Boolean(draft)}
-    master={<div className={styles.sidebar}>
+  return <MasterDetailWorkbench navigationScope="local" defaultMasterWidth={260} mobilePane={mobilePane} onMobilePaneChange={setMobilePane} hasSelection={Boolean(draft)}
+    master={<div data-loom-mobile-tab-scope="" className={styles.sidebar}>
       {props.header}
+      <div data-loom-mobile-tab-scope="" className={styles.mobileFilters}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="small">{scopeTab === 'card' ? '当前角色' : scopeTab === 'user' ? '全局' : '单独选择'}<ChevronDown size={14} /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem disabled={!props.cardId} onSelect={() => changeScope('card')}>当前角色</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => changeScope('user')}>全局</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => changeScope('select')}>单独选择</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Tabs<'rules' | 'runtime'> ariaLabel="脚本分类" size="compact" activeId={filter} onChange={setFilter}
+          items={[{ id: 'rules', label: '正则' }, { id: 'runtime', label: '脚本' }]} />
+      </div>
+      <div data-loom-mobile-tab-scope="" style={{ display: 'contents' }}>
       <div className={styles.toolbar}>
-        <label className={styles.scope}>查看 / 新建范围<select aria-label="脚本查看与创建范围" disabled={busy} value={target.kind} onChange={event => changeScope(event.target.value as 'user' | 'card')}>
-          <option value="user">全部脚本（新建到全局）</option>{props.cardId ? <option value="card">当前角色</option> : null}
-        </select></label>
-        <Button size="small" variant="ghost" disabled={busy} onClick={() => startNew()}><Plus size={14} aria-hidden="true" />新建</Button>
-        <Button size="small" variant="ghost" disabled={busy} onClick={() => startNew(true)}>新建规则</Button>
-        <Button size="small" variant="ghost" disabled={busy} onClick={() => inputRef.current?.click()}><Upload size={14} aria-hidden="true" />导入</Button>
-        <input ref={inputRef} hidden type="file" accept=".loom.js,.js,text/javascript" aria-label="导入脚本" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void importFile(file) }} />
+        <div className={styles.scope}>
+          <Tabs ariaLabel="脚本查看范围" size="compact" activeId={scope.startsWith('owner:') ? 'select' : scope} onChange={changeScope}
+            items={[{ id: 'card', label: '当前角色', disabled: !props.cardId }, { id: 'user', label: '全局' }, { id: 'select', label: '单独选择' }]} />
+
+        </div>
+      </div>
+      <div data-loom-mobile-tab-scope="" style={{ display: 'contents' }}>
+      <Tabs<'rules' | 'runtime'> className={styles.filterTabs} ariaLabel="脚本分类" activeId={filter} onChange={setFilter}
+        items={[{ id: 'rules', label: '正则' }, { id: 'runtime', label: '脚本' }]} />
+      {(scope === 'select' || scopeOwner) && <div className={styles.sourcePicker}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="small" className={styles.sourceTrigger} disabled={busy} aria-label="选择脚本来源">
+            <span>{scopeOwner ? ownerLabel(scopeOwner) : '选择角色、预设或扩展'}</span><ChevronDown size={14} aria-hidden="true" />
+          </Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {[...new Map([...(props.scopes ?? []).map(item => item.owner), ...scripts.map(script => script.owner)].map(owner => [JSON.stringify(owner), owner])).entries()].map(([key, owner]) => <DropdownMenuItem key={key} onSelect={() => changeScope(`owner:${key}`)}>{ownerLabel(owner)}</DropdownMenuItem>)}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>}
+      <div className={styles.tools}>
+        <IconButton size="small" disabled={busy || scope === 'select'} aria-label={filter === 'rules' ? '新建规则' : '新建脚本'} title={filter === 'rules' ? '新建规则' : '新建脚本'} onClick={() => startNew(filter === 'rules')}><Plus size={16} aria-hidden="true" /></IconButton>
+        <IconButton size="small" disabled={busy || scope === 'select'} aria-label="导入脚本或规则" title="导入脚本或规则" onClick={() => inputRef.current?.click()}><Upload size={16} aria-hidden="true" /></IconButton>
+        <input ref={inputRef} hidden type="file" accept=".loom.js,.js,.md,text/javascript,text/markdown" aria-label="导入脚本" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void importFile(file) }} />
       </div>
       <div className={styles.search}>
-        <input type="search" aria-label="搜索脚本名称、标识或标签" placeholder="搜索名称、标识或标签" value={search} onChange={event => setSearch(event.target.value)} />
+        <SearchField clearLabel="清除搜索" onClear={() => setSearch('')} aria-label="搜索脚本名称、标识或标签" placeholder="搜索名称、标识或标签" value={search} onChange={event => setSearch(event.target.value)} />
         {tags.length > 0 && <select aria-label="按脚本标签筛选" value={tag} onChange={event => setTag(event.target.value)}><option value="">全部标签</option>{tags.map(value => <option key={value} value={value}>{value}</option>)}</select>}
       </div>
       <div className={styles.tree}>
-        <FileTree ariaLabel="脚本" nodes={nodes} selectedId={draft?.script?.id} expandedIds={nodes.map(node => node.id).filter(id => !collapsedIds.includes(id))} onExpandedIdsChange={ids => setCollapsedIds(nodes.map(node => node.id).filter(id => !ids.includes(id)))}
+        <FileTree onMoveNode={props.api.reorder ? (id, targetId, position) => { void moveNode(id, targetId, position) } : undefined}
+          canDrag={node => !busy && !search && !tag && (node.id.startsWith('owner:') ? canOrderScripts(ownerScripts(JSON.parse(node.id.slice(6)) as LoomScriptOwner).map(script => script.id)) : entries.has(node.id) && canOrderScripts([entries.get(node.id)!.script.id]))}
+          canDrop={(id, targetId, position) => !busy && !search && !tag && position !== 'inside' && (id.startsWith('owner:') && targetId.startsWith('owner:')
+            ? canOrderScripts(orderedOwners.flatMap(([, owner]) => ownerScripts(owner).map(script => script.id)))
+            : Boolean(entries.get(id) && entries.get(targetId) && entries.get(id)!.parent === entries.get(targetId)!.parent && canOrderScripts(ownerScripts(entries.get(id)!.script.owner).map(script => script.id))))}
+          ariaLabel="脚本" nodes={sections} selectedId={[...entries].find(([, item]) => item.script.id === draft?.script?.id)?.[0]}
+          expandedIds={folderIds.filter(id => !collapsedIds.includes(id))} onExpandedIdsChange={ids => setCollapsedIds(folderIds.filter(id => !ids.includes(id)))}
           moreActionsLabel="更多操作" getDisclosureLabel={node => node.label} getDragLabel={node => node.label}
           renderIcon={node => node.kind === 'folder' ? <Folder size={14} aria-hidden="true" /> : <Code2 size={14} aria-hidden="true" />}
-          renderTrailing={node => node.kind !== 'folder' && mounts.some(mount => mount.scriptDocumentId === node.id && mount.enabled)
-            ? <IconButton size="small" disabled={busy} aria-label={`停用 ${node.label} 的所有范围`} onClick={event => { event.stopPropagation(); void stopScript(node.id) }}><Power size={14} aria-hidden="true" /></IconButton> : null}
-          onSelect={node => { const script = scripts.find(item => item.id === node.id); if (script) void selectScript(script) }} />
+          renderTrailing={node => {
+            const script = entries.get(node.id)?.script
+            if (!script) return null
+            const enabled = mounts.some(mount => mount.scriptDocumentId === script.id && mount.enabled)
+            const mount = orderingMount(script)
+            const canEnable = mount && script.requestedCapabilities.every(capability => mount.grantedCapabilities.includes(capability))
+            const label = enabled ? `停用 ${node.label} 的所有范围` : canEnable ? `启用 ${node.label}` : `配置并启用 ${node.label}`
+            return <button type="button" className={styles.treeToggle} disabled={busy} aria-label={label} title={label} aria-pressed={enabled}
+              onClick={event => { event.stopPropagation(); if (enabled) void stopScript(script.id); else if (canEnable) void changeMount(mount, { enabled: true }); else void selectScript(script) }}>
+              {enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+            </button>
+          }}
+          onSelect={node => { const script = entries.get(node.id)?.script; if (script) void selectScript(script) }} />
         {!scripts.length ? <p className={styles.muted}>暂无脚本。新建或导入后，再授权并启用。</p> : null}
         {scripts.length > 0 && !visibleScripts.length ? <p className={styles.muted}>此范围内没有匹配的脚本。调整范围、搜索词或标签。</p> : null}
       </div>
-      <details className={styles.examples}><summary>示例脚本</summary><Button size="small" variant="ghost" disabled={busy} onClick={startSceneExample}>新建场景卡示例</Button></details>
+      <p className={styles.sortHint}>拖动来源组和同类条目调整顺序；运行脚本排序仅用于管理，不代表执行顺序。</p>
+      <details className={styles.examples}><summary>示例脚本</summary><Button size="small" variant="ghost" disabled={busy || scope === 'select'} onClick={startSceneExample}>新建场景卡示例</Button></details>
+      </div></div>
     </div>}>
-    <div className={styles.detail}>
+    <div data-loom-mobile-tab-scope="" className={styles.detail}>
+      {previewOpen && draft && props.api.preview && <Suspense fallback={null}><TextRulePreviewDialog key={draft.script?.id ?? 'new'} source={draft.source} name={draft.script?.name ?? '新规则'} onPreview={props.api.preview} t={props.t} onClose={() => setPreviewOpen(false)} /></Suspense>}
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       {draft ? <>
         <header className={styles.heading}>
           <div className={styles.title}><h3>{draft.script?.name ?? '新脚本'}</h3><small>{ownerLabel(draft.owner)} · {draft.script ? `v${draft.script.version}` : '未保存'}{dirty && draft.script ? ' · 有未保存修改' : ''}</small></div>
           <div className={styles.actions}>
+            {draft.script && <InfoDialog key={draft.script.id} title="来源与标识"><dl><dt>来源</dt><dd>{ownerLabel(draft.owner)}</dd><dt>文档</dt><dd>{draft.script.id}</dd><dt>Metadata</dt><dd>{draft.script.metadataId}</dd></dl></InfoDialog>}
+            {props.api.preview && (draft.fileName.endsWith('.md') || draft.script?.contributions.some(item => item.kind === 'text-transform')) && <Button size="small" variant="ghost" onClick={() => setPreviewOpen(true)}>实时预览</Button>}
             {enabledMounts.length > 0 && <Button size="small" variant="ghost" disabled={busy} onClick={() => void stopScript(draft.script!.id)}><Power size={14} aria-hidden="true" />全部停用</Button>}
+            <Button size="small" variant="ghost" disabled={busy || !draft.script || !props.api.remove} onClick={() => void deleteScript()}>删除</Button>
             <Button size="small" disabled={busy || !dirty} onClick={() => void save()}>{props.t('textTransform.save')}</Button>
             <IconButton size="small" disabled={busy} aria-label="关闭脚本详情" onClick={closeDetail}><X size={16} aria-hidden="true" /></IconButton>
           </div>
@@ -277,7 +437,7 @@ export function ScriptManagementPanel(props: {
           ariaLabel="脚本详情"
           activeId={detailTab}
           onChange={setDetailTab}
-          items={[{ id: 'run', label: '运行与授权' }, { id: 'source', label: `源码${dirty ? ' ·' : ''}` }]}
+          items={[{ id: 'run', label: draftIsRule ? '规则与启用' : '运行与授权' }, { id: 'source', label: `源码${dirty ? ' ·' : ''}` }]}
         />
         <div className={styles.content}>
         {detailTab === 'run' ? draft.script ? <>
@@ -295,7 +455,9 @@ export function ScriptManagementPanel(props: {
                 <div><strong>{label}</strong><div className={styles.muted}>{mount.enabled ? '已启用' : '已停用'}{mount.adoptedDocumentVersion !== undefined ? ` · 采用 v${mount.adoptedDocumentVersion}` : ''}</div></div>
                 <div className={styles.actions}>
                   <IconButton size="small" disabled={busy || !mount.enabled} aria-label={`刷新${label}脚本实例`} onClick={() => void run(async () => { await props.api.refreshMount({ mountId: mount.id, expectedVersion: mount.version }); await load(); props.onScriptsChanged() })}><RefreshCw size={15} aria-hidden="true" /></IconButton>
-                  <Toggle checked={mount.enabled} disabled={busy || (!mount.enabled && missing.length > 0 && !independentRules)} label={`${label}启用脚本`} onChange={enabled => void changeMount(mount, { enabled })} />
+                  <button type="button" className={styles.treeToggle} aria-pressed={mount.enabled} disabled={busy || (!mount.enabled && missing.length > 0 && !independentRules)} aria-label={`${label}启用脚本`} onClick={() => void changeMount(mount, { enabled: !mount.enabled })}>
+                    {mount.enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+                  </button>
                 </div>
               </div>
               {missing.length > 0 && <p className={styles.muted}>{independentRules ? '独立声明规则可以先启用；代码运行仍需授权。' : `还需确认 ${missing.length} 项权限，展开下方授权后即可启用。`}</p>}
@@ -308,11 +470,11 @@ export function ScriptManagementPanel(props: {
                 disabled={busy || settingsLoading} pendingApply={mount.enabled && Boolean(settings?.effective && !sameSettings(settings.effective, settings.adopted ?? {}))}
                 onChange={settings => setSettingsDrafts(current => ({ ...current, [mount.id]: settings }))} onSave={() => void saveSettings(mount)}
                 onDiscard={() => setSettingsDrafts(current => { const next = { ...current }; delete next[mount.id]; return next })} />
-              <details className={styles.permissions}><summary>能力授权 · {missing.length ? `${missing.length} 项待确认` : '已确认'}</summary>
+              {(!draftIsRule || draft.script!.requestedCapabilities.length > 0) && <details className={styles.permissions}><summary>能力授权 · {missing.length ? `${missing.length} 项待确认` : '已确认'}</summary>
                 <fieldset disabled={busy || mount.enabled}><legend className={styles.muted}>{mount.enabled ? '停用此范围后可修改授权。' : '逐项确认脚本请求的能力。'}</legend>{draft.script!.requestedCapabilities.length ? draft.script!.requestedCapabilities.map(capability => <label key={capability} className={styles.grant}>
                   <input type="checkbox" checked={mount.grantedCapabilities.includes(capability)} onChange={event => void changeMount(mount, { grantedCapabilities: event.target.checked ? [...mount.grantedCapabilities, capability] : mount.grantedCapabilities.filter(value => value !== capability) })} /> {scriptCapabilityLabel(capability)}
                 </label>) : <p className={styles.muted}>此脚本未申请额外能力。</p>}</fieldset>
-              </details>
+              </details>}
               {import.meta.env.DEV && draft.script?.metadataId === sceneScriptMetadataId && <details className={styles.permissions}><summary>开发联调</summary><label className={styles.grant}>
                 <input type="checkbox" checked={sceneScriptDevelopment.enabled(mount.id)} onChange={event => sceneScriptDevelopment.setEnabled(mount.id, event.target.checked)} />跟随仓库场景卡热更新（仅当前页面）
               </label></details>}
@@ -323,14 +485,14 @@ export function ScriptManagementPanel(props: {
             {!selectedMounts.some(mount => mount.target.kind === 'user') && <Button size="small" variant="ghost" disabled={busy} onClick={() => void addMount({ kind: 'user' })}><Plus size={14} aria-hidden="true" />添加到全局</Button>}
             {props.cardId && !selectedMounts.some(mount => mount.target.kind === 'card' && mount.target.cardId === props.cardId) && <Button size="small" variant="ghost" disabled={busy} onClick={() => void addMount({ kind: 'card', cardId: props.cardId! })}><Plus size={14} aria-hidden="true" />添加到当前角色</Button>}
           </div>
-          <details className={styles.metadata}><summary>来源与标识</summary><p>{ownerLabel(draft.owner)}</p><p>文档：{draft.script.id}</p><p>Metadata：{draft.script.metadataId}</p></details>
+
         </> : <p className={styles.muted}>保存脚本后，可添加启用范围并授权。保存不会自动启动。</p> : <>
-          <div className={styles.sourceToolbar}><span className={styles.muted}>编辑原脚本 · {ownerLabel(draft.owner)}</span><Button size="small" variant="ghost" disabled={busy || !draft.script} onClick={() => void run(async () => { const { artifact } = await props.api.export(draft.script!.id); downloadBlob(new Blob([artifact.source], { type: 'text/javascript' }), artifact.fileName) })}><Download size={14} aria-hidden="true" />导出已保存版本</Button></div>
-          <LoomScriptSourceFields key={draft.script?.id ?? `new-script-${requestRef.current}`} fileName={draft.fileName} source={draft.source} disabled={busy} t={props.t} onPreview={props.api.preview}
+          <div className={styles.sourceToolbar}><span className={styles.muted}>编辑原脚本 · {ownerLabel(draft.owner)}</span><Button size="small" variant="ghost" disabled={busy || !draft.script} onClick={() => void run(async () => { const { artifact } = await props.api.export(draft.script!.id); downloadBlob(new Blob([artifact.source], { type: loomScriptMediaType(artifact.fileName) }), artifact.fileName) })}><Download size={14} aria-hidden="true" />导出已保存版本</Button></div>
+          <LoomScriptSourceFields key={draft.script?.id ?? `new-script-${requestRef.current}`} fileName={draft.fileName} source={draft.source} disabled={busy} t={props.t}
             onFileNameChange={fileName => setDraft({ ...draft, fileName })} onSourceChange={source => setDraft({ ...draft, source })} />
         </>}
         </div>
-      </> : <div className={styles.empty}><Code2 size={28} aria-hidden="true" /><p>选择脚本管理启用范围，或新建、导入脚本。</p><p className={styles.muted}>列表中的电源按钮可停用该脚本的所有范围。</p></div>}
+      </> : <div className={styles.empty}><Code2 size={28} aria-hidden="true" /><p>选择脚本管理启用范围，或新建、导入脚本。</p><p className={styles.muted}>使用列表右侧开关启停脚本；需要授权时会打开详情。</p></div>}
     </div>
   </MasterDetailWorkbench>
 }
@@ -351,4 +513,9 @@ function scriptOwnerLabel(owner: LoomScriptOwner): string {
   if (owner.kind === 'extension') return `扩展包：${owner.packageId}`
   if (owner.kind === 'workspace') return `工作区：${owner.workspaceId}`
   return `预设：${owner.presetId}`
+}
+
+function scriptMatchesFilter(script: LoomScript, filter: 'rules' | 'runtime') {
+  const hasRules = script.contributions.some(item => item.kind === 'text-transform')
+  return filter === 'rules' ? hasRules : !hasRules || script.runtime !== 'declarative'
 }

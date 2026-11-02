@@ -4,6 +4,10 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { describe, expect, it } from 'vitest'
 
+const defaultPlayerState = {
+  $loom: { players: { User: { components: { loom_profile: { name: 'User', description: '' } } } } },
+}
+
 const definitionId = 'template.health'
 const template = {
   kind: 'timeline-template' as const,
@@ -44,7 +48,7 @@ describe('State Definition dangling references', () => {
       const created = await runtime.createNarrativeTimeline({ cardId: card.id })
       const target = { scope: 'timeline' as const, timelineId: created.timeline.id, branchId: created.branch.id }
       const before = await runtime.getStateSnapshot({ target })
-      expect(before.snapshot.value).toEqual({ hero: { hp: inline ? 20 : 10 } })
+      expect(before.snapshot.value).toEqual({ ...defaultPlayerState, hero: { hp: inline ? 20 : 10 } })
       const pageBefore = await runtime.getNarrativePage({ timelineId: created.timeline.id, branchId: created.branch.id })
 
       await expect(runtime.deleteStateDefinition({ definitionId, expectedVersion: definition.version })).resolves.toMatchObject({ deleted: true })
@@ -62,7 +66,7 @@ describe('State Definition dangling references', () => {
         target, expectedRevisionId: before.snapshot.revisionId,
         operations: [{ op: 'set', path: '/hero/hp', value: 7 }],
       })
-      expect(changed.snapshot.value).toEqual({ hero: { hp: 7 } })
+      expect(changed.snapshot.value).toEqual({ ...defaultPlayerState, hero: { hp: 7 } })
       await expect(runtime.applyStateMutation({
         target, expectedRevisionId: before.snapshot.revisionId,
         operations: [{ op: 'set', path: '/hero/hp', value: 8 }],

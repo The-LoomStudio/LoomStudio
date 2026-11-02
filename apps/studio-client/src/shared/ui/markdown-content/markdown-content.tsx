@@ -1,5 +1,5 @@
 import Markdown, { defaultUrlTransform, type Components } from 'react-markdown'
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, lazy, Suspense, useContext, useMemo } from 'react'
 import { Bot, BookOpen, Cpu, Database, FileCode2, FileText, Link2, Puzzle, UserRound } from 'lucide-react'
 import remarkGfm from 'remark-gfm'
 import { parseResourceLink } from '@loom-studio/shared'
@@ -7,7 +7,8 @@ import { remarkLoomDialogue } from './dialogue-markdown.js'
 import { MarkdownCodeBlock, type MarkdownCodeBlockLabels } from './markdown-code-block.js'
 import { prepareLoomMarkdown, readLoomToken } from './markdown-content-model.js'
 import styles from './markdown-content.module.scss'
-import { safeHtmlPlugins } from './safe-html.js'
+
+const SafeHtmlMarkdown = lazy(() => import('./safe-html-markdown.js'))
 
 const CodeBlockLabelsContext = createContext<MarkdownCodeBlockLabels | null>(null)
 const markdownComponents: Components = {
@@ -67,16 +68,19 @@ const markdownComponents: Components = {
   pre: ({ children }) => <>{children}</>,
 }
 
+const markdownOptions = {
+  remarkPlugins: [remarkGfm, remarkLoomDialogue],
+  urlTransform: (url: string) => url.startsWith('loom-') ? url : defaultUrlTransform(url),
+  components: markdownComponents,
+}
+
 export function MarkdownContent(props: { className?: string; codeBlockLabels: MarkdownCodeBlockLabels; value: string; safeHtml?: boolean }) {
-  const body = useMemo(() => (
-    <Markdown
-      remarkPlugins={[remarkGfm, remarkLoomDialogue]}
-      rehypePlugins={props.safeHtml ? safeHtmlPlugins : undefined}
-      urlTransform={url => url.startsWith('loom-') ? url : defaultUrlTransform(url)}
-      components={markdownComponents}
-    >
-      {props.safeHtml ? props.value : prepareLoomMarkdown(props.value)}
-    </Markdown>
+  const body = useMemo(() => props.safeHtml ? (
+    <Suspense fallback={<pre>{props.value}</pre>}>
+      <SafeHtmlMarkdown options={markdownOptions} value={props.value} />
+    </Suspense>
+  ) : (
+    <Markdown {...markdownOptions}>{prepareLoomMarkdown(props.value)}</Markdown>
   ), [props.value, props.safeHtml])
   return (
     <CodeBlockLabelsContext.Provider value={props.codeBlockLabels}>

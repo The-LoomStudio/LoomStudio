@@ -1,3 +1,4 @@
+import { useWorkbenchView } from '../../../../shared/studio-shell/use-workbench-view.js'
 import { useId, useState } from 'react'
 import { Checkbox, SearchField } from '@loom-studio/ui'
 import type { PresetLibraryConfiguration, PresetLibraryItem, PresetLibraryOption, PresetLibraryResource, PresetLibrarySource } from './preset-library-model.js'
@@ -22,7 +23,7 @@ const configurationTabs = ['模型与审批', 'Lore', '正则 / 提取器', '工
 /** Live configuration content hosted in the library overlay; the caller owns all changes. */
 export function PresetLibraryConfig(props: Props) {
   const { preset } = props
-  const [tab, setTab] = useState<(typeof configurationTabs)[number]>('模型与审批')
+  const [tab, setTab] = useWorkbenchView<(typeof configurationTabs)[number]>('preset.library-configuration', '模型与审批', configurationTabs)
   const [query, setQuery] = useState('')
   const tabId = useId()
   const matching = (name: string, sourceName = '') => `${name} ${sourceName}`.toLowerCase().includes(query.trim().toLowerCase())

@@ -1,16 +1,17 @@
 import { Copy, Download, Maximize, Scan, Share2, X, ZoomIn, ZoomOut } from 'lucide-react'
-import { useEffect, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import type { Translator } from '../../i18n/index.js'
 import { Dialog } from '@loom-studio/ui'
 import { constrainImage, fitImage, zoomImage, type ImageTransform, type Size } from './image-transform.js'
 import styles from './image-viewer.module.scss'
 
-type Props = { title: string; src?: string; fileName: string; error?: string; onClose(): void; t: Translator }
+type Props = { navigation?: ReactNode; onPrevious?(): void; onNext?(): void; title: string; src?: string; fileName: string; error?: string; onClose(): void; t: Translator }
 type Point = { x: number; y: number }
 
 export function ImageViewer(props: Props) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
+  const swipe = useRef<{ x: number; y: number } | undefined>(undefined)
   const pointers = useRef(new Map<number, Point>())
   const [viewport, setViewport] = useState<Size>({ width: 1, height: 1 })
   const [image, setImage] = useState<Size>()
@@ -124,7 +125,7 @@ export function ImageViewer(props: Props) {
     } finally { setBusy(false) }
   }
   const button = (label: Parameters<Translator>[0], icon: React.ReactNode, onClick: () => void, disabled = false) => <button type="button" title={props.t(label)} aria-label={props.t(label)} disabled={disabled} onClick={onClick}>{icon}</button>
-  return <Dialog showCloseButton={false} open layout="media" title={props.title} onClose={props.onClose} headerActions={<div className={styles.toolbar}>
+  return <Dialog className={styles.viewer} showCloseButton={false} open layout="media" title={props.title} onClose={props.onClose} headerActions={<div className={styles.toolbar}>
     {button('media.zoomIn', <ZoomIn />, () => zoom(transform.scale * 1.25), !ready || transform.scale >= maxScale)}
     {button('media.zoomOut', <ZoomOut />, () => zoom(transform.scale / 1.25), !ready || transform.scale <= minScale)}
     <output className={styles.scale}>{Math.round(transform.scale * 100)}%</output>
@@ -136,7 +137,7 @@ export function ImageViewer(props: Props) {
     {shareFile ? button('media.share', <Share2 />, () => void action('share'), !ready || busy) : null}
     {button('media.close', <X />, props.onClose)}
   </div>}>
-    <div ref={viewportRef} className={styles.viewport} tabIndex={0} role="region" aria-label={props.title}
+    <div ref={viewportRef} data-gallery={Boolean(props.navigation) || undefined} className={styles.viewport} tabIndex={0} role="region" aria-label={props.title}
       onKeyDown={event => {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function') { event.preventDefault(); void action('copy') }
         else if (event.key === '+' || event.key === '=') { event.preventDefault(); zoom(transform.scale * 1.25) }
@@ -144,12 +145,21 @@ export function ImageViewer(props: Props) {
         else if (event.key === '0' && image) { event.preventDefault(); setTransform(fitImage(image, viewport)) }
       }}
       onDoubleClick={() => image && setTransform(fitImage(image, viewport))}
-      onPointerDown={event => { if (!ready || event.button !== 0 || pointers.current.size >= 2) return; event.currentTarget.focus(); pointers.current.set(event.pointerId, point(event.clientX, event.clientY)); event.currentTarget.setPointerCapture(event.pointerId) }}
-      onPointerMove={pointerMove} onPointerUp={event => pointers.current.delete(event.pointerId)} onPointerCancel={event => pointers.current.delete(event.pointerId)} onLostPointerCapture={event => pointers.current.delete(event.pointerId)}>
+      onPointerDown={event => { if (!ready || event.button !== 0 || pointers.current.size >= 2) return; swipe.current = event.pointerType === 'touch' && pointers.current.size === 0 && transform.scale <= fit * 1.01 ? { x: event.clientX, y: event.clientY } : undefined; event.currentTarget.focus(); pointers.current.set(event.pointerId, point(event.clientX, event.clientY)); event.currentTarget.setPointerCapture(event.pointerId) }}
+      onPointerMove={pointerMove} onPointerUp={event => {
+        const start = swipe.current
+        swipe.current = undefined
+        pointers.current.delete(event.pointerId)
+        if (start && Math.abs(event.clientX - start.x) > 60 && Math.abs(event.clientX - start.x) > Math.abs(event.clientY - start.y) * 2) {
+          if (event.clientX < start.x) props.onNext?.()
+          else props.onPrevious?.()
+        }
+      }} onPointerCancel={event => pointers.current.delete(event.pointerId)} onLostPointerCapture={event => pointers.current.delete(event.pointerId)}>
       {props.src ? <img ref={imageRef} crossOrigin="anonymous" draggable={false} alt={props.title} src={props.src} onLoad={event => setImage({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} onError={() => setImageError(props.t('media.loadFailed'))}
         style={{ width: image?.width, height: image?.height, visibility: ready ? 'visible' : 'hidden', transform: `translate(-50%, -50%) translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }} /> : null}
       {props.error || imageError ? <p className={styles.message} role="alert">{props.error || imageError}</p> : !ready ? <p className={styles.message} role="status">{props.t('directory.loading')}</p> : null}
       {notice ? <p className={styles.notice} role="status">{notice}</p> : null}
     </div>
+    {props.navigation}
   </Dialog>
 }

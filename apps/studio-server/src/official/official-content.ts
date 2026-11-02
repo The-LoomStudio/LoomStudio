@@ -79,14 +79,16 @@ function parseCatalog(value: JsonValue): ContentCatalog {
   return catalog
 }
 
-export function createOfficialContentService(runtime: ApplicationRuntime, directory: string) {
+export function createOfficialContentService(runtime: ApplicationRuntime, directory?: string) {
   async function confirmed(input: { packageId: string; digest: string }) {
+    if (!directory) throw new Error('No legacy official content catalog is configured; use extension packages')
     const content = await readOfficialContent(directory)
     if (input.packageId !== content.catalog.id || input.digest !== content.digest) throw new Error('Official package changed; refresh and confirm the current version')
     return content
   }
   return {
     async listContent() {
+      if (!directory) return { packages: [] }
       const content = await readOfficialContent(directory)
       const existing = await runtime.listPromptResources()
       const existingIds = new Set(existing.resources.map(resource => resource.id))
@@ -104,14 +106,4 @@ export function createOfficialContentService(runtime: ApplicationRuntime, direct
     },
 
   }
-}
-
-export async function installBuiltinStarterContent(runtime: ApplicationRuntime, directory: string) {
-  const content = await readOfficialContent(directory)
-  return await runtime.installOfficialContent({
-    packageId: content.catalog.id,
-    packageVersion: content.catalog.version,
-    resources: content.resources,
-    loreMounts: content.catalog.loreMounts,
-  })
 }

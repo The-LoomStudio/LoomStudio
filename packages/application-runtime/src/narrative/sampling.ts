@@ -258,7 +258,6 @@ async function assertReadRange(
       if (node.id === after && foundThrough) foundAfter = true
       if (node.id === access.afterNodeId) {
         foundBoundary = true
-        cursor = undefined
         break
       }
     }

@@ -38,16 +38,16 @@ it('previews the complete unsaved rule source and shows the result without savin
   const onSourceChange = vi.fn()
   const onPreview = vi.fn(async () => ({ output: '替换后文字', matches: [{ ruleId: 'replace', match: '待替换文字' }], diagnostics: [] }))
   await act(async () => root!.render(createElement(LoomScriptSourceFields, {
-    source, fileName: 'new-rule.loom.js', onSourceChange, onFileNameChange: vi.fn(), onPreview, t: createTranslator('zh-CN'),
+    source, fileName: 'new-rule.md', onSourceChange, onFileNameChange: vi.fn(), onPreview, t: createTranslator('zh-CN'),
   })))
-  expect(host.querySelector('[aria-label="规则摘要"]')?.textContent).toContain('替换示例')
+  expect(host.querySelector('[aria-label="规则摘要"]')?.textContent).toContain('新文本规则')
   const input = host.querySelector<HTMLTextAreaElement>('[aria-label="规则测试样本文本"]')!
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(input, '待替换文字')
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === '测试规则')!.click())
-  expect(onPreview).toHaveBeenCalledWith({ source, text: '待替换文字', phase: 'display' })
+  expect(onPreview).toHaveBeenCalledWith({ source, text: '待替换文字', phase: 'display', streaming: false })
   expect(host.querySelector('pre')?.textContent).toBe('替换后文字')
   expect(onSourceChange).not.toHaveBeenCalled()
 })

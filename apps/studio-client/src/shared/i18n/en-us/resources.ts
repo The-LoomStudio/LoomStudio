@@ -1,6 +1,7 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'promptResource.temporaryHint': "Temporary view. This does not add the resource to the current character.",
   'dashboard.open': 'Dashboard',
   'promptResource.processingWarning': 'Prompt processing reported warnings; some Lore may have been skipped. See build diagnostics.',
   'promptResource.invalidResources': 'These resources cannot be read; other resources remain available.',
@@ -182,6 +183,10 @@ export const messages = {
   'context.actionDelete': 'Delete entry',
   'context.actionMore': 'More actions',
   'context.lifecycleAlwaysIndicator': 'Always active',
+  'context.actionEnableGroup': 'Enable group',
+  'context.actionDisableGroup': 'Disable group',
+  'context.disabledByAncestor': 'Disabled by ancestor “{{label}}”',
+  'context.groupEnableHint': 'Controls whether this group participates in the build; preserves each child’s own enabled state.',
   'context.actionEnable': 'Enable entry',
   'context.actionDisable': 'Disable entry',
   'context.actionMoveUp': 'Move Up',

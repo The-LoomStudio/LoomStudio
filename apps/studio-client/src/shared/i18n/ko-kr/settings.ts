@@ -1,6 +1,16 @@
 import type { messages as zhCN } from '../zh-cn/settings.js'
 
 export const messages = {
+  "settings.links.website": "공식 웹사이트",
+  "settings.links.websiteDescription": "제품 소개 및 최신 소식",
+  "settings.links.docs": "문서",
+  "settings.links.docsDescription": "사용 가이드 및 아키텍처",
+  "settings.links.download": "다운로드 및 릴리스",
+  "settings.links.downloadDescription": "설치 및 버전 정보",
+  "settings.links.marketplace": "마켓플레이스",
+  "settings.links.marketplaceDescription": "확장, 프리셋 및 창작 도구",
+  "settings.links.github": "GitHub",
+  "settings.links.githubDescription": "소스 코드, 문제 보고 및 협업",
   "appearance.extensionBackgroundGroup": "확장 · {{name}}",
   "appearance.cardBackgroundGroup": "캐릭터 · {{name}}",
 

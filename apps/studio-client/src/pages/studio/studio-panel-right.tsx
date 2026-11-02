@@ -1,4 +1,5 @@
 import { useRef, type CSSProperties, type ReactNode } from 'react'
+import { Dialog } from '@loom-studio/ui'
 import styles from './studio-panel-right.module.scss'
 
 export type StudioPanelRightProps = {
@@ -6,6 +7,9 @@ export type StudioPanelRightProps = {
   footer?: ReactNode
   id?: string
   open: boolean
+  mobile?: boolean
+  showMobileHandle?: boolean
+  onOpen?(): void
   width?: number
   onClose(): void
   onWidthChange?(width: number): void
@@ -47,6 +51,14 @@ export function StudioPanelRight(props: StudioPanelRightProps) {
   }
 
   const style: CSSProperties | undefined = props.width ? { width: `${props.width}px` } : undefined
+
+  if (props.mobile) return (
+    <Dialog id={props.id ?? 'studio-panel-right'} open={props.open} onClose={props.onClose}
+      title="Agent Session" layout="workbench" mobileOpenHandle={props.showMobileHandle} onOpen={props.onOpen} className={styles.mobileSession}>
+      <div className={styles.body}>{props.children}</div>
+      {props.footer ? <footer className={styles.footer}>{props.footer}</footer> : null}
+    </Dialog>
+  )
 
   return (
     <aside

@@ -14,9 +14,10 @@ export type LoomScript = {
   requires?: string[]
   settings?: LoomScriptSettingDefinition[]
   tags?: string[]
+  textResourceIds?: Record<string, string>
   contributions: LoomScriptContributionDefinition[]
   requestedCapabilities: string[]
-  source: { blobId: string; mediaType: 'text/javascript'; fileName: string }
+  source: { blobId: string; mediaType: 'text/javascript' | 'text/markdown'; fileName: string }
   sourceDigest: string
   createdAt: string
   updatedAt: string

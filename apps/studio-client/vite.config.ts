@@ -1,3 +1,4 @@
+import { regexPreview } from './build/regex-preview.js'
 import { extensionSharedModules } from './build/extension-shared-modules.js'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +21,7 @@ export default defineConfig({
   },
   plugins: [
     extensionSharedModules(),
+    regexPreview(),
     react(),
     babel({
       presets: [reactCompilerPreset({ compilationMode: 'annotation' })],

@@ -1,3 +1,4 @@
+import { extensionToolMountSchema } from '@loom-studio/shared'
 import { rendererSurfaces, rendererInstanceScopes as rendererScopes, sharedStyleParameterDefinitions } from '@loom-studio/extension-sdk'
 import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
@@ -66,6 +67,7 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
       if (!isRecord(dependency) || typeof dependency.id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(dependency.id)
         || dependency.id === manifest.id || ids.has(dependency.id)) throw new Error('Manifest dependency id is invalid or duplicated')
       ids.add(dependency.id)
+      if (dependency.target !== undefined && dependency.target !== 'global' && dependency.target !== 'card') throw new Error('Manifest dependency target must be global or card')
       if (typeof dependency.version !== 'string' || !dependency.version.trim()) throw new Error('Manifest dependency version is required')
       if (dependency.source !== undefined) {
         const source = dependency.source
@@ -100,6 +102,21 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     }
   }
   if (!manifest.engines?.studio) throw new Error('engines.studio is required')
+  const characters = manifest.contributes?.characters
+  if (characters !== undefined) {
+    if (!Array.isArray(characters) || characters.length > 100) throw new Error('Character catalog must be a bounded array')
+    const ids = new Set<string>()
+    for (const character of characters) {
+      if (!isRecord(character) || typeof character.id !== 'string' || !extensionStorageTokenPattern.test(character.id) || ids.has(character.id)) throw new Error('Invalid or duplicate Character catalog id')
+      ids.add(character.id)
+      if (typeof character.name !== 'string' || !character.name.trim()) throw new Error('Character name is required')
+      assertOptionalManifestText(character.description, 'Character description', 4096)
+      for (const path of [character.source, ...(character.preview === undefined ? [] : [character.preview])]) {
+        if (typeof path !== 'string' || !path.trim() || isAbsolute(path) || path.includes('\\') || path.includes('\0') || path.split('/').includes('..')) throw new Error('Character files must use safe relative package paths')
+      }
+      if (!character.source.endsWith('.zip')) throw new Error('Character source must be a Card Bundle ZIP')
+    }
+  }
   const promptResources = new Map<string, ExtensionPromptResourceContribution>()
   for (const resource of manifest.contributes?.promptResources ?? []) {
     if (!resource.id || !extensionStorageTokenPattern.test(resource.id)) throw new Error(`Manifest Prompt Resource id is invalid: ${resource.id}`)
@@ -116,9 +133,10 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
   for (const script of manifest.contributes?.loomScripts ?? []) {
     if (!script.id || !extensionStorageTokenPattern.test(script.id) || scripts.has(script.id)) throw new Error(`Manifest Loom Script id is invalid or duplicated: ${script.id}`)
     if (typeof script.source !== 'string' || !script.source.trim() || script.source !== script.source.trim()
-      || script.source.includes('\0') || isAbsolute(script.source) || !script.source.endsWith('.loom.js')) {
-      throw new Error(`Manifest Loom Script source must be a relative .loom.js file: ${script.id}`)
+      || script.source.includes('\0') || isAbsolute(script.source) || (!script.source.endsWith('.loom.js') && !script.source.endsWith('.md'))) {
+      throw new Error(`Manifest Loom Script source must be a relative .loom.js or .md file: ${script.id}`)
     }
+    if (script.orderIndex !== undefined && !Number.isSafeInteger(script.orderIndex) || script.groupOrder !== undefined && !Number.isSafeInteger(script.groupOrder)) throw new Error(`Invalid Script ordering: ${script.id}`)
     scripts.add(script.id)
   }
   const agentTools = new Set<string>()
@@ -173,11 +191,13 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     }
     const toolMounts = new Set<string>()
     for (const mount of resource.toolMounts ?? []) {
-      if (!agentTools.has(mount.toolId)) throw new Error(`Manifest Preset references an undeclared Agent Tool: ${mount.toolId}`)
-      if (toolMounts.has(mount.toolId)) throw new Error(`Manifest Preset Tool mount must be unique: ${mount.toolId}`)
-      if (mount.orderIndex !== undefined && (!Number.isInteger(mount.orderIndex) || mount.orderIndex < 0)) throw new Error(`Manifest Preset Tool order is invalid: ${mount.toolId}`)
-      if (mount.defaultEnabled !== undefined && typeof mount.defaultEnabled !== 'boolean') throw new Error(`Manifest Preset Tool enabled flag is invalid: ${mount.toolId}`)
-      toolMounts.add(mount.toolId)
+      const parsed = extensionToolMountSchema.parse(mount)
+      const reference = parsed.reference ?? { kind: 'package' as const, contributionId: parsed.toolId! }
+      if (reference.kind === 'package' && !agentTools.has(reference.contributionId)) throw new Error(`Manifest Preset references an undeclared Agent Tool: ${reference.contributionId}`)
+      if (reference.kind === 'external' && !manifest.dependencies?.some(dependency => dependency.id === reference.packageId)) throw new Error(`External Agent Tool requires a declared dependency: ${reference.packageId}`)
+      const key = JSON.stringify(reference)
+      if (toolMounts.has(key)) throw new Error(`Manifest Preset Tool mount must be unique: ${key}`)
+      toolMounts.add(key)
     }
   }
   const moduleIds = new Set<string>()
@@ -304,6 +324,7 @@ function validateBackgroundContributions(manifest: Partial<ExtensionManifest>): 
     assertOptionalManifestText(background.description, 'background description', 2_048)
     const image = background.image
     if (typeof image !== 'string' || image !== image.trim() || isAbsolute(image)
+      // eslint-disable-next-line no-control-regex -- Control characters are intentionally rejected or encoded in paths and CSS values.
       || /[\\:%?#\x00-\x1f]/.test(image) || !/\.(png|jpe?g|webp|gif|svg|avif)$/i.test(image)
       || image.replace(/^\.\//, '').split('/').some(part => part === '..' || part === '.' || part === '')) {
       throw new Error('Manifest background image must be a package-relative image file without traversal, query or hash')
@@ -328,6 +349,7 @@ function validateStyleContributions(manifest: Partial<ExtensionManifest>): void 
       assertOptionalManifestText(contribution.description, 'style description', 2_048)
       const css = contribution.css
       if (typeof css !== 'string' || css !== css.trim() || !css.endsWith('.css') || isAbsolute(css)
+        // eslint-disable-next-line no-control-regex -- Control characters are intentionally rejected or encoded in paths and CSS values.
         || /[\\:%?#\x00-\x1f]/.test(css) || css.split('/').some(part => part === '..' || part === '')) {
         throw new Error('Manifest style css must be a package-relative CSS file without traversal, query or hash')
       }
@@ -340,6 +362,11 @@ function validateStyleContributions(manifest: Partial<ExtensionManifest>): void 
       }
       if (contribution.nativeMotion !== undefined && contribution.nativeMotion !== 'retain' && contribution.nativeMotion !== 'disable') {
         throw new Error('Manifest style nativeMotion is invalid')
+      }
+      if (contribution.previewColors !== undefined && (!Array.isArray(contribution.previewColors)
+        || contribution.previewColors.length !== 3
+        || !contribution.previewColors.every(color => typeof color === 'string' && color.length <= 128 && /^(?:#[0-9a-f]{3,8}|(?:rgb|rgba|hsl|hsla|oklch|oklab)\([\d.,%+\-/\s]+\))$/i.test(color)))) {
+        throw new Error('Manifest style previewColors must contain three literal CSS colors')
       }
       if (contribution.parameters === undefined) continue
       if (!Array.isArray(contribution.parameters)) throw new Error('Manifest style parameters must be an array')
@@ -399,6 +426,7 @@ function validateStyleContributions(manifest: Partial<ExtensionManifest>): void 
 }
 
 function assertStyleCssValue(value: unknown): asserts value is string {
+  // eslint-disable-next-line no-control-regex -- Control characters are intentionally rejected or encoded in paths and CSS values.
   if (typeof value !== 'string' || !value.trim() || value.length > 1_024 || /[;{}@\\\x00-\x1f]/.test(value)) {
     throw new Error('Manifest style parameter CSS value is invalid')
   }

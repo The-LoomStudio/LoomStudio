@@ -22,7 +22,7 @@ const MarkdownPreview = lazy(async () => {
 })
 
 type LongTextEditorBaseProps = {
-  language?: 'markdown' | 'javascript' | 'loom-script'
+  language?: 'markdown' | 'javascript' | 'loom-script' | 'loom-rule'
   hideLabel?: boolean
   headerExtra?: ReactNode
   clearLabel: string

@@ -6,6 +6,10 @@ import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 import { installedExtensionContributionId } from '@loom-studio/extension-sdk'
 
+const defaultPlayerState = {
+  $loom: { players: { User: { components: { loom_profile: { name: 'User', description: '' } } } } },
+}
+
 function createTestRuntime(options?: { stateContributions?: StateContributionRegistry }) {
   let nextId = 0
   let nextTime = 0
@@ -284,6 +288,7 @@ describe('application narrative timeline lifecycle', () => {
     })
 
     expect(snapshot.snapshot.value).toEqual({
+      ...defaultPlayerState,
       characters: {
         hero: { hp: 100 },
       },
@@ -352,6 +357,7 @@ describe('application narrative timeline lifecycle', () => {
     const target = { scope: 'timeline' as const, timelineId: timeline.timeline.id, branchId: timeline.branch.id }
     const snapshot = await runtime.getStateSnapshot({ target })
     expect(snapshot.snapshot.value).toEqual({
+      ...defaultPlayerState,
       entities: {
         characters: {
           alice: {
@@ -369,9 +375,10 @@ describe('application narrative timeline lifecycle', () => {
 
     const runtimeContext = await documents.get(`timeline-runtime-context:${timeline.timeline.id}`)
     expect(runtimeContext?.content).toMatchObject({
-      stateEntityTypes: [{ id: 'character' }, { id: 'item' }],
-      stateEntities: [{ typeId: 'character', entityId: 'alice' }, { typeId: 'item', entityId: 'silver-sword' }],
+      stateEntityTypes: [{ id: 'loom-player', collectionPath: '$loom.players' }, { id: 'character' }, { id: 'item' }],
+      stateEntities: [{ typeId: 'loom-player', entityId: 'User' }, { typeId: 'character', entityId: 'alice' }, { typeId: 'item', entityId: 'silver-sword' }],
       stateComponents: expect.arrayContaining([
+        expect.objectContaining({ path: '$loom.players.User.components.loom_profile' }),
         expect.objectContaining({ path: 'entities.characters.alice.components.inventory' }),
         expect.objectContaining({ path: 'entities.characters.alice.components.vitals' }),
         expect.objectContaining({ path: 'entities.items.silver-sword.components.identity' }),
@@ -494,7 +501,7 @@ describe('application narrative timeline lifecycle', () => {
       stateRevisionId: initial.snapshot.revisionId,
       body: { raw: 'Gold: 10' },
     })
-    expect(updated.snapshot.value).toEqual({ characters: { alice: { gold: 7 } } })
+    expect(updated.snapshot.value).toEqual({ ...defaultPlayerState, characters: { alice: { gold: 7 } } })
     const fork = await runtime.forkNarrativeBranch({
       timelineId: created.timeline.id,
       fromBranchId: created.branch.id,
@@ -538,7 +545,7 @@ describe('application narrative timeline lifecycle', () => {
     const revertedFork = await runtime.getStateSnapshot({
       target: { scope: 'timeline', timelineId: created.timeline.id, branchId: fork.branch.id },
     })
-    expect(revertedFork.snapshot.value).toEqual({ characters: { alice: { gold: 7 } } })
+    expect(revertedFork.snapshot.value).toEqual({ ...defaultPlayerState, characters: { alice: { gold: 7 } } })
     expect(revertedFork.snapshot.revisionId).not.toBe(updated.snapshot.revisionId)
     expect(engine.database.prepare('SELECT id FROM state_revisions WHERE id = ?').get(forkUpdated.snapshot.revisionId))
       .toEqual({ id: forkUpdated.snapshot.revisionId })
@@ -562,7 +569,9 @@ describe('application narrative timeline lifecycle', () => {
       promptResourceIds: [],
     })
 
-    const created = await runtime.createNarrativeTimeline({ cardId: card.card.id }, {
+    const created = await runtime.createNarrativeTimeline({
+      cardId: card.card.id, playerProfile: { name: 'Player', description: '' },
+    }, {
       clientId: 'client-1',
       correlationId: 'corr-1',
       callId: 'call-1',

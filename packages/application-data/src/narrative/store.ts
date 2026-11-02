@@ -1,3 +1,4 @@
+import { readChatAttachments, type ChatAttachment } from '@loom-studio/shared'
 import { recordUserInteraction } from '../statistics/store.js'
 import type { DataCommitOperation, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
 import { createId, nowIso, optionalString } from '@loom-studio/shared'
@@ -221,7 +222,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       },
       editBranchNode: input => {
         validateBody(input.body)
-        validateBody(input.expectedBody)
+        validateBody(input.expectedBody, true)
         const timeline = requireTimeline(database, input.timelineId)
         const branch = requireBranch(database, input.branchId)
         assertBranchTimeline(branch, timeline.id)
@@ -254,12 +255,13 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         for (const previous of suffix.reverse()) {
           const node = insertNode(database, agents.transaction(tx), tx, branch.id, {
             ...previous,
+            attachments: nodeAttachments(agents.transaction(tx), previous),
             id: nextId('node'),
             parentNodeId,
             body: previous.id === target.id ? input.body : previous.body,
             entryId: previous.id === target.id ? undefined : previous.entryId,
             source: previous.id === target.id ? { ...previous.source, agentMessageId: undefined } : previous.source,
-          })
+          }, input.executionRunId)
           writeRecoveryPoint(database, { ...recoveryAtNode(database, branch, previous), nodeId: node.id, headEntryId: previous.id === target.id ? node.entryId : recoveryAtNode(database, branch, previous).headEntryId })
           replacements.push({ previousNodeId: previous.id, node })
           parentNodeId = node.id
@@ -360,7 +362,8 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       },
 
       appendNode: input => {
-        validateBody(input.body)
+        validateBody(input.body, input.kind === 'user-input' && Boolean(input.attachments?.length))
+        readChatAttachments(input.attachments)
         validateId(input.stateRevisionId, 'stateRevisionId')
         const timeline = requireTimeline(database, input.timelineId)
         const branch = requireBranch(database, input.branchId)
@@ -390,6 +393,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
           stateRevisionId: input.stateRevisionId,
           workspaceRevisionId: branch.workspaceHeadRevisionId,
           body: input.body,
+          attachments: input.attachments,
           source: { ...input.source, changesetId: tx.changesetId },
           createdAt: now(),
         })
@@ -429,7 +433,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         const session = agents.transaction(tx).getSession(timeline.id)!
         const saved = agents.transaction(tx).appendEntries({ agentSessionId: timeline.id, expectedEntryCount: session.entryCount,
           entries: [{ entry: { kind: 'message', role: existingNode.kind === 'user-input' ? 'user' : 'assistant',
-            content: input.body.raw, purpose: 'narrative', narrativeId: existingNode.id } }] }).entries[0]!
+            content: input.body.raw, attachments: nodeAttachments(agents.transaction(tx), existingNode), purpose: 'narrative', narrativeId: existingNode.id } }] }).entries[0]!
         database.prepare('UPDATE narrative_nodes SET entry_id = ? WHERE id = ?').run(saved.id, existingNode.id)
         const updatedAt = now()
         database.prepare('UPDATE narrative_timelines SET opening_json = ?, updated_at = ? WHERE id = ?')
@@ -608,7 +612,8 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     },
     appendInput: async input => {
       validateId(input.nodeId, 'nodeId')
-      validateBody(input.body)
+      validateBody(input.body, Boolean(input.attachments?.length))
+      readChatAttachments(input.attachments)
       const alreadyCommitted = new Error('Narrative input already committed')
       let replay: AppendNarrativeUserInputResult | undefined
       try {
@@ -616,6 +621,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
           const { database } = dataTx
           const node = readNode(database, input.nodeId)
           if (node) {
+            const savedAttachments = nodeAttachments(agents.transaction(dataTx), node)
             const receipt = database.prepare('SELECT id, reason, operations_json FROM changesets WHERE id = ?')
               .get(node.source?.changesetId ?? null)
             const operations = receipt ? JSON.parse(String(receipt.operations_json)) as DataCommitOperation[] : []
@@ -623,6 +629,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
               || (node.parentNodeId ?? null) !== input.expectedHeadNodeId
               || node.body.format !== input.body.format
               || node.body.raw !== input.body.raw
+              || JSON.stringify(savedAttachments ?? []) !== JSON.stringify(input.attachments ?? [])
               || !receipt
               || (receipt.reason ?? undefined) !== input.reason
               || !operations.some(item => item.store === 'narrative' && item.kind === 'create'
@@ -872,7 +879,7 @@ function insertBranch(database: DatabaseSync, branch: NarrativeBranch): void {
   )
 }
 
-function insertNode(database: DatabaseSync, agent: AgentTransaction, tx: SqliteDataTransaction, targetBranchId: string | undefined, input: Omit<NarrativeNode, 'floor' | 'kind'> & { floor?: number; kind?: NarrativeNode['kind'] }): NarrativeNode {
+function insertNode(database: DatabaseSync, agent: AgentTransaction, tx: SqliteDataTransaction, targetBranchId: string | undefined, input: Omit<NarrativeNode, 'floor' | 'kind'> & { floor?: number; kind?: NarrativeNode['kind']; attachments?: ChatAttachment[] }, executionRunId?: string): NarrativeNode {
   const parentFloor = input.parentNodeId ? requireNode(database, input.parentNodeId).floor : 0
   const floor = input.floor ?? parentFloor + 1
   if (!Number.isSafeInteger(floor) || floor <= parentFloor) {
@@ -882,8 +889,8 @@ function insertNode(database: DatabaseSync, agent: AgentTransaction, tx: SqliteD
   const canReuse = referenced?.agentSessionId === input.timelineId && referenced.entry.kind === 'message' && referenced.entry.content === input.body.raw
   const session = agent.getSession(input.timelineId)!
   const entryId = canReuse ? referenced.id : agent.appendEntries({ agentSessionId: input.timelineId, expectedEntryCount: session.entryCount,
-    entries: [{ entry: { kind: 'message', role: input.kind === 'user-input' ? 'user' : 'assistant', content: input.body.raw,
-      purpose: 'narrative', narrativeId: input.id } }] }, targetBranchId ? { timelineBranchId: targetBranchId } : undefined).entries[0]!.id
+    entries: [{ ...(executionRunId ? { runId: executionRunId } : input.source?.agentSessionId === input.timelineId && input.source.runId ? { runId: input.source.runId } : {}), entry: { kind: 'message', role: input.kind === 'user-input' ? 'user' : 'assistant', content: input.body.raw,
+      purpose: 'narrative', narrativeId: input.id, ...(input.attachments?.length ? { attachments: input.attachments } : {}) } }] }, targetBranchId ? { timelineBranchId: targetBranchId } : undefined).entries[0]!.id
   if (canReuse && !input.entryId && referenced.entry.kind === 'message') {
     database.prepare(`UPDATE agent_transcript_entries SET entry_json = json_set(entry_json, '$.purpose', 'narrative', '$.narrativeId', COALESCE(json_extract(entry_json, '$.narrativeId'), ?)) WHERE id = ?`)
       .run(input.id, entryId)
@@ -1178,11 +1185,11 @@ function assertBranchTimeline(branch: NarrativeBranch, timelineId: string): void
   }
 }
 
-function validateBody(body: NarrativeBody): void {
+function validateBody(body: NarrativeBody, allowEmpty = false): void {
   if (body.format !== 'loom-markdown.v1') {
     throw new NarrativeStoreError('narrative.body_format_invalid', `Unsupported narrative body format: ${String(body.format)}`)
   }
-  if (typeof body.raw !== 'string' || body.raw.trim().length === 0) {
+  if (typeof body.raw !== 'string' || !allowEmpty && body.raw.trim().length === 0) {
     throw new NarrativeStoreError('narrative.body_empty', 'Narrative body cannot be empty')
   }
 }
@@ -1241,7 +1248,7 @@ function parseStringArray(value: unknown, field: string): string[] {
   }
 }
 
-function migrateTimelineAuthority(database: DatabaseSync, nextId: (prefix: string) => string, now: () => string) {
+function migrateTimelineAuthority(database: DatabaseSync, nextId: (prefix: string) => string, _now: () => string) {
   database.exec(`ALTER TABLE narrative_nodes ADD COLUMN entry_id TEXT REFERENCES agent_transcript_entries(id);
     ALTER TABLE narrative_branches ADD COLUMN head_entry_id TEXT REFERENCES agent_transcript_entries(id);
     ALTER TABLE narrative_recovery_points ADD COLUMN head_entry_id TEXT REFERENCES agent_transcript_entries(id);`)
@@ -1272,4 +1279,9 @@ function migrateTimelineAuthority(database: DatabaseSync, nextId: (prefix: strin
     ALTER TABLE narrative_nodes DROP COLUMN body_format;
     CREATE VIEW narrative_node_projection AS SELECT n.*, 'loom-markdown.v1' AS body_format,
       json_extract(e.entry_json, '$.content') AS body_raw FROM narrative_nodes n JOIN agent_transcript_entries e ON e.id = n.entry_id;`)
+}
+
+function nodeAttachments(agent: AgentTransaction, node: NarrativeNode): ChatAttachment[] | undefined {
+  const entry = node.entryId ? agent.getEntry(node.entryId)?.entry : undefined
+  return entry?.kind === 'message' ? entry.attachments : undefined
 }

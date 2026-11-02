@@ -110,7 +110,7 @@
     color: var(--loom-color-text);
 
     .toolItemChevron {
-      color: var(--loom-color-text);
+  margin-left: auto;      color: var(--loom-color-text);
     }
   }
 }
@@ -132,7 +132,7 @@
 }
 
 .toolItemLabel {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -142,7 +142,7 @@
 }
 
 .toolItemChevron {
-  width: 12px;
+  margin-left: auto;  width: 12px;
   height: 12px;
   flex-shrink: 0;
   color: var(--loom-color-text-subtle);
@@ -239,3 +239,12 @@
 [data-smooth-follow] .toolDetailCode { max-height: none; overflow: visible; }
 
 [data-smooth-follow] .toolGroupViewport { max-height: none; overflow: visible; }
+.toolStatus {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--loom-color-text-subtle);
+  &[data-status='success'] { color: var(--loom-color-success); }
+  &[data-status='error'] { color: var(--loom-color-danger); }
+  &[data-status='interrupted'] { color: var(--loom-color-warning); }
+  svg { width: 13px; height: 13px; }
+}

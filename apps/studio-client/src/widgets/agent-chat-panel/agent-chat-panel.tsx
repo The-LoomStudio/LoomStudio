@@ -1,3 +1,8 @@
+import { UserInputEditor, type ReviseUserInput } from '../../features/attachments/user-input-editor.js'
+import { MessageAttachments } from '../../features/attachments/message-attachments.js'
+import type { AttachmentComposerProps } from '../../features/attachments/use-attachment-drafts.js'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
+import { ExtensionIcon, presetIconUrl, useExtensionIdentities } from '../../shared/ui/extension-icon/extension-icon.js'
 import { type RenderItem } from '../../features/sessions/model/transcript-render-items.js'
 import { buildRenderItems } from '../../features/sessions/model/transcript-render-items.js'
 import { ToolCollapse, type RowExpansion } from '../../features/sessions/ui/agent-tool-blocks.js'
@@ -6,7 +11,7 @@ import { StreamingViewport } from '../../shared/ui/streaming-viewport/streaming-
 import { UserIdentity, type UserIdentityView } from '../../shared/ui/user-identity/user-identity.js'
 import { ContentErrorBoundary } from '../../shared/ui/content-error-boundary.js'
 import { SelectionToolbar, appendQuote } from '../../shared/ui/selection-toolbar/selection-toolbar.js'
-import { BookOpen, Check, ChevronDown, Copy, Plus, Trash2 } from 'lucide-react'
+import { BookOpen, Check, Pencil, ChevronDown, Copy, Plus, Trash2 } from 'lucide-react'
 import { lazy, memo, Suspense, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { AgentTranscriptEntry as AgentTranscriptEntryEntity, AgentPreset, AgentSession, CardSummary, NarrativeTimeline, ProviderAccount } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -33,7 +38,8 @@ const ConversationMarkdown = lazy(async () => {
   return { default: module.MessageContent }
 })
 
-export type AgentChatPanelProps = RunRecoveryControlsProps & {
+export type AgentChatPanelProps = RunRecoveryControlsProps & AttachmentComposerProps & {
+  onReviseInput?: ReviseUserInput
   userIdentity?: UserIdentityView
   active?: boolean
   scrollRestorationScope?: string
@@ -79,8 +85,7 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
   const summaryControl = !props.busy && props.activeRun?.status !== 'running' && props.activeRun?.status !== 'suspended' ? props.summaryControl : undefined
   const recovery = props.runRecovery?.target === 'agent' ? props.runRecovery : undefined
   const disconnected = props.runRecovery?.status === 'disconnected'
-  const canSend = Boolean(props.input.trim()) && !props.busy && props.summaryControl?.state !== 'running' && !disconnected && !props.runRecoveryBusy && props.sessionReady !== false && Boolean(props.selectedProfileId)
-    && props.activeRun?.status !== 'running' && props.activeRun?.status !== 'suspended'
+  const canSend = Boolean(props.input.trim() || props.attachments?.length) && (props.attachments ?? []).every(item => item.attachment) && !disconnected && !props.runRecoveryBusy && props.sessionReady !== false && Boolean(props.selectedProfileId)
   const [createOpen, setCreateOpen] = useState(false)
   const approval = props.activeRun?.approval
   const approvalKey = approval ? `${props.activeRun!.runId}:${approval.requestId}` : undefined
@@ -92,10 +97,11 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
     const rows = props.summaryRows ?? []
     const mergedSources = new Set<number>()
     const entries = effectiveMessages.filter(message => {
+      if (message.entry.kind !== 'work-summary') return true
       const boundary = message.entry.boundary
-      if (message.entry.kind !== 'work-summary' || !boundary || typeof boundary !== 'object' || Array.isArray(boundary)) return true
+      if (!boundary) return true
       const source = boundary.sourceThroughSequence
-      if (typeof source !== 'number' || mergedSources.has(source)) return true
+      if (mergedSources.has(source)) return true
       if (!rows.some(row => row.adopted && row.sourceThroughSequence === source)) return true
       mergedSources.add(source)
       return false
@@ -217,12 +223,15 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
           <div ref={listRef} className={styles.virtualList} style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map(row => {
             const item = renderItems[row.index]
+            const entry = item.kind === 'message' ? item.message.entry : undefined
+            const inputIdentity = entry?.kind === 'user-interjection' ? entry.requestId : entry?.kind === 'message' ? entry.interjectionRequestId : undefined
+            const rowKey = inputIdentity ? `input:${inputIdentity}` : item.id
             let content: ReactNode
             if (item.kind === 'summary-activity') content = item.content
             if (item.kind === 'tool-group') {
               content = (
                 <AgentToolGroupBlock
-                  key={item.id}
+                  key={rowKey}
                   id={item.id}
                   expansion={expansion}
                   label={item.label}
@@ -245,7 +254,7 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
             if (item.kind === 'reasoning') {
               content = (
                 <AgentReasoningBlock
-                  key={item.id}
+                  key={rowKey}
                   open={expansion.isOpen(item.id, initiallyOpen(item.id))}
                   followWork
                   onInspect={smooth.pause}
@@ -260,13 +269,16 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
                 <AgentTranscriptEntry
                   agentSessionId={props.session?.id}
                   codeBlockLabels={codeBlockLabels}
+                  onReviseInput={item.role === 'user' && item.interjectionStatus !== 'discarded' && item.id === renderItems.findLast(row => row.kind === 'message' && row.role === 'user')?.id ? props.onReviseInput : undefined}
+                  editBlocked={item.interjectionStatus !== 'pending' && props.activeRun?.status === 'running'}
+                  interjectionStatus={item.interjectionStatus}
                   content={item.content}
                   displayContent={displayText(props.displayProjection, item.id, item.content, item.isStreaming || isTransientAgentEntryId(item.id))}
                   displayProjectionError={Boolean(props.displayProjection?.error)}
                   displayProjectionPending={Boolean(props.displayProjection?.pending)}
                   copyState={copyState?.id === item.id ? copyState.status === 'copied' : undefined}
                   index={item.index}
-                  key={item.id}
+                  key={rowKey}
                   message={item.message}
                   rendererHost={props.rendererHost}
                   role={item.role}
@@ -278,7 +290,7 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
                 />
               )
             }
-            return <div key={item.id} data-index={row.index} ref={virtualizer.measureElement}
+            return <div key={rowKey} data-index={row.index} ref={virtualizer.measureElement}
               className={styles.virtualRow} style={{ transform: `translateY(${row.start - scrollMargin}px)` }}>
               <ContentErrorBoundary resetKey={item} fallback={error => <p role="alert">{error.message}</p>}><Suspense fallback={<div aria-busy="true"><SkeletonText lines={5} /></div>}>{content}</Suspense></ContentErrorBoundary>
             </div>
@@ -300,6 +312,8 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
         </button> : null}
         {recovery ? <div className={styles.floatingRecovery}><RunRecoveryControls {...props} runRecovery={recovery} /></div> : null}
         <ChatComposer
+        t={props.t}
+        attachmentNotice={props.attachmentNotice} onRetryAttachment={props.onRetryAttachment} attachments={props.attachments} onAddAttachments={props.onAddAttachments} onRemoveAttachment={props.onRemoveAttachment}
           inputRef={inputRef}
           canPreviewPrompt={false}
           canSend={canSend}
@@ -390,6 +404,8 @@ function AgentReasoningBlock(props: {
  * 展开后严格符合图 3：单层深色全宽卡片，无套娃，纯净等宽代码输出，右下角成功/失败状态
  */
 function AgentTranscriptEntry(props: {
+  onReviseInput?: ReviseUserInput
+  editBlocked?: boolean
   userIdentity?: UserIdentityView
   agentSessionId?: string
   codeBlockLabels: MarkdownCodeBlockLabels
@@ -404,9 +420,13 @@ function AgentTranscriptEntry(props: {
   rendererHost?: ClientRendererHost
   role: 'user' | 'assistant'
   showChrome?: boolean
+  interjectionStatus?: 'pending' | 'applied' | 'discarded'
   t: Translator
   onCopy(): void
 }) {
+  const [editing, setEditing] = useState(false)
+  const editCallback = useRef(props.onReviseInput)
+  if (props.onReviseInput) editCallback.current = props.onReviseInput
   const lastDisplay = useRef<{ raw: string; text: string } | undefined>(undefined)
   if (props.displayContent !== undefined) {
     lastDisplay.current = { raw: props.content, text: props.displayContent }
@@ -428,9 +448,13 @@ function AgentTranscriptEntry(props: {
     streaming={props.isStreaming}
   />
 
+  const attachments = props.message.entry.kind === 'message' || props.message.entry.kind === 'user-interjection' ? props.message.entry.attachments : undefined
+  if (editing && editCallback.current) return <UserInputEditor entryId={props.message.id} content={props.content} attachments={attachments}
+    pending={props.interjectionStatus === 'pending'} blocked={props.editBlocked || !props.onReviseInput} onSave={editCallback.current} onClose={() => setEditing(false)} />
   return (
     <article aria-busy={props.displayContent === undefined && props.displayProjectionPending} className={`${styles.message} ${styles[props.role]}`}>
       {props.role === 'user' && props.userIdentity ? <header className={styles.userIdentity}><UserIdentity {...props.userIdentity} /></header> : null}
+      {props.interjectionStatus ? <small role="status">{props.interjectionStatus === 'discarded' ? '未接入（已放弃）' : props.interjectionStatus === 'pending' ? '待接入' : '已接入'}</small> : null}
       <div className={styles.messageSurface}>
         {props.rendererHost && props.agentSessionId ? (
           <RendererNodeMountHost
@@ -447,6 +471,8 @@ function AgentTranscriptEntry(props: {
           body
         )}
       </div>
+      <MessageAttachments align={props.role === 'user' ? 'end' : 'start'} t={props.t} attachments={props.message.entry.kind === 'message' || props.message.entry.kind === 'user-interjection' ? props.message.entry.attachments : undefined} />
+      {props.onReviseInput ? <ConversationMessageAction label="编辑用户输入" onClick={() => setEditing(true)}><Pencil aria-hidden="true" /></ConversationMessageAction> : null}
       {props.showChrome !== false && (
         <ConversationMessageChrome
           actions={(
@@ -479,6 +505,26 @@ export function AgentPresetPicker(props: {
   t: Translator
   onSelect(id: string): void
 }) {
+  const [query, setQuery] = useState('')
+  const identities = useExtensionIdentities()
+  const sourceOf = (profile: AgentPreset) => {
+    const origin = profile.origin
+    if (origin?.kind === 'extension-package') {
+      const identity = identities.find(item => item.packageId === origin.packageId
+        && extensionInstallationId(item.packageId, item.target ?? { kind: 'global' }) === (origin.installationId ?? extensionInstallationId(origin.packageId, { kind: 'global' })))
+      const scope = identity?.target?.kind === 'card' ? '角色' : identity || !origin.installationId ? '全局' : '安装来源未解析'
+      return { id: `${origin.packageId}:${origin.installationId ?? ''}`, label: `${identity?.displayName ?? origin.packageId} · ${scope}` }
+    }
+    return origin?.kind === 'builtin' ? { id: 'builtin', label: '官方 · Loom Studio' } : { id: 'personal', label: '我的预设' }
+  }
+  const groups = new Map<string, { label: string; profiles: AgentPreset[] }>()
+  for (const profile of props.profiles) {
+    const source = sourceOf(profile)
+    if (![profile.rootNode.label, source.label, profile.model?.modelId].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) continue
+    const group = groups.get(source.id) ?? { label: source.label, profiles: [] }
+    group.profiles.push(profile)
+    groups.set(source.id, group)
+  }
   const selected = props.profiles.find(profile => profile.id === props.selectedId)
   const selectedProvider = selected && props.providers.find(provider => provider.id === selected.model?.providerProfileId)
 
@@ -487,6 +533,7 @@ export function AgentPresetPicker(props: {
       <DropdownMenuTrigger asChild>
         <button className={styles.profilePicker} type="button" disabled={props.disabled}
           title={props.t('agent.profile.choose')}>
+          <ExtensionIcon iconUrl={selected ? presetIconUrl(selected, identities) : undefined} size={18} />
           <span>{selected?.rootNode.label ?? props.t('agent.profile.unselected')}</span>
           <ChevronDown aria-hidden="true" />
         </button>
@@ -499,28 +546,20 @@ export function AgentPresetPicker(props: {
             <span>{selected.model?.modelId}</span>
           </div>
         ) : null}
-        {props.profiles.length === 0 ? (
-          <p>{props.t('agent.profile.configureFirst')}</p>
-        ) : (
-          props.profiles.map(profile => {
+        <input className={styles.profileSearch} type="search" aria-label="搜索预设或来源" placeholder="搜索预设或来源…" value={query}
+          onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation() }} />
+        {groups.size === 0 ? <p>{props.profiles.length ? '没有匹配的预设' : props.t('agent.profile.configureFirst')}</p> : [...groups.entries()].map(([id, group]) => <div key={id} role="group" aria-label={group.label}>
+          <div className={styles.profileSource}>{group.label}</div>
+          {group.profiles.map(profile => {
             const provider = props.providers.find(item => item.id === profile.model?.providerProfileId)
-            return (
-              <DropdownMenuItem
-                className={styles.profileOption}
-                icon={<Check aria-hidden="true" />}
-                data-selected={profile.id === props.selectedId || undefined}
-                disabled={props.disabled}
-                key={profile.id}
-                onSelect={() => props.onSelect(profile.id)}
-              >
-                <strong>{profile.rootNode.label}</strong>
-                <span>
-                  {provider?.displayName ?? profile.model?.providerProfileId} · {profile.model?.modelId}
-                </span>
-              </DropdownMenuItem>
-            )
-          })
-        )}
+            return <DropdownMenuItem className={styles.profileOption}
+              icon={<ExtensionIcon iconUrl={presetIconUrl(profile, identities)} size={24} />}
+              data-selected={profile.id === props.selectedId || undefined} disabled={props.disabled} key={profile.id} onSelect={() => props.onSelect(profile.id)}>
+              <span className={styles.profileName}><strong>{profile.rootNode.label}</strong>{profile.id === props.selectedId && <Check aria-label="已选中" />}</span>
+              <span>{profile.model?.modelId ? [provider?.displayName ?? profile.model.providerProfileId, profile.model.modelId].filter(Boolean).join(' · ') : '未绑定模型'}</span>
+            </DropdownMenuItem>
+          })}
+        </div>)}
       </DropdownMenuContent>
     </DropdownMenu>
   )

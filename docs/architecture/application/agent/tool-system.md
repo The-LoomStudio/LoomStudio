@@ -211,3 +211,22 @@ Studio 将 URI 渲染为可点击引用查看器。查看器按 URI 中的身份
 字面搜索保留原有范围、all/any 和遍历顺序，增加实际命中词与分离片段，每文件最多六行，省略位置明确标记；不宣称语义检索或相关性排序。路径由目录/搜索原样复用，不对整条路径额外 URL 编码或解码。State patch 在读基线检查前明确报告不支持，不引导模型通过重读反复尝试。
 
 教程将独立探索改为 `Promise.allSettled`，依赖操作顺序 await；能力探测限明确测试目标或临时 Workspace 文件，不以修改真实 State/设定/剧情来检查可用性。Workspace 结构操作不套用 Prompt Resource 的 Metadata 前置要求。
+
+## 扩展预设中的可移植工具引用
+
+扩展 `toolMounts` 可以使用 `reference`：`host` 以 toolId 指向宿主已注册的内置工具；`package` 以 contributionId 指向当前扩展工具；`external` 以 packageId、contributionId、target（global／card）指向声明依赖的扩展工具。旧 `toolId` 单字段仍表示本包工具，不能同时填写 reference。
+
+外部引用要求 manifest.dependencies 声明版本范围，并验证确切安装及工具贡献存在。card 只表示当前 Card 的同包安装，不能借此访问其他 Card，也不自动回退 global。安装把引用解析成真实 toolId，原始引用保存在挂载 origin.toolReference，作者目录导出保留引用而不是固化安装 ID。工具定义仍由提供者拥有；采用不复制定义或执行器，不授予扩展能力或跳过 Agent 审批。
+
+诺姆采用的宿主知识工具示例：
+
+```yaml
+toolMounts:
+  - reference:
+      kind: host
+      toolId: official/search_context
+    orderIndex: 0
+    defaultEnabled: true
+```
+
+工具缺少执行注册、模块未激活或权限不足仍由现有执行边界处理，安装成功不能被描述为实际调用一定成功。其他资源的引用能力见[跨资源核对记录](../../../workbench/issues/extension-cross-resource-references.md)。

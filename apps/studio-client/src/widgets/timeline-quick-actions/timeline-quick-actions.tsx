@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@loom-studio/ui'
-import { Check, ChevronDown, GitGraph, Pencil, Plus, Trash2, UserRound, UserRoundX } from 'lucide-react'
+import { Button, IconButton, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@loom-studio/ui'
+import { ArrowUpRight, Check, ChevronDown, GitGraph, Pencil, Plus, Trash2, UserRound, UserRoundX } from 'lucide-react'
 import styles from './timeline-quick-actions.module.scss'
 
 export type TimelineQuickActionsProps = {
@@ -92,8 +92,12 @@ export function TimelineQuickActions(props: TimelineQuickActionsProps) {
     <div className={styles.reveal} inert={!expanded} aria-hidden={!expanded}>
       <div className={styles.clip}>
         <div id={contentId} className={styles.body}>
+          <div className={styles.storyHeading}>
+            <span className={styles.eyebrow}>{props.labels.story}</span>
+            {props.timeline ? <IconButton size="small" disabled={props.busy} aria-label={props.labels.rename} title={props.labels.rename} onClick={props.onRenameStory}><Pencil size={15} aria-hidden="true" /></IconButton> : null}
+          </div>
           <div className={styles.story}>
-            <div><span className={styles.eyebrow}>{props.labels.story}</span>{props.timelines ? <DropdownMenu>
+            <div className={styles.storyTitle}>{props.timelines ? <DropdownMenu>
               <DropdownMenuTrigger asChild><Button className={styles.storyPicker} disabled={props.busy || props.timelines.length === 0} aria-label={props.labels.selectStory}>
                 <strong>{props.timeline?.title ?? props.labels.opening}</strong><ChevronDown size={14} aria-hidden="true" />
               </Button></DropdownMenuTrigger>
@@ -110,9 +114,7 @@ export function TimelineQuickActions(props: TimelineQuickActionsProps) {
                 </DropdownMenuItem>)}
               </DropdownMenuContent>
             </DropdownMenu> : <strong>{props.timeline?.title ?? props.labels.opening}</strong>}</div>
-            {props.timeline ? <Button disabled={props.busy} aria-label={props.labels.rename} title={props.labels.rename} onClick={props.onRenameStory}><Pencil size={15} aria-hidden="true" /></Button> : null}
-          </div>
-          {props.timeline ? <DropdownMenu>
+          {props.timeline ? <><span className={styles.separator} aria-hidden="true">/</span><DropdownMenu>
             <DropdownMenuTrigger asChild><Button disabled={props.busy} className={styles.branch} aria-label={props.labels.branch}>
               <GitGraph size={16} aria-hidden="true" /><span>{currentBranch?.title}</span><ChevronDown size={14} aria-hidden="true" />
             </Button></DropdownMenuTrigger>
@@ -121,15 +123,18 @@ export function TimelineQuickActions(props: TimelineQuickActionsProps) {
                 <span className={styles.choice}><span>{branch.title}</span>{branch.id === props.timeline?.branchId ? <Check size={14} aria-hidden="true" /> : null}</span>
               </DropdownMenuItem>)}
             </DropdownMenuContent>
-          </DropdownMenu> : null}
+          </DropdownMenu></> : null}
+          </div>
           <div className={styles.actions}>
-            {props.timeline && props.onOpenWorkspace ? <Button onClick={props.onOpenWorkspace}>打开工作区</Button> : null}
+            {props.timeline && props.onOpenWorkspace ? <Button className={styles.workspaceLink} onClick={props.onOpenWorkspace}>打开工作区<ArrowUpRight size={15} aria-hidden="true" /></Button> : null}
+            <div className={styles.storyActions}>
             <Button disabled={props.busy} onClick={props.onNewStory}><Plus size={16} aria-hidden="true" />{props.labels.newStory}</Button>
             {props.timeline ? <Button disabled={props.busy || props.canFork === false} onClick={props.onFork}><GitGraph size={16} aria-hidden="true" />{props.labels.fork}</Button> : null}
+            </div>
           </div>
           <div className={styles.danger}>
             <Button disabled={props.busy || !props.timeline} variant="danger" onClick={props.onDeleteStory}><Trash2 size={16} aria-hidden="true" />{props.labels.deleteStory}</Button>
-            <Button className={styles.deleteCharacter} disabled={props.busy} variant="danger" onClick={props.onDeleteCharacter}><UserRoundX size={16} aria-hidden="true" />{props.labels.deleteCharacter}</Button>
+            <IconButton size="small" className={styles.deleteCharacter} disabled={props.busy} aria-label={props.labels.deleteCharacter} title={props.labels.deleteCharacter} onClick={props.onDeleteCharacter}><UserRoundX size={16} aria-hidden="true" /></IconButton>
           </div>
         </div>
       </div>

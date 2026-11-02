@@ -1,11 +1,14 @@
-import { useLayoutEffect, useRef, type FormEvent, type ReactNode, type Ref } from 'react'
-import { ArrowUp, Lock, MessageCircle, Swords, Pause, Square, Play, Plus, RotateCcw, Unlock } from 'lucide-react'
+import { AttachmentCards } from '../../features/attachments/attachment-cards.js'
+import type { Translator } from '../../shared/i18n/index.js'
+import { useLayoutEffect, useRef, useState, type FormEvent, type ReactNode, type Ref } from 'react'
+import { ArrowUp, Lock, MessageCircle, Swords, Pause, Square, Play, Plus, Paperclip, RotateCcw, Unlock } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@loom-studio/ui'
+import type { AttachmentComposerProps } from '../../features/attachments/use-attachment-drafts.js'
 import styles from './chat-composer.module.scss'
 
 export type ChatComposerQuickAction = {
@@ -16,7 +19,8 @@ export type ChatComposerQuickAction = {
   onSelect(): void
 }
 
-type ChatComposerProps = {
+type ChatComposerProps = AttachmentComposerProps & {
+  t?: Translator
   inputMode?: 'roleplay' | 'discussion'
   onInputModeChange?(mode: 'roleplay' | 'discussion'): void
   inputRef?: Ref<HTMLTextAreaElement>
@@ -53,6 +57,8 @@ type ChatComposerProps = {
 }
 
 export function ChatComposer(props: ChatComposerProps) {
+  const [dragging, setDragging] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
   const baseContentRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<HTMLFormElement>(null)
   const chromeHeightRef = useRef<number | undefined>(undefined)
@@ -82,10 +88,30 @@ export function ChatComposer(props: ChatComposerProps) {
   return (
     <form className={styles.composer} data-loom-component="chat-composer" ref={composerRef} onSubmit={props.onSubmit}>
       <div className={styles.composerBody}>
-        <div className={styles.inputSurface} data-loom-anchor="narrative-composer-surface">
+        <div className={styles.inputSurface} data-loom-anchor="narrative-composer-surface" data-dragging={dragging || undefined}
+          onDragOver={event => { if (props.onAddAttachments && Array.from(event.dataTransfer.types).includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setDragging(true) } }}
+          onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false) }}
+          onDrop={event => { setDragging(false); if (props.onAddAttachments && event.dataTransfer.files.length) { event.preventDefault(); props.onAddAttachments(Array.from(event.dataTransfer.files)) } }}>
+          {dragging ? <div className={styles.dropHint}>松开以上传文件</div> : null}
           {props.sheet ? <div className={styles.sheet} data-loom-surface="composer.sheet">{props.sheet}</div> : null}
           <div ref={baseContentRef} className={styles.baseContent} data-loom-anchor="narrative-composer-base">
+            {props.attachments?.length ? <AttachmentCards singleRow items={props.attachments} onRemove={props.onRemoveAttachment} onRetry={props.onRetryAttachment} t={props.t} /> : null}
+            {props.attachmentNotice ? <p className={styles.attachmentNotice} role="status">{props.attachmentNotice}</p> : null}
+            {props.attachments?.some(item => !item.attachment) ? <p className={styles.attachmentNotice} role="status">{props.attachments.filter(item => item.error).length ? `还有 ${props.attachments.filter(item => item.error).length} 个附件上传失败，请重试或移除后发送。` : '附件正在上传，完成后可发送。'}</p> : null}
             <textarea
+              onPaste={event => {
+                const files = Array.from(event.clipboardData.files)
+                if (!files.length || !props.onAddAttachments) return
+                event.preventDefault()
+                props.onAddAttachments(files)
+                const text = event.clipboardData.getData('text/plain')
+                if (text) {
+                  const input = event.currentTarget
+                  const start = input.selectionStart
+                  props.onChangeInput(props.input.slice(0, start) + text + props.input.slice(input.selectionEnd))
+                  requestAnimationFrame(() => input.setSelectionRange(start + text.length, start + text.length))
+                }
+              }}
               ref={props.inputRef}
               aria-label={props.textareaLabel}
               placeholder={props.placeholder}
@@ -94,12 +120,13 @@ export function ChatComposer(props: ChatComposerProps) {
               onKeyDown={props.inputMode ? event => {
                 if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing || event.keyCode === 229) return
                 event.preventDefault()
-                if (props.canSend && !props.textareaDisabled && props.runStatus !== 'running' && props.runStatus !== 'suspended') event.currentTarget.form?.requestSubmit()
+                if (props.canSend && !props.textareaDisabled && !(props.runStatus === 'suspended' && !props.input.trim() && !props.attachments?.length)) event.currentTarget.form?.requestSubmit()
               } : undefined}
               disabled={props.textareaDisabled}
             />
             <div className={styles.composerFooter}>
               <div className={styles.quickActions}>
+                {props.onAddAttachments ? <input ref={fileRef} type="file" hidden multiple accept="image/png,image/jpeg,image/webp,image/gif,.md,.markdown,.txt" onChange={event => { props.onAddAttachments?.(Array.from(event.target.files ?? [])); event.target.value = '' }} /> : null}
                 {props.inputMode ? (
                   <button
                     aria-label={props.inputMode === 'discussion' ? '当前沟通，切换到扮演' : '当前扮演，切换到沟通'}
@@ -116,7 +143,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     {props.inputMode === 'discussion' ? <MessageCircle aria-hidden="true" strokeWidth={1.7} /> : <Swords aria-hidden="true" strokeWidth={1.7} />}
                   </button>
                 ) : null}
-                {props.quickActions?.length ? (
+                {props.onAddAttachments || props.quickActions?.length ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button aria-label={props.moreLabel} className={styles.utilityButton} title={props.moreLabel} type="button">
@@ -124,7 +151,8 @@ export function ChatComposer(props: ChatComposerProps) {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" side="top">
-                      {props.quickActions.map(action => (
+                      {props.onAddAttachments ? <DropdownMenuItem icon={<Paperclip aria-hidden="true" size={16} />} onSelect={() => fileRef.current?.click()}>上传文件</DropdownMenuItem> : null}
+                      {props.quickActions?.map(action => (
                         <DropdownMenuItem disabled={action.disabled} icon={action.icon} key={action.id} onSelect={action.onSelect}>
                           {action.label}
                         </DropdownMenuItem>
@@ -136,9 +164,9 @@ export function ChatComposer(props: ChatComposerProps) {
                     <Plus aria-hidden="true" strokeWidth={1.7} />
                   </button>
                 )}
-                <button aria-label={props.retryLabel} className={styles.utilityButton} disabled={!props.canRetry || !props.onRetry} onClick={props.onRetry} title={props.retryLabel} type="button">
+                {props.onRetry ? <button aria-label={props.retryLabel} className={styles.utilityButton} disabled={!props.canRetry || !props.onRetry} onClick={props.onRetry} title={props.retryLabel} type="button">
                   <RotateCcw aria-hidden="true" strokeWidth={1.7} />
-                </button>
+                </button> : null}
                 {props.onTogglePinned ? (
                   <button
                     aria-label={props.pinned ? (props.unpinLabel ?? 'Unpin') : (props.pinLabel ?? 'Pin')}
@@ -168,7 +196,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   </button>
                 ) : null}
                 {props.sendLeadingAction}
-                {props.runStatus === 'running' ? (
+                {props.runStatus === 'running' && !props.input.trim() && !props.attachments?.length ? (
                   <button
                     aria-label={props.pauseLabel ?? 'Pause'}
                     className={styles.sendButton}
@@ -179,7 +207,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   >
                     {props.stopAction ? <Square aria-hidden="true" strokeWidth={2} /> : <Pause aria-hidden="true" strokeWidth={2} />}
                   </button>
-                ) : props.runStatus === 'suspended' && (props.resumeWithInput || !props.input.trim()) ? (
+                ) : props.runStatus === 'suspended' && (props.resumeWithInput || !props.input.trim() && !props.attachments?.length) ? (
                   <button
                     aria-label={props.resumeLabel ?? 'Resume'}
                     className={styles.sendButton}

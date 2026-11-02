@@ -3,7 +3,8 @@ import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { access, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import type { ExtensionHostOptions } from '@loom-studio/extension-host'
 import { createExtensionFixture, createExtensionHostHarness } from './helpers.js'
 
 type StoredAsset = ExtensionMediaAsset & { bytes: Uint8Array }
@@ -34,12 +35,13 @@ function assetManifest(id: string) {
   }
 }
 
-function createAssetHarness(grants: readonly ('assets.publish' | 'assets.read')[], assetScratchRoot?: string) {
+function createAssetHarness(grants: readonly ('assets.publish' | 'assets.read')[], assetScratchRoot?: string, canAccessAsset?: ExtensionHostOptions['canAccessAsset']) {
   const stored = new Map<string, StoredAsset>()
   let nextId = 1
   const harness = createExtensionHostHarness({
     grantAssetCapabilities: () => grants,
     assetScratchRoot,
+    canAccessAsset,
     assets: {
       publish: async input => {
         const asset: StoredAsset = {
@@ -157,7 +159,8 @@ describe('extension host Media Asset contract', () => {
     await denied.extensionHost.activate('example.assetReadDenied', 'server')
     await expect(denied.kernel.callRpc('example.assetReadDenied.read', { assetId: 'asset-external' })).rejects.toThrow('assets.read')
 
-    const allowed = createAssetHarness(['assets.read'])
+    const checked: Array<{ packageId: string }> = []
+    const allowed = createAssetHarness(['assets.read'], undefined, (_asset, _target, consumer) => { checked.push(consumer); return true })
     allowed.stored.set('asset-external', denied.stored.get('asset-external')!)
     await allowed.kernel.start()
     const allowedDirectory = createExtensionFixture('asset-read-allowed', {
@@ -169,6 +172,23 @@ describe('extension host Media Asset contract', () => {
     await expect(allowed.kernel.callRpc('example.assetReadAllowed.read', { assetId: 'asset-external' })).resolves.toMatchObject({
       bytes: [9],
     })
+    expect(checked).toEqual([{ packageId: 'example.assetReadAllowed', dependencies: undefined }])
+  })
+
+  it('requires host dependency approval for owned assets but leaves user assets readable with assets.read', async () => {
+    const scratch = await mkdtemp(join(tmpdir(), 'loom-dependency-assets-'))
+    onTestFinished(() => rm(scratch, { recursive: true, force: true }))
+    const harness = createAssetHarness(['assets.read'], scratch)
+    for (const [id, ownerPackageId] of [['owned', 'external.package'], ['user', undefined]] as const) {
+      harness.stored.set(id, { id, kind: 'image', sizeBytes: 1, ownerPackageId, createdAt: '2026-10-31T00:00:00.000Z', bytes: new Uint8Array([8]) })
+    }
+    await harness.kernel.start()
+    const directory = createExtensionFixture('asset-dependency-denied', { manifest: assetManifest('example.dependencyDenied'), source })
+    await harness.extensionHost.discover(directory)
+    await harness.extensionHost.activate('example.dependencyDenied', 'server')
+    await expect(harness.kernel.callRpc('example.dependencyDenied.read', { assetId: 'owned' })).rejects.toThrow('dependency scope')
+    await expect(harness.kernel.callRpc('example.dependencyDenied.materialize', { assetId: 'owned' })).rejects.toThrow('dependency scope')
+    await expect(harness.kernel.callRpc('example.dependencyDenied.read', { assetId: 'user' })).resolves.toMatchObject({ bytes: [8] })
   })
 
   it('invalidates the old Asset context after reload', async () => {

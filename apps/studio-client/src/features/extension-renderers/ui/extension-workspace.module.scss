@@ -29,7 +29,7 @@
 
 .header {
   position: relative;
-  padding: 16px var(--loom-page-header-padding);
+  padding: 16px 24px;
 
   &::after {
     content: '';
@@ -111,7 +111,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 12px 0 12px;
+  padding: 8px 16px 0;
   margin-bottom: 4px;
 }
 
@@ -122,15 +122,34 @@
   padding: 6px 10px 16px;
 }
 
-.participationSidebarNotice {
-  padding: 16px 12px;
-  color: var(--loom-color-text-subtle);
+/* Compact character context shared by the two extension sidebar summaries. */
+.characterSummary {
+  margin: 14px 2px 0;
+  padding: 14px;
+  border-radius: var(--loom-radius-control);
+  background: color-mix(in srgb, var(--loom-color-surface-raised) 65%, transparent);
+  color: var(--loom-color-text);
   font-size: var(--loom-font-size-2);
-
-  p {
-    margin: 0;
-  }
+  overflow-wrap: anywhere;
 }
+
+.participationSidebarNotice small {
+  display: block;
+  margin-top: 10px;
+  line-height: 1.7;
+  color: var(--loom-color-text-subtle);
+}
+
+.storySummary, .summaryEmpty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  line-height: 1.6;
+  svg { flex-shrink: 0; margin-top: 3px; color: var(--loom-color-text-subtle); }
+}
+.storySummary { color: var(--loom-color-text-muted); }
+.summaryEmpty { color: var(--loom-color-text-subtle); font-size: 12px; }
 
 .installPackageBtn {
   display: inline-flex !important;
@@ -240,38 +259,11 @@
 .packageItem > span { min-width: 0; display: grid; gap: 3px; }
 
 .packageItem svg,
-.treeItem svg,
-.resourceDetail header svg {
+.treeItem svg {
   width: var(--loom-icon-size-2);
   height: var(--loom-icon-size-2);
   flex: 0 0 auto;
   color: var(--loom-color-text-muted);
-}
-
-.treeChildren {
-  display: grid;
-  gap: 2px;
-  margin-left: 0;
-  padding-left: 0;
-}
-
-.packageTree :global([data-loom-component='file-tree']) {
-  --loom-tree-indent-step: 12px;
-}
-.packageTree :global([data-loom-component='file-tree']) :global([class*='guideColumns']),
-.packageTree :global([data-loom-component='file-tree']) :global([class*='branchContinuation']) {
-  display: none;
-}
-.packageTree :global([data-loom-component='file-tree']) :global([class*='row']) {
-  --loom-tree-base-x: 0px;
-  --loom-tree-guide-x: 0px;
-  --loom-tree-indent-step: 12px;
-}
-
-.treeGroupLabel {
-  padding: 10px 8px 4px;
-  color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
 }
 
 .treeItem { min-height: 30px; padding: 5px 8px; }
@@ -279,7 +271,6 @@
 
 .detail { padding: 18px 24px 32px; }
 
-.resourceDetail,
 .moduleDetail { max-width: 760px; }
 
 .moduleDetail {
@@ -303,7 +294,6 @@
   margin-top: 8px;
 }
 
-.resourceDetail > header,
 .moduleDetail > header {
   display: flex;
   align-items: center;
@@ -311,10 +301,7 @@
   gap: 12px;
 }
 
-.resourceDetail > header { justify-content: flex-start; }
-.resourceDetail h3,
 .moduleDetail h3 { margin: 0; }
-.resourceDetail header small,
 .moduleDetail header small { color: var(--loom-color-text-subtle); }
 
 .detailFacts {
@@ -333,17 +320,6 @@
 
 .detailFacts dt { color: var(--loom-color-text-subtle); }
 .detailFacts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
-
-.resourceDetail pre {
-  overflow: auto;
-  padding: 12px;
-  border-radius: var(--loom-radius-control);
-  background: var(--loom-color-surface-subtle);
-  white-space: pre-wrap;
-}
-
-.resourceDetail h3 { overflow-wrap: anywhere; }
-.resourceDetail > header { flex-wrap: wrap; }
 
 .packageHeader,
 .module > header,
@@ -507,8 +483,11 @@
 .actionBtn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 6px;
+  justify-content: center;
+  width: var(--loom-page-header-control-size);
+  height: var(--loom-page-header-control-size);
+  flex-shrink: 0;
+  padding: 0;
   border: 0;
   border-radius: var(--loom-radius-control);
   background: transparent;
@@ -518,9 +497,9 @@
   transition: color 120ms ease;
 
   svg {
-    width: 14px;
-    height: 14px;
-    stroke-width: 1.5;
+    width: var(--loom-page-header-icon-size);
+    height: var(--loom-page-header-icon-size);
+    stroke-width: var(--loom-page-header-icon-stroke);
   }
 
   &:hover:not(:disabled) {
@@ -565,8 +544,6 @@
   font-size: var(--loom-font-size-2);
 }
 
-.diagnostics { margin-top: 14px; }
-.diagnostics pre { max-height: 240px; overflow: auto; white-space: pre-wrap; }
 .empty { margin: auto; color: var(--loom-color-text-subtle); }
 .renderer { min-height: 0; overflow: auto; }
 .embeddedPackages {
@@ -590,5 +567,9 @@
   button { flex-shrink: 0; }
 }
 
-.participationSidebarNotice strong { display: block; color: var(--loom-color-text); overflow-wrap: anywhere; }
-.participationSidebarNotice small { display: block; line-height: 1.6; color: var(--loom-color-text-muted); }
+
+.moduleLinks { display: flex; flex-wrap: wrap; gap: 8px; padding-block: 8px; }
+
+.cardHeading { margin: 0 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--loom-color-divider); font-size: 14px; font-weight: var(--loom-font-weight-5); }
+
+button.participationSidebarNotice { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }

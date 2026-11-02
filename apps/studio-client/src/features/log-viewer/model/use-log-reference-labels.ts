@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { parseEntityReference } from '@loom-studio/shared'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 
-export type LogReferenceLabel = { title?: string; state: 'available' | 'deleted' | 'unavailable' }
+export type LogReferenceLabel = Omit<Awaited<ReturnType<StudioApi['observations']['references']>>[number], 'type' | 'id'>
 
 /** One batched current-name projection shared by application and model logs. */
 export function useLogReferenceLabels(api: StudioApi | undefined, endpoint: string, uris: string[]) {

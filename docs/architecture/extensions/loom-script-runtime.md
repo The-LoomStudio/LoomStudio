@@ -142,3 +142,48 @@ Inline Mount 只替换渲染投影中的目标范围，不修改 Canonical Narra
 - [`apps/studio-server/src/scripts/server-script-runtime.ts`](../../../apps/studio-server/src/scripts/server-script-runtime.ts)
 - [`client-renderer-host.md`](client-renderer-host.md)
 - [`../application/history-text-pipeline.md`](../application/history-text-pipeline.md)
+
+## Markdown 单规则源码
+
+新建正则规则使用 `.md`，执行代码继续使用 `.loom.js`。两者共用 Script Document、Blob、Mount、授权与版本采用；Markdown 只生成声明式文本贡献，不启动 JS。旧 `.loom.js` 声明式规则仍可读取，不自动重写已有源码。
+
+````markdown
+---
+id: example.phone
+name: 手机消息
+version: 1.0.0
+tags: [ui, phone]
+regex: '<phone>([\s\S]*?)</phone>'
+regex_flags: g
+phases: [display]
+order: 0
+streaming: false
+capture_remove:
+  - '<Image>'
+  - '</Image>'
+---
+```html
+<div class="phone">$1</div>
+```
+````
+
+YAML 结束分隔行之后的全部文字就是替换正文，不再增加容器围栏、JSON 字符串或 JavaScript 注释。缩进、空白、换行和内部 HTML/CSS/JS 原样保存；正文空字符串表示删除，只有空格或换行则仍是替换内容。正则建议用 YAML 单引号以免反斜杠发生双重转义；`regex_flags` 省略时为 `g`，显式空字符串表示仅处理第一个匹配。首版一份 Markdown 只有一条规则。
+
+- `phases: [display]` 为显示投影，`[prompt]` 为提示词投影，可同时指定两者；它们不改持久正文。`[classify]` 是已有保存时分类阶段，不能与投影阶段混写。
+- `capture_remove` 按列出顺序对被引用的捕获内容做区分大小写的字面量删除，适用于 `$&`、`$1` 等编号捕获及 `$<name>`；不修改模板、未匹配正文或前后缀引用。不将其解释成新的正则。
+- `streaming` 默认关闭。开启后，对原始流式快照按当前规则顺序重新计算，仅运行开启流式的 display 规则；不把上一轮替换结果作为输入，也不写入历史。允许作者匹配尚未闭合的内容。浏览器最多约每 100ms 采样一次，结束快照立即走正常显示投影。
+- `targets` 默认 `[narrative, agent-session]`；`min_depth` / `max_depth` 可限制作用深度。
+- `action` 默认 `replace`。已有标记能力可使用 `action: mark` 和 `marker_type`；提升推理使用 `action: promote-reasoning`、`phases: [classify]`，可指定 `content_group`、`visibility`、`replay`、`dialect`。这两种动作不接受非空替换正文。
+- `settings` 可复用现有托管配置定义，正则匹配字段支持既有 `$config` 引用。不会对原文 HTML 隐式执行另一套插值语言。
+
+编辑器使用 YAML frontmatter + Markdown 的混合高亮，内部代码块沿用对应语言高亮。测试区可选择流式快照，只运行显式开启流式的规则。解析和测试均不执行替换正文的 JS。
+
+## 规则排序与所有权内编辑
+
+工作台支持在个人全局、角色、预设、已安装扩展下创建、导入、编辑和删除 Script。列表按具体所有者分组；拖动组或组内条目立即写 Mount 顺序，刷新后保留，不修改源码 `order`，也不刷新运行实例。源码顺序作为新采用的初始值。默认组序为预设、角色、扩展、个人全局；显式拖动覆盖默认顺序。同一条规则的最终次序不使用 Mount 顺序与源码顺序相加。
+
+当前角色视图里，仅从全局继承且尚未建立角色采用配置的脚本不参与角色排序，避免拖动偷偷创建一个角色关闭覆盖；可在全局视图排序，或先添加角色采用。保存源码仍不等于启用/刷新，角色明确关闭仍覆盖全局启用。
+
+角色和预设附件携带源码、采用顺序及组序；扩展导出会收集本安装下新增的脚本、更新保存后的源码与顺序，并从 Manifest 中去掉明确删除的声明。重新导入扩展新增脚本不授予代码权限、不自动启用。旧 `transformRules` 包槽仍可携带完整 Script artifact，保持已有引用地址。
+
+渲染器如何解释正文里的 HTML 围栏、保留 iframe 实例并接受 CTX 更新、嵌套渲染和 TSX 编译均不属于正则处理器。流式投影可更新文本，不承诺 iframe 内部状态不重建。

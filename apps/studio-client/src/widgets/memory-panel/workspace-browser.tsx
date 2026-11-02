@@ -282,7 +282,7 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
       </div></div>}
       toolbar={<SearchField clearLabel="清除搜索" onClear={() => setSearch('')} value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索文件" aria-label="搜索工作区文件" />}
       explorer={<div className={styles.explorer}>
-        {revision ? <FileTree ariaLabel="工作区文件" nodes={[{ id: workspaceRootId, label: '/workspace', kind: 'folder', children: tree() }]} selectedId={selectedId ?? workspaceRootId}
+        {revision ? <FileTree canOpenFolderDetails={() => true} ariaLabel="工作区文件" nodes={[{ id: workspaceRootId, label: '/workspace', kind: 'folder', children: tree() }]} selectedId={selectedId ?? workspaceRootId}
           expandedIds={search ? [workspaceRootId, ...entries.filter(entry => entry.kind === 'directory').map(entry => entry.id)] : expandedIds}
           onExpandedIdsChange={setExpandedIds} onSelect={node => select(entries.find(entry => entry.id === node.id))}
           getDisclosureLabel={(node, expanded) => `${expanded ? '折叠' : '展开'} ${node.label}`} getDragLabel={node => node.label}

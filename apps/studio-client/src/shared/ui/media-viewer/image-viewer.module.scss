@@ -5,9 +5,42 @@
 .toolbar svg { width: 20px; height: 20px; }
 .separator { height: 20px; width: 1px; margin: 0 6px; background: var(--loom-color-divider); }
 .scale { width: 56px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--loom-color-text-muted); }
-.viewport { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; background: #111; color: #eee; user-select: none; cursor: grab; }
+.viewport { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; background: transparent; color: #eee; user-select: none; cursor: grab; }
 .viewport:active { cursor: grabbing; }
 .viewport img { position: absolute; top: 50%; left: 50%; max-width: none; max-height: none; transform-origin: center; pointer-events: none; }
 .message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px; max-width: 85%; overflow-wrap: anywhere; }
 .notice { position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); max-width: 85%; margin: 0; padding: 8px 12px; background: #222; color: #fff; border-radius: 4px; font-size: 12px; overflow-wrap: anywhere; pointer-events: none; }
 @media (max-width: 480px) { .toolbar button { width: 36px; height: 40px; } .scale { width: 44px; } .separator { margin: 0 3px; } }
+
+.viewer[data-loom-ui-dialog][data-layout='media'] {
+  background: transparent;
+  border: 0;
+}
+.viewer[data-loom-ui-dialog]::backdrop {
+  background: rgb(0 0 0 / 65%);
+  backdrop-filter: blur(6px);
+}
+.viewer[data-loom-ui-dialog][data-layout='media'] [data-loom-ui-dialog-header] {
+  padding: max(var(--loom-page-header-padding, 8px), env(safe-area-inset-top)) max(var(--loom-page-header-padding, 8px), env(safe-area-inset-right)) var(--loom-page-header-padding, 8px) max(var(--loom-page-header-padding, 8px), env(safe-area-inset-left));
+}
+.viewer[data-loom-ui-dialog][data-layout='media'] [data-loom-ui-dialog-title-row] h2 {
+  flex: 0 1 auto;
+  min-height: var(--loom-page-header-control-size, 32px);
+  padding-inline: 14px;
+  border-radius: 999px;
+  background: var(--loom-color-surface, #292936);
+}
+.toolbar {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--loom-color-surface, #292936);
+}
+.toolbar button {
+  width: var(--loom-page-header-control-size, 32px);
+  height: var(--loom-page-header-control-size, 32px);
+  min-width: var(--loom-page-header-control-size, 32px);
+  min-height: var(--loom-page-header-control-size, 32px);
+  border-radius: 50%;
+}
+
+.viewport[data-gallery] { height: calc(100% - 100px - env(safe-area-inset-bottom)); }

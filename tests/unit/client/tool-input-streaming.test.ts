@@ -24,7 +24,7 @@ function fixture(batches: Batch[], committed: AgentTranscriptEntry[] = []) {
   let entries: AgentTranscriptEntry[] = []
   const states: AgentTranscriptEntry[][] = []
   return { run, states, subscribeRun, entries: () => entries,
-    execute: () => runAgentTurn(run, () => true, update => { entries = update(entries); states.push(entries) }, () => {}, () => {}) }
+    execute: (onNarrativeCommitted?: () => Promise<void>) => runAgentTurn(run, () => true, update => { entries = update(entries); states.push(entries) }, () => {}, () => {}, onNarrativeCommitted) }
 }
 
 describe('streamed tool input projection', () => {
@@ -33,7 +33,7 @@ describe('streamed tool input projection', () => {
       { type: 'transcript-appended', runId: 'run', entries: [saved('a'), { ...saved('b'), sequence: 2 }] }, stop],
       nextCursor: 5, done: true, state: 'suspended' }])
     await f.execute()
-    expect(f.states[2].map(item => item.entry.rawInput)).toEqual(['{}', 'second'])
+    expect(f.states[2].map(item => item.entry.kind === 'tool-input' ? item.entry.rawInput : undefined)).toEqual(['{}', 'second'])
     expect(f.entries().map(item => item.id)).toEqual(['saved-a', 'saved-b'])
     expect(f.entries().map(item => item.presentationId)).toEqual(f.states[2].map(item => item.id))
     expect(retainRunPresentation(f.entries(), [saved('a')])[0].presentationId).toBe(f.states[2][0].id)
@@ -55,7 +55,7 @@ describe('streamed tool input projection', () => {
     await f.execute()
     expect(f.subscribeRun).toHaveBeenNthCalledWith(2, 'run', 100, 'session')
     expect(f.entries()).toHaveLength(1)
-    expect(f.entries()[0].entry.rawInput).toBe('{}')
+    expect(f.entries()[0].entry).toHaveProperty('rawInput', '{}')
   })
 
   it('does not resurrect a draft committed while the transcript was being read', async () => {
@@ -74,17 +74,17 @@ it('settles streamed reasoning when tool arguments start and retains its display
     { type: 'reasoning-delta', runId: 'run', providerRunId: 'provider', providerStep: 1, reasoningId: 'reason', delta: 'Read the scene.' },
     delta('read', '{'),
     { type: 'transcript-appended', runId: 'run', entries: [{ id: 'saved-reason', agentSessionId: 'session', runId: 'run', sequence: 1, createdAt: '',
-      entry: { kind: 'reasoning', source: 'provider-native', content: 'Read the scene.', visibility: 'collapsed', replay: 'omit' } }, { ...saved('read'), sequence: 2 }] }, stop,
+      entry: { kind: 'reasoning' as const, source: 'provider-native' as const, content: 'Read the scene.', visibility: 'collapsed' as const, replay: 'omit' as const } }, { ...saved('read'), sequence: 2 }] }, stop,
   ], nextCursor: 4, done: true, state: 'suspended' }])
   await f.execute()
-  expect(f.states[1][0].entry.state).toBe('completed')
+  expect(f.states[1][0].entry).toHaveProperty('state', 'completed')
   expect(f.entries().find(item => item.id === 'saved-reason')?.presentationId).toBe(f.states[0][0].presentationId)
 })
 
 it('does not assign a current stream identity to older persisted reasoning from the same run', () => {
   const partial: AgentTranscriptEntry = { id: 'streaming-reasoning-run', presentationId: 'current-step', runId: 'run', agentSessionId: 'session', sequence: 3, createdAt: '',
-    entry: { kind: 'reasoning', source: 'provider-native', content: 'New thought' } }
-  const older = { ...partial, id: 'saved-old', presentationId: undefined, sequence: 1, entry: { ...partial.entry, content: 'Old thought' } }
+    entry: { visibility: 'collapsed' as const, replay: 'omit' as const, kind: 'reasoning' as const, source: 'provider-native' as const, content: 'New thought' } }
+  const older = { ...partial, id: 'saved-old', presentationId: undefined, sequence: 1, entry: { kind: 'reasoning' as const, source: 'provider-native' as const, visibility: 'collapsed' as const, replay: 'omit' as const, content: 'Old thought' } }
   expect(retainRunPresentation([partial], [older])[0].presentationId).toBeUndefined()
 })
 
@@ -100,4 +100,22 @@ it('projects automatic narrative deltas into the main reading flow while keeping
   const discussion = projectTimelineRounds([message('user', 'user', 'Explain the scene'), body], [], 'writer', active, 'automatic')
   expect(discussion[0].execution.steps).toEqual([])
   expect(discussion[0].discussions[0].steps).toMatchObject([{ kind: 'reply', content: 'The door opens.' }])
+})
+
+
+it('refreshes committed prose while the Run is still running and preserves the reply stream', async () => {
+  const prose: AgentTranscriptEntry = { id: 'prose', runId: 'run', agentSessionId: 'session', sequence: 1, createdAt: '',
+    entry: { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Story.' } }
+  const f = fixture([
+    { events: [{ type: 'text-delta', runId: 'run', providerRunId: 'provider', providerStep: 1, delta: 'Still replying' },
+      { type: 'transcript-appended', runId: 'run', entries: [prose] }], nextCursor: 2, state: 'running', done: false },
+    { events: [stop], nextCursor: 3, state: 'suspended', done: true },
+  ])
+  const refresh = vi.fn(async () => {
+    expect(f.run.status).toBe('running')
+    expect(f.entries().some(item => item.id === 'prose')).toBe(true)
+    expect(f.entries().find(item => item.id === 'streaming')?.entry).toMatchObject({ content: 'Still replying' })
+  })
+  await f.execute(refresh)
+  expect(refresh).toHaveBeenCalledTimes(1)
 })

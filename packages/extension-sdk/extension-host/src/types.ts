@@ -120,7 +120,9 @@ export type ExtensionHostOptions = {
   mode?: 'development' | 'production' | 'test'
   grantEventCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest, target: ExtensionInstallationTarget): readonly EventCapabilityCategory[]
   grantAssetCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest, target: ExtensionInstallationTarget): readonly ExtensionAssetCapability[]
-  canAccessAsset?(asset: ExtensionMediaAsset, target: ExtensionInstallationTarget): boolean | Promise<boolean>
+  canAccessAsset?(asset: ExtensionMediaAsset, target: ExtensionInstallationTarget, consumer: {
+    packageId: string; dependencies?: ExtensionManifest['dependencies']
+  }): boolean | Promise<boolean>
   assets?: {
     publish(input: {
       bytes: Uint8Array

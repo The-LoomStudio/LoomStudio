@@ -143,6 +143,7 @@ export type ToolExecutionScope = {
   workspace?: import('../vfs/resource-filesystem.js').ResourceVfsOptions['workspace']
   resourceVfs?: ResourceVfs
   vfsResourceIds?: readonly string[]
+  sessionFiles?: () => Promise<VfsTextAttachment[]>
   vfsAttachments?: () => Promise<VfsTextAttachment[]>
   approveMutation?: (preview: VfsMutationPreview, signal: AbortSignal) => Promise<VfsMutationDecision>
   writePromptResource?: (input: {

@@ -83,6 +83,7 @@
   color: var(--loom-color-text-muted);
   background: transparent;
   text-align: left;
+  cursor: pointer;
   user-select: none;
   content-visibility: auto;
   contain-intrinsic-size: auto 30px;
@@ -92,6 +93,7 @@
   }
 }
 
+/* Registry source kinds use quiet left-aligned headings, not repeated owner prefixes. */
 .sectionRow {
   display: flex;
   align-items: center;
@@ -104,12 +106,6 @@
 
 .sectionRow:first-child {
   margin-top: 0;
-}
-
-.sectionDivider {
-  flex: 1;
-  height: 1px;
-  background: var(--loom-color-border);
 }
 
 .sectionLabel {
@@ -197,7 +193,6 @@
 
   .label {
     color: var(--loom-color-accent-strong);
-    font-weight: var(--loom-font-weight-5);
   }
 }
 
@@ -216,7 +211,8 @@
   z-index: 1;
   width: 16px;
   min-width: 16px;
-  height: 16px;
+  align-self: stretch;
+  height: auto;
   min-height: 16px;
   display: grid;
   place-items: center;
@@ -328,10 +324,6 @@
   padding-left: 10px;
 }
 
-.flatTree .sectionDivider {
-  display: none;
-}
-
 .flatTree .sectionLabel {
   text-align: left;
 }
@@ -377,6 +369,11 @@
 .muted .label,
 .muted .meta {
   color: var(--loom-color-text-subtle);
+}
+
+.muted .labelRow,
+.muted .icon,
+.muted .meta {
   opacity: 0.56;
 }
 
@@ -483,3 +480,19 @@
 .batchError { position: sticky; top: 48px; z-index: 6; background: var(--loom-color-surface); color: var(--loom-color-danger); padding: 8px; }
 
 .tree[data-selecting='true'] { user-select: none; }
+
+.folderDetails {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text-muted);
+  background: transparent;
+  cursor: pointer;
+  &:hover { color: var(--loom-color-accent); background: var(--loom-color-surface-raised); }
+  &:focus-visible { outline: 2px solid var(--loom-color-accent); outline-offset: -2px; }
+}

@@ -1,3 +1,4 @@
+import { useWorkbenchView } from '../../../shared/studio-shell/use-workbench-view.js'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Clock, Code2, Copy, FileText, Folder, FolderOpen, Globe, Layers, Maximize2, Minus, Plus, RefreshCw, Save } from 'lucide-react'
 import { notify } from '../../../shared/notifications/index.js'
@@ -7,6 +8,7 @@ import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { Button, type MenuAction } from '@loom-studio/ui'
 import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
+import { findNodeById } from '../../../shared/ui/file-tree/file-tree-model.js'
 import { tryWriteClipboardText } from '../../../shared/browser/clipboard.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './state-variables-panel.module.scss'
@@ -15,6 +17,7 @@ import { createBatchSetStatePropertiesInput, stateSnapshotToTreeNodes, type Stat
 type Props = {
   api: StudioApi['states']
   timelineTarget?: Extract<StateTarget, { scope: 'timeline' }>
+  focusPath?: string
   refreshToken?: string
   t: Translator
   header?: ReactNode
@@ -29,7 +32,7 @@ type SnapshotSource = { api: Props['api']; key: string }
 export function StateVariablesPanel(props: Props) {
   const [globalSnapshot, setGlobalSnapshot] = useState<StateSnapshot>()
   const [timelineSnapshot, setTimelineSnapshot] = useState<StateSnapshot>()
-  const [scope, setScope] = useState<RuntimeScope>(props.timelineTarget ? 'timeline' : 'global')
+  const [scope, setScope] = useWorkbenchView<RuntimeScope>('state.runtime.scope', props.timelineTarget ? 'timeline' : 'global', props.timelineTarget ? ['timeline', 'global'] : ['global'])
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [editedProperties, setEditedProperties] = useState<Record<string, unknown>>({})
   const [arrayDrafts, setArrayDrafts] = useState<Record<string, string>>({})
@@ -43,6 +46,7 @@ export function StateVariablesPanel(props: Props) {
   const saveRequestRef = useRef<symbol | undefined>(undefined)
   const mountedRef = useRef(true)
   const treeScrollRef = useRef<HTMLDivElement>(null)
+  const revealedPathRef = useRef<{ key: string; api: Props['api'] } | undefined>(undefined)
   const targetKey = JSON.stringify([props.timelineTarget?.timelineId, props.timelineTarget?.branchId, props.refreshToken])
   const sourceRef = useRef<SnapshotSource>({ api: props.api, key: targetKey })
   if (sourceRef.current.api !== props.api || sourceRef.current.key !== targetKey) {
@@ -65,6 +69,7 @@ export function StateVariablesPanel(props: Props) {
     [currentSnapshot?.value, props.t],
   )
   const dirtyCount = Object.keys(editedProperties).length + Object.keys(arrayDrafts).length
+  const focusKey = JSON.stringify([props.timelineTarget?.timelineId, props.timelineTarget?.branchId, props.focusPath])
 
   useEffect(() => {
     mountedRef.current = true
@@ -73,10 +78,6 @@ export function StateVariablesPanel(props: Props) {
       requestIdRef.current += 1
     }
   }, [])
-
-  useEffect(() => {
-    if (!props.timelineTarget) setScope('global')
-  }, [props.timelineTarget])
 
   useEffect(() => {
     saveRequestRef.current = undefined
@@ -95,6 +96,22 @@ export function StateVariablesPanel(props: Props) {
       expandedSourceRef.current = { source, scope }
     }
   }, [source, scope, treeNodes])
+
+  useEffect(() => {
+    if (!props.focusPath || !props.timelineTarget) {
+      revealedPathRef.current = undefined
+      return
+    }
+    if (revealedPathRef.current?.key === focusKey && revealedPathRef.current.api === props.api) return
+    setScope('timeline')
+    setMobilePane('detail')
+    if (scope !== 'timeline' || !currentSnapshot || !findNodeById(treeNodes, props.focusPath)) return
+    const segments = props.focusPath.split('/').slice(1)
+    const ancestors = segments.slice(0, -1).map((_, index) => `/${segments.slice(0, index + 1).join('/')}`)
+    setTreeExpandedIds(previous => [...new Set([...previous, ...ancestors])])
+    setExpandedLongTextPaths(previous => new Set([...previous, props.focusPath!]))
+    revealedPathRef.current = { key: focusKey, api: props.api }
+  }, [focusKey, props.api, props.focusPath, props.timelineTarget, scope, currentSnapshot, treeNodes])
 
   async function refresh(preserveContextKey?: string) {
     const requestId = ++requestIdRef.current
@@ -167,7 +184,7 @@ export function StateVariablesPanel(props: Props) {
     } catch (cause) {
       const message = readError(cause)
       if (mountedRef.current && sourceRef.current === source && saveRequestRef.current === request) setError(message)
-      notify.error(message)
+      notify.failure('保存状态变量失败', message)
     } finally {
       if (mountedRef.current && sourceRef.current === source && saveRequestRef.current === request) {
         saveRequestRef.current = undefined
@@ -493,6 +510,8 @@ export function StateVariablesPanel(props: Props) {
                 nodes={treeNodes}
                 onExpandedIdsChange={setTreeExpandedIds}
                 onSelect={() => undefined}
+                selectedId={scope === 'timeline' ? props.focusPath : undefined}
+                revealId={scope === 'timeline' ? props.focusPath : undefined}
                 renderTrailing={renderTrailing}
                 renderExpandedRow={renderExpandedRow}
               />

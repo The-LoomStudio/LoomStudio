@@ -72,6 +72,7 @@ export type ObservationStep = {
 }
 
 export type ObservationRecord = {
+  source?: import('../../log-viewer/model/use-log-reference-labels.js').LogReferenceLabel['source']
   id: string
   title: string
   kind: 'run' | 'build' | 'api'

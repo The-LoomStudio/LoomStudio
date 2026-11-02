@@ -50,7 +50,7 @@ Client 默认监听 `127.0.0.1:18011`。打开浏览器访问该地址即可；V
 
 两个开发命令都会先构建内部 packages，再持续监听源码并更新产物。具有独立发布周期的扩展在根目录 `extensions/` 开发，自行构建后通过扩展中心重载；Server 不代为构建扩展。修改 `packages/` 下的源码后无需手动重新构建；Server 还会在 package 产物变化时自动重启。
 
-STBridge、The World 以各自独立仓库的源码为基准，修改及构建后的完整 `dist/` 一起交付到对应仓库；不要在 `official/extensions/` 再维护副本。主仓库维护的助手与主题内容则以 `official/extensions/` 为基准，根目录 `extensions/` 中的安装副本用于运行。详见[官方扩展目录约定](../../official/extensions/README.md)。
+STBridge、The World 以各自独立仓库的源码为基准，修改及构建后的完整 `dist/` 一起交付到对应仓库；不要在 `official/extensions/` 再维护副本。主仓库维护的官方内容从 `official/extensions/` 就地加载，不复制到根目录 `extensions/`。开发默认发现该目录中的现有包；发行打包范围由发行脚本单独决定。详见[官方扩展目录约定](../../official/extensions/README.md)。
 
 开发脚本默认将持久数据放在仓库 `data/`，通过 `LOOM_STUDIO_DATA_ROOT` 指定；SQLite、Blob、Extension state/installed 等均使用这个根目录。运行日志（JSONL）与测试沙箱收拢在 `.loomstudio-dev/`。`/data/` 与 `.loomstudio-dev/` 均被主仓库 Git 忽略。
 

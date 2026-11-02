@@ -4,7 +4,7 @@ import { resolveAgentRuntimePhase } from '../model/agent-runtime-phase.js'
 import { useId, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Dialog, IconButton } from '@loom-studio/ui'
-import { Activity, ChevronUp, CircleX, ExternalLink, Pause, Play, RefreshCw } from 'lucide-react'
+import { AlertCircle, Check, LoaderCircle, ChevronUp, CircleX, ExternalLink, Pause, Play, RefreshCw } from 'lucide-react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import styles from './agent-task-menu.module.scss'
@@ -53,6 +53,13 @@ export function AgentTaskMenu(props: {
       : currentTasks.length ? t(`agentTasks.${currentTasks[0].state}`) : t('agentTasks.empty')
   const phase = resolveAgentRuntimePhase(props.activeRun, props.messages, t)
   const matchingRun = currentTasks.find(task => task.runId === props.activeRun?.runId)
+  const hasRunningTask = props.activeRun?.status === 'running' && !props.activeRun.approval
+    || currentTasks.some(task => task.runId !== props.activeRun?.runId && task.state === 'running')
+  const hasFailedTask = Boolean(props.activeRun?.error) || currentTasks.some(task => task.state === 'failed' || task.state === 'interrupted')
+  const hasPausedTask = props.activeRun?.status === 'suspended' || currentTasks.some(task => task.state === 'suspended')
+  const StatusIcon = hasRunningTask ? LoaderCircle : props.activeRun?.approval || hasFailedTask ? AlertCircle
+    : hasPausedTask ? Pause : currentTasks.length ? Check : undefined
+
 
 
   async function act(task: Task, action: 'pause' | 'resume' | 'abandon' | 'open') {
@@ -112,7 +119,7 @@ export function AgentTaskMenu(props: {
     <section className={styles.panel} data-open={open} aria-label={t('agentTasks.title')}>
       <div className={styles.bar}>
         <button type="button" className={styles.toggle} aria-expanded={open} aria-controls={contentId} onClick={() => setOpen(value => !value)}>
-          <Activity aria-hidden="true" /><span>{t('agentTasks.current')}</span>
+          {StatusIcon && <StatusIcon aria-hidden="true" className={hasRunningTask ? styles.runningIcon : undefined} />}<span>{t('agentTasks.current')}</span>
           <ChevronUp className={styles.chevron} aria-hidden="true" />
         </button>
         <span className={styles.summary} title={summary}>{summary}{matchingRun && counts.length === 1 && counts[0].count === 1 && phase.kind !== 'idle' ? ` · ${phase.text}` : ''}</span>

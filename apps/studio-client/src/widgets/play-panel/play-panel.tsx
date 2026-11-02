@@ -1,11 +1,12 @@
-import { Bot, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Star, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { StoryHero } from '../../shared/ui/story-hero/story-hero.js'
+import { ArrowUpRight, BookOpen, CalendarDays, Clock3, MessageSquare, Search, X } from 'lucide-react'
+import { useState } from 'react'
 import { formatDate, formatDateTime, type Translator } from '../../shared/i18n/index.js'
 import type { AgentPreset, AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
+import type { RecentCharacter } from '../../features/recent-characters/model/recent-characters.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
-import styles from './play-panel.module.scss'
 import { useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
-import { useSlidingHover } from '../../shared/hooks/use-sliding-hover.js'
+import styles from './play-panel.module.scss'
 
 type RecentPlayPanelProps = {
   activeTimelineId?: string
@@ -16,229 +17,90 @@ type RecentPlayPanelProps = {
   timelines: NarrativeTimeline[]
   agentSessions: AgentSession[]
   agentPresets: AgentPreset[]
-  onOpenCard(card: CardSummary): void
+  recent: RecentCharacter[]
+  onOpenRecent(visit: RecentCharacter): void
   onOpenTimeline(timeline: NarrativeTimeline): void
   onOpenAgentSession(session: AgentSession): void
 }
 
 export function RecentPlayPanel(props: RecentPlayPanelProps) {
-  const calendarOpen = useStudioLayoutStore(state => state.playCalendarOpen)
-  const setCalendarOpen = useStudioLayoutStore(state => state.setPlayCalendarOpen)
-  const selectedDate = useStudioLayoutStore(state => state.playSelectedDate)
-  const setSelectedDate = useStudioLayoutStore(state => state.setPlaySelectedDate)
-  const recentSessionsOpen = useStudioLayoutStore(state => state.playRecentSessionsOpen)
-  const setRecentSessionsOpen = useStudioLayoutStore(state => state.setPlayRecentSessionsOpen)
-  const [monthCursor, setMonthCursor] = useState(() => new Date(selectedDate || Date.now()))
+  const { t } = props
+  const [query, setQuery] = useState('')
+  const [characterId, setCharacterId] = useState<string>()
+  const date = useStudioLayoutStore(state => state.playSelectedDate) ?? ''
+  const setDate = useStudioLayoutStore(state => state.setPlaySelectedDate)
   const mediaRevision = useCardMediaRevision()
-  const timelines = useMemo(() => props.timelines.map(item => {
-      const card = item.createdFrom ? props.cards.find(candidate => candidate.id === item.createdFrom?.cardId) : undefined
-      return {
-        id: item.id,
-        title: item.title || card?.name || props.t('sessions.untitledTimeline'),
-        preview: item.latestPreview
-          ? truncatePreview(item.latestPreview)
-          : item.openingPreview
-            ? truncatePreview(item.openingPreview)
-            : card?.openingPreview
-              ? truncatePreview(card.openingPreview)
-              : undefined,
-        avatarUrl: card?.media?.avatarAssetId
-          ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision)
-          : undefined,
-        updatedAt: item.updatedAt,
-        open: () => props.onOpenTimeline(item),
-      }
-    }).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
-  [mediaRevision, props.cards, props.timelines, props.onOpenTimeline, props.t])
-  const sessions = useMemo(() => props.agentSessions.map(item => {
-    const preset = props.agentPresets.find(candidate => candidate.id === item.agentPresetId)
-    const timeline = props.timelines.find(candidate => candidate.id === item.timelineId)
-    return {
-      id: item.id,
-      title: item.title || props.t('sessions.untitledAgentSession'),
-      summary: [
-        preset?.rootNode.label,
-        props.t('play.sessionEntries', { count: item.entryCount }),
-        timeline ? props.t('play.sessionTimeline', { title: timeline.title || props.t('sessions.untitledTimeline') }) : undefined,
-      ].filter(Boolean).join(' · '),
-      updatedAt: item.updatedAt,
-      open: () => props.onOpenAgentSession(item),
-    }
-  }).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
-  [props.agentSessions, props.agentPresets, props.timelines, props.onOpenAgentSession, props.t])
-  const visibleSessions = selectedDate ? sessions.filter(item => dayKey(item.updatedAt) === selectedDate) : sessions
-  const visibleTimelines = selectedDate ? timelines.filter(item => dayKey(item.updatedAt) === selectedDate) : timelines
-  const groupedSessions = useMemo(() => groupByDay(visibleSessions), [visibleSessions])
-  const groupedTimelines = useMemo(() => groupByDay(visibleTimelines), [visibleTimelines])
-  const calendarDays = useMemo(() => buildMonthDays(monthCursor), [monthCursor])
-  const dateMarkers = useMemo(() => new Set([...sessions, ...timelines].map(item => dayKey(item.updatedAt))), [sessions, timelines])
-  const recentCards = useMemo(() => {
-    const lastPlayed = new Map<string, string>()
-    for (const timeline of props.timelines) {
-      if (!timeline.createdFrom) continue
-      const current = lastPlayed.get(timeline.createdFrom.cardId)
-      if (!current || timeline.updatedAt > current) lastPlayed.set(timeline.createdFrom.cardId, timeline.updatedAt)
-    }
-    return [...props.cards].sort((left, right) =>
-      (lastPlayed.get(right.id) ?? right.updatedAt).localeCompare(lastPlayed.get(left.id) ?? left.updatedAt))
-  }, [props.cards, props.timelines])
-  const timelinesHover = useSlidingHover<HTMLElement>()
-  const sessionsHover = useSlidingHover<HTMLElement>()
-
-  return (
-    <section className={styles.panel} aria-label={props.t('history.tabRecent')}>
-      <div className={styles.header}>
-        <button
-          aria-expanded={calendarOpen}
-          aria-label={props.t('play.filterDate')}
-          className={`${styles.calendarToggle} ${calendarOpen || selectedDate ? styles.calendarToggleActive : ''}`}
-          title={props.t('play.filterDate')}
-          type="button"
-          onClick={() => setCalendarOpen(!calendarOpen)}
-        >
-          <CalendarDays size={15} aria-hidden="true" />
-        </button>
-      </div>
-      {calendarOpen ? (
-        <div className={styles.calendarPopover} role="dialog" aria-label={props.t('play.filterDate')}>
-          <div className={styles.calendarHeader}>
-            <button type="button" aria-label={props.t('play.previousMonth')} onClick={() => setMonthCursor(date => new Date(date.getFullYear(), date.getMonth() - 1, 1))}><ChevronLeft size={15} /></button>
-            <strong>{monthCursor.getFullYear()} / {String(monthCursor.getMonth() + 1).padStart(2, '0')}</strong>
-            <button type="button" aria-label={props.t('play.nextMonth')} onClick={() => setMonthCursor(date => new Date(date.getFullYear(), date.getMonth() + 1, 1))}><ChevronRight size={15} /></button>
-            {selectedDate ? <button type="button" aria-label={props.t('play.clearDate')} onClick={() => setSelectedDate(undefined)}><X size={15} /></button> : null}
-          </div>
-          <div className={styles.calendarGrid}>
-            {calendarDays.map((day, index) => day ? (
-              <button className={day.key === selectedDate ? styles.calendarDayActive : ''} key={day.key} type="button" onClick={() => setSelectedDate(day.key)}>
-                <span>{day.date}</span>
-                {dateMarkers.has(day.key) ? <i aria-hidden="true" /> : null}
-              </button>
-            ) : <span key={`empty-${index}`} aria-hidden="true" />)}
-          </div>
-        </div>
-      ) : null}
-      <div className={styles.content}>
-        <div className={styles.recent}>
-          <section>
-            <h3>{props.t('play.recentCharacters')}</h3>
-            <div className={styles.characterScroller}>
-              {recentCards.slice(0, 10).map(card => {
-                const avatarUrl = card.media?.avatarAssetId
-                  ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision)
-                  : undefined
-                return (
-                  <button className={styles.characterCard} key={card.id} type="button" onClick={() => props.onOpenCard(card)}>
-                    <span className={styles.avatar}>
-                      {avatarUrl ? <img src={avatarUrl} alt="" /> : <span>{card.name.slice(0, 1)}</span>}
-                    </span>
-                    <strong>{card.name}</strong>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-          <section
-            ref={timelinesHover.containerRef}
-            className={styles.sessionList}
-            onPointerOver={timelinesHover.onPointerOver}
-            onPointerLeave={timelinesHover.onPointerLeave}
-          >
-            <div className={styles.hoverIndicator} style={timelinesHover.indicatorStyle} aria-hidden="true" />
-            <h3>{props.t('play.recentTimelines')}</h3>
-            {groupedTimelines.map(group => <div className={styles.sessionGroup} key={group.key}>
-              {!selectedDate ? <span className={styles.sessionDate}>{formatDay(group.key)}</span> : null}
-              {group.items.slice(0, 8).map(item => (
-                <button data-hover-item className={styles.sessionRow} key={item.id} type="button" onClick={item.open}
-                  aria-current={item.id === props.activeTimelineId ? 'true' : undefined}>
-                  <span className={styles.sessionAvatar}>
-                    {item.avatarUrl ? <img src={item.avatarUrl} alt="" /> : item.title.slice(0, 1)}
-                  </span>
-                  <span className={styles.sessionContent}>
-                    <span className={styles.sessionInfo}>
-                      <span className={styles.sessionType}>{formatRecentDate(item.updatedAt)}</span>
-                      <strong>{item.title}</strong>
-                    </span>
-                    {item.preview ? <span className={styles.sessionPreview}>{item.preview}</span> : null}
-                  </span>
-                </button>
-              ))}
-            </div>)}
-          </section>
-          <section
-            ref={sessionsHover.containerRef}
-            className={styles.sessionList}
-            onPointerOver={sessionsHover.onPointerOver}
-            onPointerLeave={sessionsHover.onPointerLeave}
-          >
-            <div className={styles.hoverIndicator} style={sessionsHover.indicatorStyle} aria-hidden="true" />
-            <div className={styles.sectionTitleRow}>
-              <h3>{props.t('play.recentSessions')}</h3>
-              <button className={styles.sectionToggle} type="button" aria-expanded={recentSessionsOpen} aria-label={props.t(recentSessionsOpen ? 'play.collapseRecentSessions' : 'play.expandRecentSessions')} onClick={() => setRecentSessionsOpen(!recentSessionsOpen)}>
-                {recentSessionsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-              </button>
-            </div>
-            {recentSessionsOpen ? groupedSessions.map(group => <div className={styles.sessionGroup} key={group.key}>
-              {!selectedDate ? <span className={styles.sessionDate}>{formatDay(group.key)}</span> : null}
-              {group.items.slice(0, 8).map(item => (
-                <button data-hover-item className={styles.sessionRow} key={item.id} type="button" onClick={item.open}
-                  aria-current={item.id === props.activeSessionId ? 'true' : undefined}>
-                  {item.id === props.primarySessionId
-                    ? <Star className={`${styles.sessionBot} ${styles.primaryIcon}`} fill="currentColor" aria-label={props.t('agent.primarySession')} />
-                    : <Bot className={styles.sessionBot} aria-hidden="true" />}
-                  <span className={styles.sessionContent}>
-                    <span className={styles.sessionInfo}>
-                      <span className={styles.sessionType}>{formatRecentDate(item.updatedAt)}</span>
-                      <strong>{item.title}</strong>
-                    </span>
-                    <span className={styles.sessionPreview}>{item.summary}</span>
-                  </span>
-                </button>
-              ))}
-            </div>) : null}
-          </section>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function formatRecentDate(value: string): string {
-  return formatDateTime(value, undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const avatar = (card?: CardSummary) => card?.media?.avatarAssetId ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision) : undefined
+  const recent = props.recent.flatMap(visit => {
+    const card = props.cards.find(item => item.id === visit.cardId)
+    return card ? [{ visit, card, timeline: props.timelines.find(item => item.id === visit.timelineId && item.createdFrom?.cardId === card.id) }] : []
   })
-}
+  const resume = recent.find(item => item.timeline)
+  const records = [
+    ...props.timelines.map(timeline => {
+      const card = props.cards.find(item => item.id === timeline.createdFrom?.cardId)
+      return {
+        key: `story:${timeline.id}`, kind: 'story', title: timeline.title || card?.name || t('sessions.untitledTimeline'), card,
+        preview: cleanPreview(timeline.latestPreview || timeline.openingPreview || card?.openingPreview || ''),
+        meta: card?.name || t('sessions.characterUnavailable'), updatedAt: timeline.updatedAt,
+        active: timeline.id === props.activeTimelineId, open: () => props.onOpenTimeline(timeline),
+      }
+    }),
+    ...props.agentSessions.map(session => {
+      const timeline = props.timelines.find(item => item.id === session.timelineId)
+      const card = props.cards.find(item => item.id === timeline?.createdFrom?.cardId)
+      const preset = props.agentPresets.find(item => item.id === session.agentPresetId)
+      return {
+        key: `session:${session.id}`, kind: 'session', title: session.title || t('sessions.untitledAgentSession'), card,
+        preview: timeline ? t('play.sessionTimeline', { title: timeline.title || t('sessions.untitledTimeline') }) : '',
+        meta: [card?.name, preset?.rootNode.label, t('play.sessionEntries', { count: session.entryCount }), session.id === props.primarySessionId ? t('agent.primarySession') : undefined].filter(Boolean).join(' · '),
+        updatedAt: session.updatedAt, active: session.id === props.activeSessionId, open: () => props.onOpenAgentSession(session),
+      }
+    }),
+  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+  const visible = records.filter(item => (!characterId || item.card?.id === characterId) && (!date || dayKey(item.updatedAt) === date)
+    && [item.title, item.meta, item.preview].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+  const days = [...new Set(visible.map(item => dayKey(item.updatedAt)))]
+  const filtered = !!(query || characterId || date)
+  const clearFilters = () => { setQuery(''); setCharacterId(undefined); setDate(undefined) }
+  const renderAvatar = (card?: CardSummary) => <span className={styles.avatar}>{avatar(card) ? <img src={avatar(card)} alt="" /> : card?.name.slice(0, 1) || <MessageSquare size={18} />}</span>
 
-function truncatePreview(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim()
-  return normalized.length > 120 ? `${normalized.slice(0, 120)}…` : normalized
+  return <section className={styles.panel} aria-label={t('history.tabRecent')}><div className={styles.body}>
+    <aside className={styles.characters}><h2>{t('play.recentCharacters')}</h2><div className={styles.characterList}>
+      {recent.slice(0, 10).map(({ card, timeline }) => <button key={card.id} className={styles.character} aria-pressed={characterId === card.id} title={card.name} onClick={() => setCharacterId(characterId === card.id ? undefined : card.id)}>
+        {renderAvatar(card)}<span><strong>{card.name}</strong><small>{timeline?.title || t('recentCharacters.choose')}</small></span>
+      </button>)}
+      {!recent.length && <p className={styles.muted}>{t('recentCharacters.empty')}</p>}
+    </div><p className={styles.asideHint}>{t('play.filterCharacter')}</p></aside>
+    <section className={styles.main}>
+      {resume?.timeline && !filtered && <div className={styles.resume}><StoryHero
+        character={resume.card} label={t('play.resumeStory')} title={resume.timeline.title || t('sessions.untitledTimeline')}
+        description={cleanPreview(resume.timeline.latestPreview || resume.timeline.openingPreview || resume.card.openingPreview || '')}
+        metadata={t('play.updated', { date: formatDateTime(resume.timeline.updatedAt) })}
+        actions={<button className={styles.link} onClick={() => props.onOpenRecent(resume.visit)}>{t('play.continueStory')} <ArrowUpRight size={16} /></button>}
+      /></div>}
+      <div className={styles.listHeading}><h2>{t('play.recentActivity')}</h2><span>{t('play.recordCount', { count: visible.length })}</span></div>
+      <div className={styles.filters}><label className={styles.search}><Search size={17} /><input aria-label={t('sessions.searchPlaceholder')} placeholder={t('sessions.searchPlaceholder')} value={query} onChange={event => setQuery(event.target.value)} /></label>
+        <label className={styles.date}><CalendarDays size={17} /><input type="date" aria-label={t('play.filterDate')} value={date} onChange={event => setDate(event.target.value || undefined)} /></label>
+      </div>
+      {filtered && <div className={styles.filterSummary}><span>{props.cards.find(card => card.id === characterId)?.name}</span><button onClick={clearFilters}>{t('play.clearFilters')} <X size={13} /></button></div>}
+      {days.map(day => <section className={styles.day} key={day}><h3>{formatDate(`${day}T00:00:00`, undefined, { month: 'long', day: 'numeric', weekday: 'short' })}</h3>{visible.filter(item => dayKey(item.updatedAt) === day).map(item => <button key={item.key} className={styles.record} aria-current={item.active ? 'true' : undefined} onClick={item.open}>
+        {renderAvatar(item.card)}<span className={styles.recordBody}><span className={styles.recordTitle}><strong>{item.title}</strong><time dateTime={item.updatedAt}>{formatDateTime(item.updatedAt, undefined, { hour: '2-digit', minute: '2-digit' })}</time></span>
+          <span className={styles.meta}>{item.kind === 'story' ? <BookOpen size={13} /> : <MessageSquare size={13} />}{t(item.kind === 'story' ? 'history.tabTimelines' : 'history.tabSessions')} · {item.meta}</span>
+          {item.preview && <span className={styles.excerpt}>{item.preview}</span>}</span>
+      </button>)}</section>)}
+      {!visible.length && <div className={styles.empty}><Clock3 size={30} /><h3>{t(filtered ? 'play.noMatches' : 'play.emptyHistory')}</h3><p>{t(filtered ? 'play.tryFilters' : 'play.emptyHistoryHint')}</p>{filtered && <button className={styles.link} onClick={clearFilters}>{t('play.clearFilters')}</button>}</div>}
+    </section>
+  </div></section>
 }
-
-function dayKey(value: string): string {
+function dayKey(value: string) {
   const date = new Date(value)
-  if (!Number.isFinite(date.getTime())) return value.slice(0, 10)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
-
-function formatDay(value: string): string {
-  return formatDate(`${value}T00:00:00`, undefined, { month: 'long', day: 'numeric', weekday: 'short' })
-}
-
-function groupByDay<T extends { updatedAt: string }>(items: T[]): Array<{ key: string; items: T[] }> {
-  const groups = new Map<string, T[]>()
-  for (const item of items) groups.set(dayKey(item.updatedAt), [...(groups.get(dayKey(item.updatedAt)) ?? []), item])
-  return [...groups.entries()].map(([key, grouped]) => ({ key, items: grouped }))
-}
-
-function buildMonthDays(cursor: Date): Array<{ key: string; date: number } | null> {
-  const year = cursor.getFullYear()
-  const month = cursor.getMonth()
-  const firstDay = new Date(year, month, 1).getDay()
-  const count = new Date(year, month + 1, 0).getDate()
-  return [...Array(firstDay).fill(null), ...Array.from({ length: count }, (_, index) => {
-    const date = index + 1
-    return { key: `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`, date }
-  })]
+function cleanPreview(value: string) {
+  // Preview is text only; embedded UI/script payloads are not story excerpts.
+  const text = value.replace(/<(script|style|quick_replies|quick_reply)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '').replace(/<[^>]*>/g, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/```[^\n]*\n?/g, '').replace(/[`*_#>]/g, '').replace(/\s+/g, ' ').trim()
+  return text.length > 220 ? `${text.slice(0, 220)}…` : text
 }

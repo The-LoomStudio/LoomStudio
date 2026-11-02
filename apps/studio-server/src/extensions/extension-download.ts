@@ -115,7 +115,7 @@ export async function extensionGit(args: string[], cwd?: string): Promise<string
     })
     return result.stdout.trim()
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('Git is required for Git extension sources. Install Git or use a ZIP package.')
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('Git is required for Git extension sources. Install Git or use a ZIP package.', { cause: error })
     throw error
   }
 }

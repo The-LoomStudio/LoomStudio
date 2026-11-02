@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LoomScriptMountTarget } from '@loom-studio/shared/loom-scripts'
-import type { LoomScript, LoomScriptMount, LoomScriptOwner, ResolvedLoomScriptRendererMount, UnavailableLoomScriptMount } from '../../../entities/index.js'
+import type { LoomScript, LoomScriptMount, ResolvedLoomScriptRendererMount, UnavailableLoomScriptMount } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { notify } from '../../../shared/notifications/index.js'
@@ -93,7 +93,7 @@ export function useScopedScriptEditor(props: Input) {
     } catch (cause) {
       const message = readError(cause)
       setError(message)
-      notify.error(message)
+      notify.failure('脚本编辑操作未完成', message)
     } finally { setBusy(false) }
   }
 
@@ -133,7 +133,7 @@ export function useScopedScriptEditor(props: Input) {
     } catch (cause) {
       const message = readError(cause)
       setError(message)
-      notify.error(message)
+      notify.failure('脚本编辑操作未完成', message)
     } finally { setBusy(false) }
   }
 

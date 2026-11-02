@@ -1,3 +1,7 @@
+import type { ReviseUserInput } from '../../features/attachments/user-input-editor.js'
+import { MessageAttachments } from '../../features/attachments/message-attachments.js'
+import { executionActivity } from '../../features/narrative-runtime/model/narrative-execution-view.js'
+import { createPortal } from 'react-dom'
 import { readConversationPosition } from '../../shared/ui/conversation-viewport/conversation-position.js'
 import { NarrativeExecutionFlow } from '../../features/narrative-runtime/ui/narrative-execution-flow.js'
 import { projectTimelineRounds, type TimelineSessionRound, type TimelineSessionCommunication } from '../../features/narrative-runtime/model/timeline-execution-projection.js'
@@ -9,7 +13,7 @@ import { ContentErrorBoundary } from '../../shared/ui/content-error-boundary.js'
 import { NarrativeInputSwipePicker } from '../../features/narrative-runtime/ui/narrative-input-swipe-picker.js'
 import type { NarrativeSwipeView } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
 import { ConversationMarkdown as StaticMarkdown } from '../../shared/ui/conversation-markdown/conversation-markdown.js'
-import { Check, ChevronDown, Copy, GitBranch, Link, MessageCircle, Pencil, Play, RefreshCw, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, Copy, GitBranch, Link, Pencil, Play, Trash2, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useConversationViewport } from '../../shared/ui/conversation-viewport/use-conversation-viewport.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -47,11 +51,14 @@ const MESSAGE_EDITOR_MIN_HEIGHT = 132
 type NarrativeNodeView = NarrativeNode
 
 type NarrativeTimelineProps = {
+  actionsHost?: HTMLElement | null
   workEntries?: AgentTranscriptEntry[]
   activeRun?: ActiveAgentRun
   presetName?: string
   inputMode?: 'roleplay' | 'discussion'
   onDiscuss?(): void
+  onSendDiscussion?(content: string): Promise<boolean>
+  onReviseDiscussionInput?: ReviseUserInput
   onRetryDiscussionInput?(entryId: string, content: string): Promise<boolean>
   onContinueRun?(): Promise<boolean>
   userIdentity?: UserIdentityView
@@ -88,7 +95,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     : readConversationPosition({ view: 'timeline', scope: props.scrollRestorationScope }), [props.anchorNodeId, props.scrollRestorationScope])
   const rounds = useMemo(() => projectTimelineRounds(props.workEntries ?? [], props.timeline, props.presetName ?? '尚未选择预设', props.activeRun, props.narrativeMode), [props.workEntries, props.timeline, props.presetName, props.activeRun, props.narrativeMode])
   const communicationKeys = useMemo(() => rounds.flatMap(round => round.communications.filter(group => group.execution.steps.length > 0 || group.discussions.length > 0).map(group => `${round.candidateId ?? round.id}:${group.id}`)), [rounds])
-  const [expandedCommunication, setExpandedCommunication] = useCommunicationExpansion(props.inputMode ?? 'roleplay', communicationKeys)
+  const [expandedCommunication, setExpandedCommunication] = useCommunicationExpansion(props.inputMode ?? 'roleplay', communicationKeys, props.scrollRestorationScope ?? props.timelineId)
   const resolvedUserName = renderTemplateMacros('{{user}}', props.macroContext).trim()
   const userName = props.userIdentity?.name ?? (resolvedUserName && resolvedUserName !== '{{user}}' ? resolvedUserName : props.t('timeline.role.user'))
   const tokenScope = props.timelineId ?? props.timeline[0]?.timelineId ?? ''
@@ -266,34 +273,43 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     smooth.resume()
   }
 
-  function renderCommunicationToggle(key: string, round: number) {
-    const label = round ? `查看第 ${round} 轮创作沟通` : '查看创作准备沟通'
-    return <button className={styles.communicationToggle} type="button" aria-label={label} title={label}
-      aria-expanded={expandedCommunication[key] ?? false} aria-controls={`communication-${key}`} onClick={() => {
-        pauseFollowing()
-        setExpandedCommunication(value => ({ ...value, [key]: !value[key] }))
-      }}><MessageCircle aria-hidden="true" /></button>
-  }
-
   function communicationKey(round: TimelineSessionRound, communication: TimelineSessionCommunication) {
     return `${round.candidateId ?? round.id}:${communication.id}`
   }
 
   function renderCommunication(round: TimelineSessionRound, communication: TimelineSessionCommunication, latest: boolean) {
     const key = communicationKey(round, communication)
-    if (!expandedCommunication[key]) return null
+    const activeExecution = [...communication.discussions].reverse().find(execution => execution.runId === props.activeRun?.runId)
+      ?? (round.execution.runId === props.activeRun?.runId ? round.execution : communication.execution)
+    const activity = latest && communication === round.communications.at(-1) && props.activeRun
+      ? executionActivity(activeExecution) : undefined
+    if (!communication.execution.steps.length && !communication.discussions.length && !activity) return null
+    const expanded = expandedCommunication[key] ?? false
     const selected = latest ? props.inputSwipe?.swipe.candidates.findIndex(candidate => candidate.id === props.inputSwipe?.swipe.selectedCandidateId) : undefined
-    return <div className={styles.communication} id={`communication-${key}`}>
+    return <section className={styles.communicationRecord}>
+      <button className={styles.communicationToggle} type="button" aria-expanded={expanded} aria-controls={`communication-${key}`} onClick={() => {
+        pauseFollowing()
+        setExpandedCommunication(value => ({ ...value, [key]: !expanded }))
+      }}>
+        <span>Agent 对话</span>
+        {activity && <span className={styles.communicationActivity} role="status">{activity}</span>}
+        <ChevronDown className={styles.communicationChevron} data-expanded={expanded} aria-hidden="true" />
+      </button>
+      <div className={styles.communicationCollapse} data-expanded={expanded} inert={!expanded} aria-hidden={!expanded} id={`communication-${key}`}><div>
+      <div className={styles.communication}>
       <NarrativeCommunication followWork key={key} candidate={communication} round={round.number} selected={selected !== undefined && selected >= 0 ? selected : undefined}
         activeRunId={props.activeRun?.runId} actionsDisabled={props.busy || props.activeRun?.status === 'running'}
+        onSend={key === communicationKeys.at(-1) ? props.onSendDiscussion : undefined}
+        editRunning={props.activeRun?.status === 'running'} onReviseInput={props.onReviseDiscussionInput}
         onRetryInput={props.onRetryDiscussionInput} onContinue={props.onContinueRun}
         onInspect={pauseFollowing} onReply={latest ? props.onDiscuss : undefined} onReturnCurrent={latest ? undefined : returnToLatest} />
-    </div>
+      </div>
+    </div></div></section>
   }
 
   function renderRoundNode(entry: NarrativeNodeView, round: TimelineSessionRound, latest: boolean) {
     const communication = round.communications.find(group => group.anchorNodeId === entry.id)!
-    return renderNode(entry, renderCommunicationToggle(communicationKey(round, communication), round.number), renderCommunication(round, communication, latest))
+    return renderNode(entry, undefined, renderCommunication(round, communication, latest))
   }
 
   function renderNode(entry: NarrativeNodeView, communication?: ReactNode, communicationContent?: ReactNode): ReactNode {
@@ -370,6 +386,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
           />
         )}
       </div>
+      <MessageAttachments align={role === 'user' ? 'end' : 'start'} t={props.t} attachments={props.workEntries?.flatMap(item => item.id === entry.entryId && item.entry.kind === 'message' ? item.entry.attachments ?? [] : [])} />
       <ConversationMessageChrome
         createdAt={entry.createdAt}
         index={index}
@@ -459,11 +476,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                   data-loom-slot="message-content"
                 >
                   {props.openingDisplay?.pending ? <div aria-busy="true" className={styles.displayPending} />
-                    : props.openingDisplay?.error ? <div role="alert">
-                      <span>Display: {props.openingDisplay.error}</span>
-                      <button type="button" onClick={props.openingDisplay.retry} title={props.t('textTransform.refresh')} aria-label={props.t('textTransform.refresh')}><RefreshCw aria-hidden="true" /></button>
-                    </div> : <>
-                  {props.openingDisplay?.warning ? <p role="status">Display: {props.openingDisplay.warning}</p> : null}
+                    : <>
+                  <DisplayProjectionStatus projection={props.openingDisplay} retryLabel={props.t('textTransform.refresh')} />
                   <ConversationMarkdown
                     className={`${styles.messageBody} ${props.openingDraft.isPlaceholder ? styles.placeholderBody : ''}`}
                     codeBlockLabels={messageCodeBlockLabels(props.t)}
@@ -501,7 +515,6 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                 className={styles.virtualRow} style={{ top: `${item.start - scrollMargin}px` }}>
                 <section aria-label={round.number ? `第 ${round.number} 轮` : '创作准备'}>
                   {round.communications.filter(group => !group.anchorNodeId).map(group => <div key={group.id}>
-                    <div className={styles.communication}>{renderCommunicationToggle(communicationKey(round, group), round.number)}</div>
                     {renderCommunication(round, group, latest)}
                   </div>)}
                   {round.inputNode && renderRoundNode(round.inputNode, round, latest)}
@@ -509,7 +522,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                     renderNarrative={step => {
                       const node = round.nodes.find(node => node.id === step.id)
                       return node ? renderRoundNode(node, round, latest) : <ConversationMarkdown
-                        role="assistant" value={step.content} streaming={step.state === 'running'}
+                        role="assistant" value={displayText(props.displayProjection, step.id, step.content, true) ?? step.content} streaming={step.state === 'running'}
                         macroContext={props.macroContext} codeBlockLabels={messageCodeBlockLabels(props.t)} />
                     }} />
                 </section>
@@ -521,20 +534,16 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
           disabled={props.busy} onClick={props.onStartStory}>
           <Play size={16} aria-hidden="true" />{props.t('timeline.startStory')}
         </button> : null}
-        {props.swipeControls && !props.timeline.some(node => node.id === props.swipeControls?.nodeId) ? <div className={styles.swipeStatus}>
-          <ConversationMessageChrome trailing={props.swipeControls.content} />
-        </div> : null}
         {props.timeline.length === 0 && rounds.map(round => <div className={styles.preparation} key={round.id}>
           <NarrativeExecutionFlow execution={round.execution} reading={false} hideReplies followWork onInspect={pauseFollowing} />
           {round.communications.map(group => <div key={group.id}>
-            {renderCommunicationToggle(communicationKey(round, group), 0)}
             {renderCommunication(round, group, true)}
           </div>)}
         </div>)}
         {props.tail ? <div className={styles.tail} data-loom-surface="narrative.timeline.tail">{props.tail}</div> : null}
         </div>
       </div>
-      {!smooth.following && <div className={styles.returnLatest}><Button size="small" onClick={returnToLatest}><ChevronDown />回到最新进度</Button></div>}
+      {!smooth.following && (props.actionsHost ? createPortal(<Button size="small" className={styles.returnLatestButton} aria-label="回到最新" title="回到最新" onClick={returnToLatest}><ChevronDown aria-hidden="true" /><span className={styles.returnLatestLabel}>回到最新</span></Button>, props.actionsHost) : <div className={styles.returnLatest}><Button size="small" className={styles.returnLatestButton} aria-label="回到最新进度" title="回到最新进度" onClick={returnToLatest}><ChevronDown aria-hidden="true" /><span className={styles.returnLatestLabel}>回到最新进度</span></Button></div>)}
       <NarrativeTimelineNavigator
         activeId={activeEntryId}
         items={navigatorItems}

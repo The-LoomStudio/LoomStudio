@@ -20,6 +20,7 @@ export type RenderItem =
       role: 'user' | 'assistant'
       content: string
       index: number
+      interjectionStatus?: 'pending' | 'applied' | 'discarded'
       showChrome?: boolean
       isStreaming?: boolean
     }
@@ -40,7 +41,7 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
   const runStates = new Map<string, string>()
   let latestRunId: string | undefined
   for (const message of entries) {
-    if (message.runId && message.entry.kind === 'run-state' && typeof message.entry.state === 'string') {
+    if (message.runId && message.entry.kind === 'run-state') {
       runStates.set(message.runId, message.entry.state)
       latestRunId = message.runId
     }
@@ -50,13 +51,15 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
     latestRunId = activeRun.runId
   }
 
-  const toolResultsByInvocationId = new Map<string, AgentTranscriptEntryEntity['entry']>()
+  const toolResultsByInvocationId = new Map<string, Extract<AgentTranscriptEntryEntity['entry'], { kind: 'tool-result' }>>()
   for (const msg of entries) {
-    if (msg.entry.kind === 'tool-result' && msg.entry.invocationId) {
-      toolResultsByInvocationId.set(String(msg.entry.invocationId), msg.entry)
+    if (msg.entry.kind === 'tool-result') {
+      toolResultsByInvocationId.set(msg.entry.invocationId, msg.entry)
     }
   }
 
+  const discarded = new Set(entries.flatMap(item => item.entry.kind === 'interjection-discarded' ? [item.entry.requestId] : []))
+  const applied = new Set(entries.flatMap(item => item.entry.kind === 'interjection-applied' ? [item.entry.requestId] : []))
   const items: RenderItem[] = []
   let pendingTools: StepToolItem[] = []
   let messageIndex = 0
@@ -84,23 +87,28 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
       continue
     }
 
-    if (entry.kind === 'work-summary') {
+    if (entry.kind === 'user-interjection') {
+      if (entry.withdrawn) continue;
+      if (entries.some(item => item.entry.kind === 'message' && item.entry.interjectionRequestId === entry.requestId)) continue
       flushTools()
-      items.push({ kind: 'summary', id: msg.id, label: '已保存交接摘要', content: String(entry.content ?? '') })
+      items.push({ kind: 'message', id: msg.id, message: msg, role: 'user', content: entry.content, index: messageIndex++, interjectionStatus: discarded.has(entry.requestId) ? 'discarded' : applied.has(entry.requestId) ? 'applied' : 'pending' })
+    } else if (entry.kind === 'work-summary') {
+      flushTools()
+      items.push({ kind: 'summary', id: msg.id, label: '已保存交接摘要', content: entry.content })
     } else if (entry.kind === 'tool-input') {
       const interrupted = entry.status === 'interrupted' || Boolean(msg.runId && runStates.has(msg.runId)
         && (runStates.get(msg.runId) !== 'running' || msg.runId !== latestRunId))
       pendingTools.push({
         id: msg.id, iconType: 'terminal',
         label: `${entry.exposedName ?? '工具调用'} · ${interrupted ? '参数生成已中断，尚未执行' : '正在准备参数'}`,
-        inputs: [{ label: '参数草稿', content: String(entry.rawInput ?? '') }],
+        inputs: [{ label: '参数草稿', content: entry.rawInput }],
         status: interrupted ? 'interrupted' : 'preparing',
       })
     } else if (entry.kind === 'tool-invocation') {
-      const toolId = String(entry.toolId || '')
-      const exposedName = String(entry.exposedName || entry.toolId || '执行工具')
-      const invocationId = String(entry.invocationId ?? '')
-      const pairedResult = invocationId ? toolResultsByInvocationId.get(invocationId) : undefined
+      const toolId = entry.toolId
+      const exposedName = entry.exposedName || entry.toolId || '执行工具'
+      const invocationId = entry.invocationId
+      const pairedResult = toolResultsByInvocationId.get(invocationId)
 
       let iconType: StepToolItem['iconType'] = 'terminal'
       if (toolId.includes('search') || exposedName.includes('搜索') || exposedName.includes('检索')) {
@@ -115,9 +123,13 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
 
       const inputs: StepToolItem['inputs'] = []
       if (entry.arguments !== undefined) {
-        inputs.push({ label: '参数', content: JSON.stringify(entry.arguments, null, 2) })
+        if (toolId.includes('codeact') && typeof entry.arguments.code === 'string') {
+          const { code, ...parameters } = entry.arguments
+          inputs.push({ label: '代码', content: code })
+          if (Object.keys(parameters).length) inputs.push({ label: '参数', content: JSON.stringify(parameters, null, 2) })
+        } else inputs.push({ label: '参数', content: JSON.stringify(entry.arguments, null, 2) })
       }
-      if (typeof entry.rawInput === 'string') {
+      if (entry.rawInput !== undefined) {
         inputs.push({
           label: toolId.includes('codeact') ? '代码' : '输入',
           content: entry.rawInput,
@@ -125,18 +137,9 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
       }
       if (!inputs.length) inputs.push({ label: '调用', content: '未记录调用内容' })
 
-      let resultContent: string | undefined
-      if (pairedResult) {
-        resultContent = typeof pairedResult.content === 'string'
-          ? pairedResult.content
-          : Array.isArray(pairedResult.content)
-            ? pairedResult.content.map(c => (c && typeof c === 'object' && 'text' in c && c.text) || JSON.stringify(c)).join('\n')
-            : pairedResult.content === undefined ? undefined : JSON.stringify(pairedResult.content, null, 2)
-      }
+      const resultContent = pairedResult?.content.map(part => part.type === 'text' && part.text ? part.text : JSON.stringify(part)).join('\n')
       const error = pairedResult?.error
-      const errorContent = error && typeof error === 'object' && !Array.isArray(error)
-        ? [typeof error.code === 'string' ? error.code : '', typeof error.message === 'string' ? error.message : ''].filter(Boolean).join(': ')
-        : undefined
+      const errorContent = error ? [error.code, error.message].filter(Boolean).join(': ') : undefined
 
       const runState = msg.runId ? runStates.get(msg.runId) : undefined
       const interrupted = Boolean(runState && (runState !== 'running' && runState !== 'created' || msg.runId !== latestRunId))
@@ -151,7 +154,7 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
         errorContent: errorContent || undefined,
         status: incompleteInput ? 'interrupted' : !pairedResult ? interrupted ? 'interrupted' : 'running' : pairedResult.status === 'completed' ? 'success' : 'error',
       })
-    } else if (entry.kind === 'reasoning' && typeof entry.content === 'string') {
+    } else if (entry.kind === 'reasoning') {
       flushTools()
       items.push({
         kind: 'reasoning',
@@ -159,7 +162,7 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
         content: entry.content,
         isStreaming: msg.id.startsWith('streaming-reasoning-') && entry.state !== 'completed' && activeRun?.runId === msg.runId && activeRun?.status === 'running',
       })
-    } else if (entry.kind === 'message' && typeof entry.content === 'string') {
+    } else if (entry.kind === 'message') {
       const isAssistant = entry.role === 'assistant'
       const isStreamingFinal = entry.state === 'partial' && (!activeRun || activeRun.runId === msg.runId && activeRun.status === 'running')
 
@@ -176,6 +179,7 @@ export function buildRenderItems(entries: AgentTranscriptEntryEntity[], activeRu
         role: isAssistant ? 'assistant' : 'user',
         content: entry.content,
         index: messageIndex++,
+        interjectionStatus: entry.interjectionRequestId ? 'applied' : undefined,
         showChrome: !isStreamingFinal,
         isStreaming: isStreamingFinal,
       })

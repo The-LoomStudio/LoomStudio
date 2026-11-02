@@ -70,10 +70,11 @@ describe('opening selection', () => {
       expect(created.timeline.opening).toEqual({ id: 'default', nodeId: created.nodes[0]!.id, locked: false })
       const target = { timelineId: created.timeline.id, branchId: created.branch.id }
       const scope = await context.states.getScope({ kind: 'timeline', ownerId: target.timelineId })
+      const originalState = await context.runtime.getStateSnapshot({ target: { scope: 'timeline', ...target } })
       const configured = await context.engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
         const state = context.states.transaction(tx).createRevision({
           scopeId: scope!.id, parentRevisionId: created.branch.stateHeadRevisionId,
-          snapshot: { configured: true }, operations: [],
+          snapshot: { ...originalState.snapshot.value, configured: true }, operations: [],
         })
         return context.narratives.transaction(tx).setBranchStateHead({
           ...target, expectedStateHeadRevisionId: created.branch.stateHeadRevisionId, stateRevisionId: state.revision.id,
@@ -84,7 +85,10 @@ describe('opening selection', () => {
       expect(selected.nodes.map(node => node.body.raw)).toEqual(['Hero arrives'])
       expect(selected.branch.stateHeadRevisionId).toBe(configured.value.stateHeadRevisionId)
       expect(selected.nodes.every(node => node.stateRevisionId === configured.value.stateHeadRevisionId)).toBe(true)
-      expect((await context.states.getRevision(selected.branch.stateHeadRevisionId))?.snapshot).toEqual({ configured: true })
+      expect((await context.states.getRevision(selected.branch.stateHeadRevisionId))?.snapshot).toEqual({
+        $loom: { players: { User: { components: { loom_profile: { name: 'User', description: '' } } } } },
+        configured: true,
+      })
       await expect(context.runtime.replaceNarrativeOpening({ ...target, expectedHeadNodeId: originalHead, openingContent: '' }))
         .rejects.toMatchObject({ code: 'narrative.head_conflict' })
       const edited = await context.runtime.editNarrativeNode({

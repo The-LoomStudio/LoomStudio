@@ -758,8 +758,8 @@ function createActivationContext(input: {
         if (declared.surface !== definition.surface || declared.instanceScope !== definition.instanceScope || declared.adapter !== definition.adapter) {
           throw new Error(`Renderer ${definition.id} does not match its manifest surface/scope`)
         }
-        if ((definition.surface === 'narrative.entry.inline' || definition.surface === 'agent.message.inline') && !renderer.projectNode) {
-          throw new Error(`Inline Renderer ${definition.id} must provide projectNode(context)`)
+        if ((definition.surface === 'narrative.entry.inline' || definition.surface === 'agent.message.inline') && !renderer.projectNode && !renderer.projectNodeWithAnchors) {
+          throw new Error(`Inline Renderer ${definition.id} must provide projectNode(context) or projectNodeWithAnchors(context)`)
         }
         const registration = input.rendererHost.register({
           isAvailable: () => {
@@ -776,6 +776,9 @@ function createActivationContext(input: {
           mount: (root, context) => { assertActive(); return renderer.mount(root, context) },
           ...(renderer.update ? { update: (context: Parameters<NonNullable<ClientRenderer['update']>>[0]) => {
             assertActive(); return renderer.update!(context)
+          } } : {}),
+          ...(renderer.projectNodeWithAnchors ? { projectNodeWithAnchors: async (context: Parameters<NonNullable<ClientRenderer['projectNodeWithAnchors']>>[0]) => {
+            assertActive(); return renderer.projectNodeWithAnchors!(context)
           } } : {}),
           ...(renderer.projectNode ? { projectNode: (context: Parameters<NonNullable<ClientRenderer['projectNode']>>[0]) => {
             assertActive(); return renderer.projectNode!(context)

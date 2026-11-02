@@ -495,10 +495,17 @@ export type ClientRendererFrameHostMessage =
 
 export type ClientRendererFrameMessage = { type: 'loom:renderer-close' }
 
+export type ClientNodeProjectionWithAnchors = {
+  mounts: readonly ClientNodeRenderMount[]
+  /** Ranges use offsets in context.displayText, never HTML or DOM offsets. */
+  matches: ReadonlyMap<string, { start: number; end: number }>
+}
+
 export type ClientRenderer = {
   mount(root: HTMLElement, context: ClientRendererContext): void | ExtensionRegistrationHandle | Promise<void | ExtensionRegistrationHandle>
   update?(context: ClientRendererContext): void | Promise<void>
   projectNode?(context: ClientNodeDisplayProjectionContext): readonly ClientNodeRenderMount[] | Promise<readonly ClientNodeRenderMount[]>
+  projectNodeWithAnchors?(context: ClientNodeDisplayProjectionContext): Promise<ClientNodeProjectionWithAnchors>
   frame?: { src: string; title?: string }
 }
 
@@ -672,14 +679,7 @@ export type ExtensionPromptResourceContribution = {
     enabled: boolean
     orderIndex?: number
   }>
-  toolMounts?: Array<{
-    toolId: string
-    orderIndex?: number
-    defaultEnabled?: boolean
-    activation?: JsonObject
-    provider?: { order?: number }
-    content?: { targetAnchorId?: string; localDepth?: number }
-  }>
+  toolMounts?: import('@loom-studio/shared').ExtensionToolMount[]
 }
 
 export type ExtensionAgentToolContribution = {
@@ -727,11 +727,20 @@ export type ExtensionTextExtractorContribution = {
   source: string
 }
 
+export type ExtensionCharacterContribution = {
+  id: string
+  name: string
+  description?: string
+  preview?: string
+  source: string
+}
+
 export type ExtensionPackageContributions = {
+  characters?: ExtensionCharacterContribution[]
   backgrounds?: ExtensionBackgroundContribution[]
   themes?: ExtensionStyleContribution[]
   styles?: ExtensionStyleContribution[]
-  loomScripts?: Array<{ id: string; source: string }>
+  loomScripts?: Array<{ id: string; source: string; orderIndex?: number; groupOrder?: number }>
   transformRules?: ExtensionTextTransformRuleContribution[]
   textExtractors?: ExtensionTextExtractorContribution[]
   promptResources?: ExtensionPromptResourceContribution[]
@@ -769,6 +778,7 @@ export type ExtensionDownloadSource =
   | { kind: 'zip'; url: string }
 
 export type ExtensionDependency = {
+  target?: 'global' | 'card'
   id: string
   version: string
   source?: ExtensionDownloadSource

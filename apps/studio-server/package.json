@@ -25,7 +25,9 @@
     "@loom-studio/shared": "workspace:*",
     "@trpc/server": "11.19.0",
     "fflate": "0.8.3",
+    "saxes": "6.0.0",
     "semver": "7.8.5",
+    "yaml": "^2.9.0",
     "zod": "4.5.4"
   },
   "exports": {

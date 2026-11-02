@@ -84,6 +84,7 @@ export type ObservationSummary = {
   capturedAt: string
   updatedAt: string
   expiresAt: string
+  agentPresetId?: string
   agentSessionId?: string
   timelineId?: string
   branchId?: string

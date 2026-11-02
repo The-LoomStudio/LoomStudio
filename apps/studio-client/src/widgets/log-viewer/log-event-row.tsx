@@ -1,3 +1,5 @@
+import { InfoDialog } from '../../shared/ui/info-dialog/info-dialog.js'
+import { LogOrigin } from './log-origin.js'
 import { useState } from 'react'
 import { readLogPresentation, type LogRecord } from '@loom-studio/logging'
 import { IconButton } from '@loom-studio/ui'
@@ -44,17 +46,20 @@ export function LogEventRow({ record, t, onFilterRun, onInspect, referenceLabels
       <span className={styles.time}><ChevronRight className={styles.chevron} size={12} /><time dateTime={record.timestamp}>{formatTime(record.timestamp, undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</time></span>
       <span className={styles.source} data-source={source} title={record.namespace}>{source}</span>
       <span className={styles.event}>
-        <span className={styles.message}>{(record.level === 'error' || record.level === 'warn') && <CircleAlert size={14} />}{record.message}</span>
-        {view.duration && <span className={styles.duration} aria-label={`${t('logs.duration')} ${view.duration}`}>{view.duration}</span>}
-        {(view.inputTokens !== undefined || view.outputTokens !== undefined) && <span className={styles.tokens}>
-          {view.inputTokens !== undefined && <><ArrowUpRight size={12} aria-label={t('logs.inputTokens')} />{formatNumber(view.inputTokens)}</>}
-          {view.outputTokens !== undefined && <><ArrowDownLeft size={12} aria-label={t('logs.outputTokens')} />{formatNumber(view.outputTokens)}</>}
-        </span>}
+        {runId && <LogOrigin compact source={referenceLabels?.get(`run:${runId}`)?.source} title={referenceLabels?.get(`run:${runId}`)?.title ?? source} />}
+        <span className={styles.eventBody}>
+          <span className={styles.message}>{(record.level === 'error' || record.level === 'warn') && <CircleAlert size={14} />}<span>{record.message}</span></span>
+          {view.duration && <span className={styles.duration} aria-label={`${t('logs.duration')} ${view.duration}`}>{view.duration}</span>}
+          {(view.inputTokens !== undefined || view.outputTokens !== undefined) && <span className={styles.tokens}>
+            {view.inputTokens !== undefined && <><ArrowUpRight size={12} aria-label={t('logs.inputTokens')} />{formatNumber(view.inputTokens)}</>}
+            {view.outputTokens !== undefined && <><ArrowDownLeft size={12} aria-label={t('logs.outputTokens')} />{formatNumber(view.outputTokens)}</>}
+          </span>}
+        </span>
       </span>
     </summary>
     {expanded && <div className={styles.detail}>
       {view.detail && <p>{view.detail}</p>}
-      <div className={styles.references}>{readLogReferences(record).map(reference => {
+      <div className={styles.references}><InfoDialog title={t('logs.raw')}><pre>{JSON.stringify(record, null, 2)}</pre></InfoDialog>{readLogReferences(record).map(reference => {
         const label = referenceLabels?.get(logReferenceLabelKey(reference.uri) ?? '')
         const unavailable = reference.type !== 'run' && (label?.state === 'deleted' || label?.state === 'unavailable')
         return <button type="button" key={reference.uri} disabled={unavailable} title={t('observation.currentName')} onClick={() => window.dispatchEvent(new CustomEvent('loom:open-reference', { detail: { uri: reference.uri } }))}>
@@ -74,10 +79,7 @@ export function LogEventRow({ record, t, onFilterRun, onInspect, referenceLabels
         {copied && <span role="status">{t('logs.copied')}</span>}
       </div>
       {copyError && <p role="alert">{t('logs.copyError')}</p>}
-      <details className={styles.rawDetails}>
-        <summary><ChevronRight size={12} />{t('logs.raw')}</summary>
-        <pre className={styles.raw} tabIndex={0} aria-label={t('logs.raw')}>{JSON.stringify(record, null, 2)}</pre>
-      </details>
+
     </div>}
   </details>
 }

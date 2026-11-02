@@ -1,77 +1,40 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { unzipSync } from 'fflate'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readOfficialContent } from '../../../apps/studio-server/src/official/official-content.js'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
 import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
 import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
-import { callRpc, withStudioServer } from './helpers.js'
+import { callRpc } from './helpers.js'
 
 type PackageListing = {
   packages: Array<{ id: string; digest: string; resources: Array<{ id: string; resourceKind: string; available: boolean }> }>
 }
 
 describe('official content installation', () => {
-  it('installs on startup, exports original files, and preserves user edits on idempotent manual reinstall', async () => {
-    await withStudioServer(async port => {
+  it('does not seed starter content or restore a deleted legacy resource after restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'loom-retired-starter-'))
+    const options = { localPaths: resolveLoomStudioLocalPaths({ home: directory }), secretBackend: createMemorySecretBackend(), extensionRootDirectory: join(directory, 'empty') }
+    const server = createStudioServer({ ...options, officialContentDirectory: resolve('tests/fixtures/legacy-official-starter') })
+    const legacyId = 'prompt-resource.official.loom-knowledge'
+    try {
+      const { port } = await server.listen(0)
       const before = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', {})
-      const extensions = await callRpc<{ items: Array<{ packageId: string }> }>(port, 'extensions.listPackages', {})
-      expect(extensions.items.some(item => item.packageId === 'example.echo' || item.packageId === 'example.weatherStation')).toBe(false)
+      expect(before.resources.some(item => item.id === legacyId)).toBe(false)
       const { packages: [content] } = await callRpc<PackageListing>(port, 'official.listContent', {})
-      expect(content!.resources.length).toBeGreaterThan(0)
-      expect(content!.resources.every(resource => resource.available)).toBe(true)
-      expect(before.resources.map(resource => resource.id).sort()).toEqual(content!.resources.map(resource => resource.id).sort())
-      const input = { packageId: content!.id, digest: content!.digest }
-      await expect(callRpc(port, 'official.installContent', { ...input, digest: 'stale' })).rejects.toThrow('refresh and confirm')
-      const installed = await callRpc<{ resources: Array<{ id: string; created: boolean }>; mutation?: unknown }>(port, 'official.installContent', input)
-      expect(installed.resources).toEqual(content!.resources.map(resource => ({ id: resource.id, created: false })))
-      expect(installed.mutation).toBeUndefined()
-      await expect(callRpc(port, 'application.listPromptResources', {})).resolves.toEqual(before)
-      const presetId = content!.resources.find(resource => resource.resourceKind === 'preset')!.id
-      await expect(callRpc(port, 'application.listLoreMounts', { source: { kind: 'preset', id: presetId } })).resolves.toMatchObject({
-        mounts: [{ loreResourceId: 'prompt-resource.official.loom-knowledge' }],
-      })
-      const preset = await callRpc<{ resource: { version: number } }>(port, 'application.getPromptResource', { resourceId: presetId })
-      await callRpc(port, 'application.updatePromptResourceMacros', { resourceId: presetId, expectedVersion: preset.resource.version, macros: { difficulty: 'custom' } })
-      const afterEdit = await callRpc<{ resource: { version: number; macros: Record<string, string> } }>(port, 'application.getPromptResource', { resourceId: presetId })
-      const repeated = await callRpc<{ resources: Array<{ created: boolean }>; mutation?: unknown }>(port, 'official.installContent', input)
-      expect(repeated.resources).toEqual(installed.resources)
-      expect(repeated.mutation).toBeUndefined()
-      await expect(callRpc(port, 'application.getPromptResource', { resourceId: presetId })).resolves.toEqual(afterEdit)
-      const exported = await callRpc<{ base64: string; fileName: string }>(port, 'official.exportContent', input)
-      expect(exported.fileName).toBe('official.starter-0.1.0.zip')
-      const files = unzipSync(Buffer.from(exported.base64, 'base64'))
-      expect(Object.keys(files).sort()).toEqual(['catalog.json', 'lore/knowledge.json', 'presets/assistant.json'])
-      const directory = await mkdtemp(join(tmpdir(), 'loom-official-roundtrip-'))
-      try {
-        for (const [path, bytes] of Object.entries(files)) {
-          expect(Buffer.from(bytes)).toEqual(await readFile(resolve('official/starter', path)))
-          await mkdir(dirname(join(directory, path)), { recursive: true })
-          await writeFile(join(directory, path), bytes)
-        }
-        expect((await readOfficialContent(directory)).digest).toBe(content!.digest)
-        const freshServer = createStudioServer({
-          localPaths: resolveLoomStudioLocalPaths({ home: join(directory, 'workspace') }),
-          secretBackend: createMemorySecretBackend(),
-          officialContentDirectory: directory,
-        })
-        try {
-          const fresh = await freshServer.listen(0)
-          const freshResources = await callRpc<{ resources: Array<{ id: string }> }>(fresh.port, 'application.listPromptResources', {})
-          expect(freshResources.resources.map(resource => resource.id).sort()).toEqual(content!.resources.map(resource => resource.id).sort())
-          const reinstalled = await callRpc<{ resources: Array<{ id: string; created: boolean }>; mutation?: unknown }>(fresh.port, 'official.installContent', input)
-          expect(reinstalled.resources).toEqual(installed.resources)
-          expect(reinstalled.mutation).toBeUndefined()
-          await expect(callRpc(fresh.port, 'application.listPromptResources', {})).resolves.toEqual(freshResources)
-        } finally {
-          await freshServer.close()
-        }
-      } finally {
-        await rm(directory, { recursive: true, force: true })
-      }
-    })
+      await callRpc(port, 'official.installContent', { packageId: content!.id, digest: content!.digest })
+      await callRpc(port, 'application.deletePromptResource', { resourceId: legacyId })
+    } finally { await server.close() }
+    const restarted = createStudioServer(options)
+    try {
+      const { port } = await restarted.listen(0)
+      expect(await callRpc(port, 'official.listContent', {})).toEqual({ packages: [] })
+      const resources = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', {})
+      expect(resources.resources.some(item => item.id === legacyId)).toBe(false)
+      // Retirement does not delete or rebind the user's remaining legacy resources.
+      expect(resources.resources.some(item => item.id === 'prompt-resource.official.loom-assistant')).toBe(true)
+    } finally { await restarted.close(); await rm(directory, { recursive: true, force: true }) }
   })
 
   it('rejects package file escape before reading resources', async () => {

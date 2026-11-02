@@ -1,5 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads'
-import { getQuickJS, type QuickJSDeferredPromise, type QuickJSHandle } from 'quickjs-emscripten'
+import { newQuickJSWASMModuleFromVariant, type QuickJSDeferredPromise, type QuickJSHandle } from 'quickjs-emscripten-core'
 import type { CodeActError, SandboxInput, SandboxMessage, SandboxReply } from './protocol.js'
 
 const port = parentPort!
@@ -7,7 +7,7 @@ const input = workerData as SandboxInput
 const { limits } = input
 let deadline = input.deadline
 const pending = new Map<number, QuickJSDeferredPromise>()
-const QuickJS = await getQuickJS()
+const QuickJS = await newQuickJSWASMModuleFromVariant(import('@jitl/quickjs-wasmfile-release-sync'))
 const runtime = QuickJS.newRuntime()
 runtime.setMemoryLimit(limits.memoryBytes)
 runtime.setMaxStackSize(limits.stackBytes)

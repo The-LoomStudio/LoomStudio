@@ -1,6 +1,18 @@
 import type { messages as zhCN } from '../zh-cn/sessions.js'
 
 export const messages = {
+  'play.filterCharacter': "キャラクターを選んで履歴を絞り込む",
+  'play.resumeStory': "前回の物語を再開",
+  'play.continueStory': "物語を続ける",
+  'play.updated': "更新 · {{date}}",
+  'play.recentActivity': "最近のアクティビティ",
+  'play.recordCount': "{{count}} 件",
+  'play.clearFilters': "絞り込みを解除",
+  'play.noMatches': "一致する履歴がありません",
+  'play.emptyHistory': "ここに物語の足跡が残ります",
+  'play.tryFilters': "別のキーワードを試すか、絞り込みを解除してください。",
+  'play.emptyHistoryHint': "物語や会話を始めると、ここから再開できます。",
+
   'sessions.defaultTimelineName': '物語',
   'sessions.defaultSessionName': 'セッション',
   'sessions.characterUnavailable': 'キャラクターを利用できません',

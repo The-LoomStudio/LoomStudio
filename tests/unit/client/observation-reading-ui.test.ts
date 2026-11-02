@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { ObservationSourceIcon } from '../../../apps/studio-client/src/widgets/log-viewer/observation-source-icon.js'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 import { act, createElement as h, createRef, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
@@ -9,6 +10,7 @@ import { ToolResult } from '../../../apps/studio-client/src/features/observabili
 import { ObservabilityWorkbench } from '../../../apps/studio-client/src/widgets/log-viewer/observability-workbench.js'
 import { observationFixtures } from '../../../apps/studio-client/src/dev-preview/observability-fixtures.js'
 const t = createTranslator('zh-CN')
+beforeEach(() => useStudioLayoutStore.setState({ viewPreferences: {} }))
 let root: Root
 let host: HTMLDivElement
 async function mount(content: ReactNode) {
@@ -26,14 +28,14 @@ it('keeps the first tool response visible and allows the changes switch without 
   expect(toggle.disabled).toBe(false)
   const input = [...host.querySelectorAll('details')].find(item => item.querySelector(':scope > summary')?.textContent?.startsWith('输入消息'))!
   expect(input.open).toBe(false)
-  const tool = [...host.querySelectorAll('article')].find(item => item.textContent?.includes('codeact_json'))!
+  const tool = [...host.querySelectorAll('fieldset')].find(item => item.textContent?.includes('codeact_json'))!
   expect(input.contains(tool)).toBe(false)
   expect(tool.textContent).toContain("cannot read property '日期'")
   await act(async () => toggle.click())
   expect([...host.querySelectorAll('details')].find(item => item.querySelector(':scope > summary')?.textContent?.startsWith('输入消息'))!.open).toBe(true)
   await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent === '只看变化消息')!.click())
   await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent?.includes('2 · 输出文本'))!.click())
-  const output = [...host.querySelectorAll('article')].find(item => item.textContent?.includes('雨水沿着钟楼'))!
+  const output = [...host.querySelectorAll('fieldset')].find(item => item.textContent?.includes('雨水沿着钟楼'))!
   expect(output.closest('details')).toBeNull()
   expect([...host.querySelectorAll('details')].find(item => item.querySelector(':scope > summary')?.textContent?.startsWith('输入消息'))!.open).toBe(false)
 })
@@ -80,7 +82,7 @@ it('opens raw records and tool evidence in dialogs without adding JSON to the re
   await mount(h(ObservabilityWorkbench, { records: observationFixtures }))
   await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent?.includes('钟楼下的重逢'))!.click())
   expect([...host.querySelectorAll('pre')].some(item => item.textContent?.includes('"preparedMessages"'))).toBe(false)
-  const rawRecord = [...host.querySelectorAll('button')].find(item => item.textContent === t('observation.raw'))!
+  const rawRecord = [...host.querySelectorAll('button')].find(item => item.getAttribute('aria-label') === t('observation.raw'))!
   await act(async () => rawRecord.click())
   let dialog = host.querySelector<HTMLDialogElement>('dialog[open]')!
   expect(dialog.querySelector('pre')?.textContent).toContain('"step-1"')
@@ -88,7 +90,7 @@ it('opens raw records and tool evidence in dialogs without adding JSON to the re
   await act(async () => dialog.querySelector<HTMLButtonElement>(`button[aria-label="${t('observation.close')}"]`)!.click())
   expect(host.querySelector('dialog[open]')).toBeNull()
   expect(host.textContent).not.toContain('"step-1"')
-  const rawTool = [...host.querySelectorAll('button')].find(item => item.textContent === t('observation.rawTool'))!
+  const rawTool = [...host.querySelectorAll('button')].find(item => item.getAttribute('aria-label') === t('observation.rawTool'))!
   await act(async () => rawTool.click())
   dialog = host.querySelector<HTMLDialogElement>('dialog[open]')!
   expect(dialog.querySelector('pre')?.textContent).toContain('"tool-invocation-example"')
@@ -96,14 +98,15 @@ it('opens raw records and tool evidence in dialogs without adding JSON to the re
   expect(host.querySelector('dialog[open]')).toBeNull()
 })
 
-it('opens an explicitly linked record outside the loaded list and keeps raw identities collapsed', async () => {
+it('opens an explicitly linked record outside the loaded list and keeps raw identities in its information dialog', async () => {
   let opened = false
   const linked = { ...observationFixtures[0], id: 'linked-build', title: 'Linked historical build', references: [{ label: 'Current provider name', open: () => { opened = true } }] }
   await mount(h(ObservabilityWorkbench, { records: [], selectedRecordId: linked.id, selectedRecord: linked }))
   expect(host.querySelector('h2')?.textContent).toContain('Linked historical build')
-  const identities = [...host.querySelectorAll('details')].filter(item => item.querySelector(':scope > summary')?.textContent === t('observation.identifiers'))
-  expect(identities.length).toBeGreaterThan(0)
-  expect(identities.every(item => !item.open)).toBe(true)
+  expect([...host.querySelectorAll('details')].some(item => item.querySelector(':scope > summary')?.textContent === t('observation.identifiers'))).toBe(false)
+  expect(host.querySelector('dialog[open]')).toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>(`[aria-label="${t('observation.identifiers')}"]`)!.click())
+  expect(host.querySelector('dialog[open]')?.textContent).toContain(linked.id)
   await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent?.includes('Current provider name'))!.click())
   expect(opened).toBe(true)
 })

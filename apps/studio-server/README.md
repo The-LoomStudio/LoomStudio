@@ -72,7 +72,7 @@ Studio Server
 
 `createStudioServer()` 创建并注入长期服务；返回对象的 `listen()` 才执行启动准备并监听 loopback。正常持久化路径由同一个 Data Engine 装配 Document、Agent、Narrative、State、Prompt Resource、Blob/Asset 与 Secret Store；测试注入独立 Document Store 不能被当作完整持久化组合的替代。
 
-开始接纳请求前，`listen()` 依次重试凭据清理、等待目录扫描并处理目录恢复、加载 Observation、扫描目录、初始化 Runtime、恢复扩展任务、安装缺失 starter、启动 Kernel、初始化扩展 Manager、协调 Server Script，最后建立媒体监听和 HTTP listener。各步骤的失败/恢复策略归相应服务，不能仅凭 `/health` 响应推断所有外部 Provider 可用。
+开始接纳请求前，`listen()` 依次重试凭据清理、等待目录扫描并处理目录恢复、加载 Observation、扫描目录、初始化 Runtime、恢复扩展任务、启动 Kernel、初始化扩展 Manager、协调 Server Script，最后建立媒体监听和 HTTP listener。各步骤的失败/恢复策略归相应服务，不能仅凭 `/health` 响应推断所有外部 Provider 可用。
 
 ## 当前 HTTP 面
 
@@ -89,11 +89,9 @@ Studio Server
 在 JSON 解析和业务调用前返回 HTTP 413 / `rpc.request_too_large`，停止累积并关闭该连接。
 Card、Asset 的独立二进制入口保持各自上限；此请求预算不是进程峰值内存保证。
 
-官方内容使用 `official.listContent` / `official.installContent` / `official.exportContent` RPC。
-默认读取仓库根目录下的 `official/starter`，部署时应携带该目录或设置
-`CreateStudioServerOptions.officialContentDirectory`。Server 启动时自动安装缺失的默认预设与
-Lore；保留已有内容、挂载和删除记录，不覆盖用户修改。此步骤由 Server 组合根执行，
-Application 初始化本身不安装内容；当前只有本地来源，不包含在线更新。
+旧 catalog RPC `official.listContent` / `official.installContent` / `official.exportContent` 仅在
+显式设置 `CreateStudioServerOptions.officialContentDirectory` 时提供手动内容服务，默认列表为空。
+启动不再安装或恢复旧 starter。官方助手由扩展提供，已有数据库资源保留原身份与引用。
 详见 [官方内容说明](../../official/README.md)。
 
 ---

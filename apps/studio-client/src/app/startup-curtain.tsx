@@ -13,23 +13,31 @@ async function waitForStartupEffects(curtain: HTMLElement): Promise<void> {
   clearTimeout(timer)
 }
 
-export function dismissStartupCurtain(): void {
+let dismissal: Promise<void> | undefined
+
+export function dismissStartupCurtain(): Promise<void> {
+  if (dismissal) return dismissal
   const curtain = document.getElementById('loom-startup')
-  if (!curtain || curtain.hasAttribute('data-dismissing')) return
+  if (!curtain) return Promise.resolve()
   curtain.setAttribute('data-dismissing', '')
-  void (async () => {
+  dismissal = (async () => {
     // Flush freshly adopted theme styles before collecting their crossfade effects.
-    getComputedStyle(curtain).backgroundColor
+    void getComputedStyle(curtain).backgroundColor
     await waitForStartupEffects(curtain)
     curtain.setAttribute('data-leaving', '')
-    getComputedStyle(curtain).opacity
+    void getComputedStyle(curtain).opacity
     await waitForStartupEffects(curtain)
     curtain.remove()
   })()
+  return dismissal
 }
 
 /** Dismiss only after React has committed the usable page underneath. */
-export function StartupReady() {
-  useEffect(dismissStartupCurtain, [])
+export function StartupReady({ onDismissed }: { onDismissed?(): void } = {}) {
+  useEffect(() => {
+    let active = true
+    void dismissStartupCurtain().then(() => { if (active) onDismissed?.() })
+    return () => { active = false }
+  }, [onDismissed])
   return null
 }

@@ -11,6 +11,7 @@ import { listDocuments, readDocument, toVersioned, writeDocument } from '../foun
 import { collectPages } from '../foundation/pagination.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import {
+  type TextTransformDiagnostic,
   createTextExtractionArtifact,
   extractHistory,
   projectHistoryEntries,
@@ -87,14 +88,14 @@ type TransformsRuntimeContext = Pick<ApplicationRuntimeContext, 'agents' | 'docu
 export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext & Pick<ApplicationRuntimeContext, 'dataEngine' | 'blobs' | 'createId'>) {
   return {
     sampleNarrative: (input: SampleNarrativeInput, signal?: AbortSignal) => sampleRuntimeNarrative(ctx, input, signal),
-    previewLoomScript: async (input: { source: string; text: string; phase?: TextTransformPhase; settings?: LoomScriptSettings }) => {
+    previewLoomScript: async (input: { source: string; text: string; phase?: TextTransformPhase; streaming?: boolean; settings?: LoomScriptSettings }) => {
       const metadata = parseLoomScriptSource(input.source)
       const settings = resolveLoomScriptSettings(metadata.settings ?? [], input.settings ?? {})
       const rules: TextTransformRuleEntry[] = metadata.contributions.flatMap(contribution => contribution.kind === 'text-transform'
         ? [{ ...resolveTextTransformContributionRule(contribution, settings), id: contribution.id, version: 1,
           owner: { kind: 'workspace' as const }, createdAt: '', updatedAt: '' }] : [])
       const source = { kind: 'narrative' as const, timelineId: 'preview', branchId: 'preview' }
-      const snapshot = projectHistoryEntries({ source, phase: input.phase ?? 'display', rules,
+      const snapshot = projectHistoryEntries({ streaming: input.streaming, source, phase: input.phase ?? 'display', rules,
         entries: [{ id: 'sample', source, text: input.text, sequence: 0 }] })
       const extractions = metadata.contributions.flatMap(contribution => {
         if (contribution.kind !== 'text-extractor') return []
@@ -212,10 +213,29 @@ export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext & P
       return { deleted: mutation.value, mutation: mutation.mutation }
     },
 
-    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase; entryIds?: string[]; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }> => {
+    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase; entryIds?: string[]; streamingEntries?: Array<{ id: string; text: string; role?: 'user' | 'assistant' }>; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }> => {
       input = structuredClone(input)
       await assertHistoryInstallationAccess(ctx, input)
       const snapshot = await projectRuntimeHistory(ctx, input.source, input.phase, input.consumerAgentSessionId, input.entryIds)
+      if (input.streamingEntries?.length) {
+        if (input.phase !== 'display') throw new Error('Streaming snapshots are display-only')
+        if (input.streamingEntries.length > 64 || input.streamingEntries.reduce((n, entry) => n + entry.text.length, 0) > 2_000_000) throw new Error('Streaming snapshot budget exceeded')
+        if (new Set(input.streamingEntries.map(entry => entry.id)).size !== input.streamingEntries.length) throw new Error('Duplicate streaming entry ID')
+        const effective = await resolveEffectiveTextPipeline(ctx, input.source, 'display', input.consumerAgentSessionId)
+        const history = await readRuntimeHistoryEntries(ctx, input.source)
+        const byId = new Map(history.map(entry => [entry.id, entry]))
+        const newest = history.reduce((n, entry) => Math.max(n, entry.sequence), 0)
+        const ids = new Set(input.streamingEntries.map(entry => entry.id))
+        const projected = projectHistoryEntries({ source: input.source, phase: 'display', streaming: true,
+          rules: effective.rules, preserveRuleOrder: true, entryIds: [...ids],
+          entries: [...history.filter(entry => !ids.has(entry.id)), ...input.streamingEntries.map((entry, index) => ({
+            ...entry, source: input.source, sequence: byId.get(entry.id)?.sequence ?? newest + index + 1,
+          }))],
+        })
+        snapshot.entries = [...snapshot.entries.filter(entry => !ids.has(entry.id)), ...projected.entries]
+        snapshot.matches = [...snapshot.matches.filter(match => !ids.has(match.entryId)), ...projected.matches]
+        snapshot.diagnostics.push(...projected.diagnostics)
+      }
       if (input.entryIds !== undefined) {
         const ids = new Set(input.entryIds)
         snapshot.entries = snapshot.entries.filter(entry => ids.has(entry.id))
@@ -313,7 +333,7 @@ export async function resolveEffectiveTextPipeline(
   phase: TextTransformPhase,
   consumerAgentSessionId?: string,
   consumerPresetId?: string,
-): Promise<{ rules: TextTransformRuleEntry[]; extractors: TextExtractorEntry[]; consumer?: TextPipelineConsumer; diagnostics: Array<{ code: string; message: string; ruleId?: string }> }> {
+): Promise<{ rules: TextTransformRuleEntry[]; extractors: TextExtractorEntry[]; consumer?: TextPipelineConsumer; diagnostics: TextTransformDiagnostic[] }> {
   if (consumerPresetId !== undefined) {
     if (source.kind !== 'narrative' || consumerAgentSessionId !== undefined) {
       throw new Error('Explicit Narrative Preset and Session consumer are mutually exclusive')
@@ -381,6 +401,8 @@ export async function resolveEffectiveTextPipeline(
     && (item.owner.kind !== 'card' && item.owner.kind !== 'preset' || isOwnerActive(item.owner, presetId, cardId))))
     .map(use => ({
       code: 'text.use_unresolved',
+      presetId, presetName: preset?.label, resourceKind: use.kind, referenceIndex: uses.indexOf(use) + 1,
+      resourceName: (use.kind === 'rule' ? rules : extractors).find(item => item.id === use.id)?.name,
       message: `Preset ${use.kind} reference is unavailable: ${use.id}`,
       ...(use.kind === 'rule' ? { ruleId: use.id } : {}),
     }))
@@ -389,8 +411,8 @@ export async function resolveEffectiveTextPipeline(
       && (configured('rule', rule)?.enabled ?? rule.enabled)
       && isExtensionResourceAvailable(rule.origin, availableInstallations))
     .map(rule => configured('rule', rule)?.enabled === true && !rule.enabled ? { ...rule, enabled: true } : rule)
-    .sort((left, right) => (configured('rule', left)?.orderIndex ?? left.orderIndex)
-      - (configured('rule', right)?.orderIndex ?? right.orderIndex) || left.id.localeCompare(right.id))
+    .sort((left, right) => (left.orderGroupExplicit ? left.orderGroup! : configured('rule', left) ? 0 : left.orderGroup ?? 0) - (right.orderGroupExplicit ? right.orderGroup! : configured('rule', right) ? 0 : right.orderGroup ?? 0) || (configured('rule', left) ? '' : left.orderGroupKey ?? '').localeCompare(configured('rule', right) ? '' : right.orderGroupKey ?? '') || (left.orderOverridden ? left.orderIndex : configured('rule', left)?.orderIndex ?? left.orderIndex)
+      - (right.orderOverridden ? right.orderIndex : configured('rule', right)?.orderIndex ?? right.orderIndex) || (left.localOrder ?? 0) - (right.localOrder ?? 0) || left.id.localeCompare(right.id))
   const override = await readTextPipelineOverride(ctx, source, phase, consumerAgentSessionId)
   return {
     diagnostics: [...scriptContributions.diagnostics, ...diagnostics],

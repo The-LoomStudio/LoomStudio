@@ -43,7 +43,7 @@ export function OfficialContentDialog(props: {
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught)
       if (active.current) setError(message)
-      notify.error(message)
+      notify.failure('官方资源操作未完成', message)
     } finally {
       pending.current = false
       if (active.current) setBusy(false)

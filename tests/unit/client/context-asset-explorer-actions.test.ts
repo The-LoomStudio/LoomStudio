@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
-import { ContextAssetExplorer } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-workbench.js'
+import { ContextAssetExplorer, ContextAssetEditor } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-workbench.js'
+import { ContextAssetDetailHeader } from '../../../apps/studio-client/src/features/prompt-resources/ui/context-asset-detail-header/context-asset-detail-header.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], cleanups: [] as (() => void)[] }))
@@ -68,6 +69,47 @@ describe('Context Asset explorer action outcomes', () => {
     expect(actions.map(action => action.id)).toContain('addMessageSequence')
     expect(actions.map(action => action.id)).not.toContain('add')
     expect(actions.map(action => action.id)).not.toContain('duplicate')
+  })
+
+  it('toggles only a folder and displays inherited disabling without changing child switches', () => {
+    const state = fixture()
+    const onEntry = { id: 'on', kind: 'entry' as const, label: 'On', enabled: true }
+    const offEntry = { id: 'off', kind: 'entry' as const, label: 'Off', enabled: false }
+    const anchor = { id: 'anchor', kind: 'virtual' as const, label: '@custom.anchor' }
+    const folder = { id: 'folder', kind: 'folder' as const, label: 'Optional group', enabled: false, children: [onEntry, offEntry, anchor] }
+    state.props.displayNodes = [folder]
+    const tree = state.tree().props
+    const renderTrailing = tree.renderTrailing as (node: unknown) => unknown
+    const isMuted = tree.isMuted as (node: unknown) => boolean
+    expect([folder, ...folder.children].every(isMuted)).toBe(true)
+    const folderToggle = elements(renderTrailing(folder)).find(element => element.type === 'button')!
+    expect(folderToggle.props['aria-label']).toBe('Enable group Optional group')
+    ;(folderToggle.props.onClick as (event: unknown) => void)({ stopPropagation() {} })
+    expect(state.props.onToggleEnabled).toHaveBeenCalledExactlyOnceWith('folder', true)
+    const childToggle = elements(renderTrailing(onEntry)).find(element => element.type === 'button')!
+    expect(childToggle.props['aria-pressed']).toBe(true)
+    expect(elements(renderTrailing(anchor)).find(element => element.props.role === 'img')?.props['aria-label']).toContain('Optional group')
+    expect(elements(renderTrailing({ ...folder, category: 'preset-root' })).some(element => element.type === 'button')).toBe(false)
+    expect(elements(renderTrailing({ ...folder, readOnly: true })).some(element => element.type === 'button')).toBe(false)
+
+    const editor = elements(ContextAssetEditor({
+      node: onEntry, pathNodes: [folder, onEntry], activationEditable: true, editorMode: 'source', metadataOpen: false,
+      t: state.props.t, onChangeNode: vi.fn(), onCommitNode: vi.fn(), onEditorModeChange: vi.fn(), onMetadataOpenChange: vi.fn(),
+    }))
+    expect(editor.find(element => 'inheritedDisabled' in element.props)?.props.inheritedDisabled).toBe(true)
+    const header = editor.find(element => element.type === ContextAssetDetailHeader)!
+    const headerElements = elements(ContextAssetDetailHeader(header.props as ComponentProps<typeof ContextAssetDetailHeader>))
+    expect(headerElements.find(element => element.props.role === 'status')?.props.children).toContain('Optional group')
+    expect(headerElements.find(element => 'checked' in element.props)?.props.checked).toBe(true)
+
+    folder.enabled = true
+    const restoredIsMuted = state.tree().props.isMuted as (node: unknown) => boolean
+    expect(restoredIsMuted(onEntry)).toBe(false)
+    expect(restoredIsMuted(anchor)).toBe(false)
+    expect(restoredIsMuted(offEntry)).toBe(true)
+    expect(folder.children).toEqual([onEntry, offEntry, anchor])
+    expect(onEntry.enabled).toBe(true)
+    expect(offEntry.enabled).toBe(false)
   })
 
   it.each(['add', 'duplicate', 'delete'])('keeps the current selection on failed %s', async action => {

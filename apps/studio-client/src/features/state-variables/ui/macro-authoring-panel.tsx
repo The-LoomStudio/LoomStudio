@@ -14,6 +14,7 @@ import styles from './state-variables-panel.module.scss'
 export type MacroAuthoringSource = {
   id: string
   kind: 'card' | 'preset' | 'workspace' | 'extension'
+  sourceGroup?: 'card' | 'extension' | 'personal'
   label: string
   version: number
   macros: Record<string, string>
@@ -178,7 +179,7 @@ export function useMacroAuthoring(sources: MacroAuthoringSource[], t: Translator
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)
       if (mountedRef.current) setError(message)
-      notify.error(message)
+      notify.failure('保存宏失败', message)
     } finally {
       if (mountedRef.current) setSavingSourceId(undefined)
     }
@@ -208,25 +209,33 @@ export function MacroAuthoringExplorer(props: { controller: MacroAuthoringContro
   const search = normalizeSearchText(query)
 
   const nodes: FileTreeNode[] = useMemo(() => {
-    return controller.sources.flatMap(source => {
+    const groups = new Map<string, FileTreeNode[]>()
+    for (const source of controller.sources) {
+      const group = source.sourceGroup ?? (source.kind === 'card' || source.kind === 'extension' ? source.kind : 'personal')
+      const groupLabel = t(`registrySource.${group}`)
       const rows = controller.sourceRows[source.id] ?? []
-      const sourceMatches = normalizeSearchText(`${source.label} ${source.kind}`).includes(search)
+      const sourceMatches = normalizeSearchText(`${source.label} ${source.kind} ${groupLabel}`).includes(search)
       const matchingRows = sourceMatches ? rows : rows.filter(row => normalizeSearchText(
         `${row.name} ${row.value ?? ''} ${row.options.map(option => `${option.label} ${option.value}`).join(' ')}`
       ).includes(search))
-      if (search && !sourceMatches && matchingRows.length === 0) return []
-      return [{
+      if (search && !sourceMatches && matchingRows.length === 0) continue
+      const children = groups.get(group) ?? []
+      children.push({
         id: `source:${source.id}`,
         label: source.label,
         kind: 'folder' as const,
-        meta: source.kind,
         children: matchingRows.map(row => ({
           id: `${source.id}:${row.id}`,
           label: row.name || t('macroAuthoring.name'),
           kind: 'entry' as const,
           meta: row.options.length > 0 ? t('macroAuthoring.optionCount', { count: row.options.length }) : undefined,
         }))
-      }]
+      })
+      groups.set(group, children)
+    }
+    return (['card', 'extension', 'personal'] as const).flatMap(group => {
+      const children = groups.get(group)
+      return children ? [{ id: `section:${group}`, isSection: true, label: t(`registrySource.${group}`), children }] : []
     })
   }, [controller.sources, controller.sourceRows, search, t])
 
@@ -256,21 +265,22 @@ export function MacroAuthoringExplorer(props: { controller: MacroAuthoringContro
         {nodes.length === 0 ? (
           <span className={styles.emptyState}>{search ? t('macroInspector.searchEmpty') : t('macroAuthoring.empty')}</span>
         ) : (
-          <FileTree
+          <FileTree canOpenFolderDetails={() => true}
           ariaLabel={t('macroAuthoring.title')}
           nodes={nodes}
           selectedId={controller.selectedNodeId}
-          expandedIds={search ? [...new Set([...expandedIds, ...nodes.map(node => node.id)])] : expandedIds}
+          expandedIds={search ? [...new Set([...expandedIds, ...nodes.flatMap(node => node.children?.map(child => child.id) ?? [])])] : expandedIds}
           onExpandedIdsChange={setExpandedIds}
           onSelect={node => {
             controller.selectNode(node.id)
-            if (node.kind === 'entry') props.onSelect?.(node.id)
+            props.onSelect?.(node.id)
           }}
           renderIcon={node => {
             if (node.kind === 'folder') {
-              if (node.meta === 'card') return <BookOpen size={16} />
-              if (node.meta === 'preset') return <Bot size={16} />
-              if (node.meta === 'workspace') return <Boxes size={16} />
+              const kind = controller.sources.find(source => `source:${source.id}` === node.id)?.kind
+              if (kind === 'card') return <BookOpen size={16} />
+              if (kind === 'preset') return <Bot size={16} />
+              if (kind === 'workspace') return <Boxes size={16} />
               return <Component size={16} />
             }
             return <Braces size={16} />

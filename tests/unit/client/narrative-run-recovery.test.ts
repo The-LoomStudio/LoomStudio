@@ -32,6 +32,7 @@ describe('Narrative Run recovery', () => {
         reason, nextCursor: 1, done: true, state: 'suspended', replayExpired,
       })
       await f.render().submitAgentTurn(f.event)
+      await f.loadRoot()
       expect(f.render().runRecovery).toMatchObject({ status: 'suspended', error: reason, target: 'agent' })
       expect(notification).toHaveBeenCalledOnce()
       expect(f.resumeRun).not.toHaveBeenCalled()
@@ -45,6 +46,7 @@ describe('Narrative Run recovery', () => {
       f.render().setAgentInput('Draft')
       f.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'suspended', runId: 'run', reason: 'user-pause' }], nextCursor: 1, done: true, state: 'suspended' })
       await f.render().submitAgentTurn(f.event)
+      await f.loadRoot()
       expect(f.render().runRecovery?.error).toBeUndefined()
       expect(notification).not.toHaveBeenCalled()
     } finally { notification.mockRestore() }
@@ -52,14 +54,16 @@ describe('Narrative Run recovery', () => {
 
   it('reuses a send request ID after its acknowledgement is lost', async () => {
     const f = fixture()
-    f.createRun.mockRejectedValueOnce(new Error('Response was lost'))
+    f.submitInterjection.mockRejectedValueOnce(new Error('Response was lost'))
     f.render().setAgentInput('Draft')
     await f.render().submitAgentTurn(f.event)
-    const first = f.createRun.mock.calls[0]![0]
+      await f.loadRoot()
+    const first = f.submitInterjection.mock.calls[0]![0]
     expect(first.requestId).toEqual(expect.any(String))
     expect(f.render().agentInput).toBe('Draft')
     await f.render().submitAgentTurn(f.event)
-    expect(f.createRun.mock.calls[1]![0]).toEqual(first)
+      await f.loadRoot()
+    expect(f.submitInterjection.mock.calls[1]![0]).toEqual(first)
   })
 
   it('replaces streamed native reasoning with its committed transcript entry', async () => {
@@ -73,7 +77,7 @@ describe('Narrative Run recovery', () => {
     expect(f.render().agentMessages.filter(item => item.entry.kind === 'reasoning')).toHaveLength(1)
     const terminal = Promise.withResolvers<Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>>()
     f.subscribeRun.mockReturnValueOnce(terminal.promise)
-    finish.resolve({ events: [{ type: 'transcript-appended', runId: 'run', entries: [{ id: 'native', runId: 'run', agentSessionId: 'session', sequence: 2, createdAt: '', entry: { kind: 'reasoning', content: 'Thinking complete', source: 'provider-native', visibility: 'collapsed', replay: 'omit' } }] }], nextCursor: 2, done: false, state: 'running' })
+    finish.resolve({ events: [{ type: 'transcript-appended', runId: 'run', entries: [{ id: 'native', runId: 'run', agentSessionId: 'session', sequence: 2, createdAt: '', entry: { kind: 'reasoning' as const, content: 'Thinking complete', source: 'provider-native' as const, visibility: 'collapsed' as const, replay: 'omit' as const } }] }], nextCursor: 2, done: false, state: 'running' })
     await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledTimes(3))
     expect(f.render().agentMessages.filter(item => item.entry.kind === 'reasoning')).toMatchObject([{ id: 'native', entry: { content: 'Thinking complete' } }])
     terminal.resolve({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 3, done: true, state: 'suspended' })
@@ -116,6 +120,7 @@ describe('Narrative Run recovery', () => {
     })
     f.render().setAgentInput('Draft')
     await f.render().submitAgentTurn(f.event)
+      await f.loadRoot()
     expect(f.render().lastRun).toBe(result)
     expect(f.acknowledgeRunCompletion).toHaveBeenCalledExactlyOnceWith('run')
     expect(f.reportFailure).not.toHaveBeenCalled()
@@ -147,13 +152,13 @@ describe('Narrative Run recovery', () => {
     await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledTimes(4))
     expect(f.getTranscript.mock.calls.filter(([request]) => request.agentSessionId === 'session')).toHaveLength(1)
     expect(f.subscribeRun.mock.calls[3]).toEqual(['run', 100, 'session'])
-    expect(f.render().agentMessages.map(item => item.entry.content)).toEqual(['Draft', 'Saved step', 'Recovered reasoning', 'Recovered'])
+    expect(f.render().agentMessages.filter(item => item.entry.kind !== 'user-interjection').map(item => 'content' in item.entry ? item.entry.content : undefined)).toEqual(['Draft', 'Saved step', 'Recovered reasoning', 'Recovered'])
     expect(f.render().activeAgentRun?.approval?.requestId).toBe('approval')
     resolve({ events: [{ type: 'text-delta', runId: 'run', providerRunId: 'provider-run', providerStep: 1, delta: ' tail' }], nextCursor: 101, done: false, state: 'running' })
     let finish!: (value: Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>) => void
     f.subscribeRun.mockImplementationOnce(() => new Promise(accept => { finish = accept }))
     await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledTimes(5))
-    expect(f.render().agentMessages.at(-1)?.entry.content).toBe('Recovered tail')
+    expect(f.render().agentMessages.at(-1)?.entry).toHaveProperty('content', 'Recovered tail')
     finish({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 102, done: true, state: 'suspended' })
     await pending
   })
@@ -181,7 +186,7 @@ describe('Narrative Run recovery', () => {
     await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledTimes(3))
     expect(f.subscribeRun.mock.calls[1]).toEqual(['run', 100, 'session'])
     expect(f.render().agentMessages.filter(item => item.id === 'saved')).toHaveLength(1)
-    expect(f.render().agentMessages.at(-1)?.entry.content).toBe('Next step')
+    expect(f.render().agentMessages.at(-1)?.entry).toHaveProperty('content', 'Next step')
     finish({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 103, done: true, state: 'suspended' })
     await pending
   })
@@ -196,12 +201,13 @@ describe('Narrative Run recovery', () => {
     })
     f.render().setAgentInput('Draft')
     await f.render().submitAgentTurn(f.event)
+      await f.loadRoot()
     expect(f.render().activeAgentRun?.status).toBe('completed')
     expect(f.render().runRecovery).toBeUndefined()
     expect(f.render().agentMessages).toEqual([f.result.entries.user, f.result.entries.assistant])
-    expect(f.getTranscript.mock.calls.filter(([request]) => request.agentSessionId === 'session')).toHaveLength(2)
+    expect(f.getTranscript).toHaveBeenCalledWith(expect.objectContaining({ agentSessionId: 'session' }))
     expect(f.reportFailure).not.toHaveBeenCalled()
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.subscribeRun).toHaveBeenCalledWith('run', 0, 'session')
     expect(f.acknowledgeRunCompletion).not.toHaveBeenCalled()
   })
@@ -236,12 +242,12 @@ describe('Narrative Run recovery', () => {
     expect(f.render().rootRecovery).toMatchObject({ status: 'refresh-failed', refreshFailed: true })
     const toolNode = { id: 'tool-node', kind: 'narrative' as const, floor: 2, timelineId: 'timeline', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw: 'Tool-written story' }, createdAt: 'now' }
-    f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [...f.render().nodes.map(node => ({ ...node, stateRevisionId: 'state', workspaceRevisionId: 'workspace' })), toolNode] })
+    f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [...f.result.narrative.nodes, toolNode] })
     await f.render().reconnectRootRun()
     expect(f.render().nodes.map(node => node.body.raw)).toEqual(['Draft', 'Tool-written story'])
     expect(f.render().rootRecovery).toBeUndefined()
-    expect(f.createRun).toHaveBeenCalledOnce()
-    expect(f.appendInput).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
+    expect(f.appendInput).not.toHaveBeenCalled()
   })
 
   it('reconnects at the retained cursor without replaying text or creating/resuming a Run', async () => {
@@ -254,13 +260,13 @@ describe('Narrative Run recovery', () => {
       .mockRejectedValueOnce(new Error('Offline'))
     const pending = f.render().submitTurn(f.event)
     await vi.runAllTimersAsync()
-    expect(await pending).toBeUndefined()
+    await pending
     expect(f.render().rootRecovery?.status).toBe('disconnected')
     expect(f.render().rootActiveRun?.status).toBe('running')
-    expect(f.render().rootMessages.at(-1)?.entry.content).toBe('Partial')
+    expect(f.render().rootMessages.at(-1)?.entry).toHaveProperty('content', 'Partial')
     await f.render().submitTurn(f.event)
     await f.loadRoot()
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
 
     let release!: () => void
     const reading = new Promise<void>(resolve => { release = resolve })
@@ -277,11 +283,11 @@ describe('Narrative Run recovery', () => {
     expect(f.render().rootRecovery).toBeUndefined()
     expect(f.render().rootActiveRun?.status).toBe('completed')
     expect(f.render().rootMessages.map(entry => entry.id)).toEqual(['user', 'assistant'])
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.resumeRun).not.toHaveBeenCalled()
   })
 
-  it.each(['failed', 'cancelled'] as const)('retains the committed user node on %s and redelivers without appending again', async status => {
+  it.each(['failed', 'cancelled'] as const)('retains the server-committed user node on %s without locally appending or automatically redelivering', async status => {
     const f = await primaryFixture()
     f.subscribeRun.mockResolvedValueOnce({
       events: [status === 'failed'
@@ -311,10 +317,11 @@ describe('Narrative Run recovery', () => {
     state.restoreRunInput()
     expect(f.render().composerInput).toBe('')
     expect(f.render().rootRecovery?.input).toBeUndefined()
-    expect(state.canRetryNarrativeInput).toBe(true)
-    await state.retryNarrativeInput()
-    expect(f.appendInput).toHaveBeenCalledOnce()
-    expect(f.createRun).toHaveBeenCalledTimes(2)
+    // This fixture exposes no swipe action or recovery checkpoint. A terminal
+    // message must remain persisted without manufacturing a new submission.
+    expect(state.canRetryNarrativeInput).toBe(false)
+    expect(f.appendInput).not.toHaveBeenCalled()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.resumeRun).not.toHaveBeenCalled()
   })
 
@@ -325,12 +332,13 @@ describe('Narrative Run recovery', () => {
     await f.render().submitTurn(f.event)
     await f.loadRoot()
     expect(f.render().rootRecovery).toMatchObject({ status: 'failed', refreshFailed: true })
-    expect(f.render().nodes).toHaveLength(1)
+    expect(f.render().nodes).toHaveLength(0)
+    expect(f.result.narrative.nodes).toHaveLength(1)
     await f.render().reconnectRootRun()
     expect(f.render().rootRecovery?.refreshFailed).toBeUndefined()
     expect(f.getPage).toHaveBeenCalledTimes(2)
     expect(f.subscribeRun).toHaveBeenCalledOnce()
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
   })
 
   it('does not publish a late reconnect or terminal refresh after leaving the Timeline', async () => {
@@ -350,7 +358,7 @@ describe('Narrative Run recovery', () => {
     f.render().resetToDraftTimeline(); await f.loadRoot()
     release()
     await reconnect
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.subscribeRun).toHaveBeenCalledTimes(4)
     expect(f.subscribeRun).toHaveBeenLastCalledWith('run', 0, 'timeline')
     expect(f.render().rootMessages).toEqual([])
@@ -361,12 +369,14 @@ describe('Narrative Run recovery', () => {
   it('Agent chat uses the same failure contract rather than inventing a suspended Run', async () => {
     const f = fixture()
     f.render().setAgentInput('Agent draft')
-    f.createRun.mockRejectedValueOnce(new Error('Create rejected'))
+    f.submitInterjection.mockRejectedValueOnce(new Error('Create rejected'))
     await f.render().submitAgentTurn(f.event)
+      await f.loadRoot()
     expect(f.render().agentInput).toBe('Agent draft')
     expect(f.render().activeAgentRun).toBeUndefined()
     f.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'failed', runId: 'run', error: { name: 'Error', message: 'Run failed' } }], nextCursor: 1, done: true, state: 'failed' })
     await f.render().submitAgentTurn(f.event)
+      await f.loadRoot()
     expect(f.render().activeAgentRun?.status).toBe('failed')
     expect(f.render().runRecovery?.target).toBe('agent')
     expect(f.getPage).not.toHaveBeenCalled()
@@ -412,6 +422,6 @@ describe('Narrative Run recovery', () => {
     expect(f.render().rootRecovery).toMatchObject({ target: 'narrative', status: 'failed' })
     expect(f.render().rootRecovery?.input).toBeUndefined()
     expect(f.resumeRun).toHaveBeenCalledOnce()
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
   })
 })

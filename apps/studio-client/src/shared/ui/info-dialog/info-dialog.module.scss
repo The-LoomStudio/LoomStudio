@@ -1,0 +1,13 @@
+.dialog { width: min(640px, calc(100vw - 32px)); }
+.content {
+  min-width: 0;
+  font-size: var(--loom-font-size-2);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  > :first-child { margin-top: 0; }
+  > :last-child { margin-bottom: 0; }
+  pre { max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--loom-font-size-1); }
+  > dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px 20px; margin: 0; }
+  > dl > dt { color: var(--loom-color-text-muted); }
+  > dl > dd { margin: 0; min-width: 0; }
+}

@@ -1,3 +1,4 @@
+import { readChatAttachments } from '@loom-studio/shared'
 import { parseAgentApprovalPolicy } from '@loom-studio/application-runtime'
 import type {
   ApplicationRuntime,
@@ -125,6 +126,23 @@ export const agentsProcedures = {
     return readAgentTurnInput(params)
   })).mutation(({ ctx, input }) => ctx.runtime.invokeAgentTurn(input, ctx.request)),
   'agent.run.list': procedure.input(jsonInput((params: JsonValue | undefined): { timelineId?: string } => ({ timelineId: readOptionalString(params, 'timelineId') }))).query(({ ctx, input }) => getAgentRunService(ctx.runtime).list(input)),
+  'reviseAgentInput': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['reviseAgentInput']>[0] => ({
+    agentSessionId: readString(params, 'agentSessionId'), entryId: readString(params, 'entryId'),
+    expectedContent: readString(params, 'expectedContent'), content: readString(params, 'content'),
+    expectedAttachments: readChatAttachments(isRecord(params) ? params.expectedAttachments : undefined),
+    attachments: readChatAttachments(isRecord(params) ? params.attachments : undefined),
+  }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).reviseInput(input, ctx.request)),
+  'submitAgentInterjection': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['submitAgentInterjection']>[0] => {
+    const mode = readString(params, 'mode')
+    if (mode !== 'discussion' && mode !== 'narrative') throw new Error('Invalid interjection mode')
+    const target = readOptionalObject(params, 'narrativeTarget')
+    return { agentSessionId: readString(params, 'agentSessionId'), requestId: readString(params, 'requestId'),
+      input: readString(params, 'input'),
+      attachments: readChatAttachments(isRecord(params) ? params.attachments : undefined), mode,
+      macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
+      activationFacts: readOptionalObject(params, 'activationFacts'),
+      ...(target ? { narrativeTarget: { timelineId: readString(target, 'timelineId'), branchId: readString(target, 'branchId') } } : {}) }
+  })).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).interject(input, ctx.request)),
   'agent.run.create': procedure.input(jsonInput(readAgentTurnInput)).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).create(input, ctx.request)),
   'agent.run.subscribe': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; cursor?: number; agentSessionId?: string } => ({ runId: readString(params, 'runId'), cursor: readOptionalNumber(params, 'cursor'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).query(({ ctx, input }) => getAgentRunService(ctx.runtime).subscribe(input.runId, input.cursor, input.agentSessionId)),
   'agent.run.acknowledge-completion': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).acknowledgeCompletion(input.runId)),
@@ -260,6 +278,7 @@ function readAgentTurnInput(params: JsonValue | undefined): InvokeAgentTurnInput
     requestId: readOptionalString(params, 'requestId'),
     agentSessionId: readString(params, 'agentSessionId'),
     input: readString(params, 'input'),
+    attachments: readChatAttachments(isRecord(params) ? params.attachments : undefined),
     ...(retry ? { retry: { entryId: readString(retry, 'entryId') } } : {}),
     activationFacts: readOptionalObject(params, 'activationFacts'),
     narrativeTarget: readOptionalNarrativeTarget(params),

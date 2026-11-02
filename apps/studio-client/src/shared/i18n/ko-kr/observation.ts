@@ -1,4 +1,6 @@
 export const messages = {
+  'observation.runInfo': '실행 정보',
+  'observation.relatedResources': '관련 리소스',
   "observation.readComplete": "전체 읽기 완료",
   "observation.readPartial": "부분 읽기",
   "observation.currentStep": "현재 단계",

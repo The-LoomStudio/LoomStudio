@@ -1,3 +1,5 @@
+import { collectPromptInputs } from '../../../packages/application-runtime/src/cards/workspace-codec.js'
+import { createVariableRenderContext } from '../../../packages/application-runtime/src/prompt/variables.js'
 import type { ObservationBuild } from '../../../packages/application-runtime/src/observability/types.js'
 import { describe, expect, it } from 'vitest'
 import { compilePromptDataModel } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
@@ -47,6 +49,49 @@ const basicSourceNodes: SourceNode[] = [
 ]
 
 describe('PromptBuildPipeline', () => {
+  it('restores a disabled folder without rewriting descendants or external Lore', () => {
+    const root: Parameters<typeof collectPromptInputs>[0]['nodes'][number] = {
+      id: 'preset', kind: 'module', category: 'preset', label: 'Preset', children: [{
+        id: 'message', kind: 'message', label: 'Message', capabilities: { roleHint: 'system' }, children: [{
+          id: 'optional', kind: 'folder', label: 'Optional', enabled: false, children: [
+            { id: 'on', kind: 'entry', label: 'On', enabled: true, body: 'ENABLED_TEXT' },
+            { id: 'off', kind: 'entry', label: 'Off', enabled: false, body: 'DISABLED_TEXT' },
+            { id: 'nested', kind: 'folder', label: 'Nested', enabled: false, children: [
+              { id: 'nested-on', kind: 'entry', label: 'Nested on', enabled: true, body: 'NESTED_TEXT' },
+            ] },
+            { id: 'anchor', kind: 'virtual', label: 'Anchor', capabilities: { targetAnchorId: '@custom.lore' } },
+          ],
+        }],
+      }],
+    }
+    const lore: typeof root = { id: 'lore', kind: 'module', category: 'lore', label: 'Lore', children: [
+      { id: 'external', kind: 'entry', label: 'External', enabled: true, body: 'EXTERNAL_TEXT', capabilities: { targetAnchorId: '@custom.lore' } },
+    ] }
+    const folder = root.children![0]!.children![0]!
+    const originalChildren = structuredClone(folder.children)
+    const originalLore = structuredClone(lore)
+    function build() {
+      const sourceNodes: SourceNode[] = []
+      const contributions: PromptContribution[] = []
+      collectPromptInputs({ nodes: [root, lore], contributions, sourceNodes, variables: createVariableRenderContext(),
+        parentEnabled: true, parentActivationGates: [], parentId: null, inheritedCategory: undefined, inheritedSourceId: undefined })
+      return { sourceNodes, output: compilePromptDataModel({ sourceNodes, contributions, skeletonRootId: root.id }) }
+    }
+    const disabled = build()
+    expect(disabled.output.messages).toEqual([])
+    expect(disabled.sourceNodes.find(node => node.id === 'on')).toMatchObject({ enabled: false, evidence: { disabledReason: 'ancestor disabled' } })
+    expect(disabled.sourceNodes.find(node => node.id === 'external')?.enabled).toBe(true)
+    folder.enabled = true
+    const restored = build()
+    const text = restored.output.messages.map(message => message.content).join('\n')
+    expect(text).toContain('ENABLED_TEXT')
+    expect(text).toContain('EXTERNAL_TEXT')
+    expect(text).not.toContain('DISABLED_TEXT')
+    expect(text).not.toContain('NESTED_TEXT')
+    expect(folder.children).toEqual(originalChildren)
+    expect(lore).toEqual(originalLore)
+  })
+
   it('keeps Prompt output intact when evidence exceeds its budget or rejects writes', () => {
     const model = { sourceNodes: [{ ...node('entry', null, 0, 'entry'), body: 'x'.repeat(300_000) }], contributions: [] }
     const observation: ObservationBuild = {}

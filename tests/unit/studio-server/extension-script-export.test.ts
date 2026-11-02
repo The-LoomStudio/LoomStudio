@@ -100,11 +100,18 @@ describe('saved Extension Script archive export', () => {
     await expect(f.exporter({ archive: f.archive, packageId, version, installationId: f.installationId })).rejects.toThrow('version differs')
   })
 
-  it.each(['missing', 'foreign-owner'] as const)('rejects an installed contribution with %s content', async mode => {
+  it('removes explicitly deleted contributions from the exported manifest', async () => {
     const f = await fixture()
     const script = (await f.documents.get(f.scriptId!))!
-    if (mode === 'missing') await f.documents.delete({ id: script.id, expectedVersion: script.version })
-    else await f.documents.write({ id: script.id, type: script.type, expectedVersion: script.version, content: { ...(script.content as LoomScriptContent), owner: { kind: 'user' } } })
-    await expect(f.exporter({ archive: f.archive, packageId, version, installationId: f.installationId })).rejects.toThrow(mode === 'missing' ? 'Script is missing' : 'owner does not match')
+    await f.runtime.deleteLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version })
+    const result = await f.exporter({ archive: f.archive, packageId, version, installationId: f.installationId })
+    expect(JSON.parse(Buffer.from(unzipSync(result)['manifest.json']).toString()).contributes.loomScripts).toEqual([])
+  })
+
+  it('rejects an installed contribution with foreign-owner content', async () => {
+    const f = await fixture()
+    const script = (await f.documents.get(f.scriptId!))!
+    await f.documents.write({ id: script.id, type: script.type, expectedVersion: script.version, content: { ...(script.content as LoomScriptContent), owner: { kind: 'user' } } })
+    await expect(f.exporter({ archive: f.archive, packageId, version, installationId: f.installationId })).rejects.toThrow('owner does not match')
   })
 })

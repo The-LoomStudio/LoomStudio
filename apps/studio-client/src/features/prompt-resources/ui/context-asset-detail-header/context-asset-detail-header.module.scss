@@ -212,3 +212,6 @@
 .muted p {
   color: var(--loom-color-text-subtle);
 }
+
+.enablementHint { margin: 0; color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-2); }
+.muted .titleInput { color: var(--loom-color-text-subtle); }

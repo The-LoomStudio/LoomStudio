@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { formatEntityReference, parseResourceLink } from '@loom-studio/shared'
 import type { StudioApi } from '../api/studio-api.js'
-import { useStudioPanelStore, type StudioPanelId } from './studio-layout-store.js'
+import { useStudioPanelStore, useStudioLayoutStore, type StudioPanelId } from './studio-layout-store.js'
 import { isStudioTool } from './studio-tool.js'
 import { readStudioRoute } from './studio-route.js'
 import { buildStudioTargetLink, resolveStudioTarget } from './studio-target.js'
@@ -23,6 +23,12 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
   const cardSelection = useRef(0)
 
   const publish = useCallback((next: StudioWorkspace, replace = false) => {
+    const previous = current.current
+    if (previous.targetUri === undefined) {
+      const remember = useStudioLayoutStore.getState().rememberPanelPosition
+      if (previous.panel) remember(JSON.stringify([input.endpoint, previous.cardId, previous.panel]), { search: previous.search, resourceId: previous.resourceId, assetId: previous.assetId })
+      if (previous.tool) remember(JSON.stringify([input.endpoint, previous.cardId, previous.tool]), { search: previous.toolSearch ?? '' })
+    }
     current.current = next
     persistStudioWorkspace(input.endpoint, next)
     return navigate(STUDIO_ENTRY, { replace, state: studioHistoryState(input.endpoint, next) })
@@ -70,21 +76,28 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
     return () => { window.removeEventListener('loom:open-reference', handle); window.removeEventListener('loom:open-observation', handleObservation) }
   }, [openReference, publish])
 
-  const openPanel = useCallback((panel: StudioPanelId, target: { cardId?: string; assetId?: string } = {}) => {
+  const openPanel = useCallback((panel: StudioPanelId, target: { cardId?: string; assetId?: string; search?: string } = {}) => {
     if (panel === 'sessions') return publish({ ...current.current, tool: 'recent', toolSearch: 'historyTab=timelines' })
     if (isStudioTool(panel)) return publish({ ...current.current, tool: panel,
-      toolSearch: current.current.tool === panel ? current.current.toolSearch : undefined })
+      toolSearch: target.search ?? (current.current.tool === panel ? current.current.toolSearch : useStudioLayoutStore.getState().panelPositions[JSON.stringify([input.endpoint, current.current.cardId, panel])]?.search) })
     if (panel === 'preset') panel = 'agent'
     const previous = current.current
+    const remembered = useStudioLayoutStore.getState().panelPositions[JSON.stringify([input.endpoint, target.cardId ?? previous.cardId, panel])]
+    const restore = target.cardId === undefined && target.assetId === undefined ? remembered : undefined
     return publish({
       ...previous, panel, tool: undefined, toolSearch: undefined, extensionWorkspace: undefined, ...target, targetUri: undefined, referenceUri: undefined,
-      resourceId: panel === previous.panel ? previous.resourceId : undefined,
-      assetId: target.assetId ?? (panel === previous.panel ? previous.assetId : undefined),
-      search: panel === previous.panel ? previous.search : '',
+      resourceId: panel === previous.panel ? previous.resourceId : restore?.resourceId,
+      assetId: target.assetId ?? (panel === previous.panel ? previous.assetId : restore?.assetId),
+      search: target.search ?? (panel === previous.panel ? previous.search : restore?.search ?? ''),
     })
-  }, [publish])
+  }, [publish, input.endpoint])
   const closePanel = useCallback(() => publish({
     ...current.current, panel: null, extensionWorkspace: undefined, resourceId: undefined, assetId: undefined,
+    referenceUri: undefined, targetUri: undefined, search: '',
+  }), [publish])
+  const returnToReading = useCallback(() => publish({
+    ...current.current, panel: null, tool: undefined, toolSearch: undefined,
+    extensionWorkspace: undefined, resourceId: undefined, assetId: undefined,
     referenceUri: undefined, targetUri: undefined, search: '',
   }), [publish])
   const closeTool = useCallback(() => publish({ ...current.current, tool: undefined, toolSearch: undefined }, true), [publish])
@@ -95,7 +108,7 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
   }, [closePanel, closeTool, openPanel])
 
   return {
-    closePanel, togglePanel, openPanel,
+    closePanel, togglePanel, openPanel, returnToReading,
     closeTool,
     openStoryExtensions: () => publish({
       ...current.current, tool: 'extensions', toolSearch: 'extensionView=participation',

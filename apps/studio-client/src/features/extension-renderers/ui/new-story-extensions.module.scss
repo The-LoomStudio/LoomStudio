@@ -1,0 +1,47 @@
+.dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.content,
+.section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.content { gap: 24px; }
+.section h3,
+.hint { margin: 0; }
+.section h3 { font-size: 15px; }
+
+.field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.field select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--loom-color-divider);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-subtle);
+  color: var(--loom-color-text);
+  font: inherit;
+}
+
+.field select:focus-visible {
+  outline: 2px solid var(--loom-color-accent);
+  outline-offset: 2px;
+}
+
+.field textarea { resize: vertical; }
+.list { list-style: none; padding: 0; margin: 0; }
+.choiceRow { padding: 12px 0; border-bottom: 1px solid var(--loom-color-divider); }
+.choiceRow > label { width: 100%; align-items: flex-start; }
+.identity { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.identity small,
+.hint { color: var(--loom-color-text-muted); font-size: 12px; line-height: 1.6; }
+.error { color: var(--loom-color-danger); overflow-wrap: anywhere; }

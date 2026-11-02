@@ -199,11 +199,23 @@ export type ExtensionModuleCapabilityGrants = {
   assetCapabilities?: ExtensionAssetCapability[]
 }
 
+export type ExtensionCharacterCatalogService = {
+  list(packageId: string): Promise<{ characters: Array<{ id: string; name: string; description?: string; previewUrl?: string; importedCards: Array<{ id: string; name: string }> }> }>
+  preview(packageId: string, characterId: string): Promise<{
+    packageId: string; characterId: string; version: string; digest: string; name: string
+    dependencies: Array<{ id: string; version: string; target: 'global' }>
+    embeddedPackages: Array<{ packageId: string; version: string }>
+    importedCards: Array<{ id: string; name: string }>; blockers: string[]
+  }>
+  import(input: { packageId: string; characterId: string; digest: string; allowDuplicate?: boolean }, clientId: string): Promise<{ cardId: string; name: string }>
+}
+
 export type CreateKernelOptions = {
   documents: DocumentStore
   dataCommits: DataCommitSource
   diagnostics: DiagnosticsRegistry
   extensionHost: ExtensionHost
+  characterCatalog?: ExtensionCharacterCatalogService
   extensionManager?: ExtensionManagementService
   studioVersion?: string
   kernelVersion?: string

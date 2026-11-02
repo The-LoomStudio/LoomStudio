@@ -1,10 +1,12 @@
+import type { AttachmentComposerProps } from '../../features/attachments/use-attachment-drafts.js'
+import { ContextWindowInfo } from './context-window-info.js'
 import { useRef, useState, type FormEvent, type ReactNode, type Ref } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { ChatComposer, type ChatComposerQuickAction } from '../chat-composer/chat-composer.js'
 import styles from './agent-composer.module.scss'
 import { RunRecoveryControls, type RunRecoveryControlsProps } from '../../features/narrative-runtime/ui/run-recovery-controls.js'
 
-export type AgentComposerProps = RunRecoveryControlsProps & {
+export type AgentComposerProps = RunRecoveryControlsProps & AttachmentComposerProps & {
   inputMode?: 'roleplay' | 'discussion'
   onInputModeChange?(mode: 'roleplay' | 'discussion'): void
   sendLeadingAction?: ReactNode
@@ -16,6 +18,7 @@ export type AgentComposerProps = RunRecoveryControlsProps & {
   canSendNarrative: boolean
   canRetryNarrativeInput?: boolean
   onRetryNarrativeInput?(): void
+  actionsHostRef?: Ref<HTMLDivElement>
   taskCard?: ReactNode
   composerSheet?: ReactNode
   narrativeInput: string
@@ -49,7 +52,7 @@ export function AgentComposer(props: AgentComposerProps) {
     }, 240)
   }
 
-  const hasContent = Boolean(props.narrativeInput?.trim())
+  const hasContent = Boolean(props.narrativeInput?.trim() || props.attachments?.length)
   const recovery = props.runRecovery?.target === 'narrative' ? props.runRecovery : undefined
   const disconnected = props.runRecovery?.status === 'disconnected'
   const isActive = Boolean(props.pinned || hovered || hasContent || recovery)
@@ -73,18 +76,21 @@ export function AgentComposer(props: AgentComposerProps) {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-      {props.taskCard || recovery ? <div className={styles.taskCard}>
+      <div className={styles.taskCard}>
         {recovery ? <div className={styles.floatingRecovery}><RunRecoveryControls {...props} runRecovery={recovery} /></div> : null}
-        {props.taskCard}
-      </div> : null}
+        <div className={styles.taskCapsule}>{props.taskCard}</div>
+        <div ref={props.actionsHostRef} className={styles.timelineActions} />
+      </div>
       <div className={styles.foreground}>
       <ChatComposer
+        t={props.t}
+        attachmentNotice={props.attachmentNotice} onRetryAttachment={props.onRetryAttachment} attachments={props.attachments} onAddAttachments={props.onAddAttachments} onRemoveAttachment={props.onRemoveAttachment}
         inputRef={props.inputRef}
         inputMode={props.inputMode}
         onInputModeChange={props.onInputModeChange}
-        sendLeadingAction={props.sendLeadingAction}
+        sendLeadingAction={<><ContextWindowInfo />{props.sendLeadingAction}</>}
         runStatus={props.runStatus}
-        resumeWithInput={Boolean(props.inputMode)}
+        resumeWithInput={false}
         onPause={props.onPause}
         onResume={props.onResume}
         canPreviewPrompt={props.canPreviewPrompt}
@@ -108,7 +114,6 @@ export function AgentComposer(props: AgentComposerProps) {
         unpinLabel={props.t('composer.unpin')}
         onChangeInput={props.onChangeNarrativeInput}
         onHeightChange={props.onHeightChange}
-        onPreviewPrompt={props.onPreviewPrompt}
         onSubmit={event => {
           if (disconnected || props.runRecoveryBusy) { event.preventDefault(); return }
           props.onSubmitNarrative(event)

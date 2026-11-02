@@ -153,6 +153,8 @@ Manifest declaration 是静态合同，Runtime registration 是当前事实。�
 
 ### 3.1 Package Prompt Resource 与 Agent Tool
 
+Preset 工具挂载现支持宿主、本包、依赖扩展三类可移植引用；旧 toolId 保留本包语义。声明、解析、依赖与授权边界见 [Tool System](../application/agent/tool-system.md#扩展预设中的可移植工具引用)。
+
 `contributes.promptResources` 和 `contributes.agentTools` 声明 Package 携带的静态资源。全局 Git / ZIP / 目录安装完成后，若该包尚无全局资源 installation，宿主自动调用现有资源导入链；仅预览下载、目录发现或启用代码模块不导入。自动导入不会为用户已有 Preset 采用 Lore 或启用工具，也不代表模块已获授权。
 
 已有资源 installation 在代码更新、回退或重装时保留，不自动覆盖用户编辑；资源替换仍需显式更新。历史安装、开发目录或自动导入失败时，可通过 `extensions.importPackageResources` / “导入资源”补入。文件安装与数据库导入不是跨系统原子事务：导入失败会明确报告包文件已安装，保留包以便修复并重试；批量远程安装同时返回已安装项与失败原因。导入后：
@@ -289,3 +291,27 @@ Client Entry、iframe source 与 Package 静态资源通过 `GET /extensions/:pa
 - 不可信 Server 代码的 Worker/进程沙箱。
 
 Server Module 当前仍是受信任本地 Node.js 代码。Host capability 不能阻止代码直接调用文件系统、网络或进程 API；强权限隔离还需要受限运行环境与明确的系统权限边界，创建 Worker 本身不能提供这项保证。
+
+### 跨包图标与 Media Asset
+
+预设图标使用 `{kind: "package", packageId, path, scope?}`。`path` 始终相对目标扩展包根目录；同包图标省略 scope 时跟随消费者安装，跨包图标必须显式选择 `global` 或 `card` 并在 manifest.dependencies 声明目标包及版本。card 只表示当前 Card，不允许指定另一个 Card。宿主安装解析后补入 target；作者目录导出只保留可移植 scope，不写入 Card ID。
+
+作者构建离线检查引用格式、依赖声明与本包文件；不能声称已验证另一安装中的文件。在线导入和作者 Apply 使用统一包依赖解析器校验目标安装及版本，再通过 Server 读取目标版本文件验证存在与路径边界。纯图片包也建立 installation 身份。显式图标不存在时 UI 不回退到其他安装的图标；旧版无 scope/target 的全局引用仍可读。
+
+`ctx.assets.read/materialize(assetId)` 是运行时 Media Asset API，不是包文件路径接口。跨包 owned asset 必须同时满足 assets.read 授权、manifest dependency 与版本、目标安装范围；全局扩展不能读取 Card 私有资产，Card 只能读取同 Card 或全局资产。同包同安装的自有历史资产保持既有访问方式，无 ownerPackageId 的用户资产仍按既有授权处理。声明依赖不等于授予资产读取权限。
+
+其他扩展可读的 Media Asset 没有被复制到消费者包；assetId 仍是本机运行时身份，不能作为可移植包内资源路径分发。卸载不自动回收媒体字节，历史引用的清理仍由独立生命周期规则决定。已安装扩展中的工具与图标消费者会阻止破坏依赖的卸载和不兼容更新；兼容更新也检查被引用图标文件是否仍存在。直接删除用户资源维持既有显式操作语义。
+
+个人预设不需要伪造扩展 manifest 来引用全局已安装包图标；已有精确 Card 图标复制保留安装 target。个人引用不会自动建立包依赖或复制图片，不阻止提供方卸载，卸载后图标可以不可用但不会回退到错误来源。作者新建 Card 引用仍需要明确的消费者安装上下文。
+
+## 扩展提供角色目录
+
+`contributes.characters` 是随包 Card Bundle 目录，条目为 `{id, name, description?, preview?, source}`；source 指向包内 ZIP，preview 可指向包内图片。宿主只在用户确认预检摘要后创建 Card；安装扩展和浏览目录均不会导入角色。角色归档复用原生 Card 编解码，不自动安装或启用归档内扩展。远程目录下载尚未接入。
+
+扩展 `dependencies` 可显式声明 `target: "global" | "card"`。Card 指当前安装所属角色，禁止全局消费者引用 Card 安装；显式目标在资源导入、模块启用及恢复时检查。旧省略字段保留现有具体资源范围和模块启用规则，不增加隐式跨范围 fallback。安装、版本依赖不代表 RPC 权限或脚本依赖已打通。
+
+Card 的全局依赖及默认预设引用见[文件化角色包](../application/card-bundle-files.md)。诺姆是首个随包角色示例；作者构建使用 `build-extension-authoring --character ID=DIRECTORY`，详细命令见官方扩展的 `NOM-ASSISTANT.md`。
+
+### Client Renderer 的精确内联锚点
+
+Client Renderer 可提供 `projectNodeWithAnchors(context)`，返回 `{mounts, matches}`；matches 的范围以 `context.displayText` 的字符偏移为准，mount 使用 `match-ref` 指向本次投影的 ID。同文案多次出现时分别分配 ID，避免 literal selector 歧义。该接口复用宿主现有的范围、挂载数和重叠检查；注册和生命周期仍归 Client Module 管理，不改变 HTML iframe 权限。`projectNode` 继续兼容。

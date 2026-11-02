@@ -2,6 +2,12 @@ import { validateWorkspaceEntries, type WorkspaceRevision } from '@loom-studio/a
 import { isRecord, normalizeMacroSelections, type JsonValue, type MacroSelectionMap } from '@loom-studio/shared'
 import type { AgentSession, AgentTranscriptEntry, NarrativeSwipeGroup, NarrativeBranch, NarrativeNode, NarrativeTimeline, NarrativeRecoveryPoint } from '@loom-studio/application-data'
 import type { StateRevision, StateScope } from '@loom-studio/application-data'
+import type { TimelineRuntimeContextContent } from '../types.js'
+import { playerProfilePath } from '@loom-studio/shared'
+import { validateStateContribution } from '../state/state-contribution.js'
+import { validateStateDefinitionDraft, validateStateValue } from '../state/state-definition.js'
+import { assertAuthorPlayerState, createPlayerStateContribution } from '../profiles/player-state.js'
+import { isDeepStrictEqual } from 'node:util'
 
 export type TimelineArchive = {
   format: 'loom-timeline-archive.v1' | 'loom-timeline-archive.v2'
@@ -18,6 +24,7 @@ export type TimelineArchive = {
   workspace?: { revisions: WorkspaceRevision[]; blobs: Array<{ id: string; base64: string; mediaType?: string }> }
   participants: TimelineArchiveDataBlock[]
   macroConfigurations?: Array<{ presetId: string; macroSelections: MacroSelectionMap }>
+  runtimeContext?: TimelineRuntimeContextContent
 }
 
 export function serializeTimelineArchive(archive: TimelineArchive): string {
@@ -101,6 +108,7 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
     }
   }
   const archive = value as unknown as TimelineArchive
+  if (value.runtimeContext !== undefined) validateRuntimeContext(archive)
   if (archive.format === 'loom-timeline-archive.v2') validateAgentArchive(archive)
   if (value.macroConfigurations !== undefined) {
     if (!Array.isArray(value.macroConfigurations)) throw new Error('Invalid archived macro configurations')
@@ -193,6 +201,58 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
   for (const revision of archive.state.revisions) {
     if (revision.scopeId !== archive.state.scope.id) throw new Error('Timeline archive State revision belongs to another scope')
     if (revision.parentRevisionId && !revisions.has(revision.parentRevisionId)) throw new Error('Timeline archive State parent is missing')
+  }
+}
+
+function validateRuntimeContext(archive: TimelineArchive): void {
+  const context = archive.runtimeContext!
+  if (!isRecord(context) || context.timelineId !== archive.timeline.id
+    || !Number.isSafeInteger(context.sourceCardVersion) || context.sourceCardVersion < 1
+    || !Array.isArray(context.stateEntityTypes) || !Array.isArray(context.stateEntities)
+    || !Array.isArray(context.stateComponents) || !Array.isArray(context.stateReferences)
+    || !Array.isArray(context.stateContributionSources) || !Array.isArray(context.stateBindings)) {
+    throw new Error('Invalid Timeline archive runtime context')
+  }
+  identifier(context.sourceCardId)
+  textValue(context.fallbackUserName)
+  if (context.cardName !== undefined) textValue(context.cardName)
+  timestamp(context.createdAt)
+  validateStateContribution({ id: 'archive.entities', entityTypes: context.stateEntityTypes,
+    entities: context.stateEntities, templates: [], componentMounts: [], bindings: [] })
+  for (const binding of context.stateBindings) {
+    if (!isRecord(binding) || typeof binding.path !== 'string' || !binding.path || !isRecord(binding.schema))
+      throw new Error('Invalid Timeline archive State binding')
+    optionalIdentifier(binding.installationId)
+    validateStateDefinitionDraft({ kind: 'global', path: 'global.archive', schema: binding.schema })
+  }
+  for (const component of context.stateComponents) {
+    if (!isRecord(component) || typeof component.path !== 'string' || !isRecord(component.schema))
+      throw new Error('Invalid Timeline archive component')
+    identifier(component.templateId)
+    identifier(component.componentKey)
+    validateStateDefinitionDraft({ kind: 'global', path: 'global.archive', schema: component.schema })
+  }
+  for (const reference of context.stateReferences) {
+    if (!isRecord(reference) || typeof reference.path !== 'string' || !isRecord(reference.annotation)
+      || !Array.isArray(reference.annotation.allowedTypeIds)) throw new Error('Invalid Timeline archive State reference')
+    reference.annotation.allowedTypeIds.forEach(identifier)
+  }
+  for (const source of context.stateContributionSources) {
+    if (!isRecord(source)) throw new Error('Invalid Timeline archive State source')
+    for (const key of ['installationId', 'contributionId', 'packageId', 'moduleId', 'packageVersion'] as const) identifier(source[key])
+    validateStateContribution(source.declaration, { allowExternalReferences: true })
+    assertAuthorPlayerState(source.declaration)
+  }
+  const profileBinding = context.stateBindings.find(binding => binding.path === playerProfilePath)
+  const expectedSchema = createPlayerStateContribution({ name: 'User', description: '' }).templates[0]!.schema
+  if (!profileBinding || !isDeepStrictEqual(profileBinding.schema, expectedSchema)) throw new Error('Invalid archived player profile Schema')
+  for (const revision of archive.state.revisions) {
+    let profile: JsonValue = revision.snapshot
+    for (const segment of playerProfilePath.split('.')) {
+      if (!isRecord(profile) || !Object.hasOwn(profile, segment)) throw new Error('Archived player profile is missing')
+      profile = profile[segment] as JsonValue
+    }
+    validateStateValue(profile, expectedSchema, playerProfilePath)
   }
 }
 

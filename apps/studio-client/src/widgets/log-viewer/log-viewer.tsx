@@ -1,5 +1,5 @@
 import type { LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
-import { Checkbox, Dialog, IconButton, SearchField } from '@loom-studio/ui'
+import { Checkbox, Dialog, IconButton, SearchField, TextInput } from '@loom-studio/ui'
 import { ArrowDown, Copy, Download, Filter, RefreshCw, Search, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLogFeed, type LogSource } from '../../features/log-viewer/model/use-log-feed.js'
@@ -197,12 +197,13 @@ export function LogViewer(props: {
   }
 
   return <section className={styles.viewer} aria-label={props.t('logs.title')}>
+    <div className={styles.controls}>
     <div className={styles.toolbar}>
       <div className={styles.sources} role="group" aria-label={props.t('logs.source')}>
         {(['all', 'server', 'client', 'history'] as const).map(value => <button key={value} type="button" aria-pressed={source === value} onClick={() => changeSource(value)}>{props.t(`logs.source.${value}`)}</button>)}
       </div>
       <SearchField containerClassName={styles.search} aria-label={props.t('logs.search')} placeholder={props.t('logs.searchPlaceholder')} clearLabel={props.t('logs.search')} value={query} onClear={() => setQuery('')} onChange={event => setQuery(event.target.value)} />
-      <select aria-label={props.t('logs.level')} value={level} onChange={event => setLevel(event.target.value as LogLevel | 'all')}>
+      <select className="loom-underlined-field" aria-label={props.t('logs.level')} value={level} onChange={event => setLevel(event.target.value as LogLevel | 'all')}>
         <option value="all">{props.t('logs.level.all')}</option>
         {(['debug', 'info', 'warn', 'error'] as const).map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}
       </select>
@@ -214,7 +215,7 @@ export function LogViewer(props: {
       </div>
     </div>
     <div className={styles.filters}>
-      <select aria-label={props.t('logs.extension')} value={packageId ?? ''} onChange={event => {
+      <select className="loom-underlined-field" aria-label={props.t('logs.extension')} value={packageId ?? ''} onChange={event => {
         const next = new URLSearchParams(searchParams)
         if (event.target.value) next.set('logPackage', event.target.value)
         else next.delete('logPackage')
@@ -224,8 +225,8 @@ export function LogViewer(props: {
         {packageId && !props.extensions?.some(item => item.packageId === packageId) && <option value={packageId}>{packageId}</option>}
         {props.extensions?.map(item => <option key={item.packageId} value={item.packageId}>{item.displayName}</option>)}
       </select>
-      <input aria-label={props.t('logs.module')} placeholder={props.t('logs.module')} value={moduleId} onChange={event => setModuleId(event.target.value)} />
-      <input aria-label={props.t('logs.event')} placeholder={props.t('logs.event')} value={eventFilter} onChange={event => setEventFilter(event.target.value)} />
+      <TextInput aria-label={props.t('logs.module')} placeholder={props.t('logs.module')} value={moduleId} onChange={event => setModuleId(event.target.value)} />
+      <TextInput aria-label={props.t('logs.event')} placeholder={props.t('logs.event')} value={eventFilter} onChange={event => setEventFilter(event.target.value)} />
     </div>
     {historyMode && <form className={styles.filters} onSubmit={event => { event.preventDefault(); searchHistory() }}>
       <label>{props.t('logs.since')}<input type="datetime-local" required value={since} onChange={event => setSince(event.target.value)} /></label>
@@ -233,6 +234,7 @@ export function LogViewer(props: {
       <button type="submit" disabled={loading}><Search size={14} />{props.t('logs.search')}</button>
       {loading && <IconButton aria-label={props.t('logs.cancel')} onClick={history.cancel}><Square size={13} /></IconButton>}
     </form>}
+    </div>
     {runId && <div className={styles.scope}><Filter size={13} /><span title={runId}>{props.t('logs.runScope')}</span><IconButton aria-label={props.t('logs.clearRun')} onClick={() => setRunId(undefined)}><X size={14} /></IconButton></div>}
     <div className={styles.status} aria-live="polite">
       {loading && <p>{props.t('logs.loading')}</p>}

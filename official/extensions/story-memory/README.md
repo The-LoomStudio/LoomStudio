@@ -19,7 +19,7 @@
 - 专用 Agent task 使用隔离上下文，接收指定来源、总结预设、自身修订历史，以及预设允许的角色世界书参考，避免隐式带入整段主写作上下文。不会写入共享 `MEMORY.md` 或 Session 交接摘要。
 - 存档保留摘要及其来源关系，不恢复运行中的任务。导入后未完成任务可重新生成。
 
-`server.js` 可直接加载；界面源码位于 `ui/`，使用官方 `@loom-studio/ui` 基础控件，执行 `pnpm --filter @loom-studio/story-memory build` 生成 `client.js`（React、React DOM 与官方 UI 由宿主共享；Shadow DOM 的官方控件样式由宿主挂载）。`pnpm build:app` 已包含此步骤。安装包不携带开发用 `node_modules`。`resources/summary/index.json` 加 `entries/*.md` 是预设源文件；宿主只提供通用存储、任务、上下文、VFS、存档和 `memory.panel` 插槽。
+`server.js` 可直接加载；界面源码位于 `ui/`，使用官方 `@loom-studio/ui` 基础控件，执行 `pnpm --filter @loom-studio/story-memory build` 生成 `client.js`（React、React DOM 与官方 UI 由宿主共享；Shadow DOM 的官方控件样式由宿主挂载）。`pnpm build:app` 已包含此步骤。库构建不复制仓库 `public`；正式发布只复制 manifest、package.json、正式图标、client.js、server.js、resources 与 README，不携带界面源码、构建脚本、草稿或开发用 `node_modules`。`resources/summary/index.json` 加 `entries/*.md` 是预设源文件；宿主只提供通用存储、任务、上下文、VFS、存档和 `memory.panel` 插槽。
 
 角色世界书通过预设中的 `@lore.stable` / `@lore.lower` 定位，默认开启 `useCardLore`，不默认绑定全局世界书。世界书帮助理解背景，不作为本批事件发生的证据。
 

@@ -22,12 +22,9 @@ export function createCardDirectoryMedia(options: { dataRoot: string; logger?: L
       const binding = await readCardDirectoryBinding(root, cardId)
       const baselineBytes = await readOptional(root, `.loom/card-directories/${cardId}/baseline.json`)
       if (!baselineBytes) return undefined
-      const baseline = JSON.parse(baselineBytes.toString('utf8'))
-      parseBaseline(baseline, cardId)
+      const baseline = parseBaseline(JSON.parse(baselineBytes.toString('utf8')), cardId)
       if (!baseline.mediaRefs) return undefined
       const key = kind === 'avatar' ? 'avatarAssetId' : 'coverAssetId'
-      if (typeof baseline.mediaRefs !== 'object' || Array.isArray(baseline.mediaRefs)
-        || Object.values(baseline.mediaRefs).some(value => typeof value !== 'string')) throw new Error('Invalid card directory media references')
       if (baseline.mediaRefs[key] !== assetId) return undefined
       const directory = await safePath(root, `characters/${binding?.directoryName ?? cardId}`)
       const manifestBytes = await readOptional(directory, 'manifest.json', 4 * 1024 * 1024)

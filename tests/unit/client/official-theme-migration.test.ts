@@ -34,3 +34,12 @@ describe('official theme consolidation', () => {
     expect(migrateOfficialThemes(selection, overrides, readThemeCatalog([{ ...pkg, available: false }])).selection).toBe(selection)
   })
 })
+
+ it('retires absent official palettes only once the replacement catalog is available', () => {
+  const entries = readThemeCatalog([{ ...pkg, resources: { themes: [{ id: 'nord', label: 'Nord', css: './nord.css' }] } }])
+  for (const theme of ['official.themes/paper', 'official.themes/tide', 'loom-theme-paper/paper']) {
+    expect(migrateOfficialThemes({ ...selection, theme }, overrides, entries).selection.theme).toBeNull()
+    expect(migrateOfficialThemes({ ...selection, theme }, overrides, []).selection.theme).toBe(theme)
+  }
+  expect(migrateOfficialThemes({ ...selection, theme: 'official.themes/catppuccin' }, overrides, entries).selection.theme).toBe('official.themes/catppuccin')
+})

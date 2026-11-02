@@ -10,6 +10,18 @@ export function flattenContextAssetNodes(nodes: ContextAssetNode[]): ContextAsse
   return nodes.flatMap(node => [node, ...flattenContextAssetNodes(node.children ?? [])])
 }
 
+/** Derived ancestor state; authored enable flags remain untouched. */
+export function readContextAssetDisabledAncestors(nodes: ContextAssetNode[]): Map<string, ContextAssetNode> {
+  const ancestors = new Map<string, ContextAssetNode>()
+  function visit(node: ContextAssetNode, disabledBy?: ContextAssetNode) {
+    if (disabledBy) ancestors.set(node.id, disabledBy)
+    const next = disabledBy ?? (node.enabled === false ? node : undefined)
+    node.children?.forEach(child => visit(child, next))
+  }
+  nodes.forEach(node => visit(node))
+  return ancestors
+}
+
 export function findContextAssetNode(nodes: ContextAssetNode[], id: string | undefined): ContextAssetNode | undefined {
   if (!id) return undefined
 
@@ -39,10 +51,9 @@ export function findContextAssetNodeInfo(
 }
 
 export function findContextAssetPath(nodes: ContextAssetNode[] | undefined, id: string | undefined): ContextAssetNode[] {
-  if (!nodes || !Array.isArray(nodes) || !id) return []
+  if (!nodes || !id) return []
 
   for (const node of nodes) {
-    if (!node) continue
     if (node.id === id) return [node]
     const childPath = findContextAssetPath(node.children ?? [], id)
     if (childPath.length > 0) return [node, ...childPath]

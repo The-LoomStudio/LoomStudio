@@ -53,7 +53,7 @@ export function useCharacterProfileEditor({ selected, onUpdateCardProfile, refre
       await onRefreshCards?.()
       return true
     } catch (err) {
-      notify.error(err instanceof Error ? err.message : String(err))
+      notify.failure('保存角色资料失败', err)
     }
   }
 

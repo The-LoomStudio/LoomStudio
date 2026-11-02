@@ -1,0 +1,15 @@
+.host { position: relative; display: flex; align-items: center; }
+.trigger { display: grid; place-items: center; width: 30px; padding: 0; border: 0; background: transparent; color: var(--loom-color-text-muted); cursor: pointer; }
+.trigger svg { width: var(--loom-icon-size-5); height: var(--loom-icon-size-5); }
+.trigger:focus-visible { outline: 2px solid var(--loom-color-accent); outline-offset: 2px; border-radius: 50%; }
+.panel { position: absolute; bottom: calc(100% + 8px); right: 0; z-index: 5; width: min(260px, calc(100vw - 48px)); box-sizing: border-box; padding: 14px 16px; border: 1px solid var(--loom-color-border); border-radius: var(--loom-radius-card); background: var(--loom-color-surface); color: var(--loom-color-text); box-shadow: 0 6px 24px #0003; font-size: var(--loom-font-size-2); }
+.panel::after { content: ''; position: absolute; top: 100%; left: 0; right: 0; height: 8px; }
+.panel strong { display: block; margin-bottom: 10px; }
+.panel dl { margin: 0; }
+.panel dl > div { display: flex; justify-content: space-between; gap: 16px; margin: 6px 0; }
+.panel dt, .panel p { color: var(--loom-color-text-muted); }
+.panel dd { margin: 0; }
+.panel p { margin: 12px 0 0; font-size: var(--loom-font-size-1); }
+
+.ring { display: block; }
+.ringTrack { opacity: 0.45; }

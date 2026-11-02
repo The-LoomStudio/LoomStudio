@@ -1,32 +1,10 @@
-.panel { height: 100%; min-height: 0; overflow: auto; color: var(--loom-color-text); background: var(--loom-color-surface); container-type: inline-size; }
-.content { width: min(100%, 1060px); margin: 0 auto; padding: 0 48px 40px; box-sizing: border-box; }
-.hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 58px 0 40px; }
-.identity { display: flex; align-items: center; gap: 25px; min-width: 0; flex: 1; }
-.identityText { min-width: 0; flex: 1; }
-.identityText h1 { font-size: 26px; font-weight: 550; margin: 0 0 12px; }
-.avatar, .smallAvatar { display: flex; align-items: center; justify-content: center; flex: 0 0 auto; overflow: hidden; color: var(--loom-color-accent-strong); background: var(--loom-color-accent-soft); border-radius: 50%; }
-.avatar { width: 108px; height: 108px; border: 1px solid color-mix(in srgb, var(--loom-color-accent) 28%, transparent); font-size: 38px; position: relative; padding: 0; }
-button.avatar { cursor: pointer; }
-.avatar img, .smallAvatar img { width: 100%; height: 100%; object-fit: cover; }
-.camera { position: absolute; bottom: 0; left: 0; right: 0; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--loom-color-text); background: color-mix(in srgb, var(--loom-color-surface-inset) 75%, transparent); }
-.eyebrow { display: block; color: var(--loom-color-text-subtle); font-size: 12px; margin-bottom: 4px; }
-.name { display: block; width: 100%; max-width: 480px; min-width: 0; padding: 2px 0 5px; border: 0; border-bottom: 1px solid transparent; border-radius: 0; background: transparent; color: var(--loom-color-text); font: inherit; font-size: 30px; font-weight: 550; text-overflow: ellipsis; }
-.name:hover { border-bottom-color: var(--loom-color-divider); }
-.name:focus { border-bottom-color: var(--loom-color-accent); outline: none; }
-.scope { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--loom-color-text-muted); font-size: 12px; line-height: 1.7; }
-.scope svg { flex-shrink: 0; }
-.clearAvatar { padding: 0; margin-top: 7px; border: 0; background: none; color: var(--loom-color-text-muted); font: inherit; font-size: 11px; cursor: pointer; }
+.panel { --loom-story-hero-height: 280px; --loom-story-hero-padding-inline: 0px; height: 100%; min-height: 0; overflow: auto; color: var(--loom-color-text); background: var(--loom-color-surface); container-type: inline-size; }
+.content { width: min(100%, 748px); margin: 0; padding: 0 24px 32px; box-sizing: border-box; }
+.eyebrow { display: block; color: var(--loom-color-text-subtle); font-size: 12px; letter-spacing: .06em; margin-bottom: 4px; }
 .count { color: var(--loom-color-text-subtle); margin-left: 4px; font-variant-numeric: tabular-nums; }
 .body { padding-top: 30px; }
-.sectionHeading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 18px; }
-.sectionHeading h2 { margin: 0; font-size: 17px; font-weight: 550; }
-.sectionHeading p { margin: 8px 0 0; font-size: 12px; color: var(--loom-color-text-muted); line-height: 1.7; }
-.characterCount { flex-shrink: 0; color: var(--loom-color-text-subtle); font-size: 11px; }
-.editorFooter { display: flex; justify-content: space-between; gap: 16px; margin-top: 13px; font-size: 11px; color: var(--loom-color-text-subtle); line-height: 1.8; }
-.editorFooter [role='status'] { white-space: nowrap; }
-.empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; padding: 65px 12px; color: var(--loom-color-text-muted); }
-.empty h2 { margin: 0; font-size: 18px; font-weight: 500; color: var(--loom-color-text); }
-.empty p { margin: 0 0 10px; font-size: 13px; }
+.currentStory { margin: 24px 0 28px; }
+.storyLink { color: var(--loom-color-info, #82b4ee); }
 .picker { width: min(520px, calc(100vw - 32px)); }
 .search { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--loom-color-divider); padding: 0 0 12px; color: var(--loom-color-text-subtle); }
 .search input { width: 100%; min-width: 0; padding: 8px; border: 0; color: var(--loom-color-text); background: transparent; font: inherit; }
@@ -43,13 +21,35 @@ button.avatar { cursor: pointer; }
 .error { color: var(--loom-color-danger); font-size: 12px; }
 .panel button:focus-visible, .profileOption:focus-visible, .search input:focus-visible { outline: 2px solid var(--loom-color-accent); outline-offset: 3px; }
 @container (max-width: 640px) {
-  .content { padding: 0 24px 28px; }
-  .hero { flex-wrap: wrap; padding: 30px 0 24px; gap: 22px; }
-  .identity { flex-basis: 100%; gap: 18px; }
-  .avatar { width: 82px; height: 82px; font-size: 30px; }
-  .name { font-size: 25px; }
+  .content { padding: 0 18px 28px; }
   .body { padding-top: 22px; }
-  .editorFooter { flex-direction: column; gap: 5px; }
 }
 
-.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+
+.hero { position: relative; isolation: isolate; overflow: hidden; border-radius: 18px; min-height: var(--loom-story-hero-height); display: flex; align-items: center; margin: 28px 0; background: transparent; }
+.portrait { position: absolute; inset: 0 0 0 auto; width: 38%; border: 0; padding: 0; background: transparent; color: var(--loom-color-text-muted); cursor: pointer; display: grid; place-items: center; }
+.portrait > [data-monogram] { font-size: clamp(100px, 22cqi, 240px); font-weight: 300; opacity: .25; text-transform: uppercase; user-select: none; }
+.heroContent { position: relative; pointer-events: none; min-width: 0; width: 100%; box-sizing: border-box; padding: 28px 42% 28px 0; }
+.heroContent button { pointer-events: auto; }
+.heroContent h1 { font-size: clamp(28px, 4cqi, 40px); font-weight: 550; line-height: 1.2; margin: 10px 0 18px; overflow-wrap: anywhere; }
+.bio { font-size: 15px; line-height: 1.9; color: var(--loom-color-text); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 15em; overflow-y: auto; margin: 0; padding-top: 14px; border-top: 1px solid var(--loom-color-divider); pointer-events: auto; }
+.heroActions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 18px; }
+.saveStatus { font-size: 12px; color: var(--loom-color-text-muted); }
+.smallAvatar { display: grid; place-items: center; flex-shrink: 0; overflow: hidden; border-radius: 50%; color: var(--loom-color-text); background: var(--loom-color-surface-raised); }
+.smallAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.editDialog { width: min(640px, calc(100vw - 32px)); }
+
+.editFields { display: grid; gap: 12px; }
+.editFields label { color: var(--loom-color-text-muted); font-size: 13px; }
+.editName, .descriptionInput { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid var(--loom-color-divider); border-radius: 0; padding: 10px 0; background: transparent; color: var(--loom-color-text); font: inherit; }
+.editName { font-size: 22px; margin-bottom: 12px; }
+.descriptionInput { resize: none; min-height: 140px; max-height: 42dvh; overflow: auto; line-height: 1.8; }
+.editName:focus-visible, .descriptionInput:focus-visible { outline: 2px solid var(--loom-color-accent); outline-offset: 3px; }
+.editActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+@container (max-width: 640px) {
+  .hero { margin: 20px 0; min-height: 0; display: block; }
+  .heroContent { padding: 16px 0 20px; }
+  .portrait { position: relative; width: 100%; height: clamp(180px, 65cqi, 260px); --hero-art-align: center; --hero-image-fade: linear-gradient(to bottom, #000 60%, rgb(0 0 0 / 85%) 78%, transparent 100%); }
+  .heroContent h1 { font-size: 28px; }
+  .bio { font-size: 14px; max-height: 18em; }
+}

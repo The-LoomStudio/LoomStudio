@@ -1,3 +1,4 @@
+import { InfoDialog } from '../../shared/ui/info-dialog/info-dialog.js'
 import { useCallback, useEffect, useRef, useState, useId, type ReactNode, type FormEvent } from 'react'
 import { Button, Checkbox, Dialog } from '@loom-studio/ui'
 import { BookOpen, RefreshCw, Settings2, Sparkles, X } from 'lucide-react'
@@ -136,11 +137,9 @@ function SessionMemoryContent({ api, sessionId, branchId, onSaved, navigation }:
       {(error || loadError || statusError || status.error) && <p className={styles.error} role="alert">{error || loadError || statusError || status.error}</p>}
       {!memory && !loadError && <div className={styles.empty} role="status"><p>正在加载摘要…</p></div>}
       {memory && (summary ? <article className={styles.summary}>
-        <details className={styles.coverageDetails}>
-          <summary>
+        <div className={styles.coverageDetails}>
             <span>已总结至 #{memory.coverage.messages.retired}{memory.coverage.messages.total > memory.coverage.messages.retired ? ` · 原文保留 #${memory.coverage.messages.retired + 1}–#${memory.coverage.messages.total}` : ''} · 更新于 {new Date(memory.summary!.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-            <span>覆盖详情</span>
-          </summary>
+          <InfoDialog title="覆盖详情">
         <div className={styles.coverage} aria-label="上下文覆盖范围">
           <p role="status">{active || status.state === 'failed' ? statusLabels[status.state] : memory.policy.enabled ? '自动总结已开启' : '手动总结'}</p>
           <p><strong>摘要替代区</strong> · {memory.coverage.messages.retired ? `本会话消息 #1–#${memory.coverage.messages.retired} 的原文已不再注入` : '尚未替代会话消息'}。历史仍可查看。</p>
@@ -150,7 +149,8 @@ function SessionMemoryContent({ api, sessionId, branchId, onSaved, navigation }:
           {memory.coverage.messages.total > memory.coverage.messages.source && <p><strong>交接后新增</strong> · 消息 #{memory.coverage.messages.source + 1}–#{memory.coverage.messages.total}，继续保留原文。</p>}
           <p>以上为当前会话的消息编号，不是剧情 Timeline 楼层；工具记录随所属工作段一起处理。</p>
         </div>
-        </details>
+          </InfoDialog>
+        </div>
         <LongTextEditor key={memory.summary!.id} label="会话摘要" hideLabel headerExtra={<SummaryTokenCount text={summary.content} sessionId={sessionId} maxTokens={memory.policy.maxTokens} />} value={summary.content} disabled={active || !!busy}
           mode="preview" onModeChange={() => {
             if (active || busy) return

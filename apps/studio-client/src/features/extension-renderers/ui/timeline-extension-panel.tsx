@@ -1,7 +1,10 @@
+import { StoryHero } from '../../../shared/ui/story-hero/story-hero.js'
+import type { CardSummary } from '../../../entities/index.js'
+import { ExtensionIcon } from '../../../shared/ui/extension-icon/extension-icon.js'
+import workspaceStyles from './extension-workspace.module.scss'
 import { useEffect, useRef, useState } from 'react'
-import { Database, Library, Plus, RefreshCw, RotateCcw } from 'lucide-react'
-import { Button, Checkbox, Dialog } from '@loom-studio/ui'
-import { extensionInstallationId } from '@loom-studio/extension-sdk'
+import { Database, Library, Plus, RefreshCw, RotateCcw, Info, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Button, Checkbox, Dialog, IconButton } from '@loom-studio/ui'
 import type { ListExtensionInstallationsResult, ManagedExtensionPackage } from '../../../entities/index.js'
 import type { ExtensionInstallationSource, TimelineExtensionAdoptionPreview, TimelineExtensionParticipation, TimelineExtensionRecoveryPreview, TimelineExtensionResourceInspection } from '../../../entities/extension.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
@@ -13,6 +16,7 @@ export type TimelineExtensionPanelProps = {
   installations: ListExtensionInstallationsResult['installations']
   packages: readonly ManagedExtensionPackage[]
   timeline?: { id: string; branchId: string; title?: string; cardId?: string }
+  character?: CardSummary
   refreshToken?: number
   t: Translator
   onChanged(): void | Promise<unknown>
@@ -29,6 +33,7 @@ export function TimelineExtensionPanel(props: TimelineExtensionPanelProps) {
   const [error, setError] = useState('')
   const [preview, setPreview] = useState<Preview>()
   const [resources, setResources] = useState<TimelineExtensionResourceInspection>()
+  const [sourceInfo, setSourceInfo] = useState<{ packageId: string; source?: ExtensionInstallationSource }>()
   const [acceptSource, setAcceptSource] = useState(false)
   const mounted = useRef(false)
   const pending = useRef(false)
@@ -58,6 +63,7 @@ export function TimelineExtensionPanel(props: TimelineExtensionPanelProps) {
     setConfig(undefined)
     setPreview(undefined)
     setResources(undefined)
+    setSourceInfo(undefined)
     void refresh()
     return () => { request.current += 1 }
   }, [props.api, props.timeline?.id, props.timeline?.branchId, props.refreshToken, installationRevision])
@@ -99,14 +105,12 @@ export function TimelineExtensionPanel(props: TimelineExtensionPanelProps) {
   const isSourceChange = preview?.kind === 'recover' && preview.value.sourceChanged
 
   return <section className={styles.panel} aria-busy={busy || loading}>
-    <header className={styles.header}>
-      <div><h3>{props.t('participation.timeline')}</h3>
-        <p className={styles.hint}>{props.timeline?.title ?? props.timeline?.id}</p></div>
-      <Button size="small" variant="ghost" disabled={busy || loading} onClick={() => void refresh()}>
-        <RefreshCw size={16} aria-hidden="true" />{props.t('participation.refresh')}
-      </Button>
-    </header>
-    <p className={styles.hint}>管理当前故事中运行的扩展。新故事会在开始时单独选择。</p>
+    <StoryHero character={props.character} label={props.t('participation.timeline')}
+      title={props.timeline?.title || props.t('participation.timeline')}
+      description="管理当前故事中运行的扩展。新故事会在开始时单独选择。"
+      actions={<IconButton size="small" title={props.t('participation.refresh')} aria-label={props.t('participation.refresh')} disabled={busy || loading} onClick={() => void refresh()}>
+        <RefreshCw size={16} aria-hidden="true" />
+      </IconButton>} />
     {error ? <p role="alert" className={styles.error}>{error}</p> : null}
     {!hasContext ? <p>{props.t('participation.noTimeline')}</p>
       : loading ? <p role="status">{props.t('participation.loading')}</p>
@@ -121,23 +125,20 @@ export function TimelineExtensionPanel(props: TimelineExtensionPanelProps) {
               && (item.target?.kind !== 'card' || item.target.cardId === cardId))
             return <li key={row.id} className={styles.row}>
               <div className={styles.identity}>
-                <strong>{pkg?.displayName ?? row.packageId}</strong>
+                <span className={styles.packageHeading}><ExtensionIcon packageId={row.packageId} iconUrl={pkg?.iconUrl} size={32} /><strong>{pkg?.displayName ?? row.packageId}</strong>
+                  <IconButton size="small" aria-label={props.t('participation.source')} title={props.t('participation.source')} onClick={() => setSourceInfo({ packageId: row.packageId, source: row.installation?.source ?? entry?.source })}><Info size={16} /></IconButton></span>
                 <small>{props.t(row.target === 'card'
                   ? 'participation.cardSource' : 'participation.globalSource')} · {row.installation?.packageVersion ?? entry?.packageVersion}</small>
-                <details className={styles.source}><summary>来源信息</summary>
-                  <code>{row.packageId}</code>
-                  <small>{sourceLabel(row.installation?.source ?? entry?.source, props.t)}</small>
-                </details>
               </div>
-              <span className={styles.status}>{props.t(`participation.${status}`)}</span>
+              <span className={styles.status}>{status === 'missing' || status === 'recoveryRequired' || status === 'notAdopted' ? props.t(`participation.${status}`) : null}</span>
               <div className={styles.actions}>
-              <Button size="small" variant="ghost" disabled={busy}
+              <IconButton size="small" disabled={busy}
                 title={props.t('participation.resources')} aria-label={`${props.t('participation.resources')}: ${row.packageId}`}
                 onClick={() => void run(async () => {
                   const revision = request.current
                   const result = await props.api.inspectResources({ timelineId: props.timeline!.id, installationId: row.id })
                   if (mounted.current && revision === request.current) setResources(result)
-                })}><Library size={16} aria-hidden="true" />{props.t('participation.resources')}</Button>
+                })}><Library size={16} aria-hidden="true" /></IconButton>
               {checked && row.installation && !changed ? <Button size="small" variant="ghost" disabled={busy}
                 title={props.t('participation.initializeState')} aria-label={`${props.t('participation.initializeState')}: ${row.packageId}`}
                 onClick={() => void run(async () => {
@@ -156,16 +157,20 @@ export function TimelineExtensionPanel(props: TimelineExtensionPanelProps) {
                     const value = await props.api.previewRecovery({ timelineId: props.timeline!.id, installationId: row.id })
                     if (mounted.current) { setAcceptSource(false); setPreview({ kind: 'recover', value }) }
                   })}><RotateCcw size={15} aria-hidden="true" />{props.t('participation.recover')}</Button>
-                    : <Checkbox checked={checked} disabled={busy || !row.installation}
-                      label={checked ? '在此故事运行' : '已暂停'} aria-label={`${props.t('participation.timeline')}: ${row.packageId}`}
-                      onChange={event => { void run(() => props.api.update({
-                        timelineId: props.timeline!.id, installationId: row.id, expectedVersion: config!.version, enabled: event.target.checked,
-                      }), true) }} />}
+                    : <button type="button" className={workspaceStyles.packageToggle} aria-pressed={checked} disabled={busy || !row.installation}
+                      title={props.t(checked ? 'renderer.disablePackage' : 'renderer.enablePackage')}
+                      aria-label={`${props.t(checked ? 'renderer.disablePackage' : 'renderer.enablePackage')} · ${props.t('participation.timeline')}: ${pkg?.displayName ?? row.packageId}`}
+                      onClick={() => { void run(() => props.api.update({
+                        timelineId: props.timeline!.id, installationId: row.id, expectedVersion: config!.version, enabled: !checked,
+                      }), true) }}>{checked ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}</button>}
               </div>
             </li>
           })}
           {rows.size === 0 ? <li>{props.t('participation.empty')}</li> : null}
         </ul>}
+    {sourceInfo ? <Dialog open onClose={() => setSourceInfo(undefined)} title={props.t('participation.source')} closeOnBackdrop>
+      <dl className={styles.sourceFacts}><dt>Package</dt><dd>{sourceInfo.packageId}</dd><dt>{props.t('participation.source')}</dt><dd>{sourceLabel(sourceInfo.source, props.t)}</dd></dl>
+    </Dialog> : null}
     {resources ? <Dialog open onClose={() => setResources(undefined)} title={props.t('participation.resources')}>
       <ul className={styles.resourceList}>{resources.resources.map(resource => <li key={`${resource.kind}:${resource.id}`}>
         <strong>{resource.label}</strong>

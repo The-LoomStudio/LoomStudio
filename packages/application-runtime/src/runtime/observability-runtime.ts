@@ -32,6 +32,7 @@ export function createObservabilityRuntimeMethods(ctx: ApplicationRuntimeContext
     async getObservationReferences(input: { references: Array<{ type: 'card' | 'timeline' | 'session' | 'resource' | 'provider' | 'run'; id: string }> }) {
       return Promise.all(input.references.map(async reference => {
         let title: string | undefined
+        let source: { cardId?: string; cardName?: string; avatarAssetId?: string; presetName?: string; preset?: { metadata?: import('@loom-studio/shared').PromptResourceDisplayMetadata; origin?: { kind: string; packageId?: string; installationId?: string } } } | undefined
         if (reference.type === 'timeline') {
           const timeline = await ctx.narratives?.getTimeline(reference.id)
           if (timeline) title = timeline.title ?? ''
@@ -40,13 +41,25 @@ export function createObservabilityRuntimeMethods(ctx: ApplicationRuntimeContext
           const session = await ctx.agents?.getSession(reference.id)
           if (session && !session.deletedAt) title = session.title ?? ''
         } else if (reference.type === 'resource') title = (await ctx.promptResources.getResource(reference.id))?.label
-        else if (reference.type === 'run') title = (await get(reference.id))?.title
+        else if (reference.type === 'run') {
+          const record = await get(reference.id)
+          title = record?.title
+          if (record) {
+            const timeline = record.timelineId ? await ctx.narratives?.getTimeline(record.timelineId) : undefined
+            const cardId = timeline?.createdFrom?.cardId
+            const cardDoc = cardId ? await ctx.documents.get(cardId) : undefined
+            const card = cardDoc?.type === applicationDocumentTypes.cardSource ? cardDoc.content as CardSourceContent : undefined
+            const preset = record.agentPresetId ? await ctx.promptResources.getResource(record.agentPresetId) : undefined
+            source = { cardId, cardName: card?.name, avatarAssetId: card?.media?.avatarAssetId,
+              presetName: preset?.label, ...(preset ? { preset: { metadata: preset.metadata } } : {}) }
+          }
+        }
         else {
           const document = await ctx.documents.get(reference.id)
           if (reference.type === 'card' && document?.type === applicationDocumentTypes.cardSource) title = (document.content as CardSourceContent).name
           if (reference.type === 'provider' && document?.type === applicationDocumentTypes.providerProfile) title = (document.content as ProviderProfileContent).displayName
         }
-        return { ...reference, title, state: title === undefined ? reference.type === 'run' ? 'unavailable' as const : 'deleted' as const : 'available' as const }
+        return { ...reference, title, ...(source ? { source } : {}), state: title === undefined ? reference.type === 'run' ? 'unavailable' as const : 'deleted' as const : 'available' as const }
       }))
     },
     getObservationPersistence: () => ctx.observations.persistence(),
@@ -55,7 +68,7 @@ export function createObservabilityRuntimeMethods(ctx: ApplicationRuntimeContext
       const limit = Math.max(1, Math.min(100, input.limit ?? 50))
       const records: ObservationSummary[] = []
       let cursor = input.cursor
-      let dropped = 0
+      let dropped: number
       do {
         const page = ctx.observations.list({ ...input, cursor, limit: limit - records.length })
         dropped = page.dropped

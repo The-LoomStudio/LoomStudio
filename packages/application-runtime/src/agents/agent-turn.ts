@@ -1,5 +1,6 @@
+import { attachmentMessage } from './message-attachments.js'
 import type { ObservationBuild } from '../observability/types.js'
-import type { ChatMessage } from '@loom-studio/shared'
+import type { ChatAttachment, ChatMessage } from '@loom-studio/shared'
 import type { PromptResourceStore } from '@loom-studio/application-data'
 import type { AgentTranscriptEntry } from '@loom-studio/application-data'
 import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
@@ -43,6 +44,7 @@ export async function composeAgentTurnPrompt(input: {
     context?: ResolvedNarrativeContext
   }
   preset: PromptResourceContent & { id: string }
+  attachments?: ChatAttachment[]
   userInput: string
   historyRules?: {
     narrative: TextTransformRuleEntry[]
@@ -125,6 +127,7 @@ export async function composeAgentTurnPrompt(input: {
       workspaceMemory: input.workspaceMemory,
       narrative: input.narrative,
       userInput: input.userInput,
+      attachments: input.attachments,
       historyRules: input.historyRules,
     })
     const additionalInputs = input.promptAddition
@@ -179,6 +182,12 @@ export async function composeAgentTurnPrompt(input: {
       severity: 'info', code: 'prompt.checkpoint_reused',
       message: 'Resumed Provider messages were reused; author processors were not executed.',
     })
+
+    if (!input.resumeMessages && input.attachments?.length) {
+      const message = resourceProjection.messages.find(message => message.fragmentIds.includes('runtime.current.input'))
+      if (!message || message.role !== 'user') throw new Error('The preset must include the user input anchor to send attachments')
+      message.attachments = structuredClone(input.attachments)
+    }
 
     for (const diagnostic of diagnostics) appendBuildEvidence(observation, 'diagnostics', diagnostic)
     if (input.resumeMessages) appendBuildEvidence(observation, 'diagnostics', {
@@ -248,6 +257,7 @@ function createRuntimePromptSources(input: {
     branchId: string
     context?: ResolvedNarrativeContext
   }
+  attachments?: ChatAttachment[]
   userInput: string
   historyRules?: {
     narrative: TextTransformRuleEntry[]
@@ -416,7 +426,7 @@ function createRuntimePromptSources(input: {
       sourceId: 'runtime.current-turn',
       sourceNodeId: currentNodeId,
     },
-    content: input.userInput,
+    content: attachmentMessage(input.userInput, input.attachments).content || (input.attachments?.length ? '[Attached image]' : ''),
     capabilities: {
       targetAnchorId: '@chat.input',
       localDepth: 0,

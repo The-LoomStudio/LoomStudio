@@ -21,8 +21,8 @@ function parseJsonSafe(input: string): Record<string, unknown> | undefined {
 
 export function parseProviderError(error: unknown): ParsedProviderError {
   let statusCode: number | undefined
-  let errorName = error instanceof Error ? error.name : ''
-  let rawMessage = error instanceof Error ? error.message : String(error)
+  const errorName = error instanceof Error ? error.name : ''
+  const rawMessage = error instanceof Error ? error.message : String(error)
   let providerCode: string | undefined
   let providerDetailMessage: string | undefined
 
@@ -137,7 +137,7 @@ export function parseProviderError(error: unknown): ParsedProviderError {
 
 export function formatProviderErrorMessage(error: unknown, t?: Translator): { title: string; description?: string } {
   const parsed = parseProviderError(error)
-  const title = t ? t(parsed.messageKey as never, parsed.params) : parsed.messageKey
+  const title = t ? t(parsed.messageKey as never, parsed.messageKey === 'notify.provider.genericFailed' ? { detail: parsed.statusCode ? `HTTP ${parsed.statusCode}` : '请查看详情' } : parsed.params) : '模型调用失败'
   return {
     title,
     description: parsed.detail && parsed.detail !== title ? parsed.detail : undefined,

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { parseDocument, stringify } from 'yaml'
 
 export const rendererSurfaces = ['shell.background', 'narrative.entry.inline', 'narrative.timeline.tail', 'memory.panel', 'agent.message.inline', 'agent.session.tail', 'composer.sheet', 'shell.workspace-panel', 'shell.focus-surface', 'standalone.page'] as const
 export const rendererInstanceScopes = ['workspace', 'timeline', 'agent-session', 'node', 'message'] as const
@@ -33,6 +34,7 @@ export function resolveLoomScriptSettings(definitions: readonly LoomScriptSettin
 const matcherSchema = z.strictObject({ kind: z.literal('regex'), pattern: z.string(), flags: z.string() })
 export const scriptTextTransformRuleSchema = z.strictObject({
   name: z.string().trim().min(1), enabled: z.boolean(), orderIndex: z.number().int(), matcher: matcherSchema,
+  captureRemove: z.array(z.string()).optional(), streaming: z.boolean().optional(),
   effect: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('replace'), replacement: z.string() }),
     z.strictObject({ kind: z.literal('mark'), markerType: z.string().optional() }),
@@ -104,6 +106,7 @@ const singles = new Set(['format', 'id', 'name', 'version', 'runtime'])
 const repeated = new Set(['capability', 'contribution', 'require', 'setting', 'tag'])
 const capabilities = new Set(['state.read', 'state.write', 'state.contribute', 'state.processContent', 'ui.notify', 'macros.provide', 'prompt.process', 'narrative.context.provide', 'narrative.read', 'agent.tasks', 'vfs.provide', 'assets.read', 'assets.publish', 'ai.invoke', 'runtime.client', 'runtime.client-worker', 'runtime.server', 'events.subscribe:state', 'events.subscribe:narrative', 'events.subscribe:agent', 'events.subscribe:diagnostics', 'events.subscribe:platform-data', 'events.subscribe:documents'])
 export function parseLoomScriptSource(source: string): ParsedLoomScriptMetadata {
+  if (/^\uFEFF?---\r?\n/.test(source)) return parseMarkdownRuleSource(source)
   const lines = source.split(/\r?\n/)
   if (lines[0] !== headerStart) throw new Error('Loom Script Metadata must start on the first line')
   const end = lines.indexOf(headerEnd, 1)
@@ -219,4 +222,74 @@ export function serializeLoomScriptMetadata(metadata: ParsedLoomScriptMetadata):
     ...(metadata.tags ?? []).map(tag => `// @tag ${tag}`), ...(metadata.settings ?? []).flatMap(item => jsonLines('setting', item)),
     ...(metadata.requires ?? []).map(value => `// @require ${value}`), ...metadata.requestedCapabilities.map(value => `// @capability ${value}`),
     ...metadata.contributions.flatMap(item => jsonLines('contribution', item.kind === 'renderer' ? { kind: 'renderer', id: item.renderer.id, name: item.renderer.name, surface: item.renderer.surface, scope: item.renderer.instanceScope, inputs: item.inputs.map(input => input.kind === 'match' ? `match:${input.ruleId}` : `artifact:${input.artifactType}`), ...(item.renderer.suggestedOrder !== undefined ? { suggestedOrder: item.renderer.suggestedOrder } : {}), ...(item.renderer.fallback ? { fallback: item.renderer.fallback } : {}) } : item)), headerEnd].join('\n')
+}
+
+
+export function isLoomScriptFileName(fileName: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:loom\.js|md)$/.test(fileName)
+}
+
+export function loomScriptMediaType(fileName: string): 'text/javascript' | 'text/markdown' {
+  return fileName.endsWith('.md') ? 'text/markdown' : 'text/javascript'
+}
+
+/** Only the header is YAML. The body is sliced from the original source, never reserialized. */
+function parseMarkdownRuleSource(source: string): ParsedLoomScriptMetadata {
+  const opening = /^\uFEFF?---\r?\n/.exec(source)!
+  const remainder = source.slice(opening[0].length)
+  const closing = /^---[ \t]*(?:\r?\n|$)/m.exec(remainder)
+  if (!closing) throw new Error('Markdown rule frontmatter closing delimiter is missing')
+  const document = parseDocument(remainder.slice(0, closing.index), { uniqueKeys: true })
+  if (document.errors.length) throw new Error(`Invalid rule frontmatter: ${document.errors[0]!.message}`)
+  const header = markdownRuleHeader.parse(document.toJS({ maxAliasCount: 0 }))
+  const body = remainder.slice(closing.index + closing[0].length)
+  const effect: ScriptTextTransformRule['effect'] = header.action === 'promote-reasoning'
+    ? { kind: 'promote-reasoning', contentGroup: header.content_group, visibility: header.visibility, replay: header.replay, dialect: header.dialect }
+    : header.action === 'mark' ? { kind: 'mark', markerType: header.marker_type } : { kind: 'replace', replacement: body }
+  if (header.action !== 'replace' && body.trim()) throw new Error('Only replacement rules accept a replacement body')
+  if (header.action === 'promote-reasoning' && (header.phases.length !== 1 || header.phases[0] !== 'classify')) throw new Error('Reasoning promotion requires only the classify phase')
+  if (header.phases.includes('classify') && header.phases.length > 1) throw new Error('Save-time classification cannot be combined with display or prompt projections')
+  // Reuse the existing contribution/settings validation, without evaluating any code.
+  return parseLoomScriptSource([
+    '// ==LoomScript==', '// @format 1', `// @id ${header.id}`, `// @name ${header.name}`, `// @version ${header.version}`, '// @runtime declarative',
+    ...header.tags.map(tag => `// @tag ${tag}`),
+    ...header.settings.map(setting => `// @setting ${JSON.stringify(setting)}`),
+    `// @contribution ${JSON.stringify({ kind: 'text-transform', id: 'rule', rule: {
+      name: header.name, enabled: header.enabled, orderIndex: header.order,
+      matcher: { kind: 'regex', pattern: header.regex, flags: header.regex_flags }, effect,
+      targets: header.targets, phases: header.phases, captureRemove: header.capture_remove, streaming: header.streaming,
+      ...(header.min_depth !== undefined || header.max_depth !== undefined ? { range: { minDepth: header.min_depth, maxDepth: header.max_depth } } : {}),
+    } })}`, '// ==/LoomScript==',
+  ].join('\n'))
+}
+
+const markdownRuleHeader = z.strictObject({
+  format: z.literal(1).optional(), id: identifier, name: z.string().trim().min(1).regex(/^[^\r\n]+$/),
+  version: z.string().default('1.0.0'), tags: z.array(z.string().regex(/^[^\r\n]+$/)).default([]),
+  regex: z.union([z.string(), z.strictObject({ $config: z.string(), as: z.enum(['literal', 'raw']).optional() })]),
+  regex_flags: z.string().default('g'), enabled: z.boolean().default(true), order: z.number().int().default(0),
+  phases: z.array(z.enum(['display', 'prompt', 'classify'])).min(1).default(['display']),
+  targets: z.array(z.enum(['narrative', 'agent-session'])).min(1).default(['narrative', 'agent-session']),
+  capture_remove: z.array(z.string()).default([]), streaming: z.boolean().default(false),
+  min_depth: z.number().int().nonnegative().optional(), max_depth: z.number().int().nonnegative().optional(),
+  action: z.enum(['replace', 'mark', 'promote-reasoning']).default('replace'),
+  marker_type: z.string().optional(), dialect: z.string().optional(),
+  content_group: z.union([z.number().int().nonnegative(), z.string()]).optional(),
+  visibility: z.enum(['collapsed', 'hidden', 'visible']).default('collapsed'),
+  replay: z.enum(['omit', 'assistant-content']).default('omit'), settings: z.array(settingSchema).default([]),
+})
+
+export function serializeMarkdownTextRule(rule: ScriptTextTransformRule, id = 'imported.text-rule'): string {
+  const header = {
+    id, name: rule.name, version: '1.0.0', regex: rule.matcher.pattern, regex_flags: rule.matcher.flags,
+    enabled: rule.enabled, order: rule.orderIndex, targets: rule.targets, phases: rule.phases,
+    ...(rule.captureRemove?.length ? { capture_remove: rule.captureRemove } : {}),
+    ...(rule.streaming ? { streaming: true } : {}),
+    ...(rule.range?.minDepth !== undefined ? { min_depth: rule.range.minDepth } : {}),
+    ...(rule.range?.maxDepth !== undefined ? { max_depth: rule.range.maxDepth } : {}),
+    ...(rule.effect.kind === 'mark' ? { marker_type: rule.effect.markerType } : {}),
+    ...(rule.effect.kind !== 'replace' ? { action: rule.effect.kind } : {}),
+    ...(rule.effect.kind === 'promote-reasoning' ? { content_group: rule.effect.contentGroup, visibility: rule.effect.visibility, replay: rule.effect.replay, dialect: rule.effect.dialect } : {}),
+  }
+  return `---\n${stringify(header, { lineWidth: 0 })}---\n${rule.effect.kind === 'replace' ? rule.effect.replacement : ''}`
 }

@@ -31,10 +31,11 @@ export function readThemeCatalog(packages: readonly ManagedExtensionPackage[]): 
 
 export function parameterCss(parameter: StyleParameter, value: StyleParameterValue): string {
   switch (parameter.type) {
-    case 'number':
+    case 'number': {
       const range = sharedStyleParameterDefinitions[parameter.variable] ?? parameter
       if (typeof value !== 'number' || !Number.isFinite(value) || value < range.min || value > range.max) throw new Error(`Invalid parameter: ${parameter.label}`)
       return `${value}${parameter.unit ?? ''}`
+    }
     case 'boolean':
       if (typeof value !== 'boolean') throw new Error(`Invalid parameter: ${parameter.label}`)
       return value ? parameter.trueValue : parameter.falseValue

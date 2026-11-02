@@ -1,3 +1,5 @@
+import studioLogoUrl from '../../shared/assets/logo.png'
+import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
 import { presetIconUrl, useExtensionIdentities } from '../../shared/ui/extension-icon/extension-icon.js'
 import { PresetLibraryCatalog, type PresetCatalogSource } from '../../features/prompt-resources/ui/preset-library/preset-library-catalog.js'
 import { PresetConfigurationDialog } from '../../features/prompt-resources/ui/preset-library/preset-configuration-dialog.js'
@@ -19,6 +21,7 @@ import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/prompt-resources/ui/context-asset-workbench.js'
 import { readContextAssetBadgeInfo, renderContextAssetTreeIcon } from '../../features/prompt-resources/ui/context-asset-tree.js'
 import { flattenContextAssetNodes, findContextAssetNode, findContextAssetPath, findContextAssetByVirtualPath } from '../../features/prompt-resources/model/context-asset-tree.js'
+import toolbarStyles from '../../features/prompt-resources/ui/prompt-resource-toolbar/prompt-resource-toolbar.module.scss'
 import { PromptResourceToolbar } from '../../features/prompt-resources/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { buildPresetTokenProjection } from '../../features/prompt-resources/model/preset-token-projection.js'
 import { useResourceTokenSnapshot } from '../../features/prompt-resources/model/use-resource-token-snapshot.js'
@@ -38,23 +41,36 @@ function toolDisplayGroup(tool: AgentToolDefinition): string {
 }
 
 function usageSource(origin: PromptResource['origin'], imported = false): string {
-  if (origin?.kind === 'extension-package') return `扩展 · ${origin.packageId}`
+  if (origin?.kind === 'extension-package') return origin.packageId
   if (origin?.kind === 'builtin') return '官方资源'
-  return imported ? '导入资源' : '我的资源'
+  return imported ? '导入资源' : '个人资源'
 }
 
-function usageFolders(entries: Array<{ source: string; node: FileTreeNode }>, query: string): FileTreeNode[] {
+function usageSection(origin: PromptResource['origin']): string {
+  return origin?.kind === 'extension-package' || origin?.kind === 'builtin' ? '扩展' : '个人'
+}
+
+function usageGroupNodes(nodes: FileTreeNode[]): FileTreeNode[] {
+  return nodes.flatMap(node => node.isSection ? usageGroupNodes(node.children ?? []) : node.kind === 'folder' ? [node] : [])
+}
+
+function usageFolders(entries: Array<{ source: string; section?: string; node: FileTreeNode }>, query: string): FileTreeNode[] {
   const search = normalizeSearchText(query)
-  const groups = new Map<string, FileTreeNode[]>()
-  for (const { source, node } of entries) {
-    if (!normalizeSearchText(`${source} ${node.label} ${node.meta ?? ''}`).includes(search)) continue
+  const sections = new Map<string, Map<string, FileTreeNode[]>>()
+  for (const { source, section = '', node } of entries) {
+    if (!normalizeSearchText(`${section} ${source} ${node.label} ${node.meta ?? ''}`).includes(search)) continue
+    const groups = sections.get(section) ?? new Map<string, FileTreeNode[]>()
     const children = groups.get(source) ?? []
     children.push(node)
     groups.set(source, children)
+    sections.set(section, groups)
   }
-  return [...groups].map(([source, children]) => ({
-    id: `source:${source}`, label: source, kind: 'folder', meta: `${children.length} 项`, children,
-  }))
+  return [...sections].sort(([a], [b]) => ['角色', '扩展', '个人', '不可用引用'].indexOf(a) - ['角色', '扩展', '个人', '不可用引用'].indexOf(b)).flatMap(([section, groups]) => {
+    const children = [...groups].flatMap(([source, entries]) => section === '个人' || section === '不可用引用'
+      ? entries
+      : [{ id: `source:${section}:${source}`, label: source, kind: 'folder', children: entries }])
+    return section ? [{ id: `section:${section}`, label: section, isSection: true, children }] : children
+  })
 }
 
 type PresetWorkbenchProps = {
@@ -100,6 +116,7 @@ type PresetWorkbenchProps = {
   onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
   onReplaceLoreMounts: (source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { loreResourceId: string }>) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
+  routeToolId?: string
   routeAssetId?: string
   routeResourceId?: string
   globalSearchQuery?: string
@@ -127,7 +144,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const [saveError, setSaveError] = useState<string>()
   const pending = useRef(false)
   const configured = presets.find(preset => preset.id === configurationId)
-  const editing = Boolean(props.routeResourceId || props.routeAssetId || localEditingId)
+  const editing = Boolean(props.routeResourceId || props.routeAssetId || props.routeToolId || localEditingId)
   useEffect(() => { if (!props.active) setConfigurationId(undefined) }, [props.active])
   const sourceOf = (preset: PromptResource): PresetCatalogSource => {
     const origin = preset.origin
@@ -137,7 +154,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       const target = installation?.target.kind === 'card' ? `角色 · ${props.card?.id === installation.target.cardId ? props.card.name : installation.target.cardId}` : installation?.target.kind === 'global' || !origin.installationId ? '全局' : '安装来源未解析'
       return { id: `package:${origin.packageId}:${origin.installationId ?? ''}`, name: `${identity?.displayName ?? origin.packageId} · ${target}`, iconUrl: identity?.iconUrl, kind: 'package', description: `${target}${installation ? ` · v${installation.packageVersion}` : ''}` }
     }
-    return origin?.kind === 'builtin' ? { id: 'official', name: 'Loom Studio', kind: 'official', iconUrl: '/images/logo.png' }
+    return origin?.kind === 'builtin' ? { id: 'official', name: 'Loom Studio', kind: 'official', iconUrl: studioLogoUrl }
       : { id: 'personal', name: '我的预设', kind: 'personal' }
   }
   const sources = [...new Map(presets.map(preset => { const source = sourceOf(preset); return [source.id, source] })).values()]
@@ -280,6 +297,11 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
   const [declarationExpandedIds, setDeclarationExpandedIds] = useState<string[]>([])
   const searchQuery = props.searchQuery
   const [selectedToolId, setSelectedToolId] = useState<string>()
+  useEffect(() => {
+    if (!props.routeToolId) return
+    setSelectedToolId(props.routeToolId)
+    setActivePresetView('tools')
+  }, [props.routeToolId, setActivePresetView])
   const hasDetailSelection = activePresetView === 'tools'
     ? Boolean(selectedToolId)
     : Boolean(selectedNode)
@@ -293,12 +315,12 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
 
 
   useEffect(() => {
-    setAssetPane('preset', props.workspaceId, props.routeResourceId ? 'detail' : 'explorer')
-  }, [props.routeResourceId, selectedResource?.id])
+    setAssetPane('preset', props.workspaceId, props.routeResourceId || props.routeToolId ? 'detail' : 'explorer')
+  }, [props.routeResourceId, props.routeToolId, selectedResource?.id])
 
   useEffect(() => {
-    if (!selectedToolId) setSelectedToolId(props.tools[0]?.id)
-  }, [props.tools, selectedToolId])
+    if (!selectedToolId && !props.routeToolId) setSelectedToolId(props.tools[0]?.id)
+  }, [props.tools, selectedToolId, props.routeToolId])
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {
@@ -355,6 +377,7 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
         label: preset.rootNode.label,
         kind: 'folder',
         category: 'preset-root',
+        enabled: preset.rootNode.enabled,
         meta: `${originLabel} · ${modelLabel}`,
         children: promptChildren,
       }
@@ -393,14 +416,14 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     await props.onRenameNode(targetId, label)
   }
 
-  if ((selectedResourceId || props.routeAssetId) && (!selectedResource || (props.routeAssetId && !findContextAssetNode([selectedResource.rootNode], props.routeAssetId)))) {
+  if (!props.routeToolId && (selectedResourceId || props.routeAssetId) && (!selectedResource || (props.routeAssetId && !findContextAssetNode([selectedResource.rootNode], props.routeAssetId)))) {
     return <ResourceUnavailable message={props.t('promptResource.referenceUnavailable')} />
   }
 
-  const configurationAction = <IconButton aria-label="配置预设" title="配置预设" size="small"
+  const configurationAction = <button type="button" aria-label="配置预设" title="配置预设"
     disabled={!selectedResource} onClick={() => { if (selectedResource) props.onConfigure(selectedResource.id) }}>
-    <SlidersHorizontal size={16} />
-  </IconButton>
+    <SlidersHorizontal aria-hidden="true" />
+  </button>
 
   return (
     <AssetWorkbenchLayout
@@ -433,7 +456,7 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
           onImportZip={props.onImportResourceZip}
           onSelect={setSelectedResourceId}
         />
-      ) : configurationAction}
+      ) : <div className={toolbarStyles.actions}>{configurationAction}</div>}
       header={(
         <div>
           {props.onReturnToLibrary && <Button className={styles.libraryBack} size="small" variant="ghost" onClick={props.onReturnToLibrary}>
@@ -697,7 +720,8 @@ export function AgentPresetOverview(props: {
   const isGlobalLore = (nodeId: string) => globalLoreIds.has(loreRowsById.get(nodeId)?.resource?.id ?? '')
   const loreNodes = (useCardLore: boolean, useGlobalLore: boolean) => usageFolders(
     [...loreRows.filter(row => isCardLore(row.id)), ...loreRows.filter(row => !isCardLore(row.id))].map(row => ({
-    source: isCardLore(row.id) ? `当前角色 · ${props.card!.name}`
+    section: isCardLore(row.id) ? '角色' : row.resource ? usageSection(row.resource.origin) : '不可用引用',
+    source: isCardLore(row.id) ? props.card!.name
       : row.resource ? usageSource(row.resource.origin, Boolean(row.resource.sourceArtifactRef)) : '不可用引用',
     node: {
       id: row.id, label: row.resource?.rootNode.label ?? `Lore 引用不可用：${row.mount!.loreResourceId}`,
@@ -830,8 +854,8 @@ export function AgentPresetOverview(props: {
               await props.onReplaceLoreMounts({ kind: 'preset', id: props.preset.id }, currentLoreMounts().filter(mount => !ids.has(mount.id)))
             } },
           ]}
-          expandedIds={nodes.filter(node => !collapsedLoreSources.includes(node.id)).map(node => node.id)}
-          onExpandedIdsChange={ids => setCollapsedLoreSources(nodes.filter(node => !ids.includes(node.id)).map(node => node.id))}
+          expandedIds={usageGroupNodes(nodes).filter(node => !collapsedLoreSources.includes(node.id)).map(node => node.id)}
+          onExpandedIdsChange={ids => setCollapsedLoreSources(usageGroupNodes(nodes).filter(node => !ids.includes(node.id)).map(node => node.id))}
           getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
           getDragLabel={node => node.label} moreActionsLabel="更多操作"
           isMuted={node => {
@@ -959,7 +983,7 @@ export function PresetTextUses(props: {
   }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const [activeTab, setActiveTab] = useState<'model' | 'lore' | 'text' | 'tools'>(props.modelContent ? 'model' : 'lore')
+  const [activeTab, setActiveTab] = useWorkbenchView<'model' | 'lore' | 'text' | 'tools'>('preset.configuration', props.modelContent ? 'model' : 'lore', props.modelContent ? ['model', 'lore', 'text', 'tools'] : ['lore', 'text', 'tools'])
   const [textQuery, setTextQuery] = useState('')
   const [collapsedTextSources, setCollapsedTextSources] = useState<string[]>([])
   const dirty = draft.useGlobalLore !== (props.preset.useGlobalLore ?? true)
@@ -1010,14 +1034,14 @@ export function PresetTextUses(props: {
   }
 
   function textSource(item: TextTransformRule | TextExtractor): string {
-    if (item.owner.kind === 'card') return `角色 · ${item.owner.cardId}`
-    if (item.owner.kind === 'preset') return `预设 · ${item.owner.presetId}`
-    if (item.owner.kind === 'extension') return `扩展 · ${item.owner.packageId}`
+    if (item.owner.kind === 'card') return item.owner.cardId
+    if (item.owner.kind === 'preset') return item.owner.presetId
+    if (item.owner.kind === 'extension') return item.owner.packageId
     return usageSource(item.origin)
   }
   const candidates = [
-    ...rules.map(rule => ({ kind: 'rule' as const, id: rule.id, name: rule.name, enabled: rule.enabled, source: textSource(rule) })),
-    ...extractors.map(extractor => ({ kind: 'extractor' as const, id: extractor.id, name: extractor.name, enabled: extractor.enabled, source: textSource(extractor) })),
+    ...rules.map(rule => ({ kind: 'rule' as const, id: rule.id, name: rule.name, enabled: rule.enabled, section: rule.owner.kind === 'card' ? '角色' : rule.owner.kind === 'extension' ? '扩展' : usageSection(rule.origin), source: textSource(rule) })),
+    ...extractors.map(extractor => ({ kind: 'extractor' as const, id: extractor.id, name: extractor.name, enabled: extractor.enabled, section: extractor.owner.kind === 'card' ? '角色' : extractor.owner.kind === 'extension' ? '扩展' : usageSection(extractor.origin), source: textSource(extractor) })),
   ]
   const candidatesById = new Map(candidates.map(item => [`${item.kind}:${item.id}`, item]))
   const textEnabled = (nodeId: string) => {
@@ -1027,19 +1051,19 @@ export function PresetTextUses(props: {
   const missing = draft.textUses.filter(use => !candidates.some(item => item.kind === use.kind && item.id === use.id))
   const textNodes = usageFolders([
     ...candidates.map(item => ({
-      source: item.source,
+      section: item.section, source: item.source,
       node: {
         id: `${item.kind}:${item.id}`, label: item.name, kind: 'entry' as const,
         meta: `${item.kind === 'rule' ? '正则' : '提取器'} · ${draft.textUses.some(use => use.kind === item.kind && use.id === item.id) ? '预设配置' : '默认'}`,
       },
     })),
     ...missing.map(use => ({
-      source: '不可用引用',
+      section: '不可用引用', source: '不可用引用',
       node: { id: `${use.kind}:${use.id}`, label: use.id, kind: 'entry' as const, meta: '未解析' },
     })),
   ], textQuery)
 
-  return <div className={styles.presetUsageConfig}>
+  return <div data-loom-mobile-tab-scope="" className={styles.presetUsageConfig}>
     <PanelTabs items={[
       ...(props.modelContent ? [{ id: 'model' as const, label: '模型与审批' }] : []),
       { id: 'lore', label: 'Lore' },
@@ -1098,8 +1122,8 @@ export function PresetTextUses(props: {
             return save({ ...draft, textUses: draft.textUses.filter(use => !ids.has(`${use.kind}:${use.id}`)) })
           } },
         ]}
-        expandedIds={textNodes.filter(node => !collapsedTextSources.includes(node.id)).map(node => node.id)}
-        onExpandedIdsChange={ids => setCollapsedTextSources(textNodes.filter(node => !ids.includes(node.id)).map(node => node.id))}
+        expandedIds={usageGroupNodes(textNodes).filter(node => !collapsedTextSources.includes(node.id)).map(node => node.id)}
+        onExpandedIdsChange={ids => setCollapsedTextSources(usageGroupNodes(textNodes).filter(node => !ids.includes(node.id)).map(node => node.id))}
         getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
         getDragLabel={node => node.label} moreActionsLabel="更多操作"
         isMuted={node => node.kind !== 'folder' && !textEnabled(node.id)}

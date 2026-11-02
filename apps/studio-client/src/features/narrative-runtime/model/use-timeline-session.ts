@@ -24,6 +24,7 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
       if (lifecycle.owns(run) && run.status === 'failed' && transcript)
         return resolveSessionRun(api, run.sessionId, transcript.entries)
     },
+    narrativeCommitted: async () => { await runAction(refreshNarrative) },
     completed: (_run, result) => onCompleted?.(result),
     reportFailure: error => notify.providerError(error),
     reportAcknowledgement: error => notify.providerError(error),
@@ -49,6 +50,10 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
       // The Run observer owns in-flight deltas; a commit refresh must not erase them.
       if (!observed.current?.observing || observed.current.status !== 'running')
         setEntries(current => retainRunPresentation(current, transcript.entries))
+      else setEntries(current => {
+        const ids = new Set(current.map(item => item.id))
+        return [...current, ...transcript.entries.filter(item => !ids.has(item.id) && (item.entry.kind === 'user-interjection' || item.entry.kind === 'interjection-applied' || item.entry.kind === 'interjection-discarded'))]
+      })
     }
     // A newer read owns publication, but terminal recovery still needs this
     // snapshot to ask the server for the observed Run's authoritative state.
@@ -80,7 +85,8 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
   }, [api, timelineId, branchId])
 
   async function execute(request: Parameters<StudioApi['agentSessions']['createRun']>[0], create: (request: Parameters<StudioApi['agentSessions']['createRun']>[0]) => ReturnType<StudioApi['agentSessions']['createRun']>, onStarted?: () => void) {
-    if (starting.current || observed.current?.observing || activeRun?.status === 'suspended' && !request.retry) throw new Error('请先结束当前故事执行')
+    if (starting.current || observed.current?.observing) throw new Error('请先结束当前故事执行')
+    if (activeRun?.status === 'suspended' && !request.retry) await lifecycle.abandon()
     const target = source.current
     starting.current = true
     try {
@@ -117,7 +123,7 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
     setActiveRun(active)
     setRecovery(active?.status === 'suspended' ? { target: 'narrative', status: 'suspended', error: active.error } : undefined)
   }
-  return { session: session?.id === timelineId ? session : undefined, entries, activeRun, recovery, execute, executeStarted,
+  return { acceptEntry: (entry: AgentTranscriptEntry) => setEntries(current => current.some(item => item.id === entry.id) ? current.map(item => item.id === entry.id ? entry : item) : [...current, entry]), session: session?.id === timelineId ? session : undefined, entries, activeRun, recovery, execute, executeStarted,
     approve: lifecycle.approve, configure, refresh, refreshTask, reconnect: lifecycle.reconnect,
     pause: lifecycle.pause, resume: lifecycle.resume, abandon: lifecycle.abandon }
 }

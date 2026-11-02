@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
 import { ChartNoAxesCombined, ChevronDown, ChevronRight } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
@@ -6,6 +7,7 @@ import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-pane
 import styles from './studio-page.module.scss'
 
 type StudioRailProps = {
+  compact: boolean
   activePanel: StudioPanelId | null
   modelConfigured?: boolean
   recentSessions?: ReactNode
@@ -26,7 +28,8 @@ type RailTabProps = {
 }
 
 export function StudioRail(props: StudioRailProps) {
-  const [recentOpen, setRecentOpen] = useState(false)
+  const [recentView, setRecentView] = useWorkbenchView('rail.history', 'collapsed', ['collapsed', 'expanded'] as const)
+  const recentOpen = recentView === 'expanded'
   const modelStatus = props.modelConfigured === undefined
     ? 'unknown'
     : props.modelConfigured ? 'configured' : 'incomplete'
@@ -48,7 +51,6 @@ export function StudioRail(props: StudioRailProps) {
           <RailTab activePanel={props.activePanel} panel="state" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="memory" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="macro" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
-          <RailTab activePanel={props.activePanel} panel="text-transform" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
         </div>
 
         <div className={styles.railGroup}>
@@ -56,8 +58,8 @@ export function StudioRail(props: StudioRailProps) {
           <RailTab activePanel={props.activePanel} panel="play" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <div className={styles.railPlayRow}>
             <RailTab activePanel={props.activePanel} panel="recent" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
-            {props.recentSessions && props.activePanel === null ? (
-              <button className={styles.railPlayToggle} type="button" aria-expanded={recentOpen} aria-label={props.t('recentCharacters.title')} onClick={() => setRecentOpen(value => !value)}>
+            {props.recentSessions && !props.compact ? (
+              <button className={styles.railPlayToggle} type="button" aria-expanded={recentOpen} aria-label={props.t('recentCharacters.title')} onClick={() => setRecentView(value => value === 'expanded' ? 'collapsed' : 'expanded')}>
                 {recentOpen ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
               </button>
             ) : null}
@@ -65,8 +67,8 @@ export function StudioRail(props: StudioRailProps) {
           {props.recentSessions ? (
             <div
               className={styles.railRecentDisclosure}
-              data-open={recentOpen && props.activePanel === null}
-              inert={!recentOpen || props.activePanel !== null}
+              data-open={recentOpen && !props.compact}
+              inert={!recentOpen || props.compact}
             >
               <div>{props.recentSessions}</div>
             </div>

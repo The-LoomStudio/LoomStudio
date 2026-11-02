@@ -9,15 +9,6 @@ const markdownParser = unified().use(remarkParse).use(remarkGfm)
 const htmlTags = new Set('html head body div span p details summary small b strong i em u s del ins sub sup br hr pre code blockquote ul ol li dl dt dd table thead tbody tfoot tr td th caption section article header footer main aside nav h1 h2 h3 h4 h5 h6 a img button input label select option textarea form script style link meta title svg figure figcaption audio video canvas'.split(' '))
 type HtmlNode = DefaultTreeAdapterMap['node']
 
-function cleanWrapperTags(text: string): string {
-  return text.replace(/<\/?([a-zA-Z][\w-]*)\b[^>]*>/g, (match, tagName) => {
-    if (!htmlTags.has(tagName.toLowerCase())) {
-      return ''
-    }
-    return match
-  })
-}
-
 function normalizeWrappedFences(source: string): string {
   // 1. Separate inline custom tags that immediately touch a code fence: e.g. <opening> ```html or ``` </opening>
   let res = source.replace(/(<([a-zA-Z][\w-]*)\b[^>]*>)[ \t]*(`{3,}|~{3,})html/gi, (match, openTag, tagName, fence) => {
@@ -53,8 +44,7 @@ export function parseMessageSegments(source: string, streaming = false): Message
   function append(kind: MessageSegment['kind'], start: number, end: number, value = normalized.slice(start, end)) {
     if (start > cursor) {
       const raw = normalized.slice(cursor, start)
-      const cleaned = cleanWrapperTags(raw)
-      if (cleaned.trim()) parts.push({ kind: 'markdown', value: cleaned, start: cursor })
+      if (raw.trim()) parts.push({ kind: 'markdown', value: raw, start: cursor })
     }
     parts.push({ kind, value, start })
     cursor = end
@@ -126,8 +116,8 @@ export function parseMessageSegments(source: string, streaming = false): Message
   }
   if (cursor < normalized.length) {
     const raw = normalized.slice(cursor)
-    const cleaned = cleanWrapperTags(raw)
-    if (cleaned.trim()) parts.push({ kind: 'markdown', value: cleaned, start: cursor })
+    // Unknown business tags are authored text; only explicit transforms remove them.
+    if (raw.trim()) parts.push({ kind: 'markdown', value: raw, start: cursor })
   }
   return parts
 }

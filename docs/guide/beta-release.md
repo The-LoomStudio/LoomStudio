@@ -72,7 +72,7 @@ ZIP 由用户手动导入新版，不提供自动更新检查。
 `extensions/<packageId>/`，源码和可执行产物不放入用户数据目录。
 首次官方选择可跳过；STBridge 与 The World 从各自独立仓库下载，不预先放在发行包的
 `official/extensions/`。Git 安装不执行构建，扩展发布包须包含 Manifest、资源和已构建的完整
-`dist/`，不能把缺少运行产物的源码 ZIP 当作成品安装。当前内置扩展为 Loom Assistant。
+`dist/`，不能把缺少运行产物的源码 ZIP 当作成品安装。当前源码的发行准备脚本携带 Loom Assistant 与 Story Memory，主题和背景包不随包分发；实际下载版本以对应发行说明及包内容为准。
 可执行 Server 扩展是可信同进程代码，不是安全沙箱；安装前确认来源和风险。
 
 ## 维护者发行命令

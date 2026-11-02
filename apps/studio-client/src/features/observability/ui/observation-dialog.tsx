@@ -1,16 +1,17 @@
 import { useState, type ReactNode } from 'react'
-import { ArrowUpRight, Copy } from 'lucide-react'
-import { Button, Dialog } from '@loom-studio/ui'
+import { ArrowUpRight, Copy, Info } from 'lucide-react'
+import { Button, Dialog, IconButton } from '@loom-studio/ui'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../../shared/browser/clipboard.js'
 import styles from './observability-workbench.module.scss'
 
-export function ObservationDialogButton({ title, description, children, t }: {
-  title: string; description?: string; children(): ReactNode; t: Translator
+export function ObservationDialogButton({ title, description, children, t, icon = false }: {
+  title: string; description?: string; children(): ReactNode; t: Translator; icon?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return <>
-    <Button size="small" className={styles.inspectorTrigger} aria-haspopup="dialog" onClick={() => setOpen(true)}><ArrowUpRight size={14} />{title}</Button>
+    {icon ? <IconButton size="small" title={title} aria-label={title} aria-haspopup="dialog" onClick={() => setOpen(true)}><Info size={16} /></IconButton>
+      : <Button size="small" className={styles.inspectorTrigger} aria-haspopup="dialog" onClick={() => setOpen(true)}><ArrowUpRight size={14} />{title}</Button>}
     <Dialog open={open} onClose={() => setOpen(false)} title={title} description={description}
       closeLabel={t('observation.close')} className={styles.inspectorDialog}>
       {open ? children() : null}
@@ -18,10 +19,10 @@ export function ObservationDialogButton({ title, description, children, t }: {
   </>
 }
 
-export function ObservationRawData({ title, value, text, t }: {
-  title: string; value?: unknown; text?: string; t: Translator
+export function ObservationRawData({ title, value, text, t, icon, children }: {
+  title: string; value?: unknown; text?: string; t: Translator; icon?: boolean; children?: ReactNode
 }) {
-  return <ObservationDialogButton title={title} t={t}>{() => <RawDataContent text={text ?? (value === undefined ? t('observation.missing') : JSON.stringify(value, null, 2))} t={t} />}</ObservationDialogButton>
+  return <ObservationDialogButton title={title} t={t} icon={icon}>{() => <>{children}<RawDataContent text={text ?? (value === undefined ? t('observation.missing') : JSON.stringify(value, null, 2))} t={t} /></>}</ObservationDialogButton>
 }
 
 function RawDataContent({ text, t }: { text: string; t: Translator }) {

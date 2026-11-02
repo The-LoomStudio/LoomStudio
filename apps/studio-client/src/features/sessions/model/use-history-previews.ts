@@ -33,7 +33,7 @@ export function useHistoryPreviews({ api, branches, selectedTimeline, selectedSe
 
   // 按需拉取选中时间线的演变节点日志
   useEffect(() => {
-    if (!selectedTimeline || !api?.narratives?.getPage) return
+    if (!selectedTimeline || !api) return
     const timelineId = selectedTimeline.id
     if (timelineNodesMap?.[timelineId]?.key === timelinePreviewKey && timelineNodesMap[timelineId]?.status === 'ready') return
 
@@ -46,7 +46,7 @@ export function useHistoryPreviews({ api, branches, selectedTimeline, selectedSe
     void api.narratives
       .getPage({ timelineId, branchId: selectedTimeline.activeBranchId, limit: 20 })
       .then(page => {
-        if (active && page?.nodes) {
+        if (active) {
           setPreviews(prev => ({
             api,
             timelineNodes: { ...(prev.api === api ? prev.timelineNodes : {}), [timelineId]: { key: timelinePreviewKey, status: 'ready', data: page.nodes } },
@@ -70,7 +70,7 @@ export function useHistoryPreviews({ api, branches, selectedTimeline, selectedSe
 
   // 按需拉取选中会话的转录缩略预览
   useEffect(() => {
-    if (!selectedSession || !api?.agentSessions?.getTranscript) return
+    if (!selectedSession || !api) return
     const sessionId = selectedSession.id
     if (sessionTranscriptMap?.[sessionId]?.key === sessionPreviewKey && sessionTranscriptMap[sessionId]?.status === 'ready') return
 
@@ -83,7 +83,7 @@ export function useHistoryPreviews({ api, branches, selectedTimeline, selectedSe
     void api.agentSessions
       .getTranscript({ agentSessionId: sessionId, limit: 12 })
       .then(page => {
-        if (active && page?.entries) {
+        if (active) {
           setPreviews(prev => ({
             api,
             timelineNodes: prev.api === api ? prev.timelineNodes : {},

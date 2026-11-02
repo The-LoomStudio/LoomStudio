@@ -31,7 +31,16 @@ export type AiGatewayRequest = {
   onUsage?: (usage: TokenUsage) => void
   provider: AiProviderConfig
   modelId: string
-  messages: ChatMessage[]
+  messages: Array<
+    | Exclude<ChatMessage, { role: 'system' | 'developer' | 'user' }>
+    | { role: 'system' | 'developer'; content: string }
+    | {
+        role: 'user'
+        content: string
+        /** Dispatch-only image bytes, encoded as base64; never persisted. */
+        images?: Array<{ data: string; mediaType: string }>
+      }
+  >
   tools?: AiFunctionTool[]
   toolChoice?: AiToolChoice
   providerOptions?: JsonObject

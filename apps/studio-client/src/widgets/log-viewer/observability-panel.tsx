@@ -23,7 +23,7 @@ export function ObservabilityPanel({ api, endpoint, t, searchParams, onSearchPar
     ...(summary?.agentSessionId ? [{ kind: 'entity' as const, type: 'session' as const, id: summary.agentSessionId }] : []),
     ...(providerId ? [{ kind: 'entity' as const, type: 'provider' as const, id: providerId }] : []),
   ]
-  const names = useLogReferenceLabels(api, endpoint, entityRefs.map(formatEntityReference))
+  const names = useLogReferenceLabels(api, endpoint, [...entityRefs.map(formatEntityReference), ...state.records.map(record => formatEntityReference({ kind: 'entity', type: 'run', id: record.id })), ...(summary ? [formatEntityReference({ kind: 'entity', type: 'run', id: summary.id })] : [])])
   function entityLink(ref: EntityReference): ObservationReference {
     const value = names.labels.get(`${ref.type}:${ref.id}`)
     return { label: `${t(`logs.ref.${ref.type}`)} · ${value ? value.state === 'available' ? value.title || t('observation.unnamed') : t(value.state === 'deleted' ? 'observation.resourceDeleted' : 'observation.recordUnavailable') : t(names.isError ? 'observation.readError' : 'observation.loading')}`,
@@ -41,6 +41,7 @@ export function ObservabilityPanel({ api, endpoint, t, searchParams, onSearchPar
   }
   const selectedRecord = state.selected ? {
     ...mapObservationSummary(state.selected.record, t),
+    source: names.labels.get(`run:${state.selected.record.id}`)?.source,
     references: [...entityRefs.filter(ref => ref.type !== 'provider').map(entityLink),
       ...(summary?.kind === 'run' ? [{ label: t('observation.applicationLogs'), open: () => {
         const params = new URLSearchParams(searchParams)
@@ -64,7 +65,7 @@ export function ObservabilityPanel({ api, endpoint, t, searchParams, onSearchPar
         : state.entry.data === null ? notice(t('observation.unavailable'), state.entry.refetch) : undefined
   return <ObservabilityWorkbench
     t={t}
-    records={state.records.map(record => mapObservationSummary(record, t))}
+    records={state.records.map(record => ({ ...mapObservationSummary(record, t), source: names.labels.get(`run:${record.id}`)?.source }))}
     selectedRecordId={state.recordId}
     selectedRecord={selectedRecord}
     onSelectRecord={selectRecord} onSelectStep={state.setStepId} onKindChange={state.setKind}

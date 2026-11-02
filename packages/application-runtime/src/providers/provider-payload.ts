@@ -25,8 +25,8 @@ export function buildOpenAIChatPayload(input: {
 
 function normalizeMessage(message: ProviderMessage, index: number): OpenAIChatMessage {
   if (message.role === 'system' || message.role === 'developer' || message.role === 'user') {
-    assertContent(message.content, index)
-    return { role: message.role === 'developer' ? 'system' : message.role, content: message.content }
+    if (message.role !== 'user' || !message.attachments?.length) assertContent(message.content, index)
+    return { ...(message.role === 'user' && message.attachments?.length ? { attachments: structuredClone(message.attachments) } : {}), role: message.role === 'developer' ? 'system' : message.role, content: message.content }
   }
   if (message.role === 'tool') {
     assertContent(message.content, index)

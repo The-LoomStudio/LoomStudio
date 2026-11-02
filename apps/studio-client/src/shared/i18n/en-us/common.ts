@@ -1,6 +1,7 @@
 import type { messages as zhCN } from '../zh-cn/common.js'
 
 export const messages = {
+  'fileTree.folderDetails': 'View folder details',
   'history.tabRecent': 'Recent',
   'history.tabTimelines': 'Stories',
   'history.tabSessions': 'Sessions',

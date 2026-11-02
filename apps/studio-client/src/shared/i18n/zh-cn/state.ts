@@ -1,4 +1,8 @@
 export const messages = {
+  'registrySource.card': '角色',
+  'registrySource.extension': '扩展',
+  'registrySource.personal': '个人',
+
   'state.itemCount': '{{count}} 项',
   'state.characterCount': '{{count}} 字符',
   'macroAuthoring.optionCount': '{{count}} 选项',

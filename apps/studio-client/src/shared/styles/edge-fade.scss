@@ -1,0 +1,13 @@
+// Alpha-only mask: the colors define opacity, never a painted overlay.
+@mixin vertical {
+  -webkit-mask-image: linear-gradient(to bottom,
+    transparent 0,
+    #000 var(--loom-fade-top, 0px),
+    #000 var(--loom-fade-bottom-start, 100%),
+    transparent var(--loom-fade-bottom-end, 100%));
+  mask-image: linear-gradient(to bottom,
+    transparent 0,
+    #000 var(--loom-fade-top, 0px),
+    #000 var(--loom-fade-bottom-start, 100%),
+    transparent var(--loom-fade-bottom-end, 100%));
+}

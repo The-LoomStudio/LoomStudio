@@ -1,3 +1,4 @@
+import { attachmentMessage } from './message-attachments.js'
 import type { AgentStore, AgentTranscriptEntry, AgentTranscriptEntryData } from '@loom-studio/application-data'
 import type { ChatMessage } from '@loom-studio/shared'
 import { renderLoomContentToolResult } from './content-transport.js'
@@ -29,7 +30,8 @@ export function projectSessionHistory(
     if (data.kind === 'message') {
       const text = textById.get(record.id)
       if (text === undefined) throw new Error(`Session message has no projected text: ${record.id}`)
-      if (text.trim()) add(record, [{ role: data.role, content: text }])
+      if (text.trim() || data.attachments?.length) add(record, [data.role === 'user'
+        ? attachmentMessage(text, data.attachments) : { role: data.role, content: text }])
     } else if (data.kind === 'reasoning' && data.replay === 'assistant-content' && data.content.trim()) {
       const dialect = data.dialect && (/^[A-Za-z][A-Za-z0-9_.-]*$/.test(data.dialect) ? data.dialect : 'reasoning')
       add(record, [{ role: 'assistant', content: dialect ? `<${dialect}>${data.content}</${dialect}>` : data.content }])

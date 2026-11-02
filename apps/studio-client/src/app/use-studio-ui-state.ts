@@ -1,3 +1,4 @@
+import { useWorkbenchView } from '../shared/studio-shell/use-workbench-view.js'
 import { useState } from 'react'
 import type { VariableView } from './studio-state-panel.js'
 
@@ -6,7 +7,7 @@ export function useStudioUiState() {
   const [composerHeight, setComposerHeight] = useState(0)
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<string>()
-  const [variableView, setVariableView] = useState<VariableView>('sources')
+  const [variableView, setVariableView] = useWorkbenchView<VariableView>('state.tab', 'sources', ['sources', 'authoring', 'state'])
 
   return {
     loomScriptRefreshToken,

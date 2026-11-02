@@ -3,7 +3,7 @@ import type {
   SqliteDataEngine,
   SqliteDataTransaction,
 } from '@loom-studio/data-engine'
-import { createId, isRecord, nowIso, optionalString } from '@loom-studio/shared'
+import { readChatAttachments, createId, isRecord, nowIso, optionalString } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
 import type {
   AgentSummaryTask,
@@ -83,6 +83,22 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
           ON CONFLICT(task_id) DO UPDATE SET data_json=excluded.data_json, updated_at=excluded.updated_at`)
           .run(input.taskId, input.agentSessionId, JSON.stringify(input), timestamp, timestamp)
         tx.recordOperations([operation(existing ? 'update' : 'create', input.taskId, 'agent.summary-task')])
+      },
+      reviseInterjection: input => {
+        const current = requireEntry(database, input.entryId)
+        if (current.entry.kind !== 'user-interjection' || input.replacement.kind !== 'user-interjection'
+          || JSON.stringify(current.entry) !== JSON.stringify(input.expected)) throw new Error('Input changed; reopen the editor')
+        validateTranscriptEntry(input.replacement)
+        database.prepare('UPDATE agent_transcript_entries SET entry_json = ? WHERE id = ?').run(JSON.stringify(input.replacement), current.id)
+        tx.recordOperations([operation('update', current.id, 'agent.transcript-entry', current.agentSessionId)])
+        return { ...current, entry: input.replacement }
+      },
+      rewindStandalone: input => {
+        const session = requireSession(database, input.agentSessionId)
+        if (session.kind === 'timeline' || session.headEntryId !== input.expectedHeadEntryId) throw new Error('Session history changed')
+        if (input.headEntryId && requireEntry(database, input.headEntryId).agentSessionId !== session.id) throw new Error('Invalid Session head')
+        database.prepare('UPDATE agent_sessions SET head_entry_id = ?, updated_at = ? WHERE id = ?').run(input.headEntryId ?? null, now(), session.id)
+        tx.recordOperations([operation('update', session.id, 'agent.session', session.timelineId)])
       },
       restoreTimelineEntries: input => {
         const session = requireSession(database, input.agentSessionId)
@@ -830,6 +846,20 @@ function validateTranscriptEntry(
       'agent.entry_invalid',
       'Agent transcript entry must have a kind',
     )
+  if (value.kind === 'user-interjection' || value.kind === 'interjection-applied' || value.kind === 'interjection-discarded') {
+    validateId(value.requestId, 'requestId')
+    if (value.kind !== 'user-interjection') return
+    if (value.withdrawn !== undefined && typeof value.withdrawn !== 'boolean') throw new Error('Invalid input withdrawal state')
+    const attachments = readChatAttachments(value.attachments)
+    if (typeof value.content !== 'string' || !value.content.trim() && !attachments?.length) validateContent(value.content)
+    if (value.mode !== 'discussion' && value.mode !== 'narrative') throw new AgentStoreError('agent.input_invalid', 'Invalid interjection mode')
+    if (value.narrativeTarget !== undefined) {
+      if (!isRecord(value.narrativeTarget)) throw new AgentStoreError('agent.input_invalid', 'Invalid interjection target')
+      validateId(value.narrativeTarget.timelineId, 'timelineId')
+      validateId(value.narrativeTarget.branchId, 'branchId')
+    }
+    return
+  }
   if (value.kind === 'work-summary') {
     validateContent(value.content)
     if (value.boundary !== undefined) {
@@ -857,9 +887,11 @@ function validateTranscriptEntry(
         'agent.message_role_invalid',
         'Agent message role must be user or assistant',
       )
-    validateContent(value.content)
+    const attachments = readChatAttachments(value.attachments)
+    if (value.role !== 'user' || !attachments?.length || typeof value.content !== 'string') validateContent(value.content)
     if (value.purpose !== undefined && value.purpose !== 'narrative' && value.purpose !== 'discussion')
       throw new AgentStoreError('agent.message_purpose_invalid', 'Invalid message purpose')
+    if (value.interjectionRequestId !== undefined) validateId(value.interjectionRequestId, 'interjectionRequestId')
     if (value.narrativeId !== undefined) validateId(value.narrativeId, 'narrativeId')
     if (value.continuesEntryId !== undefined) {
       if (value.role !== 'assistant')

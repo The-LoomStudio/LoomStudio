@@ -1,3 +1,5 @@
+import { migrateLegacyRuleScriptsToMarkdown } from '../scripts/loom-script-markdown-migration.js'
+import { createResourceAuthoringRuntimeMethods } from './resource-authoring-runtime.js'
 import { createObservabilityRuntimeMethods } from './observability-runtime.js'
 import type { ObservationBuild } from '../observability/types.js'
 import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from '../foundation/application-context.js'
@@ -59,6 +61,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     setLoomScriptExecutionStates: states => setScriptExecutionStates(ctx.documents, states),
     initialize: async () => {
       await migrateLegacyTextTransformRules(ctx)
+      const ruleMigration = await migrateLegacyRuleScriptsToMarkdown(ctx)
+      for (const skipped of ruleMigration.skipped) console.warn(`[rule.md migration] ${skipped.id}: ${skipped.reason}`)
       await initializeLoomScriptAdoptions(ctx)
       await initializeGlobalState(ctx)
       await initializeOfficialFakeProviderProfiles(ctx)
@@ -106,6 +110,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
     ...createCardsRuntimeMethods(ctx),
     ...createCardDirectoryRuntimeMethods(ctx),
+    ...createResourceAuthoringRuntimeMethods(ctx),
     ...createNarrativeRuntimeMethods(ctx),
     ...createSwipeRuntimeMethods(ctx),
     ...createAgentsRuntimeMethods(ctx),

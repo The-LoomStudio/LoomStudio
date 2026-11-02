@@ -277,6 +277,20 @@ export function createBuiltinHandlers(kernel: Kernel,
         expectedInstallationVersion,
       })
     },
+    'extensions.listCharacters': async (params: JsonValue | undefined) => {
+      if (!options.characterCatalog) throw new Error('Extension character catalog unavailable')
+      return options.characterCatalog.list(readString(params, 'packageId'))
+    },
+    'extensions.previewCharacter': async (params: JsonValue | undefined) => {
+      if (!options.characterCatalog) throw new Error('Extension character catalog unavailable')
+      return options.characterCatalog.preview(readString(params, 'packageId'), readString(params, 'characterId'))
+    },
+    'extensions.importCharacter': async (params: JsonValue | undefined, context: KernelRpcContext) => {
+      if (!options.characterCatalog) throw new Error('Extension character catalog unavailable')
+      if (!context.clientId) throw new Error('Character import requires a client session')
+      return options.characterCatalog.import({ packageId: readString(params, 'packageId'), characterId: readString(params, 'characterId'),
+        digest: readString(params, 'digest'), allowDuplicate: isRecord(params) && params.allowDuplicate === true }, context.clientId)
+    },
     'extensions.exportPackage': async (params: JsonValue | undefined) => {
       return await requireExtensionManager(options).exportPackage({
         packageId: readString(params, 'packageId'),

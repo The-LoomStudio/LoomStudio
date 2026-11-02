@@ -1,4 +1,5 @@
-import { CircleX, RefreshCw, Undo2 } from 'lucide-react'
+import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
+import { CircleAlert, CircleX, RefreshCw, Undo2 } from 'lucide-react'
 import { IconButton } from '@loom-studio/ui'
 import type { RunRecovery } from '../model/use-narrative-runtime.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -23,13 +24,15 @@ export function RunRecoveryControls(props: RunRecoveryControlsProps) {
 
   return (
     <div className={styles.controls} data-status={displayStatus} aria-busy={props.runRecoveryBusy}>
+      <CircleAlert className={styles.statusIcon} aria-hidden="true" />
       <div className={styles.message} role={recovery.error ? 'alert' : 'status'}>
         <span>{props.t(`runRecovery.${displayStatus}`)}</span>
-        {recovery.error ? <span>{recovery.error}</span> : null}
         {recovery.refreshFailed ? <span>{props.t('runRecovery.refreshFailed')}</span> : null}
       </div>
+      <div className={styles.actions}>
+      {recovery.error ? <InfoDialog title="查看错误详情"><p>{recovery.error}</p></InfoDialog> : null}
       {disconnected || recovery.refreshFailed ? (
-        <IconButton
+        <IconButton size="small"
           aria-label={reconnectLabel}
           title={reconnectLabel}
           disabled={props.runRecoveryBusy}
@@ -39,13 +42,13 @@ export function RunRecoveryControls(props: RunRecoveryControlsProps) {
         </IconButton>
       ) : null}
       {recovery.status === 'suspended' && props.abandonAgentRun ? (
-        <IconButton aria-label={props.t('runRecovery.abandon')} title={props.t('runRecovery.abandon')}
+        <IconButton size="small" aria-label={props.t('runRecovery.abandon')} title={props.t('runRecovery.abandon')}
           disabled={props.runRecoveryBusy} onClick={() => { void props.abandonAgentRun?.() }}>
           <CircleX aria-hidden="true" />
         </IconButton>
       ) : null}
       {!disconnected && recovery.input !== undefined ? (
-        <IconButton
+        <IconButton size="small"
           aria-label={props.t('runRecovery.restoreInput')}
           title={props.t(props.canRestoreRunInput ? 'runRecovery.restoreInput' : 'runRecovery.keepDraft')}
           disabled={props.runRecoveryBusy || !props.canRestoreRunInput}
@@ -54,6 +57,7 @@ export function RunRecoveryControls(props: RunRecoveryControlsProps) {
           <Undo2 aria-hidden="true" />
         </IconButton>
       ) : null}
+      </div>
     </div>
   )
 }

@@ -29,6 +29,17 @@ export function readLogFailure(error: unknown): {
   failureReason: string
   statusCode?: number
 } {
+  // Explicit allowlist: internal lifecycle codes are safe; arbitrary error text is not.
+  const lifecycleFailures: Record<string, string> = {
+    'agent.session_busy': 'Agent Session already has an executing Run',
+    'agent.entry_count_conflict': 'Agent transcript changed concurrently',
+    'agent.recovery_executor_active': 'Original Agent executor is still active',
+    'agent.recovery_executor_unknown': 'Original Agent executor could not be verified',
+  }
+  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    && Object.hasOwn(lifecycleFailures, error.code)) {
+    return { failureType: error.code, failureReason: lifecycleFailures[error.code]! }
+  }
   if (isFetchNetworkError(error)) {
     return { failureType: 'NetworkError', failureReason: failureReasons.NetworkError }
   }

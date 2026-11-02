@@ -1,11 +1,10 @@
 import { forwardRef } from 'react'
-import { MessagesSquare, PanelRight, PanelRightClose, Star } from 'lucide-react'
+import { PanelRight, PanelRightClose } from 'lucide-react'
 import type { AgentSession } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import styles from './studio-page.module.scss'
 
 export type StageAgentCapsuleProps = {
-  isPrimary?: boolean
   open: boolean
   session?: AgentSession
   sessionsCount?: number
@@ -32,14 +31,6 @@ export const StageAgentCapsule = forwardRef<HTMLButtonElement, StageAgentCapsule
       type="button"
       onClick={props.onToggle}
     >
-      <span className={styles.stageAgentCapsuleLeading}>
-        {props.isPrimary ? (
-          <Star aria-hidden="true" className={styles.stageAgentPrimaryStar} />
-        ) : (
-          <MessagesSquare aria-hidden="true" className={styles.stageAgentIcon} />
-        )}
-      </span>
-
       <span className={styles.stageAgentCapsuleBody}>
         <span className={styles.stageAgentTitle}>{sessionTitle}</span>
 

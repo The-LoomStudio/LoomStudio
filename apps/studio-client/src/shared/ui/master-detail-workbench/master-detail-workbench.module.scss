@@ -98,3 +98,46 @@
     background: transparent;
   }
 }
+
+@media (max-width: 768px) {
+  // Detail slides over a mounted, stationary master.
+  .container[data-single-pane='true'][data-pane] > .workbenchColumnLayout > :global([data-column-id='master']) {
+    transform: none;
+    opacity: 1;
+    transition: none;
+  }
+  .container[data-single-pane='true'] > .workbenchColumnLayout > :global([data-column-id='detail']) {
+    z-index: 1;
+    opacity: 1;
+    transition: transform var(--loom-motion-duration-standard) var(--loom-shell-motion-easing);
+  }
+  :global([data-loom-component='workbench-panel']) .container[data-mobile-workspace-pane] > .workbenchColumnLayout > :global([data-column-id='master']) {
+    left: 0;
+    width: 100%;
+    min-width: 0;
+  }
+  :global(html[data-loom-motion='reduce']) .container > .workbenchColumnLayout > :global([data-column-id]) { transition: none; }
+}
+
+@media (max-width: 768px) {
+  .container[data-single-pane='true'] > .workbenchColumnLayout > :global([data-column-id='detail']) {
+    background: var(--loom-color-surface);
+  }
+  :global(html[data-loom-glass-panels='true']) .container[data-single-pane='true'] > .workbenchColumnLayout > :global([data-column-id='detail']) {
+    background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 62%), transparent);
+    backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+    -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+  }
+  .container[data-single-pane='true'][data-pane='detail'] > .workbenchColumnLayout > :global([data-column-id='master']) {
+    visibility: hidden;
+    transition: visibility 0s var(--loom-motion-duration-standard);
+  }
+}
+
+@media (max-width: 768px) {
+  .container[data-single-pane='true'][data-pane='detail'][data-mobile-panning='true'] > .workbenchColumnLayout > :global([data-column-id='master']) {
+    visibility: visible;
+    transition: none;
+  }
+  .container[data-mobile-panning='true'] > .workbenchColumnLayout > :global([data-column-id='detail']) { will-change: transform; }
+}

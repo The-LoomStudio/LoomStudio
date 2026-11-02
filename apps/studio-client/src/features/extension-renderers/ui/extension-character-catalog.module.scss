@@ -1,0 +1,14 @@
+.catalog {
+  display: grid;
+  gap: 12px;
+  margin-block: 16px;
+  h4, p { margin: 0; }
+}
+.character {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  img { width: 88px; height: 112px; object-fit: cover; border-radius: 8px; }
+}
+.content { display: grid; gap: 8px; min-width: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }

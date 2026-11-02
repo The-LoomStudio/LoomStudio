@@ -6,7 +6,7 @@ import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it, onTestFinished } from 'vitest'
 
-const starterDirectory = join(process.cwd(), 'official/starter')
+const starterDirectory = join(process.cwd(), 'tests/fixtures/legacy-official-starter')
 
 describe('official content installation', () => {
   it('does not create official Prompt Resources during initialization', async () => {

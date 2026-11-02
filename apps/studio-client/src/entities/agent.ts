@@ -1,9 +1,5 @@
 import type { StudioRpcOutputs } from '../shared/api/trpc-client.js'
-import type { ToolContentPlacement, PresetToolMountInput } from '@loom-studio/shared/tool-mounts'
-import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
-import type { MacroInspection } from '@loom-studio/shared'
 import type { MutationReceipt } from './common.js'
-import type { PromptProjection } from './prompt.js'
 
 export type ChatMessage =
   | { role: 'system' | 'developer' | 'user'; content: string }
@@ -32,23 +28,16 @@ export type AgentSession = {
   updatedAt: string
 }
 
-export type AgentTranscriptEntry = {
-  id: string
+type StoredTranscriptEntry = StudioRpcOutputs['application']['getAgentTranscriptPage']['entries'][number]
+type StoredEntryData = StoredTranscriptEntry['entry']
+type ClientEntryData = Exclude<StoredEntryData, { kind: 'reasoning' }>
+  | (Extract<StoredEntryData, { kind: 'reasoning' }> & { state?: 'partial' | 'completed' })
+  | { kind: 'tool-input'; providerItemId: string; exposedName?: string; rawInput: string; status: 'preparing' | 'interrupted' }
+
+export type AgentTranscriptEntry = Omit<StoredTranscriptEntry, 'entry'> & {
   /** Client-only identity retained when streamed reasoning, text or a tool becomes a saved entry. */
   presentationId?: string
-  agentSessionId: string
-  parentEntryId?: string
-  roundId?: string
-  candidateId?: string
-  sequence: number
-  runId?: string
-  entry: {
-    kind: string
-    role?: 'user' | 'assistant'
-    content?: string | ClientJsonValue
-    [key: string]: ClientJsonValue | undefined
-  }
-  createdAt: string
+  entry: ClientEntryData
 }
 
 export type CreateAgentSessionResult = {
@@ -72,14 +61,6 @@ export type AgentToolDefinition = {
   prompt?: import('../shared/api/trpc-client.js').StudioRpcInputs['application']['updateAgentTool']['definition']['prompt']
   createdAt: string
   updatedAt: string
-}
-
-type ToolExposure = {
-  toolId: string
-  exposed: boolean
-  transport?: 'native-function' | 'provider-custom' | 'content'
-  diagnostics: ClientJsonValue[]
-  [key: string]: ClientJsonValue | undefined
 }
 
 export type PreviewAgentTurnResult = StudioRpcOutputs['application']['previewAgentTurn']

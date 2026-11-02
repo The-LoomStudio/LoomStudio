@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { MobileTabPages } from '../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
+import { useWorkbenchView } from '../shared/studio-shell/use-workbench-view.js'
+import { type ReactNode } from 'react'
 import { MacroAuthoringWorkbench } from '../features/state-variables/ui/macro-authoring-panel.js'
 import { MacroInspectorPanel } from '../features/state-variables/ui/macro-inspector-panel.js'
 import type { Translator } from '../shared/i18n/index.js'
@@ -20,7 +22,7 @@ export type StudioMacroPanelProps = {
 }
 
 export function StudioMacroPanel(props: StudioMacroPanelProps): ReactNode {
-  const [activeTab, setActiveTab] = useState<MacroView>('authoring')
+  const [activeTab, setActiveTab] = useWorkbenchView<MacroView>('macro.tab', 'authoring', ['authoring', 'preview'])
 
   const tabs = (
     <PanelTabs<MacroView>
@@ -35,17 +37,17 @@ export function StudioMacroPanel(props: StudioMacroPanelProps): ReactNode {
   )
 
   return (
-    <div className={styles.panel}>
-      {activeTab === 'authoring' ? (
+    <div data-loom-mobile-tab-scope="" className={styles.panel}>
+      <MobileTabPages<MacroView> activeId={activeTab} onChange={setActiveTab} header={tabs} pages={[{ id: 'authoring', content: (
         <MacroAuthoringWorkbench
-          header={tabs}
+          header={<div data-mobile-tab-inline-header="">{tabs}</div>}
           sources={props.sources}
           t={props.t}
         />
-      ) : (
+      ) }, { id: 'preview', content: (
         <MacroInspectorPanel
-          key={`${props.macroTargetKey}:${activeTab}`}
-          header={tabs}
+          key={props.macroTargetKey}
+          header={<div data-mobile-tab-inline-header="">{tabs}</div>}
           inspection={props.macroInspection}
           loading={props.macroInspectionLoading}
           error={props.macroInspectionError}
@@ -55,7 +57,7 @@ export function StudioMacroPanel(props: StudioMacroPanelProps): ReactNode {
           t={props.t}
           hideHeader={true}
         />
-      )}
+      ) }]} />
     </div>
   )
 }

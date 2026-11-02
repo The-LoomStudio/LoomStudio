@@ -7,6 +7,7 @@ import type {
   ExtensionPackageResourceOrigin,
   CardPresetInput,
   CardMediaRefs,
+  CardFrameworkFields,
   CardExtensionAdoption,
   OpeningChatInput,
   LoreInput,
@@ -22,7 +23,7 @@ export type CardBundleArtifact = {
   derivedFrom?: { artifactId: string }
   displayName: string
   description?: string
-  card: {
+  card: CardFrameworkFields & {
     name: string
     userName?: string
     description?: string

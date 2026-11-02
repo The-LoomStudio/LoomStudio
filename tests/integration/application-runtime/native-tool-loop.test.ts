@@ -68,6 +68,178 @@ const testContentTool: ToolDefinition = {
 }
 
 describe('Native Function Tool Loop', () => {
+  it('recovers a failed response after an applied interjection without resubmitting its user entry', async () => {
+    let calls = 0
+    let fixture: Awaited<ReturnType<typeof createFixture>>
+    fixture = await createFixture({ execute: vi.fn(), invokeChat: async request => {
+      if (++calls === 1) await fixture.runtime.submitAgentInterjection({ agentSessionId: fixture.sessionId, requestId: 'recover-receipt', input: 'RECOVER_ME', mode: 'discussion' })
+      if (calls === 2) throw new Error('Provider unavailable')
+      if (calls === 3) expect(request.request.messages.filter(message => message.role === 'user' && message.content === 'RECOVER_ME')).toHaveLength(1)
+      return { provider: 'test', model: 'test-model', text: 'done', message: { role: 'assistant', content: 'done' } }
+    } })
+    await expect(fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Start' })).rejects.toThrow('Provider unavailable')
+    const recovered = await fixture.runtime.prepareAgentRunRecovery({ agentSessionId: fixture.sessionId })
+    expect(recovered).toBeDefined()
+    await fixture.runtime.invokeAgentTurn(recovered!.request, { agentRun: { runId: 'explicit-recovery', continuation: recovered!.continuation, onEvent() {} } })
+    const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+    expect(page.entries.filter(item => item.entry.kind === 'message' && item.entry.content === 'RECOVER_ME')).toHaveLength(1)
+    expect(page.entries.filter(item => item.entry.kind === 'interjection-applied')).toHaveLength(1)
+    expect(calls).toBe(3)
+  })
+
+  it('handles a receipt after runtime completion before publishing the Run terminal state', async () => {
+    let calls = 0
+    const fixture = await createFixture({ execute: vi.fn(), invokeChat: async () => {
+      calls++
+      return { provider: 'test', model: 'test-model', text: 'done', message: { role: 'assistant', content: 'done' } }
+    } })
+    const invoke = fixture.runtime.invokeAgentTurn.bind(fixture.runtime)
+    let first = true
+    vi.spyOn(fixture.runtime, 'invokeAgentTurn').mockImplementation(async (input, context) => {
+      const result = await invoke(input, context)
+      if (first) {
+        first = false
+        const receipt = await handleAgentsRpc(fixture.runtime, 'application.submitAgentInterjection', { agentSessionId: fixture.sessionId,
+          requestId: 'finish-boundary', input: 'LATE_RECEIPT', mode: 'discussion' }) as { runId: string }
+        expect(receipt.runId).toBe(context!.agentRun!.runId)
+      }
+      return result
+    })
+    const run = await handleAgentsRpc(fixture.runtime, 'application.agent.run.create', { agentSessionId: fixture.sessionId, input: 'Start' }) as { runId: string }
+    await vi.waitFor(async () => expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', run)).toMatchObject({ state: 'completed' }))
+    const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+    expect(page.entries.filter(item => item.entry.kind === 'message' && item.entry.content === 'LATE_RECEIPT')).toHaveLength(1)
+    expect(calls).toBe(2)
+  })
+
+  it.each(['resume', 'abandon'] as const)('leaves pending receipts untouched on pause, then handles explicit %s', async action => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let calls = 0
+    const fixture = await createFixture({ execute: vi.fn(), invokeChat: async request => {
+      if (++calls === 1) { entered.resolve(); await release.promise }
+      else expect(request.request.messages.some(item => item.content === 'AFTER_PAUSE')).toBe(action === 'resume')
+      return { provider: 'test', model: 'test-model', text: 'done', message: { role: 'assistant', content: 'done' } }
+    } })
+    const first = await handleAgentsRpc(fixture.runtime, 'application.agent.run.create', { agentSessionId: fixture.sessionId, input: 'Start' }) as { runId: string }
+    await entered.promise
+    await handleAgentsRpc(fixture.runtime, 'application.agent.run.pause', first)
+    await handleAgentsRpc(fixture.runtime, 'application.submitAgentInterjection', { agentSessionId: fixture.sessionId,
+      requestId: 'pause-receipt', input: 'AFTER_PAUSE', mode: 'discussion' })
+    release.resolve()
+    await vi.waitFor(async () => expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', first)).toMatchObject({ state: 'suspended' }))
+    expect(calls).toBe(1)
+    const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+    expect(page.entries.some(item => item.entry.kind === 'interjection-applied')).toBe(false)
+    let next: { runId: string }
+    if (action === 'resume') next = await handleAgentsRpc(fixture.runtime, 'application.agent.run.resume', first) as { runId: string }
+    else {
+      await handleAgentsRpc(fixture.runtime, 'application.agent.run.abandon', first)
+      next = await handleAgentsRpc(fixture.runtime, 'application.agent.run.create', { agentSessionId: fixture.sessionId, input: 'Explicit fresh work' }) as { runId: string }
+    }
+    await vi.waitFor(async () => expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', next)).toMatchObject({ state: 'completed' }))
+    expect(calls).toBe(2)
+  })
+
+  it('projects a narrative interjection only after the active tool has finished', async () => {
+    let calls = 0
+    let target: { timelineId: string; branchId: string }
+    let fixture: Awaited<ReturnType<typeof createFixture>>
+    fixture = await createFixture({ execute: async ({ invocation, scope }) => {
+      const cursor = scope!.narrativeSource!.cursorNodeId
+      const before = await fixture.runtime.getNarrativePage(target)
+      await fixture.runtime.submitAgentInterjection({ agentSessionId: target.timelineId, requestId: 'story-receipt', input: 'USER_STORY_INPUT', mode: 'narrative', narrativeTarget: target })
+      expect(scope!.narrativeSource!.cursorNodeId).toBe(cursor)
+      expect((await fixture.runtime.getNarrativePage(target)).branch.headNodeId).toBe(before.branch.headNodeId)
+      return { invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }
+    }, invokeChat: async () => {
+      if (++calls === 1) return toolCall('story-tool', 'read_context', { query: 'read' })
+      expect((await fixture.runtime.getNarrativePage(target)).nodes.at(-1)?.body.raw).toBe('USER_STORY_INPUT')
+      return { provider: 'test', model: 'test-model', text: 'done', message: { role: 'assistant', content: 'done' } }
+    } })
+    const original = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+    const card = (await fixture.runtime.createCard({ name: 'Interjection story', opening: '' })).card
+    const created = await fixture.runtime.createNarrativeTimeline({ cardId: card.id, openingContent: '' })
+    target = { timelineId: created.timeline.id, branchId: created.branch.id }
+    await fixture.runtime.updateAgentSession({ agentSessionId: target.timelineId, agentPresetId: original.session.agentPresetId! })
+    await fixture.runtime.invokeAgentTurn({ agentSessionId: target.timelineId, input: 'Start', narrativeTarget: target })
+    const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: target.timelineId })
+    expect(page.entries.filter(item => item.entry.kind === 'message' && item.entry.content === 'USER_STORY_INPUT')).toHaveLength(1)
+    expect(calls).toBe(2)
+  })
+
+  it('persists ordered interjections without interrupting the current tool batch and replays each once', async () => {
+    let calls = 0
+    let fixture: Awaited<ReturnType<typeof createFixture>>
+    fixture = await createFixture({
+      execute: async ({ invocation }) => {
+        const first = { agentSessionId: fixture.sessionId, requestId: 'during-tool-1', input: 'FIRST_INSERT', mode: 'discussion' as const }
+        const receipt = await fixture.runtime.submitAgentInterjection(first)
+        expect(await fixture.runtime.submitAgentInterjection(first)).toEqual(receipt)
+        await fixture.runtime.submitAgentInterjection({ ...first, requestId: 'during-tool-2', input: 'SECOND_INSERT' })
+        const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+        expect(page.entries.filter(item => item.entry.kind === 'interjection-applied')).toHaveLength(0)
+        return { invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [{ type: 'text', text: 'TOOL_FINISHED' }] }
+      },
+      invokeChat: async request => {
+        if (++calls === 1) return toolCall('receipt-tool', 'read_context', { query: 'read' })
+        const messages = request.request.messages
+        const tool = messages.findIndex(item => item.role === 'tool' && item.content?.includes('TOOL_FINISHED'))
+        const first = messages.findIndex(item => item.role === 'user' && item.content === 'FIRST_INSERT')
+        const second = messages.findIndex(item => item.role === 'user' && item.content === 'SECOND_INSERT')
+        expect(tool).toBeGreaterThan(-1)
+        expect(first).toBeGreaterThan(tool)
+        expect(second).toBeGreaterThan(first)
+        expect(messages.filter(item => item.content === 'FIRST_INSERT')).toHaveLength(1)
+        return { provider: 'test', model: 'test-model', text: 'done', message: { role: 'assistant', content: 'done' } }
+      },
+    })
+    await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Begin' })
+    const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+    expect(page.entries.filter(item => item.entry.kind === 'user-interjection')).toHaveLength(2)
+    expect(page.entries.filter(item => item.entry.kind === 'interjection-applied')).toHaveLength(2)
+    expect(calls).toBe(2)
+  })
+
+  it('continues after a final response when an interjection arrived during that response', async () => {
+    let calls = 0
+    let fixture: Awaited<ReturnType<typeof createFixture>>
+    fixture = await createFixture({ execute: vi.fn(), invokeChat: async request => {
+      if (++calls === 1) {
+        await fixture.runtime.submitAgentInterjection({ agentSessionId: fixture.sessionId, requestId: 'during-model', input: 'NEW_REQUEST', mode: 'discussion' })
+        expect(request.request.messages.some(item => item.content === 'NEW_REQUEST')).toBe(false)
+      } else {
+        expect(request.request.messages.slice(-3)).toEqual([
+          { role: 'assistant', content: 'COMPLETE_FIRST_RESPONSE' }, expect.objectContaining({ role: 'system' }), { role: 'user', content: 'NEW_REQUEST' },
+        ])
+      }
+      const text = calls === 1 ? 'COMPLETE_FIRST_RESPONSE' : 'SECOND_RESPONSE'
+      return { provider: 'test', model: 'test-model', text, message: { role: 'assistant', content: text } }
+    } })
+    const result = await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Begin' })
+    expect(result.entries.assistant.entry).toMatchObject({ content: 'SECOND_RESPONSE' })
+    expect(calls).toBe(2)
+  })
+
+  it('executes a native call with whitespace-only assistant text and returns its paired result', async () => {
+    let calls = 0
+    const fixture = await createFixture({
+      execute: ({ invocation }) => ({ invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }),
+      invokeChat: async request => {
+        if (++calls === 1) {
+          const response = toolCall('whitespace-call', 'read_context', { query: 'test' })
+          return { ...response, message: { ...response.message, content: ' \n ' } }
+        }
+        expect(request.request.messages).toContainEqual(expect.objectContaining({ role: 'tool', tool_call_id: 'whitespace-call', content: 'completed' }))
+        return { provider: 'test', model: 'test-model', text: 'done', finishReason: 'stop', message: { role: 'assistant', content: 'done' } }
+      },
+    })
+    try {
+      await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'test' })
+      expect(calls).toBe(2)
+    } finally { fixture.close() }
+  })
+
   it.each(['count', 'bytes'] as const)('bounds producer tool evidence (%s) without interrupting tool execution', async budget => {
     let calls = 0
     const fixture = await createFixture({
@@ -222,6 +394,41 @@ describe('Native Function Tool Loop', () => {
       ]))
     } finally { fixture.close() }
   })
+  it('continues a Timeline root Run after its own narrative tool appends a transcript entry', async () => {
+    let steps = 0
+    let narrativeAnnounced = false
+    const fixture = await createFixture({
+      execute: async ({ invocation, scope }) => {
+        if (steps === 1) await scope!.narrative!.appendNode({ content: 'Root story.' })
+        else await scope!.narrative!.editNode({ floor: 1, content: 'Edited story.' })
+        return { invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }
+      },
+      invokeChat: async () => {
+        if (steps++ % 2 === 0) return toolCall('append-root', 'read_context', { query: 'write' })
+        expect(narrativeAnnounced).toBe(true)
+        return { provider: 'test', model: 'test-model', text: 'Done.', finishReason: 'stop', message: { role: 'assistant', content: 'Done.' } }
+      },
+    })
+    try {
+      const original = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+      const { card } = await fixture.runtime.createCard({ name: 'Root writer' })
+      const { timeline, branch } = await fixture.runtime.createNarrativeTimeline({ cardId: card.id })
+      await fixture.runtime.updateAgentSession({ agentSessionId: timeline.id, agentPresetId: original.session.agentPresetId, narrativeMode: 'declared' })
+      await fixture.runtime.invokeAgentTurn({ agentSessionId: timeline.id, input: 'Write.', narrativeTarget: { timelineId: timeline.id, branchId: branch.id } }, { agentRun: { runId: 'root-live', onEvent: event => {
+        if (event.type === 'transcript-appended' && event.entries.some(item => item.entry.kind === 'message' && item.entry.purpose === 'narrative')) narrativeAnnounced = true
+      } } })
+      const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: timeline.id })
+      expect(page.entries.find(item => item.entry.kind === 'tool-result')?.entry).toMatchObject({ status: 'completed' })
+      expect(page.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ entry: expect.objectContaining({ kind: 'tool-result', status: 'completed' }) }),
+        expect.objectContaining({ entry: expect.objectContaining({ kind: 'run-state', state: 'completed' }) }),
+      ]))
+      expect(steps).toBe(2)
+      await fixture.runtime.invokeAgentTurn({ agentSessionId: timeline.id, input: 'Next.', narrativeTarget: { timelineId: timeline.id, branchId: branch.id } })
+      expect((await fixture.runtime.getNarrativePage({ timelineId: timeline.id, branchId: branch.id })).nodes[0]?.body.raw).toBe('Edited story.')
+    } finally { fixture.close() }
+  })
+
   it.each(['success', 'conflict', 'storage'] as const)('persists the official append ToolResult and real Narrative outcome (%s)', async scenario => {
     let steps = 0
     const requests: unknown[][] = []

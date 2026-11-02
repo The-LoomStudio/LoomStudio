@@ -30,6 +30,8 @@ export type ExtensionStyleContribution = {
   description?: string
   /** Bundled package-relative stylesheet; assets resolve relative to this file. */
   css: string
+  /** Background, panel and accent preview swatches (literal hex, RGB, HSL or OKLCH/OKLab colors). */
+  previewColors?: [string, string, string]
   moduleId?: string
   /** Required JS is the default when moduleId is present. */
   supportsCssOnly?: boolean

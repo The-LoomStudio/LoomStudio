@@ -16,7 +16,10 @@ export function migrateOfficialThemes(selection: ThemeSelection, overrides: Them
   const replacements = Object.entries(officialStyleKeys).filter(([old, next]) => !present.has(old) && available.has(next))
   const aliases = new Map(replacements)
   const key = (value: string) => aliases.get(value) ?? value
-  const theme = selection.theme ? key(selection.theme) : null
+  const selectedTheme = selection.theme ? key(selection.theme) : null
+  const retired = new Set(['official.themes/paper', 'official.themes/tide', 'loom-theme-paper/paper', 'loom-theme-tide/tide'])
+  const officialReady = entries.some(entry => entry.packageId === 'official.themes' && entry.available)
+  const theme = selectedTheme && retired.has(selectedTheme) && officialReady && !present.has(selectedTheme) ? null : selectedTheme
   const enhancements = [...new Set(selection.enhancements.map(key))]
   const cssOnly = [...new Set(selection.cssOnly.map(key))]
   const selectionChanged = theme !== selection.theme

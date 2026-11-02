@@ -1,0 +1,13 @@
+html[data-loom-theme-transition='circle']::view-transition-group(root) { animation: none; }
+html[data-loom-theme-transition='circle']::view-transition-old(root),
+html[data-loom-theme-transition='circle']::view-transition-new(root) { mix-blend-mode: normal; }
+html[data-loom-theme-transition='circle']::view-transition-old(root) { animation: none; z-index: 1; }
+html[data-loom-theme-transition='circle']::view-transition-new(root) {
+  z-index: 2;
+  animation: loom-theme-circle 650ms cubic-bezier(.3, 0, .2, 1) both;
+}
+@keyframes loom-theme-circle {
+  from { clip-path: circle(0 at var(--loom-theme-origin-x) var(--loom-theme-origin-y)); }
+  to { clip-path: circle(var(--loom-theme-radius) at var(--loom-theme-origin-x) var(--loom-theme-origin-y)); }
+}
+html[data-loom-theme-transition='circle'][data-loom-motion='reduce']::view-transition-new(root) { animation: none; }

@@ -3,6 +3,7 @@ import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { writeDocument } from '../foundation/document-store.js'
 import {
   readUserProfiles,
+  validateProfileAvatar,
   userProfilesDocumentId,
   type CreateUserProfileInput,
   type DeleteUserProfileInput,
@@ -12,8 +13,6 @@ import {
 } from '../profiles/user-profiles.js'
 import type { RuntimeRequestContext } from '../types.js'
 import { narrativeWriteContext, requireDocumentParticipant } from './context.js'
-
-const avatarMediaTypes = new Set(['image/png', 'image/apng', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'])
 
 type UserProfilesRuntimeContext = Pick<ApplicationRuntimeContext, 'documents' | 'dataEngine' | 'createId' | 'mediaAssets'>
 
@@ -60,9 +59,7 @@ export function createUserProfilesRuntimeMethods(ctx: UserProfilesRuntimeContext
     ),
     updateUserProfile: async (input: UpdateUserProfileInput, context?: RuntimeRequestContext) => {
       if (typeof input.avatarAssetId === 'string') {
-        const asset = await ctx.mediaAssets?.get(input.avatarAssetId)
-        if (!asset) throw new Error(`Media Asset not found: ${input.avatarAssetId}`)
-        if (!asset.mediaType || !avatarMediaTypes.has(asset.mediaType)) throw new Error('User profile avatar must be a supported raster image')
+        await validateProfileAvatar(ctx, input.avatarAssetId)
       }
       return mutate(input.expectedVersion, 'application.updateUserProfile', content => {
         const profile = requireProfile(content, input.profileId)

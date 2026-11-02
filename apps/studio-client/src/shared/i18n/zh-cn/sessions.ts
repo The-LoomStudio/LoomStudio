@@ -1,4 +1,16 @@
 export const messages = {
+  'play.filterCharacter': "选择角色，查看相关记录",
+  'play.resumeStory': "继续上次故事",
+  'play.continueStory': "继续故事",
+  'play.updated': "最近更新 · {{date}}",
+  'play.recentActivity': "最近活动",
+  'play.recordCount': "{{count}} 条",
+  'play.clearFilters': "清除筛选",
+  'play.noMatches': "没有匹配的记录",
+  'play.emptyHistory': "故事从这里留下足迹",
+  'play.tryFilters': "试试其他关键词，或清除筛选。",
+  'play.emptyHistoryHint': "开始故事或创建会话后，可以在这里继续。",
+
   'sessions.defaultTimelineName': '故事',
   'sessions.defaultSessionName': '会话',
   'sessions.characterUnavailable': '角色不可用',

@@ -35,6 +35,48 @@ describe('built client HTTP files', () => {
       expect(asset.headers.get('content-type')).toContain('javascript')
       expect(asset.headers.get('cache-control')).toContain('immutable')
       expect(await asset.text()).toBe('')
+      // Unversioned public files must revalidate without resending unchanged bytes.
+      const publicFile = join(directory, 'startup.css')
+      await writeFile(publicFile, 'body { color: red }')
+      const original = await fetch(`${origin}/startup.css`)
+      const etag = original.headers.get('etag')!
+      const modified = original.headers.get('last-modified')!
+      expect(original.headers.get('cache-control')).toBe('no-cache')
+      expect(etag).toMatch(/^W\/".+"$/)
+      expect(Number.isNaN(Date.parse(modified))).toBe(false)
+      expect(await original.text()).toBe('body { color: red }')
+      const revalidationHeaders: HeadersInit[] = [
+        { 'if-none-match': etag },
+        { 'if-none-match': `"other", ${etag.slice(2)}` },
+        { 'if-none-match': '*' },
+        { 'if-modified-since': modified },
+      ]
+      for (const headers of revalidationHeaders) {
+        const cached = await fetch(`${origin}/startup.css`, { headers })
+        expect(cached.status).toBe(304)
+        expect(cached.headers.get('etag')).toBe(etag)
+        expect(cached.headers.get('cache-control')).toBe('no-cache')
+        expect(cached.headers.get('content-length')).toBeNull()
+        expect(await cached.text()).toBe('')
+      }
+      const cachedHead = await fetch(`${origin}/startup.css`, { method: 'HEAD', headers: { 'if-none-match': etag } })
+      expect(cachedHead.status).toBe(304)
+      expect(await cachedHead.text()).toBe('')
+      const staleHeaders: HeadersInit[] = [
+        { 'if-none-match': '"stale"', 'if-modified-since': modified },
+        { 'if-modified-since': 'invalid' },
+        { 'if-modified-since': 'Thu, 01 Jan 1970 00:00:00 GMT' },
+      ]
+      for (const headers of staleHeaders) {
+        const uncached = await fetch(`${origin}/startup.css`, { headers })
+        expect(uncached.status).toBe(200)
+        expect(await uncached.text()).toBe('body { color: red }')
+      }
+      await writeFile(publicFile, 'body { color: green }')
+      const changed = await fetch(`${origin}/startup.css`, { headers: { 'if-none-match': etag } })
+      expect(changed.status).toBe(200)
+      expect(changed.headers.get('etag')).not.toBe(etag)
+      expect(await changed.text()).toBe('body { color: green }')
       expect((await fetch(`${origin}/app-assets/missing.js`)).status).toBe(404)
       expect((await fetch(`${origin}/studio/missing.js`, { headers: { accept: 'text/html' } })).status).toBe(404)
       expect((await fetch(`${origin}/trpc/application.listCards`, { method: 'POST' })).status).toBe(401)

@@ -1,3 +1,6 @@
+import type { LoomScriptContent } from '../../../packages/application-runtime/src/scripts/loom-script-contracts.js'
+import { migrateLegacyRuleScriptsToMarkdown } from '../../../packages/application-runtime/src/scripts/loom-script-markdown-migration.js'
+import { parseLoomScriptSource, serializeLoomScriptMetadata } from '@loom-studio/shared/loom-scripts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -40,6 +43,51 @@ function rule(enabled = true): TextTransformRuleContent {
 }
 
 describe('Text rules become Script contributions', () => {
+  it('converts legacy Script latest and adopted revisions without activating unsaved changes', async () => {
+    const f = await fixture()
+    const definition = rule()
+    const { owner: _owner, createdAt: _created, updatedAt: _updated, ...plain } = definition
+    const source = [ '// ==LoomScript==', '// @format 1', '// @id imported.text-rule', '// @name Replacement', '// @version 2.1.0', '// @tag ui', '// @runtime declarative',
+      `// @contribution ${JSON.stringify({ kind: 'text-transform', id: 'rule', rule: plain })}`, '// ==/LoomScript==' ].join('\n')
+    const { script } = await f.runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'old.loom.js', source })
+    const original = (await f.documents.get(script.id))!
+    await f.documents.write({ id: script.id, type: original.type, expectedVersion: original.version,
+      content: { ...(original.content as LoomScriptContent), textResourceIds: { rule: 'original-rule' } } })
+    const { mount } = await f.runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 7 })
+    await f.runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 7, grantedCapabilities: [] })
+    const before = (await f.runtime.listLoomScriptMounts()).mounts[0]!
+    const { mount: disabled } = await f.runtime.createLoomScriptMount({ target: { kind: 'card', cardId: 'other' }, scriptDocumentId: script.id, orderIndex: 19, pinnedDocumentVersion: before.adoptedDocumentVersion })
+    const current = (await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script
+    await f.runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: current.version, fileName: 'old.loom.js', source: source.replace('new\\nline', 'later\\nline') })
+    expect((await migrateLegacyRuleScriptsToMarkdown(f)).migrated).toEqual([script.id])
+    const latest = (await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script
+    const after = (await f.runtime.listLoomScriptMounts()).mounts[0]!
+    expect(latest).toMatchObject({ metadataId: 'imported.text-rule', scriptVersion: '2.1.0', tags: ['ui'], textResourceIds: { rule: 'original-rule' }, source: { fileName: 'old.rule.md' } })
+    expect(after).toMatchObject({ enabled: true, orderIndex: 7, runtimeRevision: before.runtimeRevision, grantedCapabilities: before.grantedCapabilities })
+    expect(after.adoptedDocumentVersion).not.toBe(latest.version)
+    const disabledAfter = (await f.runtime.listLoomScriptMounts()).mounts.find(item => item.id === disabled.id)!
+    expect(disabledAfter).toMatchObject({ enabled: false, orderIndex: 19, target: { kind: 'card', cardId: 'other' }, pinnedDocumentVersion: after.adoptedDocumentVersion })
+    const adopted = (await f.documents.get(script.id, { version: after.adoptedDocumentVersion }))!.content as unknown as typeof latest
+    expect(adopted.source.mediaType).toBe('text/markdown')
+    expect(adopted.contributions[0]).toMatchObject({ rule: { effect: { replacement: 'new\nline' } } })
+    expect(latest.contributions[0]).toMatchObject({ rule: { effect: { replacement: 'later\nline' } } })
+    expect(await migrateLegacyRuleScriptsToMarkdown(f)).toEqual({ migrated: [], skipped: [] })
+    expect((await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script.version).toBe(latest.version)
+  })
+
+  it('reports edited code instead of discarding it during format migration', async () => {
+    const f = await fixture()
+    await f.documents.write({ id: 'legacy-rule', type: 'airp.textTransformRule', expectedVersion: 'new', content: rule() })
+    await migrateLegacyTextTransformRules(f)
+    const original = (await f.runtime.listLoomScripts()).scripts[0]!
+    const artifact = (await f.runtime.exportLoomScript({ scriptDocumentId: original.id })).artifact
+    const source = serializeLoomScriptMetadata(parseLoomScriptSource(artifact.source)).replace('// @runtime declarative', '// @runtime client') + '\nexport function activate() {}'
+    const { script } = await f.runtime.updateLoomScript({ scriptDocumentId: original.id, expectedVersion: original.version, fileName: 'edited.loom.js', source })
+    expect(await migrateLegacyRuleScriptsToMarkdown(f)).toMatchObject({ migrated: [], skipped: [{ id: script.id }] })
+    expect((await f.runtime.exportLoomScript({ scriptDocumentId: script.id })).artifact.source).toBe(source)
+    expect((await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script.version).toBe(script.version)
+  })
+
   it('migrates atomically, retains reference IDs and disabled status, and is idempotent', async () => {
     const f = await fixture()
     await f.documents.write({ id: 'legacy-rule', type: 'airp.textTransformRule', expectedVersion: 'new', content: rule(false) })
@@ -136,6 +184,57 @@ describe('Text rules become Script contributions', () => {
     expect((await f.runtime.listLoomScriptMounts()).mounts).toEqual([])
   })
 
+  it('projects incoming snapshots through the active preset without persisting them', async () => {
+    const f = await fixture()
+    const { resource } = await f.runtime.importPromptResource({ artifact: { format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset', rootNode: { id: 'live-root', kind: 'module', label: 'Live' } } })
+    const { session } = await f.runtime.createAgentSession({ agentPresetId: resource.id })
+    const owner = { kind: 'preset' as const, presetId: resource.id }
+    const { script } = await f.runtime.importLoomScript({ owner, fileName: 'live.md', source: '---\nid: example.live\nname: Live\nregex: "x"\nstreaming: true\n---\ny' })
+    const { mount } = await f.runtime.createLoomScriptMount({ target: owner, scriptDocumentId: script.id, orderIndex: 0 })
+    await f.runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version, orderIndex: 0, enabled: true, grantedCapabilities: [] })
+    const source = { kind: 'agent-session' as const, sessionId: session.id }
+    for (const text of ['x', 'xx']) {
+      const { snapshot } = await f.runtime.projectHistory({ source, phase: 'display', streamingEntries: [{ id: 'live', text, role: 'assistant' }] })
+      expect(snapshot.entries.find(entry => entry.id === 'live')).toMatchObject({ originalText: text, text: text.replaceAll('x', 'y') })
+    }
+    const { script: personal } = await f.runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'personal.md', source: '---\nid: example.personal\nname: Personal\nregex: y\nstreaming: true\n---\nz' })
+    const { mount: personalMount } = await f.runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: personal.id, orderIndex: -100 })
+    await f.runtime.updateLoomScriptMount({ mountId: personalMount.id, expectedVersion: personalMount.version, orderIndex: -100, enabled: true, grantedCapabilities: [] })
+    const live = () => f.runtime.projectHistory({ source, phase: 'display', streamingEntries: [{ id: 'live', text: 'x' }] })
+    expect((await live()).snapshot.entries.find(entry => entry.id === 'live')!.text).toBe('z')
+    await f.runtime.reorderLoomScripts({ groups: [{ owner: { kind: 'user' }, scriptIds: [personal.id], groupOrder: -1 }] })
+    expect((await live()).snapshot.entries.find(entry => entry.id === 'live')!.text).toBe('y')
+    expect((await f.runtime.projectHistory({ source, phase: 'display' })).snapshot.entries.some(entry => entry.id === 'live')).toBe(false)
+    await expect(f.runtime.projectHistory({ source, phase: 'classify', streamingEntries: [{ id: 'live', text: 'x' }] })).rejects.toThrow('display-only')
+  })
+
+  it('exports locally created extension Markdown, ordering, and explicit deletions', async () => {
+    const f = await fixture()
+    const packageId = 'example.local-rules'
+    const input: ImportExtensionPackageResourcesInput = { packageId, packageVersion: '1.0.0', promptResources: [], agentTools: [], textExtractors: [], transformRules: [] }
+    const installed = await f.runtime.importExtensionPackageResources(input)
+    const owner = { kind: 'extension' as const, packageId, installationId: installed.installationId }
+    const source = '---\nid: local.rule\nname: Local\nregex: secret\n---\n```html\n<div>$&</div>\n```'
+    const { script } = await f.runtime.importLoomScript({ owner, fileName: 'local.md', source })
+    await f.runtime.reorderLoomScripts({ groups: [{ owner, scriptIds: [script.id], groupOrder: 7 }] })
+    const manifest = { manifestVersion: 2, id: packageId, version: '1.0.0', displayName: 'Local', engines: { studio: '*' } }
+    const archive = zipSync({ 'manifest.json': new TextEncoder().encode(JSON.stringify(manifest)) })
+    const exported = await createExtensionScriptArchiveExporter(f)({ archive, packageId, version: '1.0.0', installationId: installed.installationId })
+    const files = unzipSync(exported)
+    const result = JSON.parse(new TextDecoder().decode(files['manifest.json']))
+    const contribution = result.contributes.loomScripts[0]
+    expect(contribution).toMatchObject({ orderIndex: 0, groupOrder: 7 })
+    expect(new TextDecoder().decode(files[contribution.source])).toBe(source)
+    const second = await fixture()
+    const next = await second.runtime.importExtensionPackageResources({ ...input, loomScripts: [{ contribution, source }] })
+    const importedScript = (await second.runtime.listLoomScripts()).scripts[0]!
+    expect(importedScript.source.mediaType).toBe('text/markdown')
+    expect((await second.runtime.listLoomScriptMounts()).mounts[0]).toMatchObject({ orderIndex: 0, enabled: false, origin: { groupOrder: 7 } })
+    await second.runtime.deleteLoomScript({ scriptDocumentId: importedScript.id, expectedVersion: importedScript.version })
+    const deleted = await createExtensionScriptArchiveExporter(second)({ archive: exported, packageId, version: '1.0.0', installationId: next.installationId })
+    expect(JSON.parse(new TextDecoder().decode(unzipSync(deleted)['manifest.json'])).contributes.loomScripts).toEqual([])
+  })
+
   it('exports a legacy package rule as complete source after adding JS, settings and a second rule', async () => {
     const f = await fixture()
     const { owner: _owner, createdAt: _created, updatedAt: _updated, ...definition } = rule()
@@ -148,11 +247,11 @@ describe('Text rules become Script contributions', () => {
     const imported = await f.runtime.importExtensionPackageResources(input)
     const script = (await f.runtime.listLoomScripts()).scripts[0]!
     const original = (await f.runtime.exportLoomScript({ scriptDocumentId: script.id })).artifact.source
-    const source = original.replace('// @runtime declarative', '// @runtime client').replace('// ==/LoomScript==', [
+    const source = serializeLoomScriptMetadata(parseLoomScriptSource(original)).replace('// @runtime declarative', '// @runtime client').replace('// ==/LoomScript==', [
       '// @setting {"key":"caption","label":"标题","type":"string","default":"default"}',
       `// @contribution ${JSON.stringify({ kind: 'text-transform', id: 'extra', rule: { ...definition, name: 'Extra', matcher: { kind: 'regex', pattern: 'second', flags: 'g' } } })}`,
       '// ==/LoomScript==',
-    ].join('\n')) + '// Preserve this author comment.\nexport function activate() { globalThis.unexpectedScriptRun = true; }\n'
+    ].join('\n')) + '\n// Preserve this author comment.\nexport function activate() { globalThis.unexpectedScriptRun = true; }\n'
     await f.runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: 'edited.loom.js', source })
     const mount = (await f.runtime.listLoomScriptMounts()).mounts[0]!
     const refreshed = (await f.runtime.refreshLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version })).mount

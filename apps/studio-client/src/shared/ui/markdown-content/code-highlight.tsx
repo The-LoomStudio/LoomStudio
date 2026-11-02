@@ -4,9 +4,10 @@ import { yamlLanguage } from '@codemirror/lang-yaml'
 import { classHighlighter, highlightTree } from '@lezer/highlight'
 import { useMemo, type ReactNode } from 'react'
 import { readYamlScalarTokenClass } from '../../lib/yaml-scalar-highlight.js'
+import { readCodeHighlightLanguage } from './code-highlight-language.js'
 
 export function highlightCode(code: string, language?: string): ReactNode[] {
-  const normalizedLanguage = language?.toLowerCase()
+  const normalizedLanguage = readCodeHighlightLanguage(language)
   const parser = readLanguageParser(normalizedLanguage)
   if (!parser) return [code]
 
@@ -16,12 +17,12 @@ export function highlightCode(code: string, language?: string): ReactNode[] {
     highlights.push({
       from,
       to,
-      classes: normalizedLanguage === 'json' || normalizedLanguage === 'jsonc'
+      classes: normalizedLanguage === 'json'
         ? readJsonTokenClass(code, to, classes)
         : classes,
     })
   })
-  if (normalizedLanguage === 'yaml' || normalizedLanguage === 'yml') {
+  if (normalizedLanguage === 'yaml') {
     collectYamlValueHighlights(code, tree.cursor(), highlights)
   }
 
@@ -75,12 +76,10 @@ function readJsonTokenClass(code: string, tokenEnd: number, classes: string) {
   return code.slice(tokenEnd).match(/^\s*:/) ? 'tok-propertyName' : classes
 }
 
-function readLanguageParser(normalized?: string) {
-  if (normalized === 'js' || normalized === 'jsx' || normalized === 'javascript') return javascriptLanguage.parser
-  if (normalized === 'ts' || normalized === 'tsx' || normalized === 'typescript') return javascriptLanguage.parser
-  if (normalized === 'yaml' || normalized === 'yml') return yamlLanguage.parser
-  if (normalized === 'xml' || normalized === 'html') return xmlLanguage.parser
-  if (normalized === 'json' || normalized === 'jsonc') return javascriptLanguage.parser
+function readLanguageParser(normalized: ReturnType<typeof readCodeHighlightLanguage>) {
+  if (normalized === 'javascript' || normalized === 'json') return javascriptLanguage.parser
+  if (normalized === 'yaml') return yamlLanguage.parser
+  if (normalized === 'xml') return xmlLanguage.parser
   return undefined
 }
 

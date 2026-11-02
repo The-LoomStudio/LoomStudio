@@ -98,6 +98,20 @@ describe('observation current reference summaries', () => {
     expect(observations.get('run')?.title).toBe('Recorded title')
     observations.dispose()
   })
+  it('projects the recorded preset identity without borrowing the current session preset', async () => {
+    const observations = createObservationStore()
+    observations.write({ ...record('new'), agentPresetId: 'recorded-preset', agentSessionId: 'session' })
+    observations.write({ ...record('old'), agentSessionId: 'session' })
+    const methods = createObservabilityRuntimeMethods({ observations,
+      agents: { getSession: async () => ({ id: 'session', agentPresetId: 'changed-preset' }) },
+      promptResources: { getResource: async (id: string) => ({ label: id, metadata: { description: 'not an avatar' } }) },
+    } as unknown as ApplicationRuntimeContext)
+    const result = await methods.getObservationReferences({ references: [{ type: 'run', id: 'new' }, { type: 'run', id: 'old' }] })
+    expect(result[0]?.source?.presetName).toBe('recorded-preset')
+    expect(result[1]?.source?.presetName).toBeUndefined()
+    expect(observations.get('new')?.agentPresetId).toBe('recorded-preset')
+    observations.dispose()
+  })
   it('does not turn read failures into deleted-resource labels', async () => {
     const methods = createObservabilityRuntimeMethods({ documents: { get: async () => { throw new Error('IO failure') } } } as unknown as ApplicationRuntimeContext)
     await expect(methods.getObservationReferences({ references: [{ type: 'provider', id: 'p' }] })).rejects.toThrow('IO failure')

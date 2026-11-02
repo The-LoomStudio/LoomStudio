@@ -10,6 +10,7 @@ type Input = {
   makeRun(runId: string, previous?: ObservedRun, action?: 'resume' | 'abandon'): ObservedRun | undefined
   updateEntries(run: ObservedRun, update: (entries: AgentTranscriptEntry[]) => AgentTranscriptEntry[]): void
   refresh(run: ObservedRun, recovery?: RunRecovery): Promise<ActiveAgentRun | void>
+  narrativeCommitted?(run: ObservedRun): Promise<void>
   completed(run: ObservedRun, result: InvokeAgentTurnResult): void
   reportFailure(error: unknown): void
   reportAcknowledgement(error: unknown): void
@@ -67,7 +68,8 @@ export function useSessionRun(input: Input) {
       let result: InvokeAgentTurnResult | undefined
       try {
         result = await runAgentTurn(run, () => owns(run), update => input.updateEntries(run, update), setActiveRun,
-          () => setRecovery(current => input.kind === 'timeline' || current?.status === 'disconnected' ? undefined : current))
+          () => setRecovery(current => input.kind === 'timeline' || current?.status === 'disconnected' ? undefined : current),
+          async () => { if (owns(run)) await input.narrativeCommitted?.(run) })
       } catch (error) {
         if (!owns(run)) return
         if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'suspended') {

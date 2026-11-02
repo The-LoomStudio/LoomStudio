@@ -1,0 +1,30 @@
+.hero { position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; min-height: var(--loom-story-hero-height, 280px); width: 100%; min-width: 0; background: transparent; border-radius: 14px; container-type: inline-size; }
+.layout { position: relative; width: 100%; min-height: inherit; display: flex; align-items: center; }
+.art { position: absolute; inset: 0 0 0 auto; width: 40%; height: 100%; }
+.hero::after { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: color-mix(in srgb, var(--loom-color-surface) 12%, transparent); }
+.content { width: 100%; min-width: 0; box-sizing: border-box; padding: 28px 42% 28px var(--loom-story-hero-padding-inline, 20px); }
+.top { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 12px; color: var(--loom-color-text-muted); margin-bottom: 14px; }
+.hero .title { margin: 0; font-size: 21px; font-weight: 600; overflow-wrap: anywhere; }
+.description { color: var(--loom-color-text-muted); font-size: 14px; line-height: 1.8; margin: 16px 0 18px; padding-top: 12px; border-top: 1px solid var(--loom-color-divider); max-width: 56ch; overflow-wrap: anywhere; }
+.footer { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--loom-color-text-muted); margin-top: 14px; }
+.footer > span:not(:empty) { flex-basis: 100%; }
+.footer > span:empty { display: none; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.compact { min-height: 148px; }
+.compact .art { width: 27%; }
+.compact .content { padding: 18px 27% 18px 20px; }
+.compact .title { font-size: 16px; }
+.compact .top { margin-bottom: 8px; }
+.compact .description { font-size: 13px; margin: 10px 0; padding-top: 0; border-top: 0; }
+.noArt { min-height: var(--loom-story-hero-height, 148px); }
+.noArt .content { padding: 28px var(--loom-story-hero-padding-inline, 20px); }
+@container (max-width: 640px) {
+  .hero .layout { display: block; min-height: 0; }
+  .hero .layout .art { position: relative; width: 100%; height: clamp(180px, 65cqi, 260px); --hero-art-align: center; --hero-image-fade: linear-gradient(to bottom, #000 60%, rgb(0 0 0 / 85%) 78%, transparent 100%); }
+  .hero.compact .layout .art { height: 150px; }
+  .hero .layout .content { padding: 20px var(--loom-story-hero-padding-inline, 18px) 24px; }
+  .hero .title { font-size: 18px; }
+  .description { font-size: 13px; }
+  .footer { align-items: flex-start; gap: 8px; }
+  .compact .title { font-size: 15px; }
+}

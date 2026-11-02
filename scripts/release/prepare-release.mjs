@@ -65,14 +65,19 @@ for (const [name, { path, pkg }] of selected) {
 }
 
 // The server loads these official packages in place; themes and backgrounds remain outside the release.
-const officialExtensionDirectories = ['official/extensions/loom-assistant', 'official/extensions/story-memory']
+const officialExtensionFiles = {
+  'official/extensions/loom-assistant': ['package.json', 'manifest.json', 'icon.png', 'resources', 'nom-dialogue.js', 'assets'],
+  'official/extensions/story-memory': ['package.json', 'manifest.json', 'icon.png', 'client.js', 'server.js', 'resources', 'README.md'],
+}
+const officialExtensionPaths = Object.entries(officialExtensionFiles)
+  .flatMap(([directory, files]) => files.map(file => join(directory, file)))
 for (const path of [
-  'apps/studio-client/dist', 'official/starter', ...officialExtensionDirectories,
+  'apps/studio-client/dist', ...officialExtensionPaths,
   'official/cards/character-status', 'public/images/default-card.png',
   'scripts/start.mjs', 'start.sh', 'start.command', 'start.bat',
 ]) {
   await mkdir(dirname(join(destination, path)), { recursive: true })
-  await cp(join(root, path), join(destination, path), { recursive: true, filter: source => !relative(join(root, path), source).split(/[\\/]/).includes('node_modules') })
+  await cp(join(root, path), join(destination, path), { recursive: true, filter: source => !relative(join(root, path), source).split(/[\\/]/).some(part => part === 'node_modules' || part === '.DS_Store') })
 }
 await cp(join(root, 'apps/studio-server/src/banner.txt'), join(destination, 'apps/studio-server/dist/banner.txt'))
 await cp(join(root, 'docs/guide/beta-release.md'), join(destination, 'README.md'))

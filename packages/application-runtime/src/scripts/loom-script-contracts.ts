@@ -21,7 +21,7 @@ export type LoomScriptContent = {
   requestedCapabilities: string[]
   source: {
     blobId: string
-    mediaType: 'text/javascript'
+    mediaType: 'text/javascript' | 'text/markdown'
     fileName: string
   }
   sourceDigest: string
@@ -81,6 +81,7 @@ export type LoomScriptArtifact = {
 export type LoomScriptAttachmentArtifact = {
   script: LoomScriptArtifact
   orderIndex: number
+  groupOrder?: number
   resourceOrigin?: 'card' | 'external'
   textResourceIds?: Record<string, string>
   textResourceReferences?: Record<string, string>

@@ -16,3 +16,18 @@
 .parameters legend { font-size: var(--loom-font-size-3); }
 .parameter { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
 .parameter .field { flex: 1; }
+
+.themeGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 10px; }
+.themeChoice {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  min-width: 0; padding: 14px 12px; border: 0; border-radius: var(--loom-radius-control);
+  background: transparent; color: var(--loom-color-text); font: inherit; text-align: left; cursor: pointer;
+  small { display: block; margin-top: 4px; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-1); }
+  &:hover:not(:disabled) { background: var(--loom-color-surface-subtle); }
+  &[aria-pressed='true'] { background: var(--loom-color-surface-emphasis); color: var(--loom-color-accent); }
+  &:focus-visible { outline: 2px solid var(--loom-color-accent); outline-offset: 2px; }
+  &:disabled { opacity: .55; cursor: default; }
+}
+.swatches { display: inline-flex; flex-shrink: 0; padding-left: 8px;
+  > span { width: 24px; height: 24px; border-radius: 50%; margin-left: -8px; box-shadow: inset 0 0 0 1px rgb(128 128 128 / 18%); }
+}

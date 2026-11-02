@@ -9,7 +9,7 @@ import { expect, it, onTestFinished } from 'vitest'
 import { createServerExtensionManager } from '../../../apps/studio-server/src/extensions/extension-manager.js'
 import { createExtensionStateStore } from '../../../apps/studio-server/src/extensions/extension-state-store.js'
 
-it('installs the official theme package and serves its CSS and relative SVG assets without enabling JS', async () => {
+it('installs the official theme package and serves its CSS and palette previews without enabling JS', async () => {
   const root = await mkdtemp(join(tmpdir(), 'loom-theme-package-'))
   const source = fileURLToPath(new URL('../../../official/extensions/themes/', import.meta.url))
   const diagnostics = createInMemoryDiagnosticsRegistry()
@@ -39,10 +39,20 @@ it('installs the official theme package and serves its CSS and relative SVG asse
     expect(catalog).toHaveLength(1)
     expect(catalog[0].resources?.themes).toEqual(installed.resources?.themes)
     expect(installed.packageId).toBe('official.themes')
-    expect(catalog[0].resources?.themes).toEqual([
-      expect.objectContaining({ id: 'paper', css: './paper.css' }),
-      expect.objectContaining({ id: 'tide', css: './tide.css' }),
-    ])
+    expect(catalog[0].resources?.themes).toHaveLength(11)
+    expect(catalog[0].resources?.themes?.some(theme => theme.id === 'paper' || theme.id === 'tide')).toBe(false)
+    expect(catalog[0].resources?.themes).toContainEqual(expect.objectContaining({ id: 'nord', previewColors: ['#2e3440', '#3b4252', '#88c0d0'] }))
+    for (const theme of catalog[0].resources?.themes ?? []) {
+      const css = await readFile(join(source, theme.css), 'utf8')
+      expect(theme.previewColors).toHaveLength(3)
+      for (const [index, token] of ['background', 'surface', 'accent'].entries()) {
+        const declaration = css.split(`--loom-color-${token}:`)[1]?.split(';')[0]
+        expect(declaration).toContain(theme.previewColors![index])
+      }
+      if (theme.id !== 'catppuccin') {
+        expect(css).not.toMatch(/font-family|border-radius|backdrop-filter|url\(/)
+      }
+    }
     expect(catalog[0].resources?.styles).toEqual([
       expect.objectContaining({ id: 'smooth-motion', css: './motion.css', moduleId: 'motion', supportsCssOnly: true }),
       expect.objectContaining({ id: 'mint', css: './mint.css' }),
@@ -51,16 +61,13 @@ it('installs the official theme package and serves its CSS and relative SVG asse
     expect(catalog[0].modules).toEqual([expect.objectContaining({ moduleId: 'motion', runtimeKind: 'client', desired: expect.objectContaining({ enabled: false }) })])
 
     const revision = installed.fileRevision ?? installed.version
-    for (const path of ['./paper.css', './tide.css', './motion.css', './mint.css', './amber.css', './client.js', './assets/paper-texture.png', './assets/settings.svg', './assets/parchment.svg', './assets/startup-book.svg']) {
+    for (const path of [...(catalog[0].resources?.themes ?? []).map(theme => theme.css), './motion.css', './mint.css', './amber.css', './client.js']) {
       const served = await manager.readPackageFile(installed.packageId, revision, path)
       const original = await readFile(join(source, path))
       expect(Buffer.from(served.bytes).equals(original)).toBe(true)
       expect(served.mediaType).toBe(path.endsWith('.css') ? 'text/css; charset=utf-8' : path.endsWith('.js') ? 'text/javascript; charset=utf-8' : path.endsWith('.png') ? 'image/png' : 'image/svg+xml')
       expect((await readFile(join(root, 'installed', installed.packageId, path))).equals(original)).toBe(true)
     }
-    const css = await manager.readPackageFile(installed.packageId, revision, './paper.css')
-    expect(Buffer.from(css.bytes).toString('utf8')).toContain("url('./assets/paper-texture.png')")
-    expect(Buffer.from(css.bytes).toString('utf8')).toContain("url('./assets/settings.svg')")
   } finally {
     await host.disposeAll()
     await rm(root, { recursive: true, force: true })

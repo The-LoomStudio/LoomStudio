@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { MobileTabPageActive } from '../mobile-tab-pages/mobile-tab-pages.js'
+import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { mobileMotionDuration, mobileMotionEasing, mobileReleaseTarget, mobileResistance } from '@loom-studio/ui'
+import type { MobilePagePanRequest } from './mobile-page-pan.js'
 import { ChevronLeft } from 'lucide-react'
 import { WindowColumnLayout, type WindowColumnDefinition } from '../window-column-layout/window-column-layout.js'
 import { useStudioLayoutStore } from '../../studio-shell/studio-layout-store.js'
@@ -28,8 +31,9 @@ export type MasterDetailWorkbenchProps = {
 }
 
 export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
+  const pageActive = useContext(MobileTabPageActive)
   const containerRef = useRef<HTMLDivElement>(null)
-  const [isNarrow, setIsNarrow] = useState(false)
+  const [isNarrow, setIsNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [internalMobilePane, setInternalMobilePane] = useState<'master' | 'detail'>('master')
 
   const [internalMasterWidth, setInternalMasterWidth] = useState(
@@ -41,11 +45,11 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
   const setMobilePane = props.onMobilePaneChange ?? setInternalMobilePane
   const setWorkbenchNavigation = useStudioLayoutStore(state => state.setWorkbenchNavigation)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = containerRef.current
     if (!el) return
     const updateNarrow = () => {
-      const nextNarrow = el.clientWidth > 0 && el.clientWidth < NARROW_BREAKPOINT
+      const nextNarrow = window.innerWidth <= 768 || (el.clientWidth > 0 && el.clientWidth < NARROW_BREAKPOINT)
       setIsNarrow(prev => (prev === nextNarrow ? prev : nextNarrow))
     }
     updateNarrow()
@@ -72,6 +76,74 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
     return false
   }, [setMobilePane, props.onBack])
 
+  useEffect(() => {
+    const element = containerRef.current
+    if (!element) return
+    const back = (event: Event) => {
+      if (!(event.target instanceof Element) || event.target.closest('[data-mobile-master-detail]') !== element) return
+      if (handleGoBack()) { event.preventDefault(); event.stopPropagation() }
+    }
+    element.addEventListener('loom:mobile-back', back)
+    return () => element.removeEventListener('loom:mobile-back', back)
+  }, [handleGoBack])
+
+  const goBackRef = useRef(handleGoBack)
+  goBackRef.current = handleGoBack
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || !singlePane) return
+    const detail = container.querySelector<HTMLElement>('[data-column-id="detail"]')!
+    let animation: Animation | undefined
+    let clearFrame: number | undefined
+    let position = 0
+    const clear = () => {
+      animation?.cancel()
+      if (clearFrame !== undefined) cancelAnimationFrame(clearFrame)
+      animation = undefined
+      detail.style.removeProperty('transform')
+      detail.style.removeProperty('transition')
+      delete container.dataset.mobilePanning
+    }
+    const paint = (x: number) => {
+      position = x
+      detail.style.transform = `translate3d(${x}px, 0, 0)`
+    }
+    const settle = (back: boolean, velocity: number) => {
+      const target = back ? container.clientWidth : 0
+      animation = detail.animate([{ transform: `translate3d(${position}px,0,0)` }, { transform: `translate3d(${target}px,0,0)` }],
+        { duration: mobileMotionDuration(target - position, velocity), easing: mobileMotionEasing, fill: 'both' })
+      const current = animation
+      void current.finished.then(() => {
+        if (animation !== current) return
+        if (back) {
+          goBackRef.current()
+          clearFrame = requestAnimationFrame(clear)
+        } else clear()
+      }, () => {})
+    }
+    const begin = (event: Event) => {
+      if (!(event.target instanceof Element) || event.target.closest('[data-mobile-master-detail]') !== container || !showDetailOnlyRef.current) return
+      const request = (event as CustomEvent<MobilePagePanRequest>).detail
+      // Read the visual position before cancelling an in-flight settle animation.
+      const transform = getComputedStyle(detail).transform
+      const x = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41
+      animation?.cancel()
+      if (clearFrame !== undefined) cancelAnimationFrame(clearFrame)
+      animation = undefined
+      detail.style.transition = 'none'
+      container.dataset.mobilePanning = 'true'
+      paint(x)
+      request.controller = {
+        move: distance => paint(mobileResistance(x + distance, 0, container.clientWidth)),
+        end: velocity => settle(mobileReleaseTarget(position, container.clientWidth, velocity), velocity),
+        cancel: () => settle(false, 0),
+      }
+      event.stopPropagation()
+    }
+    container.addEventListener('loom:mobile-page-pan', begin)
+    return () => { container.removeEventListener('loom:mobile-page-pan', begin); clear() }
+  }, [singlePane])
+
   const handleGoForward = useCallback(() => {
     if (forwardAvailableRef.current) {
       forwardAvailableRef.current = false
@@ -88,7 +160,7 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
   }, [mobilePane])
 
   useEffect(() => {
-    if (props.navigationScope === 'local') return
+    if (props.navigationScope === 'local' || !pageActive) return
     const nav = {
       canGoBack: () => showDetailOnlyRef.current,
       goBack: handleGoBack,
@@ -99,7 +171,7 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
     return () => {
       setWorkbenchNavigation(null)
     }
-  }, [handleGoBack, handleGoForward, setWorkbenchNavigation, props.navigationScope])
+  }, [handleGoBack, handleGoForward, setWorkbenchNavigation, props.navigationScope, pageActive])
 
   const currentMasterWidth = typeof props.masterWidth === 'number' ? props.masterWidth : internalMasterWidth
 
@@ -159,6 +231,8 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
       ref={containerRef}
       className={`${styles.container} ${props.className ?? ''}`}
       data-loom-component={props.dataComponent ?? 'master-detail-workbench'}
+      data-mobile-master-detail=""
+      data-mobile-workspace-pane={props.navigationScope !== 'local' ? (showDetailOnly ? 'detail' : 'master') : undefined}
       data-single-pane={singlePane}
       data-pane={showDetailOnly ? 'detail' : 'master'}
     >

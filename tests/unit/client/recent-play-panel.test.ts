@@ -6,7 +6,7 @@ import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/in
 import type { AgentPreset, AgentSession, CardSummary, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
 
 describe('recent play panel', () => {
-  it('keeps Agent sessions and narrative timelines in separate sections', () => {
+  it('shows stories and sessions together with readable source information', () => {
     const updatedAt = '2026-09-29T12:00:00.000Z'
     const card = { id: 'card-1', name: 'Character' } as CardSummary
     const timeline = {
@@ -28,19 +28,19 @@ describe('recent play panel', () => {
       timelines: [timeline],
       t: createTranslator('zh-CN'),
       onOpenAgentSession: () => {},
-      onOpenCard: () => {},
+      recent: [{ cardId: card.id, timelineId: timeline.id, branchId: "branch-1" }], onOpenRecent: () => {},
       onOpenTimeline: () => {},
     }))
-    const timelines = html.split('<h3>最近剧情</h3>')[1]?.split('<h3>最近会话</h3>')[0]
-    const sessions = html.split('<h3>最近会话</h3>')[1]
+    expect(html).toContain('最近活动')
+    expect(html).toContain('继续上次故事')
+    expect(html).toContain('Story')
+    expect(html).toContain('Agent conversation')
+    expect(html).toContain('Writing Assistant')
+    expect(html).toContain('42 条记录')
+    expect(html).not.toContain('timeline-1')
 
-    expect(timelines).toContain('Story')
-    expect(timelines).not.toContain('Agent conversation')
-    expect(sessions).toContain('Agent conversation')
-    expect(sessions).toContain('Writing Assistant · 42 条记录 · 剧情：Story')
-    expect(sessions).not.toContain('timeline-1')
   })
-  it('highlights the current story and viewed session independently from the primary writing star', () => {
+  it('highlights the current story and viewed session independently from the primary writing label', () => {
     const timestamp = '2026-10-20T00:00:00.000Z'
     const t = createTranslator('zh-CN')
     const html = renderToStaticMarkup(createElement(RecentPlayPanel, {
@@ -50,18 +50,35 @@ describe('recent play panel', () => {
       agentSessions: ['viewed', 'writer', 'other'].map(id => ({ kind: 'agent' as const,
         id, title: id, agentPresetId: 'preset', entryCount: 1, createdAt: timestamp, updatedAt: timestamp,
       })),
-      t, onOpenCard: () => {}, onOpenTimeline: () => {}, onOpenAgentSession: () => {},
+      t, recent: [], onOpenRecent: () => {}, onOpenTimeline: () => {}, onOpenAgentSession: () => {},
     }))
     const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(match => match[0])
     const row = (title: string) => buttons.find(button => button.includes(`<strong>${title}</strong>`))!
     expect(row('Current story')).toContain('aria-current="true"')
     expect(row('viewed')).toContain('aria-current="true"')
-    expect(row('viewed')).not.toContain(`aria-label="${t('agent.primarySession')}"`)
+    expect(row('viewed')).not.toContain(t('agent.primarySession'))
     expect(row('writer')).not.toContain('aria-current=')
-    expect(row('writer')).toContain(`aria-label="${t('agent.primarySession')}"`)
-    expect(row('writer')).toContain('lucide-star')
+    expect(row('writer')).toContain(t('agent.primarySession'))
     expect(row('other')).not.toContain('aria-current=')
-    expect(row('other')).toContain('lucide-bot')
+    expect(row('other')).toContain('lucide-message-square')
+  })
+
+  it('resumes the last visited story rather than the most recently modified story', () => {
+    const card = { id: 'card', name: 'Visited character' } as CardSummary
+    const timelines = [
+      { id: 'newer', title: 'Recently modified', updatedAt: '2026-11-02T12:00:00Z' },
+      { id: 'visited', title: 'Last visited', updatedAt: '2026-11-01T12:00:00Z', latestPreview: '<quick_reply>hidden action</quick_reply><b>Story excerpt</b>' },
+    ].map(item => ({ ...item, createdAt: item.updatedAt, activeBranchId: 'branch', promptResourceIds: [], createdFrom: { cardId: card.id, cardVersion: 1 } }))
+    const html = renderToStaticMarkup(createElement(RecentPlayPanel, {
+      cards: [card], timelines, agentSessions: [], agentPresets: [], t: createTranslator('zh-CN'),
+      recent: [{ cardId: card.id, timelineId: 'visited', branchId: 'branch' }],
+      onOpenRecent: () => {}, onOpenTimeline: () => {}, onOpenAgentSession: () => {},
+    }))
+    const hero = html.slice(html.indexOf('继续上次故事'), html.indexOf('最近活动'))
+    expect(hero).toContain('Last visited')
+    expect(hero).not.toContain('Recently modified')
+    expect(hero).toContain('Story excerpt')
+    expect(html).not.toContain('hidden action')
   })
 
 })

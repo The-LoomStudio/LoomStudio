@@ -1,6 +1,5 @@
 import { AgentMutationApprovalDialog } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-mutation-approval-dialog.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import { isValidElement, type ReactElement } from 'react'
 import { AgentChatPanel, type AgentChatPanelProps } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-chat-panel.js'
 import { AgentToolActionItem } from '../../../apps/studio-client/src/features/sessions/ui/agent-tool-blocks.js'
@@ -48,17 +47,17 @@ function panelElements(count: number, reply: boolean, completed = false) {
   hooks.cursor = 0
   const messages: AgentChatPanelProps['messages'] = Array.from({ length: count }, (_, i) => ({
     id: `tool-${i}`, agentSessionId: 'session', sequence: i, createdAt: '',
-    entry: { kind: 'tool-invocation', toolId: 'read', invocationId: `call-${i}`, exposedName: 'read', arguments: {} },
+    entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, toolId: 'read', invocationId: `call-${i}`, exposedName: 'read', arguments: {} },
   }))
   const props: AgentChatPanelProps = {
     runRecoveryBusy: false, canRestoreRunInput: false, reconnectAgentRun: vi.fn(async () => {}), restoreRunInput: vi.fn(),
     busy: false, input: '', profiles: [], providerAccounts: [],
     messages: [...messages, ...(completed ? messages.map((message, i) => ({
       id: `result-${i}`, agentSessionId: 'session', sequence: count + i, createdAt: '',
-      entry: { kind: 'tool-result' as const, invocationId: `call-${i}`, content: 'Done' },
+      entry: { toolId: 'read', status: 'completed' as const, kind: 'tool-result' as const, invocationId: `call-${i}`, content: [{ type: 'text' as const, text: 'Done' }] },
     })) : []), ...(reply ? [{
       id: 'answer', agentSessionId: 'session', sequence: count, createdAt: '',
-      entry: { kind: 'message', role: 'assistant' as const, content: 'Done' },
+      entry: { kind: 'message' as const, role: 'assistant' as const, content: 'Done' },
     }] : [])],
     t: createTranslator('en-US'), onChangeInput: vi.fn(), onSelectProfile: vi.fn(), onSubmit: vi.fn(),
   }
@@ -119,7 +118,7 @@ describe('Agent tool group identity and collapse', () => {
   it.each(['discarded', 'aborted', 'suspended', 'failed', 'completed'] as const)('stops the spinner for an unresolved tool after %s', state => {
     const invocation = {
       id: 'tool', runId: 'old-run', agentSessionId: 'session', sequence: 1, createdAt: '',
-      entry: { kind: 'tool-invocation' as const, toolId: 'codeact', invocationId: 'call', exposedName: 'codeact' },
+      entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, toolId: 'codeact', invocationId: 'call', exposedName: 'codeact' },
     }
     const terminal = {
       id: 'state', runId: 'old-run', agentSessionId: 'session', sequence: 2, createdAt: '',
@@ -131,7 +130,7 @@ describe('Agent tool group identity and collapse', () => {
   it('uses the active run state for an unresolved tool without a terminal entry', () => {
     const invocation = {
       id: 'tool', runId: 'old-run', agentSessionId: 'session', sequence: 1, createdAt: '',
-      entry: { kind: 'tool-invocation' as const, toolId: 'codeact', invocationId: 'call', exposedName: 'codeact' },
+      entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, toolId: 'codeact', invocationId: 'call', exposedName: 'codeact' },
     }
     expect(buildRenderItems([invocation], { runId: 'old-run', status: 'suspended' }))
       .toMatchObject([{ tools: [{ status: 'interrupted' }] }])
@@ -157,11 +156,11 @@ describe('Agent tool group identity and collapse', () => {
   it('retains CodeAct source and structured arguments beside a result or error', () => {
     const code = {
       id: 'code', agentSessionId: 'session', sequence: 1, createdAt: '',
-      entry: { kind: 'tool-invocation', toolId: 'official/codeact', invocationId: 'code-1', exposedName: 'codeact', rawInput: 'print(1 + 1)' },
+      entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, toolId: 'official/codeact', invocationId: 'code-1', exposedName: 'codeact', rawInput: 'print(1 + 1)' },
     }
     const failure = {
       id: 'failure', agentSessionId: 'session', sequence: 2, createdAt: '',
-      entry: { kind: 'tool-result', invocationId: 'code-1', status: 'failed', content: [], error: { code: 'codeact.syntax', message: 'Unexpected token' } },
+      entry: { toolId: 'read', kind: 'tool-result' as const, invocationId: 'code-1', status: 'failed' as const, content: [], error: { code: 'codeact.syntax', message: 'Unexpected token' } },
     }
     expect(buildRenderItems([code, failure])).toMatchObject([{ kind: 'tool-group', tools: [{
       inputs: [{ label: '代码', content: 'print(1 + 1)' }],
@@ -170,7 +169,7 @@ describe('Agent tool group identity and collapse', () => {
 
     const structured = {
       id: 'json', agentSessionId: 'session', sequence: 3, createdAt: '',
-      entry: { kind: 'tool-invocation', toolId: 'official/search', invocationId: 'search-1', exposedName: 'search', arguments: { query: 'hello' } },
+      entry: { transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, toolId: 'official/search', invocationId: 'search-1', exposedName: 'search', arguments: { query: 'hello' } },
     }
     expect(buildRenderItems([structured])).toMatchObject([{ kind: 'tool-group', tools: [{
       inputs: [{ label: '参数', content: '{\n  "query": "hello"\n}' }],
@@ -179,19 +178,20 @@ describe('Agent tool group identity and collapse', () => {
   })
 
   it('renders text and JSON tool result parts without losing falsy or Unicode values', () => {
-    const content: ClientJsonValue[] = [{ text: 'result😀' }, { text: '' }, { text: 0 }, null, false, 0, 'plain', ['nested'], { value: 1 }]
+    const content = [{ type: 'text' as const, text: 'result😀' }, { type: 'text' as const, text: '' },
+      ...[null, false, 0, 'plain', ['nested'], { value: 1 }].map(value => ({ type: 'json' as const, value }))]
     const tree = elements(AgentChatPanel({
       runRecoveryBusy: false, canRestoreRunInput: false, reconnectAgentRun: vi.fn(async () => {}), restoreRunInput: vi.fn(),
       busy: false, input: '', profiles: [], providerAccounts: [],
       messages: [
-        { id: 'call', agentSessionId: 'session', sequence: 0, createdAt: '', entry: { kind: 'tool-invocation', toolId: 'read', invocationId: 'call-1' } },
-        { id: 'result', agentSessionId: 'session', sequence: 1, createdAt: '', entry: { kind: 'tool-result', invocationId: 'call-1', content } },
+        { id: 'call', agentSessionId: 'session', sequence: 0, createdAt: '', entry: { exposedName: 'read', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, toolId: 'read', invocationId: 'call-1' } },
+        { id: 'result', agentSessionId: 'session', sequence: 1, createdAt: '', entry: { toolId: 'read', status: 'completed' as const, kind: 'tool-result' as const, invocationId: 'call-1', content } },
       ],
       t: createTranslator('en-US'), onChangeInput: vi.fn(), onSelectProfile: vi.fn(), onSubmit: vi.fn(),
     }))
     const group = tree.find(element => Array.isArray(element.props.tools))!
     expect(group.props.tools).toMatchObject([{
-      resultContent: 'result😀\n{"text":""}\n{"text":0}\nnull\nfalse\n0\n"plain"\n["nested"]\n{"value":1}',
+      resultContent: 'result😀\n{"type":"text","text":""}\n{"type":"json","value":null}\n{"type":"json","value":false}\n{"type":"json","value":0}\n{"type":"json","value":"plain"}\n{"type":"json","value":["nested"]}\n{"type":"json","value":{"value":1}}',
     }])
   })
 
@@ -225,12 +225,12 @@ describe('Agent tool group identity and collapse', () => {
 
 it('renders a tool argument draft as preparation, retaining its identity after commitment', () => {
   const draft = { id: 'draft', runId: 'run', agentSessionId: 'session', sequence: 1, createdAt: '',
-    entry: { kind: 'tool-input', exposedName: 'codeact_json', rawInput: '{"source":', status: 'preparing' } }
+    entry: { providerItemId: 'draft', kind: 'tool-input' as const, exposedName: 'codeact_json', rawInput: '{"source":', status: 'preparing' as const } }
   const items = buildRenderItems([draft], { runId: 'run', status: 'running' })
   expect(items[0]).toMatchObject({ kind: 'tool-group', tools: [{ id: 'draft', status: 'preparing', inputs: [{ label: '参数草稿', content: '{"source":' }] }] })
   expect(buildRenderItems([draft], { runId: 'run', status: 'suspended' })[0])
     .toMatchObject({ tools: [{ status: 'interrupted', label: 'codeact_json · 参数生成已中断，尚未执行' }] })
-  const committed = { ...draft, id: 'saved', presentationId: 'draft', entry: { kind: 'tool-invocation', invocationId: 'call', exposedName: 'codeact_json' } }
+  const committed = { ...draft, id: 'saved', presentationId: 'draft', entry: { toolId: 'codeact_json', transport: 'native-function' as const, status: 'proposed' as const, kind: 'tool-invocation' as const, invocationId: 'call', exposedName: 'codeact_json' } }
   expect(buildRenderItems([committed], { runId: 'run', status: 'running' })[0])
     .toMatchObject({ id: 'tool-group-draft', tools: [{ id: 'draft', status: 'running' }] })
 })

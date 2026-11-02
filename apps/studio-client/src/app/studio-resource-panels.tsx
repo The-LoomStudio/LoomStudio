@@ -85,7 +85,7 @@ export function StudioResourcePanels(props: {
         onListModels={state.listProviderModels}
         providerAccounts={state.providerAccounts}
         onSaveModel={state.updatePresetModel}
-        onReturnToLibrary={() => navigation.clearResourceTarget()}
+        onReturnToLibrary={() => navigation.searchParams.has('toolId') ? navigation.openPath('/studio/agents') : navigation.clearResourceTarget()}
         selectedResourceId={uiState.selectedPresetId}
         onSelectResource={id => {
           if (!navigation.isCurrent()) return
@@ -109,6 +109,7 @@ export function StudioResourcePanels(props: {
         onReplaceToolMounts={state.replacePresetToolMounts}
         onReplaceLoreMounts={(source, mounts) => state.replaceLoreMounts(source, mounts, 'mounts')}
         onUpdateTool={state.updateAgentTool}
+        routeToolId={navigation.route.panel === 'agent' && !navigation.route.resourceId && !navigation.route.assetId ? navigation.searchParams.get('toolId') ?? undefined : undefined}
         routeAssetId={navigation.route.panel === 'agent' ? navigation.route.assetId : undefined}
         searchQuery={navigation.route.panel === 'agent' ? navigation.searchQuery : ''}
         onSearchQueryChange={navigation.setSearchQuery}

@@ -191,7 +191,8 @@ export function readContextAssetTreeActions(
 }
 
 export function canToggleContextAssetEnabled(node: ContextAssetNode | undefined): node is ContextAssetNode {
-  return node?.kind === 'entry' && !isReadOnlyContextAssetTreeNode(node)
+  return !!node && (node.kind === 'entry' || (node.kind === 'folder' && node.category !== 'preset-root'))
+    && !isReadOnlyContextAssetTreeNode(node)
 }
 
 export function isReadOnlyContextAssetTreeNode(node: ContextAssetNode): boolean {
@@ -200,4 +201,10 @@ export function isReadOnlyContextAssetTreeNode(node: ContextAssetNode): boolean 
     || node.category === 'history'
     || node.projection?.sourceKind === 'virtual'
     || node.id.startsWith('history-')
+}
+
+export function readContextAssetToggleLabel(node: ContextAssetNode, t: Translator): string {
+  return node.kind === 'folder'
+    ? t(node.enabled === false ? 'context.actionEnableGroup' : 'context.actionDisableGroup')
+    : t(node.enabled === false ? 'context.actionEnable' : 'context.actionDisable')
 }

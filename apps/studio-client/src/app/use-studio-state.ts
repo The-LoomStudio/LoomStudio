@@ -1,12 +1,13 @@
 import { usePromptResourceWorkspace } from '../features/prompt-resources/model/use-prompt-resource-workspace.js'
 import { useAgentTools } from '../features/agent-presets/model/use-agent-tools.js'
 import { useUserProfilesQuery } from '../features/user-profiles/model/use-user-profiles-query.js'
+import { usePlayerProfileQuery } from '../features/user-profiles/model/use-player-profile-query.js'
 import { useNewStoryExtensions } from '../features/extension-renderers/ui/new-story-extensions.js'
 import { readStudioLocale, saveStudioLocale } from '../features/onboarding/model/onboarding-preferences.js'
 import { createStudioTrpcClient } from '../shared/api/trpc-client.js'
 import type { Logger } from '@loom-studio/logging'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createTranslator, type Locale } from '../shared/i18n/index.js'
+import { createTranslator, loadLocale, type Locale } from '../shared/i18n/index.js'
 import { notify } from '../shared/notifications/index.js'
 import { createStudioApi, type NetworkSettings } from '../shared/api/studio-api.js'
 import { useAsyncOperations } from '../shared/hooks/use-async-operations.js'
@@ -20,7 +21,7 @@ import { useProviderSettings } from '../features/provider-settings/model/use-pro
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
 import { useExtensionResourceCommands } from '../features/extension-renderers/model/use-extension-resource-commands.js'
 import { usePromptResourceCommands } from '../features/prompt-resources/model/use-prompt-resource-commands.js'
-import type { ContextAssetNode, PromptResource } from '../entities/index.js'
+import type { ContextAssetNode } from '../entities/index.js'
 import { useStudioStartup } from './use-studio-startup.js'
 import { useStudioDerivedValues } from './use-studio-derived-values.js'
 import { useThemeStore } from '../features/themes/model/theme-store.js'
@@ -32,7 +33,14 @@ export type HistoryAssetTarget = {
 
 export function useStudioState(transportLogger: Logger) {
   const [locale, updateLocale] = useState<Locale>(readStudioLocale)
-  function setLocale(next: Locale) { saveStudioLocale(next); updateLocale(next) }
+  function setLocale(next: Locale) {
+    void operations.runLatest('settings', async ({ isCurrent }) => {
+      await loadLocale(next)
+      if (!isCurrent()) return
+      saveStudioLocale(next)
+      updateLocale(next)
+    })
+  }
   const t = useMemo(() => createTranslator(locale), [locale])
   const [transportEndpoint, setEndpoint] = useState('/trpc')
   // ponytail: Preserve persisted workspace/draft keys during the transport change; remove when workspace identity has its own storage migration.
@@ -53,11 +61,10 @@ export function useStudioState(transportLogger: Logger) {
   const userProfilesQuery = useUserProfilesQuery(api.userProfiles, endpoint)
   const userConfig = userProfilesQuery.data?.config
   const selectedUser = userConfig?.profiles.find(profile => profile.id === userConfig.currentProfileId)
-  const userIdentity = {
+  const templateUserIdentity = {
     name: selectedUser?.name.trim() || 'User',
     ...(selectedUser?.avatarAssetId ? { avatarUrl: `/assets/${encodeURIComponent(selectedUser.avatarAssetId)}` } : {}),
   }
-  const userMacroValues = useMemo(() => ({ name: selectedUser?.name.trim() || 'User', description: selectedUser?.description ?? '' }), [selectedUser])
 
   const apiRef = useRef<typeof api | undefined>(api)
   apiRef.current = api
@@ -112,7 +119,7 @@ export function useStudioState(transportLogger: Logger) {
   const agentPresets = { ...presetSelection, ...agentTools }
   const selectedAgentPreset = agentPresets.agentPresets.find(profile => profile.id === agentPresets.selectedAgentPresetId)
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
-  const newStoryExtensions = useNewStoryExtensions(api)
+  const newStoryExtensions = useNewStoryExtensions(api, t)
   const narrativeRuntime = useNarrativeRuntime({
     chooseStoryExtensions: newStoryExtensions.choose,
     activationFacts,
@@ -139,6 +146,20 @@ export function useStudioState(transportLogger: Logger) {
     t,
     logger: transportLogger,
   })
+
+  const playerProfileQuery = usePlayerProfileQuery(api.states, endpoint,
+    narrativeRuntime.timeline && narrativeRuntime.branch
+      ? { scope: 'timeline', timelineId: narrativeRuntime.timeline.id, branchId: narrativeRuntime.branch.id } : undefined,
+    narrativeRuntime.branch?.stateHeadRevisionId)
+  const storyUser = narrativeRuntime.timeline
+    ? playerProfileQuery.isSuccess ? playerProfileQuery.data.playerProfile ?? selectedUser : undefined
+    : selectedUser
+  const userIdentity = {
+    name: storyUser?.name.trim() || 'User',
+    ...(storyUser?.avatarAssetId ? { avatarUrl: `/assets/${encodeURIComponent(storyUser.avatarAssetId)}` } : {}),
+  }
+  const agentUserIdentity = narrativeRuntime.agentSession?.timelineId ? userIdentity : templateUserIdentity
+  const userMacroValues = useMemo(() => ({ name: storyUser?.name.trim() || 'User', description: storyUser?.description ?? '' }), [storyUser])
 
   async function refreshResourceConsumers(): Promise<void> {
     await Promise.all([
@@ -212,6 +233,7 @@ export function useStudioState(transportLogger: Logger) {
 
   async function refreshStates() {
     macroPreviewState.refresh()
+    if (narrativeRuntime.timeline) await playerProfileQuery.refetch()
   }
 
   const sessionBusy = operations.isPending('session')
@@ -291,7 +313,7 @@ export function useStudioState(transportLogger: Logger) {
       const resources = [resource]
       const subjectId = entry.anchor.subjectId
       const contextAssets = resources.map(resource => resource.rootNode)
-      return readHistoryAssetTarget(contextAssets, subjectId, readDefaultContextAssetId(resources))
+      return readHistoryAssetTarget(contextAssets, subjectId, resources[0]?.rootNode.id ?? '')
     }
 
     const cards = await cardsState.refreshCards()
@@ -305,12 +327,14 @@ export function useStudioState(transportLogger: Logger) {
     presetResourcesReady: promptResourceState.resourcesReady,
     retryPromptResources: () => Promise.all([refreshPromptResourceLibrary(), refreshLoreMounts(), refreshPresetToolMounts()]),
     // i18n
-    locale, setLocale, t,
+    locale, setLocale, t, localePending: operations.isPending('settings'),
     networkSettings,
     updateNetworkSettings,
     // bridge
     endpoint, setEndpoint,
     userIdentity,
+    agentUserIdentity,
+    hasTimelinePlayerProfile: Boolean(playerProfileQuery.isSuccess && playerProfileQuery.data.playerProfile),
     logsApi: api.logs,
     statesApi: api.states,
     textTransformsApi: api.textTransforms,
@@ -390,6 +414,7 @@ export function useStudioState(transportLogger: Logger) {
     restoreRunInput: narrativeRuntime.restoreRunInput,
     retryNarrativeInput: narrativeRuntime.retryNarrativeInput,
     retryDiscussionInput: narrativeRuntime.retryDiscussionInput,
+    reviseUserInput: narrativeRuntime.reviseUserInput,
     canRetryNarrativeInput: narrativeRuntime.canRetryNarrativeInput,
     cancelAgentRun: narrativeRuntime.cancelAgentRun,
     pauseAgentRun: narrativeRuntime.pauseAgentRun,
@@ -406,6 +431,8 @@ export function useStudioState(transportLogger: Logger) {
     refreshAllAgentSessions: narrativeRuntime.refreshAllAgentSessions,
     agentChatMessages: narrativeRuntime.agentMessages,
     agentChatInput: narrativeRuntime.agentInput,
+    agentAttachments: narrativeRuntime.agentAttachments,
+    narrativeAttachments: narrativeRuntime.narrativeAttachments,
     setAgentChatInput: narrativeRuntime.setAgentInput,
     submitAgentTurn: (event: Parameters<typeof narrativeRuntime.submitAgentTurn>[0]) => {
       if (!narrativeRuntime.agentSession && (!promptResourceState.resourcesReady || !selectedAgentPreset)) { event.preventDefault(); return Promise.resolve() }
@@ -468,7 +495,7 @@ export function useStudioState(transportLogger: Logger) {
     ...promptResourceCommands,
     // derived
     ...derivedValues,
-    canSend: derivedValues.canSend && !narrativeRuntime.openingChanged && Boolean(narrativeRuntime.primarySession?.agentPresetId) && narrativeRuntime.rootActiveRun?.status !== 'running' && narrativeRuntime.rootActiveRun?.status !== 'suspended',
+    canSend: Boolean(narrativeRuntime.timeline && narrativeRuntime.branch) && (Boolean(narrativeRuntime.input.trim()) || narrativeRuntime.narrativeAttachments.values.length > 0) && narrativeRuntime.narrativeAttachments.ready && !narrativeRuntime.openingChanged && Boolean(narrativeRuntime.primarySession?.agentPresetId),
     canSendAgent: derivedValues.canSendAgent && Boolean(narrativeRuntime.agentSession || (promptResourceState.resourcesReady && selectedAgentPreset)),
     refreshStates,
     // actions
@@ -498,6 +525,7 @@ export function useStudioState(transportLogger: Logger) {
     deleteAgentSession: narrativeRuntime.deleteAgentSession,
     renameAgentSession: narrativeRuntime.renameAgentSession,
     submitTurn: narrativeRuntime.submitTurn,
+    sendDiscussionInput: narrativeRuntime.sendDiscussionInput,
     previewPrompt: narrativeRuntime.previewPrompt,
     forkFromNode: narrativeRuntime.forkFromNode,
     switchBranch: narrativeRuntime.switchBranch,
@@ -524,10 +552,6 @@ export function useStudioState(transportLogger: Logger) {
     pingModelProfile: providerSettings.pingModelProfile,
     updateAgentTool: agentPresets.updateAgentTool,
   }
-}
-
-function readDefaultContextAssetId(resources: PromptResource[]): string {
-  return resources[0]?.rootNode.id ?? ''
 }
 
 export function readHistoryAssetTarget(

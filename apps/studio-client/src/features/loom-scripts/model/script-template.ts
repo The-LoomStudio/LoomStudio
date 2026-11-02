@@ -19,24 +19,8 @@ export function createScriptTemplate(): string {
 
 export function createTextRuleScriptTemplate(): string {
   return [
-    '// ==LoomScript==',
-    '// @format 1',
-    `// @id rule.${crypto.randomUUID()}`,
-    '// @name 新文本规则',
-    '// @version 1.0.0',
-    '// @runtime declarative',
-    '// @tag text',
-    '// @setting {"key":"replacement","label":"替换文字","type":"string","default":"替换后文字"}',
-    '// @contribution {',
-    '//   "kind": "text-transform", "id": "replace",',
-    '//   "rule": {',
-    '//     "name": "替换示例", "enabled": true, "orderIndex": 0,',
-    '//     "matcher": {"kind":"regex", "pattern":"待替换文字", "flags":"g"},',
-    '//     "effect": {"kind":"replace", "replacement":{"$config":"replacement"}},',
-    '//     "targets": ["narrative", "agent-session"], "phases": ["display"]',
-    '//   }',
-    '// }',
-    '// ==/LoomScript==',
-    '',
+    '---', `id: rule.${crypto.randomUUID()}`, 'name: 新文本规则', 'version: 1.0.0', 'tags: [text]',
+    "regex: '待替换文字'", 'regex_flags: g', 'phases: [display]', 'order: 0', 'streaming: false', '---',
+    '替换后文字',
   ].join('\n')
 }

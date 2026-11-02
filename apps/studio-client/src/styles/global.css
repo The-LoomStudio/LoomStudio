@@ -20,13 +20,13 @@
    * S3 subtle    -- surface-subtle：同层级的柔和区分面
    * S4 raised    -- surface-muted / surface-raised：最高分离度的浮起或选中表面
    */
-  --loom-color-background: var(--loom-bg, #1e1e2e);
-  --loom-color-surface-inset: var(--loom-surface, #181825);
-  --loom-color-surface-emphasis: var(--loom-surface-deep, #373849);
-  --loom-color-surface: var(--loom-window, var(--loom-panel, #313244));
-  --loom-color-surface-subtle: var(--loom-window-surface, #3c3d50);
-  --loom-color-surface-muted: var(--loom-panel-muted, #45475a);
-  --loom-color-surface-raised: var(--loom-window-raised, var(--loom-panel-muted, #45475a));
+  --loom-color-background: var(--loom-bg, #252b31);
+  --loom-color-surface-inset: var(--loom-surface, #20262c);
+  --loom-color-surface-emphasis: var(--loom-surface-deep, #414b54);
+  --loom-color-surface: var(--loom-window, var(--loom-panel, #394149));
+  --loom-color-surface-subtle: var(--loom-window-surface, #343e47);
+  --loom-color-surface-muted: var(--loom-panel-muted, #424c55);
+  --loom-color-surface-raised: var(--loom-window-raised, var(--loom-panel-muted, #46515b));
   --loom-divider-inset: 8px;
   --loom-divider-space: 16px;
   --loom-page-header-height: 40px;
@@ -44,20 +44,20 @@
   --loom-icon-size-6: calc(20px * var(--loom-ui-scale));
 
   /* ── 颜色：边界（B0 divider < B1 border < B2 border-strong） ── */
-  --loom-color-border: var(--loom-border, #45475a);
-  --loom-color-border-strong: var(--loom-border-strong, #585b70);
+  --loom-color-border: var(--loom-border, rgba(235, 240, 243, 0.12));
+  --loom-color-border-strong: var(--loom-border-strong, rgba(235, 240, 243, 0.22));
   --loom-color-divider: var(--loom-divider-color, color-mix(in srgb, var(--loom-color-border) 58%, transparent));
 
   /* ── 颜色：文本（T1 text > T2 text-muted > T3 text-subtle） ── */
-  --loom-color-text: var(--loom-text, #ccd6f5);
-  --loom-color-text-muted: var(--loom-text-muted, #a6adc8);
-  --loom-color-text-subtle: var(--loom-text-subtle, #7f849c);
+  --loom-color-text: var(--loom-text, #f2f4f5);
+  --loom-color-text-muted: var(--loom-text-muted, #ced4d8);
+  --loom-color-text-subtle: var(--loom-text-subtle, #9ea9b0);
 
   /* ── 颜色：强调 ── */
-  --loom-color-accent: var(--loom-accent, #cba6f7);
-  --loom-color-accent-strong: var(--loom-accent-strong, #d0b3f8);
-  --loom-color-accent-soft: var(--loom-accent-soft, #3b324a);
-  --loom-color-accent-foreground: var(--loom-accent-foreground, #11111b);
+  --loom-color-accent: var(--loom-accent, #b9c7cf);
+  --loom-color-accent-strong: var(--loom-accent-strong, #f7f8f9);
+  --loom-color-accent-soft: var(--loom-accent-soft, rgba(185, 199, 207, 0.16));
+  --loom-color-accent-foreground: var(--loom-accent-foreground, #252b31);
   --loom-color-dialogue: var(--loom-dialogue, var(--loom-color-accent-strong));
 
   /* ── 颜色：角色 ── */
@@ -65,39 +65,39 @@
   --loom-color-role-assistant: var(--loom-role-assistant, transparent);
 
   /* ── 颜色：状态 ── */
-  --loom-color-danger: var(--loom-danger, #f38ba8);
-  --loom-color-danger-foreground: var(--loom-danger-foreground, #11111b);
-  --loom-color-danger-background: var(--loom-danger-bg, #3f2835);
-  --loom-color-warning: var(--loom-warning, #fab387);
-  --loom-color-warning-foreground: var(--loom-warning-foreground, #11111b);
-  --loom-color-warning-background: var(--loom-warning-bg, #403128);
-  --loom-color-info: var(--loom-info, #89b4fa);
-  --loom-color-info-background: var(--loom-info-bg, #29344d);
-  --loom-color-success: var(--loom-success, #a6e3a1);
-  --loom-color-success-background: var(--loom-success-bg, #2b3a32);
+  --loom-color-danger: var(--loom-danger, #e5a3ab);
+  --loom-color-danger-foreground: var(--loom-danger-foreground, #252b31);
+  --loom-color-danger-background: var(--loom-danger-bg, #48343c);
+  --loom-color-warning: var(--loom-warning, #efbc70);
+  --loom-color-warning-foreground: var(--loom-warning-foreground, #252b31);
+  --loom-color-warning-background: var(--loom-warning-bg, #494032);
+  --loom-color-info: var(--loom-info, #a9c6dd);
+  --loom-color-info-background: var(--loom-info-bg, #303f4d);
+  --loom-color-success: var(--loom-success, #b8d2c2);
+  --loom-color-success-background: var(--loom-success-bg, #30443c);
   --loom-color-selection-background: var(--loom-selection-bg, color-mix(in srgb, var(--loom-color-info) 30%, transparent));
 
   /* ── 颜色：编辑器语法 ── */
-  --loom-color-syntax-comment: var(--loom-syntax-comment, #6c7086);
-  --loom-color-syntax-heading: var(--loom-syntax-heading, #cba6f7);
-  --loom-color-syntax-emphasis: var(--loom-syntax-emphasis, #f5c2e7);
-  --loom-color-syntax-strong: var(--loom-syntax-strong, #f9e2af);
-  --loom-color-syntax-quote: var(--loom-syntax-quote, #94e2d5);
-  --loom-color-syntax-link: var(--loom-syntax-link, #89dceb);
-  --loom-color-syntax-keyword: var(--loom-syntax-keyword, #cba6f7);
-  --loom-color-syntax-constant: var(--loom-syntax-constant, #fab387);
-  --loom-color-syntax-string: var(--loom-syntax-string, #a6e3a1);
-  --loom-color-syntax-number: var(--loom-syntax-number, #fab387);
-  --loom-color-syntax-variable: var(--loom-syntax-variable, #cdd6f4);
-  --loom-color-syntax-function: var(--loom-syntax-function, #89b4fa);
-  --loom-color-syntax-type: var(--loom-syntax-type, #f9e2af);
-  --loom-color-syntax-property: var(--loom-syntax-property, #b4befe);
-  --loom-color-syntax-tag: var(--loom-syntax-tag, #f38ba8);
-  --loom-color-syntax-attribute: var(--loom-syntax-attribute, #f9e2af);
-  --loom-color-syntax-operator: var(--loom-syntax-operator, #89dceb);
-  --loom-color-syntax-punctuation: var(--loom-syntax-punctuation, #9399b2);
-  --loom-color-syntax-meta: var(--loom-syntax-meta, #f5c2e7);
-  --loom-color-syntax-invalid: var(--loom-syntax-invalid, #f38ba8);
+  --loom-color-syntax-comment: var(--loom-syntax-comment, #9ea9b0);
+  --loom-color-syntax-heading: var(--loom-syntax-heading, #b9c7cf);
+  --loom-color-syntax-emphasis: var(--loom-syntax-emphasis, #d6b4b9);
+  --loom-color-syntax-strong: var(--loom-syntax-strong, #ffdda5);
+  --loom-color-syntax-quote: var(--loom-syntax-quote, #b8d2c2);
+  --loom-color-syntax-link: var(--loom-syntax-link, #a9c6dd);
+  --loom-color-syntax-keyword: var(--loom-syntax-keyword, #efbc70);
+  --loom-color-syntax-constant: var(--loom-syntax-constant, #e5b58c);
+  --loom-color-syntax-string: var(--loom-syntax-string, #b8d2c2);
+  --loom-color-syntax-number: var(--loom-syntax-number, #e5b58c);
+  --loom-color-syntax-variable: var(--loom-syntax-variable, #f2f4f5);
+  --loom-color-syntax-function: var(--loom-syntax-function, #a9c6dd);
+  --loom-color-syntax-type: var(--loom-syntax-type, #ffdda5);
+  --loom-color-syntax-property: var(--loom-syntax-property, #b9c7cf);
+  --loom-color-syntax-tag: var(--loom-syntax-tag, #e5a3ab);
+  --loom-color-syntax-attribute: var(--loom-syntax-attribute, #ffdda5);
+  --loom-color-syntax-operator: var(--loom-syntax-operator, #a9c6dd);
+  --loom-color-syntax-punctuation: var(--loom-syntax-punctuation, #9ea9b0);
+  --loom-color-syntax-meta: var(--loom-syntax-meta, #d6b4b9);
+  --loom-color-syntax-invalid: var(--loom-syntax-invalid, #e5a3ab);
 
   /* ── 排版：字体族 ── */
   --loom-font-family-sans: system-ui, sans-serif;

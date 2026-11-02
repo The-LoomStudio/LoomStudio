@@ -1,4 +1,6 @@
 export const messages = {
+  'observation.runInfo': 'Run information',
+  'observation.relatedResources': 'Related resources',
   "observation.readComplete": "Complete read",
   "observation.readPartial": "Partial read",
   "observation.currentStep": "Current step",

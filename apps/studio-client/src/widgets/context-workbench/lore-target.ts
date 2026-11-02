@@ -1,3 +1,4 @@
+import { findContextAssetPath } from '../../features/prompt-resources/model/context-asset-tree.js'
 import type { ContextAssetNode, PromptResource } from '../../entities/index.js'
 
 export function readLoreTreeMeta(node: ContextAssetNode): string | undefined {
@@ -33,4 +34,10 @@ export function resolveLoreTarget(
     resources: temporary && target ? [target] : collection,
     unavailable: Boolean(resourceId && !target),
   }
+}
+
+/** Opening a root reveals its first level; a deep link reveals the target's ancestors. */
+export function loreRevealExpandedIds(root: ContextAssetNode, nodeId = root.id): string[] {
+  const nodes = nodeId === root.id ? [root, ...(root.children ?? [])] : findContextAssetPath([root], nodeId)
+  return nodes.filter(node => node.children?.length).map(node => node.id)
 }

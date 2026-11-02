@@ -5,8 +5,7 @@
   box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--loom-color-border) 70%, transparent);
   border-radius: 20px;
-  background: color-mix(in srgb, var(--loom-color-surface) 94%, transparent);
-  backdrop-filter: blur(24px) saturate(125%);
+  background: var(--loom-color-surface);
 
   &:global([open]) { animation: search-enter 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
   &::backdrop { animation: backdrop-enter 180ms ease both; }

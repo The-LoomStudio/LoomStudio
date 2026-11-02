@@ -230,12 +230,12 @@ describe('Narrative root and helper Session lifecycle', () => {
     expect(f.createTimeline).toHaveBeenCalledExactlyOnceWith({ cardId: 'card', openingContent: '', expectedCardVersion: undefined })
     expect(f.createSession).not.toHaveBeenCalled()
     expect(f.render().primarySession?.id).toBe('timeline')
-    expect(f.appendInput).toHaveBeenCalledOnce()
-    expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({ agentSessionId: 'timeline', narrativeTarget: expect.objectContaining({ timelineId: 'timeline' }) }))
+    expect(f.appendInput).not.toHaveBeenCalled()
+    expect(f.submitInterjection).toHaveBeenCalledWith(expect.objectContaining({ agentSessionId: 'timeline', narrativeTarget: expect.objectContaining({ timelineId: 'timeline' }) }))
     f.render().setInput('Next turn')
     await f.render().submitTurn(f.event)
     expect(f.createSession).not.toHaveBeenCalled()
-    expect(f.createRun).toHaveBeenCalledTimes(2)
+    expect(f.submitInterjection).toHaveBeenCalledTimes(2)
   })
 
   it.each(['profile', 'child-profile'])('keeps the primary receiver when viewing a Session of preset %s', async childPresetId => {
@@ -257,8 +257,8 @@ describe('Narrative root and helper Session lifecycle', () => {
     expect(f.input.onSelectAgentPreset).not.toHaveBeenCalled()
 
     await f.render().submitTurn(f.event)
-    expect(f.createRun).toHaveBeenCalledOnce()
-    expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledWith(expect.objectContaining({
       agentSessionId: primary.id,
       narrativeTarget: expect.objectContaining({ timelineId: 'timeline' }),
     }))
@@ -309,8 +309,8 @@ describe('Narrative root and helper Session lifecycle', () => {
     expect(f.render().input).toBe('Start again')
     expect(f.render().primarySession?.id).toBe('timeline')
     await f.render().submitTurn(f.event)
-    expect(f.appendInput).toHaveBeenCalledWith(expect.objectContaining({ content: 'Start again' }))
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledWith(expect.objectContaining({ input: 'Start again' }))
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.reportFailure).toHaveBeenCalledWith(expect.objectContaining({ message: '请先点击“开始一个新故事”' }))
   })
 
@@ -321,7 +321,7 @@ describe('Narrative root and helper Session lifecycle', () => {
     const failure = new Error('Session creation failed')
     f.createSession.mockRejectedValueOnce(failure)
     await expect(f.render().createAgentSession('profile', true)).rejects.toBe(failure)
-    expect(f.createRun).not.toHaveBeenCalled()
+    expect(f.submitInterjection).not.toHaveBeenCalled()
     expect(f.appendInput).not.toHaveBeenCalled()
     const state = f.render()
     expect(state.composerInput).toBe('  Draft\n')
@@ -336,7 +336,7 @@ describe('Narrative root and helper Session lifecycle', () => {
     await f.render().submitTurn(f.event)
     expect(f.createTimeline).toHaveBeenCalledOnce()
     expect(f.createSession).toHaveBeenCalledTimes(2)
-    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.render().composerInput).toBe('')
     expect(f.render().rootActiveRun?.status).toBe('completed')
   })

@@ -38,6 +38,7 @@ export function createExtensionReadonlyFilesRegistry() {
         const supplied = new Set<string>()
         for (const entry of resolved) {
           if (typeof entry.path !== 'string' || entry.path !== provider.root && !entry.path.startsWith(`${provider.root}/`)
+            // eslint-disable-next-line no-control-regex -- Control characters are intentionally rejected or encoded in paths and CSS values.
             || entry.path.includes('\\') || /[\x00-\x1f\x7f]/.test(entry.path)
             || entry.path.slice(1).split('/').some(part => !part || part === '.' || part === '..'))
             throw new Error(`Readonly file path escapes or is invalid for ${provider.root}: ${entry.path}`)

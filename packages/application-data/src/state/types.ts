@@ -1,6 +1,5 @@
 import type { DataTransactionInput } from '@loom-studio/data-engine'
 import type {
-  DataActorRef,
   DataCommitFact,
   SqliteDataTransaction,
 } from '@loom-studio/data-engine'

@@ -10,6 +10,7 @@
 
 为了确保业务类型与算法在 Node.js 服务端与浏览器 Web 端之间能够无缝复用与序列化，本包承担全仓公共基础契约：
 - **基础原语**：严格定义 `JsonValue`、`JsonObject`、`createId()`、`nowIso()` 与跨端标准化的 `serializeError()`；
+  浏览器启动等只需要 ID 的入口使用 `@loom-studio/shared/id`，避免通过聚合出口提前加载边界 Schema；原聚合出口继续提供同一个 `createId()`。
 - **变量宏渲染引擎 (`src/macros.ts`)**：提供模板中的只读变量替换、宏别名解析与渲染追踪；
 - **资源引用解析 (`src/resource-reference.ts`)**：提供带版本/行范围的 `ResourceReference` 与实体导航 `EntityReference` 的 URI 编解码；只校验引用形状，不查询目标是否存在，也不拥有 UI 展示模型；
 - **Prompt Resource 挂载契约 (`src/prompt-resource-contracts.ts`)**：提供 `LoreMount` 及其列表/替换 Zod Schema；`source` 支持 `manual/global` 和预设消费者，引用保留包内或外部 identity，解析结果允许为 `null`。替换输入在 `loreResourceIds` 与 `mounts` 中严格二选一，后者支持按 Mount ID 保留失效引用；Schema 不决定目标可用性或运行时是否注入；

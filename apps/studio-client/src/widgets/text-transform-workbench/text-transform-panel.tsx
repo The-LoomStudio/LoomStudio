@@ -56,7 +56,7 @@ export function TextTransformPanel(props: TextTransformProps) {
             <PanelTabs
               activeId={props.ownerOptions.find(opt =>
                 (opt.owner.kind === controller.owner.kind) &&
-                (opt.owner.kind === 'card' ? opt.owner.cardId === (controller.owner as any).cardId : true)
+                (opt.owner.kind === 'card' ? controller.owner.kind === 'card' && opt.owner.cardId === controller.owner.cardId : true)
               )?.id ?? props.ownerOptions[0]!.id}
               ariaLabel={props.t('textTransform.ownerDescription', { owner: '' })}
               items={props.ownerOptions.map(opt => ({ id: opt.id, label: opt.label }))}
@@ -180,7 +180,7 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
         <PanelTabs
           activeId={controller.ownerOptions.find(opt =>
             (opt.owner.kind === controller.owner.kind) &&
-            (opt.owner.kind === 'card' ? opt.owner.cardId === (controller.owner as any).cardId : true)
+            (opt.owner.kind === 'card' ? controller.owner.kind === 'card' && opt.owner.cardId === controller.owner.cardId : true)
           )?.id ?? controller.ownerOptions[0]!.id}
           ariaLabel={t('textTransform.ownerDescription', { owner: '' })}
           items={controller.ownerOptions.map(opt => ({ id: opt.id, label: opt.label }))}

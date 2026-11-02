@@ -76,10 +76,10 @@ describe('application runtime Provider Profile integration', () => {
       send({ content: 'The door opens.' })
       await vi.waitFor(() => expect(entries.find(item => item.entry.kind === 'message' && item.entry.role === 'assistant')?.entry)
         .toMatchObject({ content: 'The door opens.', state: 'partial' }))
-      expect(entries.find(item => item.entry.kind === 'reasoning')?.entry.state).toBe('completed')
+      expect(entries.find(item => item.entry.kind === 'reasoning')?.entry).toHaveProperty('state', 'completed')
       const textKey = entries.find(item => item.entry.kind === 'message' && item.entry.role === 'assistant')!.presentationId
       expect(thoughtKey).toBeDefined(); expect(textKey).toBeDefined()
-      expect(entries.findIndex(item => item.entry.kind === 'reasoning')).toBeLessThan(entries.findIndex(item => item.entry.role === 'assistant' && item.entry.kind === 'message'))
+      expect(entries.findIndex(item => item.entry.kind === 'reasoning')).toBeLessThan(entries.findIndex(item => item.entry.kind === 'message' && item.entry.role === 'assistant'))
       send({}, 'stop'); controller.enqueue(encoder.encode('data: [DONE]\n\n')); controller.close()
       await consuming
       expect(requests).toEqual([expect.objectContaining({ model: 'stream-model', stream: true })])

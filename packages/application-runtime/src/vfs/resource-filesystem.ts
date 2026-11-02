@@ -91,6 +91,7 @@ export type ResourceVfsOptions = {
       idempotencyKey: string
     }): Promise<{ revisionId: string; changesetId?: string }>
   }
+  sessionFiles?: () => Promise<VfsTextAttachment[]>
   attachments?: () => Promise<VfsTextAttachment[]>
 }
 
@@ -304,6 +305,15 @@ export function createResourceVfs(options: ResourceVfsOptions) {
           path: `/attachments/${names[index]}`, kind: 'file', identity: item.identity,
           binding: item.binding, load: item.read,
         }))
+      }
+    }
+    if (options.sessionFiles) {
+      files.push({ path: '/session-files', kind: 'directory', identity: 'session-files' })
+      if (path === '/session-files' || path.startsWith('/session-files/') || path === '/' && includeRootContent) {
+        for (const item of await options.sessionFiles()) files.push({
+          path: `/session-files/${item.name}`, kind: 'file', identity: item.identity,
+          binding: item.binding, load: item.read,
+        })
       }
     }
     signal.throwIfAborted()

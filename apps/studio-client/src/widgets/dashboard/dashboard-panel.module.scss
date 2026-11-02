@@ -148,6 +148,3 @@
 .notices { margin-top: 20px; padding: 12px 14px; border-radius: var(--loom-radius-md); background: color-mix(in srgb, var(--loom-color-warning) 7%, var(--loom-color-surface)); color: var(--loom-color-text-muted); font-size: var(--loom-font-size-2); line-height: var(--loom-line-height-body); }
 .notices p { margin: 0; }
 .notices p + p { margin-top: 6px; }
-.measurementHelp { margin-top: 16px; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-2); line-height: var(--loom-line-height-body); }
-.measurementHelp summary { cursor: pointer; width: fit-content; }
-.measurementHelp p { margin: 8px 0 0; }

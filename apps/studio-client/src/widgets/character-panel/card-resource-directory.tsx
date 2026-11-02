@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, BookOpen, Braces, FileText, Folder, Image, Link2, Regex, ScrollText } from 'lucide-react'
 import type { Card, ContextAssetNode, PromptResource } from '../../entities/index.js'
@@ -151,7 +151,7 @@ export function CardResourceDirectory(props: {
     {error ? <p role="alert" className={styles.error}>{error.message}</p> : null}
     {card.isPending ? <p role="status">{t('directory.loading')}</p> : null}
     {!location.item && !card.isPending ? <div ref={scroll.attach} onScroll={scroll.onScroll} className={styles.directoryList}>
-      <FileTree ariaLabel={t('directory.attachments')} expandedIds={expandedIds} selectedId={props.selectedTreeId} nodes={nodes}
+      <FileTree canOpenFolderDetails={item => Boolean(props.onOpenLore && readCardLoreTarget(item.id, targets, [...ownedLore, ...references, ...extensionResources]))} ariaLabel={t('directory.attachments')} expandedIds={expandedIds} selectedId={props.selectedTreeId} nodes={nodes}
         getDisclosureLabel={item => item.label} getDragLabel={item => item.label}
         moreActionsLabel={t('context.actionMore')} onExpandedIdsChange={ids => {
           setExpandedIds(ids)

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { loomScriptSettingsSchema } from '@loom-studio/shared/loom-scripts'
 import type { ApplicationRuntime, LoomScriptOwner } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
-import { createLoomScriptMountInputSchema, listLoomScriptMountsInputSchema, loomScriptOwnerSchema, updateLoomScriptMountInputSchema } from '@loom-studio/shared/loom-scripts'
+import { loomScriptMountTargetSchema, createLoomScriptMountInputSchema, listLoomScriptMountsInputSchema, loomScriptOwnerSchema, updateLoomScriptMountInputSchema } from '@loom-studio/shared/loom-scripts'
 import {
   isRecord,
   readNumber,
@@ -12,7 +12,11 @@ import {
 import { jsonInput, procedure } from '../context.js'
 
 export const loomScriptsProcedures = {
-  previewLoomScript: procedure.input(jsonInput(params => z.strictObject({ source: z.string(), text: z.string().max(100000), phase: z.enum(['display', 'prompt', 'classify']).optional(), settings: loomScriptSettingsSchema.optional() }).parse(params)))
+  deleteLoomScript: procedure.input(z.strictObject({ scriptDocumentId: z.string(), expectedVersion: z.number().int() }))
+    .mutation(async ({ ctx, input }) => { const result = await ctx.runtime.deleteLoomScript(input, ctx.request); await ctx.services?.scripts?.resolve(); return result }),
+  reorderLoomScripts: procedure.input(z.strictObject({ groups: z.array(z.strictObject({ owner: loomScriptOwnerSchema, scriptIds: z.array(z.string()), groupOrder: z.number().int().optional() })), target: loomScriptMountTargetSchema.optional() }))
+    .mutation(async ({ ctx, input }) => { const result = await ctx.runtime.reorderLoomScripts(input, ctx.request); await ctx.services?.scripts?.resolve(); return result }),
+  previewLoomScript: procedure.input(jsonInput(params => z.strictObject({ source: z.string(), text: z.string().max(100000), phase: z.enum(['display', 'prompt', 'classify']).optional(), streaming: z.boolean().optional(), settings: loomScriptSettingsSchema.optional() }).parse(params)))
     .query(({ ctx, input }) => ctx.runtime.previewLoomScript(input)),
   getLoomScriptSettings: procedure.input(jsonInput(params => ({ mountId: readString(params, 'mountId') })))
     .query(({ ctx, input }) => ctx.runtime.getLoomScriptSettings(input)),

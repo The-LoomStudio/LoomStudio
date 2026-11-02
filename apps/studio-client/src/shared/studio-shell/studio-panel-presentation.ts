@@ -1,4 +1,4 @@
-import { Brain, Blocks, BookOpen, Bot, Braces, Clock3, FolderGit2, Folders, ListOrdered, Plug, Regex, Settings, SlidersHorizontal, SquareTerminal, UserRound, Users, Wrench, type LucideIcon } from 'lucide-react'
+import { Brain, Blocks, BookOpen, Bot, Braces, Clock3, FolderGit2, ListOrdered, Plug, Regex, Settings, SlidersHorizontal, SquareTerminal, UserRound, Users, Wrench, type LucideIcon } from 'lucide-react'
 import type { StudioPanelId } from './studio-layout-store.js'
 
 export type StudioPanelLabelKey = 'rail.model' | 'rail.agent' | 'rail.user' | 'rail.play' | 'rail.recent' | 'rail.sessions' | 'rail.character' | 'rail.preset' | 'rail.lore' | 'rail.memory' | 'rail.state' | 'rail.macro' | 'rail.textTransform' | 'rail.inspector' | 'rail.logs' | 'rail.extensions' | 'rail.settings'

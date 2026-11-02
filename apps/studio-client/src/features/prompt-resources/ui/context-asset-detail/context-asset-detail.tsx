@@ -28,6 +28,7 @@ type ContextAssetDetailProps = {
   revealMatch?: SearchReveal
   metadataOpen: boolean
   node: ContextAssetNode
+  inheritedDisabled?: boolean
   presets?: PromptResource[]
   onChangeNode: (partial: Partial<ContextAssetNode>) => void
   onCommitNode: (partial: Partial<ContextAssetNode>) => void
@@ -42,6 +43,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   const revealedCompactRequestRef = useRef<string | undefined>(undefined)
   const isTextLike = props.node.kind === 'entry' || props.node.kind === 'script'
   const isEntry = props.node.kind === 'entry'
+  const muted = props.inheritedDisabled || props.node.enabled === false
   const allowTargetAnchor = props.allowTargetAnchor ?? true
   const body = props.node.body ?? ''
   const readOnly = isReadOnlyDetailNode(props.node)
@@ -71,7 +73,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   }
 
   if (isPromptMessageSequence(props.node)) {
-    return <div className={styles.detailBody}>
+    return <div className={`${styles.detailBody} ${muted ? styles.detailBodyMuted : ''}`}>
       <p>{props.t('context.messageSequence.description')}</p>
       <p>{props.t('context.messageSequence.placement')}</p>
       <code>@chat.session</code>
@@ -95,7 +97,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
 
   return (
     <div
-      className={`${styles.detailBody} ${isEntry && props.node.enabled === false ? styles.detailBodyMuted : ''} ${props.compactVirtualNotes && props.node.kind === 'virtual' ? styles.compactNotes : ''}`}
+      className={`${styles.detailBody} ${muted ? styles.detailBodyMuted : ''} ${props.compactVirtualNotes && props.node.kind === 'virtual' ? styles.compactNotes : ''}`}
       onKeyDownCapture={event => {
         if (event.key !== 'Escape' || !props.metadataOpen || anchorPickerOpen) return
         event.preventDefault()

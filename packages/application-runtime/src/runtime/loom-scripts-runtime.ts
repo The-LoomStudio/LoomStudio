@@ -1,4 +1,4 @@
-import { resolveLoomScriptSettings, type LoomScriptSettings, type CreateLoomScriptMountInput, type UpdateLoomScriptMountInput, type ListLoomScriptMountsInput } from '@loom-studio/shared/loom-scripts'
+import { isLoomScriptFileName, loomScriptMediaType, resolveLoomScriptSettings, type LoomScriptSettings, type CreateLoomScriptMountInput, type UpdateLoomScriptMountInput, type ListLoomScriptMountsInput } from '@loom-studio/shared/loom-scripts'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
@@ -41,12 +41,13 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
     }, requestContext?: RuntimeRequestContext) => {
       assertFileName(input.fileName)
       const metadata = parseLoomScriptSource(input.source)
+      if (input.fileName.endsWith('.md') !== /^\uFEFF?---\r?\n/.test(input.source)) throw new Error('Script source format does not match its file name')
       const timestamp = ctx.now()
       const result = await executeBlobDocumentMutation(
         ctx,
         requestContext,
         'application.importLoomScript',
-        { bytes: new TextEncoder().encode(input.source), mediaType: 'text/javascript' },
+        { bytes: new TextEncoder().encode(input.source), mediaType: loomScriptMediaType(input.fileName) },
         async (documents, blob) => {
           if (input.owner.kind === 'extension') await readLoomScriptInstallation(documents, input.owner)
           const document = await writeDocument<LoomScriptContent>(documents, {
@@ -55,7 +56,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
             content: {
               owner: structuredClone(input.owner),
               ...metadata,
-              source: { blobId: blob.id, mediaType: 'text/javascript', fileName: input.fileName },
+              source: { blobId: blob.id, mediaType: loomScriptMediaType(input.fileName), fileName: input.fileName },
               sourceDigest: blob.sha256,
               createdAt: timestamp,
               updatedAt: timestamp,
@@ -79,12 +80,13 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
     }, requestContext?: RuntimeRequestContext) => {
       assertFileName(input.fileName)
       const metadata = parseLoomScriptSource(input.source)
+      if (input.fileName.endsWith('.md') !== /^\uFEFF?---\r?\n/.test(input.source)) throw new Error('Script source format does not match its file name')
       const timestamp = ctx.now()
       const result = await executeBlobDocumentMutation(
         ctx,
         requestContext,
         'application.updateLoomScript',
-        { bytes: new TextEncoder().encode(input.source), mediaType: 'text/javascript' },
+        { bytes: new TextEncoder().encode(input.source), mediaType: loomScriptMediaType(input.fileName) },
         async (documents, blob) => {
           const existing = await readDocument<LoomScriptContent>(documents, input.scriptDocumentId, applicationDocumentTypes.loomScript)
           if (existing.content.owner.kind === 'extension') await readLoomScriptInstallation(documents, existing.content.owner)
@@ -98,7 +100,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
               ...(existing.content.textResourceOwner ? { textResourceOwner: structuredClone(existing.content.textResourceOwner) } : {}),
               ...(existing.content.textResourceOrigin ? { textResourceOrigin: structuredClone(existing.content.textResourceOrigin) } : {}),
               ...(existing.content.textResourceReferences ? { textResourceReferences: structuredClone(existing.content.textResourceReferences) } : {}),
-              source: { blobId: blob.id, mediaType: 'text/javascript', fileName: input.fileName },
+              source: { blobId: blob.id, mediaType: loomScriptMediaType(input.fileName), fileName: input.fileName },
               sourceDigest: blob.sha256,
               createdAt: existing.content.createdAt,
               updatedAt: timestamp,
@@ -109,6 +111,55 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         },
       )
       return { script: result.value, mutation: result.mutation }
+    },
+
+    deleteLoomScript: async (input: { scriptDocumentId: string; expectedVersion: number }, requestContext?: RuntimeRequestContext) => {
+      const result = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteLoomScript', async documents => {
+        const script = await readDocument<LoomScriptContent>(documents, input.scriptDocumentId, applicationDocumentTypes.loomScript)
+        await documents.delete({ id: script.id, expectedVersion: input.expectedVersion })
+        const mounts = await listDocuments<LoomScriptMountContent>(documents, applicationDocumentTypes.loomScriptMount)
+        for (const mount of mounts.filter(item => item.content.scriptDocumentId === script.id)) await documents.delete({ id: mount.id, expectedVersion: mount.version })
+        return true as const
+      })
+      return { deleted: result.value, mutation: result.mutation }
+    },
+
+    reorderLoomScripts: async (input: { groups: Array<{ owner: LoomScriptOwner; scriptIds: string[]; groupOrder?: number }>; target?: LoomScriptMountTarget }, requestContext?: RuntimeRequestContext) => {
+      const result = await executeDocumentMutation(ctx.documents, requestContext, 'application.reorderLoomScripts', async documents => {
+        const scripts = await listDocuments<LoomScriptContent>(documents, applicationDocumentTypes.loomScript)
+        const mounts = await listDocuments<LoomScriptMountContent>(documents, applicationDocumentTypes.loomScriptMount)
+        const seen = new Set<string>()
+        for (const group of input.groups) {
+          let target = input.target
+          if (!target) {
+            if (group.owner.kind === 'extension') {
+              const installed = await readLoomScriptInstallation(documents, group.owner)
+              target = installed.kind === 'card' ? installed : { kind: 'user' }
+            } else target = group.owner
+          }
+          for (const [orderIndex, id] of group.scriptIds.entries()) {
+            if (seen.has(id)) throw new Error('Duplicate script in ordering')
+            seen.add(id)
+            const script = scripts.find(item => item.id === id && sameOwner(item.content.owner, group.owner))
+            if (!script) throw new Error(`Script does not belong to ordering scope: ${id}`)
+            const mount = mounts.find(item => item.content.scriptDocumentId === id && sameOwner(item.content.target, target!))
+            if (!mount && input.target && !sameOwner(script.content.owner, input.target)) throw new Error('Adopt this script in the selected scope before reordering it')
+            const timestamp = ctx.now()
+            await writeDocument<LoomScriptMountContent>(documents, {
+              id: mount?.id ?? ctx.createId('loom-script-mount'), type: applicationDocumentTypes.loomScriptMount,
+              expectedVersion: mount?.version ?? 'new', content: {
+                ...(mount?.content ?? { target, scriptDocumentId: id, enabled: false, grantedCapabilities: [], settings: {}, runtimeRevision: 0, createdAt: timestamp }),
+                orderIndex, updatedAt: timestamp,
+                origin: { ...mount?.content.origin, orderOverride: true, ...(group.groupOrder !== undefined ? { groupOrder: group.groupOrder } : {}) },
+                // Moving an old mount must not use its new document version to restart code.
+                runtimeRevision: mount?.content.runtimeRevision ?? mount?.version ?? 0,
+              },
+            })
+          }
+        }
+        return true as const
+      })
+      return { reordered: result.value, mutation: result.mutation }
     },
 
     getLoomScript: async (input: { scriptDocumentId: string }) => ({
@@ -309,8 +360,8 @@ function sameOwner(left: LoomScriptOwner | LoomScriptMountTarget, right: LoomScr
 }
 
 function assertFileName(fileName: string): void {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.loom\.js$/.test(fileName)) {
-    throw new Error('Loom Script fileName must be a safe .loom.js file name')
+  if (!isLoomScriptFileName(fileName)) {
+    throw new Error('Loom Script fileName must be a safe .loom.js or .md file name')
   }
 }
 

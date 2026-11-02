@@ -1,3 +1,4 @@
+import { useWorkbenchView } from '../../../../shared/studio-shell/use-workbench-view.js'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Checkbox, Dialog, Textarea } from '@loom-studio/ui'
 import { Anchor, ArrowLeft, ArrowRight, ChevronRight, Copy, FileText, Folder, Layers, MessageSquare, Plus, Undo2 } from 'lucide-react'
@@ -38,7 +39,7 @@ export function PresetLibraryWorkbench(props: PresetLibraryWorkbenchProps) {
   const [configuredId, setConfiguredId] = useState<string>()
   const [presetId, setPresetId] = useState<string>()
   const [copying, setCopying] = useState(false)
-  const [tab, setTab] = useState<'arrangement' | 'resources'>('arrangement')
+  const [tab, setTab] = useWorkbenchView('preset.library-tab', 'arrangement', ['arrangement', 'resources'] as const)
   const [selectedId, setSelectedId] = useState('')
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [resourceId, setResourceId] = useState<string>()
@@ -56,7 +57,7 @@ export function PresetLibraryWorkbench(props: PresetLibraryWorkbenchProps) {
   const openPreset = (id: string) => {
     setConfiguredId(undefined)
     lastOpened.current = id
-    setPresetId(id); setCopying(false); setTab('arrangement'); setMobilePane('master')
+    setPresetId(id); setCopying(false); setMobilePane('master')
     setSelectedId(props.presets.find(item => item.id === id)?.nodes[0]?.id ?? '')
   }
   useEffect(() => {

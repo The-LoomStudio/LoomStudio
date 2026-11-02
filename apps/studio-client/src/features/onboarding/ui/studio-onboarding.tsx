@@ -1,3 +1,4 @@
+import studioLogoUrl from '../../../shared/assets/logo.png'
 import { useRef, useState } from 'react'
 import { Button, TextInput } from '@loom-studio/ui'
 import type { AgentPreset, ProviderAccount, ProviderModelSelection } from '../../../entities/index.js'
@@ -11,6 +12,7 @@ import styles from './studio-onboarding.module.scss'
 export function StudioOnboarding(props: {
   api: StudioApi
   locale: Locale
+  localePending?: boolean
   onLocale(locale: Locale): void
   accounts: ProviderAccount[]
   accountsLoaded: boolean
@@ -90,7 +92,7 @@ export function StudioOnboarding(props: {
       <Button type="submit" form="onboarding-model" disabled={busy || !props.accountsLoaded}>{busy ? copy.saving : copy.save} →</Button>
     </> : <><Button disabled={busy} onClick={() => void run(() => finish(false))}>{copy.explore}</Button><Button disabled={busy || !props.assistant} onClick={() => void run(() => finish(true))}>{busy ? copy.saving : copy.chat} →</Button></>}>
     {next => <>
-    {step === 0 ? <fieldset className={styles.languages}><legend>{copy.language}</legend>{supportedLocales.map(locale => <label key={locale}><input type="radio" name="onboarding-language" checked={props.locale === locale} onChange={() => props.onLocale(locale)} />{localeLabels[locale]}</label>)}</fieldset> : null}
+    {step === 0 ? <fieldset className={styles.languages} disabled={props.localePending} aria-busy={props.localePending}><legend>{copy.language}</legend>{supportedLocales.map(locale => <label key={locale}><input type="radio" name="onboarding-language" checked={props.locale === locale} onChange={() => props.onLocale(locale)} />{localeLabels[locale]}</label>)}</fieldset> : null}
     {step === 1 ? <form id="onboarding-model" className={styles.form} onSubmit={event => { event.preventDefault(); void run(() => saveModel(next)) }}>
       {!props.accountsLoaded ? <p role="status">{copy.loading} <Button onClick={() => void run(props.onRefresh)}>{copy.retry}</Button></p> : null}
       <fieldset disabled={busy || !props.accountsLoaded}>
@@ -102,7 +104,7 @@ export function StudioOnboarding(props: {
       </fieldset>
       <p className={styles.note}>{copy.modelNote}</p>{selection ? <p role="status" className={styles.note}>{copy.saved}</p> : null}
     </form> : null}
-    {step === 2 ? <div className={styles.assistant}><img src="/images/logo.png" alt="" /><div><h2>Loom Assistant</h2><p>{copy.quote}</p><span className={styles.note}>{copy.builtin}</span>{!props.assistant ? <p role="status">{copy.unavailable} <Button disabled={busy} onClick={() => void run(props.onRefresh)}>{copy.retry}</Button></p> : null}</div></div> : null}
+    {step === 2 ? <div className={styles.assistant}><img src={studioLogoUrl} alt="" /><div><h2>Loom Assistant</h2><p>{copy.quote}</p><span className={styles.note}>{copy.builtin}</span>{!props.assistant ? <p role="status">{copy.unavailable} <Button disabled={busy} onClick={() => void run(props.onRefresh)}>{copy.retry}</Button></p> : null}</div></div> : null}
     {error ? <p role="alert">{error}</p> : null}
     </>}
   </OnboardingView>

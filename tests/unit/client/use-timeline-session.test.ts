@@ -42,6 +42,11 @@ async function mount(options: { preset?: string; suspended?: boolean; entries?: 
       runState: vi.fn<StudioApi['agentSessions']['runState']>(async () => ({ runId: 'run', state: runState, ...(options.reason ? { reason: options.reason } : {}) })),
       create: vi.fn(),
       update: vi.fn(async (input: { agentPresetId?: string; narrativeMode?: 'declared' | 'automatic' }) => { session = { ...session, ...input }; return { session } }),
+      submitInterjection: vi.fn<StudioApi['agentSessions']['submitInterjection']>(async request => {
+        const entry: AgentTranscriptEntry = { id: request.requestId, agentSessionId: request.agentSessionId, sequence: entries.length + 1, createdAt: '', entry: { kind: 'user-interjection', requestId: request.requestId, content: request.input, mode: request.mode, narrativeTarget: request.narrativeTarget, attachments: request.attachments } }
+        entries = [...entries, entry]
+        return { entry, pending: true, ...(runState === 'suspended' ? {} : { runId: 'run' }) }
+      }),
       createRun: vi.fn<StudioApi['agentSessions']['createRun']>(async () => ({ runId: 'run' })),
       subscribeRun: vi.fn<StudioApi['agentSessions']['subscribeRun']>(async () => ({ events: [], nextCursor: 1, done: true, state: 'completed', replayExpired: true })),
       resumeRun: vi.fn(async () => ({ runId: 'run', accepted: true })),
@@ -91,16 +96,15 @@ describe('Timeline root Session contracts', () => {
     expect(f.failures).toEqual([])
   })
 
-  it('appends roleplay once, then sends discussion through the same root without appending', async () => {
+  it('submits roleplay and discussion with their original identities without client-side append', async () => {
     const f = await mount({ preset: 'writer' })
     await act(async () => { f.current.setInput('Walk outside') })
     await act(async () => { await f.current.submitTurn(f.event) })
-    const written = f.api.narratives.appendInput.mock.calls[0]![0]
-    expect(f.api.agentSessions.createRun).toHaveBeenNthCalledWith(1, expect.objectContaining({ agentSessionId: 'timeline', input: 'Walk outside', narrativeTarget: { timelineId: 'timeline', branchId: 'branch', inputNodeId: written.nodeId } }))
+    expect(f.api.agentSessions.submitInterjection).toHaveBeenNthCalledWith(1, expect.objectContaining({ agentSessionId: 'timeline', input: 'Walk outside', mode: 'narrative', narrativeTarget: { timelineId: 'timeline', branchId: 'branch' } }))
     await act(async () => { f.current.setInputMode('discussion'); f.current.setInput('Keep the scene quiet') })
     await act(async () => { await f.current.submitTurn(f.event) })
-    expect(f.api.narratives.appendInput).toHaveBeenCalledOnce()
-    expect(f.api.agentSessions.createRun).toHaveBeenNthCalledWith(2, expect.objectContaining({ agentSessionId: 'timeline', input: 'Keep the scene quiet', narrativeTarget: { timelineId: 'timeline', branchId: 'branch' } }))
+    expect(f.api.narratives.appendInput).not.toHaveBeenCalled()
+    expect(f.api.agentSessions.submitInterjection).toHaveBeenNthCalledWith(2, expect.objectContaining({ agentSessionId: 'timeline', input: 'Keep the scene quiet', mode: 'discussion', narrativeTarget: { timelineId: 'timeline', branchId: 'branch' } }))
     expect(f.api.agentSessions.create).not.toHaveBeenCalled()
     expect(f.failures).toEqual([])
   })
@@ -135,7 +139,7 @@ describe('Timeline root Session contracts', () => {
     expect(f.current.primarySession?.id).toBe('timeline')
     f.setEntries([{ id: 'saved-partial', agentSessionId: 'timeline', runId: 'run', sequence: 1, createdAt: '', entry: { kind: 'message', role: 'assistant', content: 'First second', state: 'partial' } }])
     await act(async () => { next.resolve({ events: [{ type: 'text-delta', runId: 'run', providerRunId: 'provider', providerStep: 1, delta: ' second' }, { type: 'suspended', runId: 'run' }], nextCursor: 2, done: true, state: 'suspended' }) })
-    expect(f.current.rootMessages.find(entry => entry.id === 'saved-partial')?.entry.content).toBe('First second')
+    expect(f.current.rootMessages.find(entry => entry.id === 'saved-partial')?.entry).toHaveProperty('content', 'First second')
     expect(f.current.rootActiveRun?.status).toBe('suspended')
     expect(f.current.agentMessages).toEqual([])
     expect(f.failures).toEqual([])
@@ -145,7 +149,8 @@ describe('Timeline root Session contracts', () => {
     const f = await mount({ preset: 'writer' })
     const rootBatch = Promise.withResolvers<Batch>()
     const childBatch = Promise.withResolvers<Batch>()
-    f.api.agentSessions.createRun.mockImplementation(async request => ({ runId: `run-${request.agentSessionId}` }))
+    const accept = f.api.agentSessions.submitInterjection.getMockImplementation()!
+    f.api.agentSessions.submitInterjection.mockImplementation(async request => ({ ...await accept(request), runId: `run-${request.agentSessionId}` }))
     f.api.agentSessions.subscribeRun.mockImplementation(runId => runId === 'run-timeline' ? rootBatch.promise : childBatch.promise)
     await act(async () => { f.current.setInputMode('discussion'); f.current.setInput('Root request') })
     await act(async () => { await f.current.submitTurn(f.event) })
@@ -161,7 +166,7 @@ describe('Timeline root Session contracts', () => {
     await act(async () => { rootBatch.resolve({ events: [{ type: 'suspended', runId: 'run-timeline' }], nextCursor: 1, done: true, state: 'suspended' }) })
     expect(f.current.rootActiveRun?.status).toBe('suspended')
     expect(f.current.activeAgentRun?.status).toBe('running')
-    expect(f.current.agentMessages.some(entry => entry.entry.content === 'Root only')).toBe(false)
+    expect(f.current.agentMessages.some(entry => entry.entry.kind === 'message' && entry.entry.content === 'Root only')).toBe(false)
     await act(async () => { await f.current.activateAgentSession('child') })
     await act(async () => {
       childBatch.resolve({ events: [{ type: 'text-delta', runId: 'run-child', providerRunId: 'provider', providerStep: 1, delta: 'Stale child' },
@@ -213,8 +218,8 @@ describe('Timeline root Session contracts', () => {
     await act(async () => { await f.current.resumeRootRun() })
     expect(f.current.rootActiveRun?.status).toBe('completed')
     expect(f.current.rootRecovery).toBeUndefined()
-    expect(f.api.narratives.appendInput).toHaveBeenCalledOnce()
-    expect(f.api.agentSessions.createRun).toHaveBeenCalledOnce()
+    expect(f.api.narratives.appendInput).not.toHaveBeenCalled()
+    expect(f.api.agentSessions.submitInterjection).toHaveBeenCalledOnce()
     expect(f.api.agentSessions.resumeRun).toHaveBeenCalledOnce()
     expect(f.failures).toEqual([])
   })
@@ -276,4 +281,37 @@ describe('Timeline root Session contracts', () => {
     expect(f.api.agentSessions.resumeRun).not.toHaveBeenCalled()
     expect(f.failures).toEqual([])
   })
+})
+
+
+it.each(['roleplay', 'discussion'] as const)('persists new %s input while suspended without restarting or abandoning', async mode => {
+  const f = await mount({ preset: 'writer', suspended: true })
+  await act(async () => { f.current.setInputMode(mode); f.current.setInput('换一个问题') })
+  await act(async () => { await f.current.submitTurn(f.event) })
+  expect(f.failures).toEqual([])
+  expect(f.api.agentSessions.abandonRun).not.toHaveBeenCalled()
+  expect(f.api.agentSessions.resumeRun).not.toHaveBeenCalled()
+  expect(f.api.agentSessions.submitInterjection).toHaveBeenCalledWith(expect.objectContaining({ input: '换一个问题', mode: mode === 'roleplay' ? 'narrative' : 'discussion' }))
+  expect(f.api.agentSessions.createRun).not.toHaveBeenCalled()
+  expect(f.api.agentSessions.subscribeRun).not.toHaveBeenCalled()
+  expect(f.current.rootMessages.some(item => item.entry.kind === 'user-interjection')).toBe(true)
+})
+
+
+it('keeps separate roleplay and discussion drafts across mode changes and remounts', async () => {
+  localStorage.clear()
+  const f = await mount({ preset: 'writer' })
+  await act(async () => { f.current.setInput('剧情草稿') })
+  await act(async () => { f.current.setInputMode('discussion') })
+  expect(f.current.input).toBe('')
+  await act(async () => { f.current.setInput('沟通草稿') })
+  await act(async () => { f.current.setInputMode('roleplay') })
+  expect(f.current.input).toBe('剧情草稿')
+  await act(async () => { f.current.setInputMode('discussion') })
+  expect(f.current.input).toBe('沟通草稿')
+  const restored = await mount({ preset: 'writer' })
+  expect(restored.current.input).toBe('剧情草稿')
+  await act(async () => { restored.current.setInputMode('discussion') })
+  expect(restored.current.input).toBe('沟通草稿')
+  localStorage.clear()
 })

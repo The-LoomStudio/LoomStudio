@@ -41,6 +41,7 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
       },
     } : {}),
     ...(scope?.approveMutation ? { approveMutation: scope.approveMutation } : {}),
+    ...(scope?.sessionFiles ? { sessionFiles: scope.sessionFiles } : {}),
     ...(scope?.vfsAttachments ? { attachments: scope.vfsAttachments } : {}),
     ...(scope?.promptResources && scope.vfsResourceIds ? {
       resources: {

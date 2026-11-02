@@ -1,3 +1,4 @@
+import { readChatAttachments } from '@loom-studio/shared'
 import { z } from 'zod'
 import type {
   ApplicationRuntime
@@ -137,6 +138,7 @@ export const timelineProcedures = {
       nodeId: readString(params, 'nodeId'),
       expectedHeadNodeId: readNullableString(params, 'expectedHeadNodeId'),
       content: readString(params, 'content'),
+      attachments: readChatAttachments(isRecord(params) ? params.attachments : undefined),
     }
   })).mutation(({ ctx, input }) => ctx.runtime.appendNarrativeInput(input, ctx.request)),
   'editNarrativeNode': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['editNarrativeNode']>[0] => {
@@ -151,6 +153,7 @@ export const timelineProcedures = {
   })).mutation(({ ctx, input }) => ctx.runtime.editNarrativeNode(input, ctx.request)),
   'createNarrativeTimeline': procedure.input(z.strictObject({
     cardId: z.string(),
+    playerProfile: z.strictObject({ name: z.string(), description: z.string(), avatarAssetId: z.string().optional() }).optional(),
     extensionAdoptions: z.array(z.strictObject({ packageId: z.string(), target: z.enum(['global', 'card']) })).optional(),
     expectedCardVersion: z.number().optional(),
     title: z.string().optional(),

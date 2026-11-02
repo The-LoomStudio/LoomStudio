@@ -1,9 +1,8 @@
+import { yamlFrontmatter } from '@codemirror/lang-yaml'
 import { buildSearchMatchPattern, searchRevealKey, type SearchReveal } from '../../lib/search-match.js'
 import { defaultKeymap, history, historyKeymap, undo as undoChange, undoDepth } from '@codemirror/commands'
 import { javascript } from '@codemirror/lang-javascript'
 import { markdown } from '@codemirror/lang-markdown'
-import { xml } from '@codemirror/lang-xml'
-import { yaml } from '@codemirror/lang-yaml'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { Chunk } from '@codemirror/merge'
 import { getSearchQuery, search, searchKeymap, searchPanelOpen, SearchQuery, setSearchQuery } from '@codemirror/search'
@@ -41,7 +40,7 @@ export type CodeMirrorEditorHandle = {
 }
 
 type CodeMirrorEditorProps = {
-  language?: 'markdown' | 'javascript' | 'loom-script'
+  language?: 'markdown' | 'javascript' | 'loom-script' | 'loom-rule'
   autoFocus?: boolean
   hidden?: boolean
   disabled?: boolean
@@ -86,8 +85,8 @@ const loomHighlightStyle = HighlightStyle.define([
 const codeLanguages = [
   LanguageDescription.of({ name: 'JavaScript', alias: ['js', 'jsx'], support: javascript({ jsx: true }) }),
   LanguageDescription.of({ name: 'TypeScript', alias: ['ts', 'tsx'], support: javascript({ jsx: true, typescript: true }) }),
-  LanguageDescription.of({ name: 'XML', alias: ['xml'], support: xml() }),
-  LanguageDescription.of({ name: 'YAML', alias: ['yaml', 'yml'], support: yaml() }),
+  LanguageDescription.of({ name: 'XML', alias: ['xml'], load: async () => (await import('@codemirror/lang-xml')).xml() }),
+  LanguageDescription.of({ name: 'YAML', alias: ['yaml', 'yml'], load: async () => (await import('@codemirror/lang-yaml')).yaml() }),
 ]
 
 
@@ -389,6 +388,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
 })
 
 function editorLanguage(language: CodeMirrorEditorProps['language']) {
+  if (language === 'loom-rule') return [yamlFrontmatter({ content: markdown({ codeLanguages }) })]
   if (language === 'loom-script') return [javascript(), loomScriptMetadataHighlighting]
   if (language === 'javascript') return [javascript()]
   return [markdown({ codeLanguages })]

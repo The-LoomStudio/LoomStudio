@@ -1,30 +1,32 @@
-import { useState } from 'react'
+import { InfoDialog } from '../../../../shared/ui/info-dialog/info-dialog.js'
 import { useQuery } from '@tanstack/react-query'
 import type { PromptResource } from '../../../../entities/index.js'
 import type { StudioApi } from '../../../../shared/api/studio-api.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
-import styles from './prompt-resource-toolbar.module.scss'
 
 export type ResourceBindingsSource = {
   api: Pick<StudioApi['promptResources'], 'getBindings'>
   endpoint: string
 }
 
-export function ResourceBindings(props: ResourceBindingsSource & {
+type ResourceBindingsProps = ResourceBindingsSource & {
   resourceId: string
   resources: PromptResource[]
   t: Translator
-}) {
-  const [open, setOpen] = useState(false)
+}
+
+export function ResourceBindings(props: ResourceBindingsProps) {
+  return <InfoDialog title={props.t('promptResource.bindings')}><BindingsContent {...props} /></InfoDialog>
+}
+
+function BindingsContent(props: ResourceBindingsProps) {
   const query = useQuery({
     queryKey: ['prompt-resources', props.endpoint, 'bindings', props.resourceId],
     queryFn: () => props.api.getBindings(props.resourceId),
-    enabled: open,
   })
   return (
-    <details className={styles.bindings} onToggle={event => setOpen(event.currentTarget.open)}>
-      <summary>{props.t('promptResource.bindings')}</summary>
-      {open ? query.isFetching ? <p role="status">{props.t('promptResource.bindingsLoading')}</p>
+    <>
+      {query.isFetching ? <p role="status">{props.t('promptResource.bindingsLoading')}</p>
         : query.error ? <p role="alert">{query.error.message}</p>
           : query.data ? (
             <ul>
@@ -43,7 +45,7 @@ export function ResourceBindings(props: ResourceBindingsSource & {
               {!query.data.cards.length && !query.data.loreMounts.length
                 ? <li>{props.t('promptResource.bindingsEmpty')}</li> : null}
             </ul>
-          ) : null : null}
-    </details>
+          ) : null}
+    </>
   )
 }

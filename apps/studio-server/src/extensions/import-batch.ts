@@ -98,6 +98,7 @@ export function createExtensionBatchImporter(input: {
         // Consume the staging session on failure too: a retry must not repeat accepted writes.
         try { await call('cancel', { sessionId: source.sessionId }) }
         catch (error) {
+          // eslint-disable-next-line no-unsafe-finally -- Report cleanup failure only when no primary import failure exists.
           if (!failure) throw new Error(`已导入 ${report.imported} 项，但临时文件清理失败；请勿重复迁移。${error instanceof Error ? error.message : String(error)}`, { cause: error })
         } finally { active.delete(identity) }
       }

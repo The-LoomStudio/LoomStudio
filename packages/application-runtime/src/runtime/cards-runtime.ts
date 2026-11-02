@@ -1,3 +1,4 @@
+import { validateCardFramework } from '../cards/card-framework.js'
 import type { LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 import { listScriptTextTransformRules } from '../scripts/loom-script-text-migration.js'
 import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
@@ -291,6 +292,7 @@ async function deleteCards(
 
 export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
   return {
+    validateCardFramework: (input: { card: import('../types.js').CardFrameworkFields }) => validateCardFramework(ctx.documents, ctx.promptResources, input.card),
     createCard: async (input: CreateCardInput, requestContext?: RuntimeRequestContext): Promise<CreateCardResult> => {
       if (input.name.trim().length === 0) {
         throw new Error('createCard name cannot be empty')
@@ -511,10 +513,10 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
             ...(input.name !== undefined ? { name: input.name } : {}),
             ...(input.userName !== undefined ? { userName: normalizeOptionalString(input.userName) } : {}),
             ...(input.description !== undefined ? { description: input.description } : {}),
-            ...(input.preset !== undefined ? { preset: normalizePreset(input.preset) } : {}),
-            ...(input.opening !== undefined ? { opening: normalizeOpening(input.opening) } : {}),
-            ...(input.lore !== undefined ? { lore: normalizeLore(input.lore) } : {}),
-            ...(input.media !== undefined ? { media: normalizeCardMedia(input.media) } : {}),
+            ...(input.preset !== undefined ? { preset: input.preset } : {}),
+            ...(input.opening !== undefined ? { opening: input.opening } : {}),
+            ...(input.lore !== undefined ? { lore: input.lore } : {}),
+            ...(input.media !== undefined ? { media: input.media } : {}),
             ...(input.stateTemplates !== undefined ? { stateTemplates: structuredClone(input.stateTemplates) } : {}),
             ...(input.stateDefinitionIds !== undefined ? { stateDefinitionIds: [...input.stateDefinitionIds] } : {}),
             ...(input.stateEntityTypes !== undefined ? { stateEntityTypes: structuredClone(input.stateEntityTypes) } : {}),

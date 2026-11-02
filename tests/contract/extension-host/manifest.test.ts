@@ -269,7 +269,7 @@ describe('extension manifest contract', () => {
             loreMounts: [{ resourceId: 'lore' }],
             toolMounts: [
               { toolId: 'example.capability-pack/echo', defaultEnabled: true },
-              { toolId: 'example.capability-pack/write', content: { zone: 'tools.content', slot: 'official' } },
+              { toolId: 'example.capability-pack/write', content: { targetAnchorId: '@chat.tools' } },
             ],
           },
         ],
@@ -398,5 +398,27 @@ describe('extension manifest contract', () => {
       expect(() => parseMounts([{ resourceId: 'lore' }, external])).not.toThrow()
       expect(() => parseMounts([external, external])).toThrow('must be unique')
     })
+  })
+})
+
+describe('portable preset tool references', () => {
+  const manifest = (toolMounts: unknown[], dependencies?: unknown[]) => ({
+    manifestVersion: 2, id: 'example.consumer', version: '1.0.0', displayName: 'Consumer', engines: { studio: '*' }, dependencies,
+    contributes: {
+      agentTools: [{ id: 'example.consumer/local', source: './local.json' }],
+      promptResources: [{ id: 'preset', resourceKind: 'preset', source: './preset.json', toolMounts }],
+    },
+  })
+  it('accepts host, declared dependency and legacy local references without inventing definitions', () => {
+    const mounts = [
+      { toolId: 'example.consumer/local' },
+      { reference: { kind: 'host', toolId: 'official/search_context' } },
+      { reference: { kind: 'external', packageId: 'example.tools', contributionId: 'example.tools/search', target: 'global' } },
+    ]
+    expect(parseExtensionManifest(manifest(mounts, [{ id: 'example.tools', version: '^1.0.0' }])).contributes?.promptResources?.[0]?.toolMounts).toHaveLength(3)
+    expect(() => parseExtensionManifest(manifest([mounts[2]]))).toThrow('declared dependency')
+    expect(() => parseExtensionManifest(manifest([{ toolId: 'official/search_context' }]))).toThrow('undeclared Agent Tool')
+    expect(() => parseExtensionManifest(manifest([{ toolId: 'example.consumer/local', reference: { kind: 'host', toolId: 'official/search_context' } }]))).toThrow('exactly one')
+    expect(() => parseExtensionManifest(manifest([{ toolId: 'example.consumer/local' }, { reference: { kind: 'package', contributionId: 'example.consumer/local' } }]))).toThrow('unique')
   })
 })

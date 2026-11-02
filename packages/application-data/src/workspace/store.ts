@@ -32,6 +32,7 @@ export function validateWorkspaceEntries(entries: WorkspaceEntry[]): void {
   const names = new Set<string>()
   for (const entry of entries) {
     if (!entry || typeof entry.id !== 'string' || !entry.id || byId.has(entry.id)
+      // eslint-disable-next-line no-control-regex -- Control characters are intentionally rejected or encoded in paths and CSS values.
       || typeof entry.name !== 'string' || !entry.name || /[/\\\u0000-\u001f]/.test(entry.name)
       || entry.name === '.' || entry.name === '..') throw new Error('Invalid Workspace identity or name')
     const name = JSON.stringify([entry.parentId ?? null, entry.name])

@@ -1,3 +1,4 @@
+import { createExtensionCharacterCatalog } from './extensions/extension-character-catalog.js'
 import { createStorageSnapshot } from './statistics/storage-snapshot.js'
 import { readSqliteSpaceUsage } from '@loom-studio/data-engine'
 import { createStatisticsStore } from '@loom-studio/application-data'
@@ -20,7 +21,7 @@ import {
   createStateContributionRegistry,
   type ExtensionInstallationContent,
 } from '@loom-studio/application-runtime'
-import { canAccessExtensionAsset } from './extensions/extension-asset-access.js'
+import { canAccessExtensionAsset, canExtensionConsumeAsset } from './extensions/extension-asset-access.js'
 import { createExtensionFileData } from './extensions/extension-file-data.js'
 import {
   createAiGatewayCapabilityRegistry,
@@ -57,7 +58,7 @@ import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
 import { createExtensionBatchImporter } from './extensions/import-batch.js'
 import { createExtensionImportConversions } from './extensions/import-conversion.js'
-import { createOfficialContentService, installBuiltinStarterContent } from './official/official-content.js'
+import { createOfficialContentService } from './official/official-content.js'
 import { createCardDirectoryService } from './resource-directories/card-directory.js'
 import { createCardDirectoryCatalog } from './resource-directories/card-directory-catalog.js'
 import { createCardDirectoryImporter } from './resource-directories/card-directory-import.js'
@@ -97,7 +98,7 @@ export type CreateStudioServerOptions = {
 }
 
 export function createStudioServer(options: CreateStudioServerOptions = {}): StudioServer {
-  const officialContentDirectory = options.officialContentDirectory ?? join(installationRoot, 'official/starter')
+  const officialContentDirectory = options.officialContentDirectory
   const localPaths = options.localPaths ?? resolveLoomStudioLocalPaths({ home: '.loomstudio-dev' })
   const logger = options.logger
   const diagnostics = createInMemoryDiagnosticsRegistry()
@@ -155,6 +156,10 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     secrets,
   })
   const baseGateway = createDocumentBackedAiGateway({
+    mediaAssets: { get: async id => assets?.getMediaAsset(id), read: async (id, options) => {
+      if (!assets) throw new Error('Asset storage is unavailable')
+      return assets.readMediaAsset(id, options)
+    } },
     statistics,
     observations,
     documents,
@@ -205,6 +210,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   const applicationRuntime = createApplicationRuntime({
     observations,
     exportExtensionArchive,
+    validatePackageAsset: input => extensionManager.validatePackageAsset(input),
     onStateChanged: event => kernel.getEventBus().emit('state.changed', event, { publisher: { kind: 'kernel' }, source: 'application-state' }),
     withCardDeletion: (id, commit) => {
       if (!resourceDirectories) throw new Error('Card directory service is unavailable')
@@ -239,7 +245,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         },
       }
       : undefined,
-    mediaAssets: assets ? { get: assetId => assets.getMediaAsset(assetId) } : undefined,
+    mediaAssets: assets ? { get: assetId => assets.getMediaAsset(assetId), read: (id, options) => assets.readMediaAsset(id, options) } : undefined,
     secrets,
     providerAdapters,
     aiCapabilities,
@@ -265,7 +271,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     grantEventCapabilities: (manifest, moduleManifest, target) => extensionManager.getGrantedEventCapabilities(manifest.id, moduleManifest.id, target),
     grantAssetCapabilities: (manifest, moduleManifest, target) => extensionManager.getGrantedAssetCapabilities(manifest.id, moduleManifest.id, target),
     assetScratchRoot: localPaths.extensionCacheRoot,
-    canAccessAsset: (asset, target) => canAccessExtensionAsset(documents, asset, target),
+    canAccessAsset: (asset, target, consumer) => canExtensionConsumeAsset(documents, asset, target, consumer),
     ...createExtensionApplicationAdapter({
       applicationRuntime, assets, documents, agents, narratives, states, promptResources, extensionAgentTasks,
       getKernel: () => kernel,
@@ -299,6 +305,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     bundledEnabledModules: { 'official.story-memory': ['server', 'client'] },
     readCardPackage: input => applicationRuntime.getCardExtensionPackage(input),
     listInstallations: () => applicationRuntime.listExtensionInstallations(),
+    assertDependencyConsumers: (packageId, target, nextVersion) => applicationRuntime.checkExtensionDependencyConsumers({ packageId, target, nextVersion }),
     importPackageResources: input => applicationRuntime.importExtensionPackageResources(input, {
       actor: { kind: 'extension', id: input.packageId },
     }),
@@ -312,6 +319,11 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     diagnostics,
     extensionHost,
     extensionManager,
+    characterCatalog: {
+      list: packageId => characterCatalog.list(packageId),
+      preview: (packageId, characterId) => characterCatalog.preview(packageId, characterId),
+      import: (input, clientId) => characterCatalog.import(input, clientId),
+    },
   })
   const importConversions = createExtensionImportConversions(kernel)
   const scripts = createScriptService({
@@ -320,7 +332,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       documents, diagnostics, logger: options.extensionLogger,
       mode: options.runtimeMode ?? 'development',
       assetScratchRoot: localPaths.extensionCacheRoot,
-      canAccessAsset: (asset, target) => canAccessExtensionAsset(documents, asset, target),
+      canAccessAsset: (asset, target, consumer) => canExtensionConsumeAsset(documents, asset, target, consumer),
       ...createExtensionApplicationAdapter({
         applicationRuntime, assets, documents, agents, narratives, states, promptResources, extensionAgentTasks,
         getKernel: () => kernel,
@@ -383,7 +395,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     batchImporter: createExtensionBatchImporter({ kernel, runtime: applicationRuntime, assets, saveImportedCard }),
     convertPromptResource: importConversions.promptResource,
     applicationRuntime,
-    officialContent: createOfficialContentService(applicationRuntime, resolve(officialContentDirectory)),
+    officialContent: createOfficialContentService(applicationRuntime, officialContentDirectory ? resolve(officialContentDirectory) : undefined),
     aiCapabilities,
     aiGateway: profiledAiGateway,
     kernel,
@@ -399,6 +411,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
   }
   const cardTransfer = createCardTransferService({ applicationRuntime, assets, directoryMedia, importConversions, saveImportedCard })
+  const characterCatalog = createExtensionCharacterCatalog({ runtime: applicationRuntime, readPackage: packageId => extensionManager.readCharacterPackage(packageId), importArchive: cardTransfer.importArchiveAndSave })
   const server = createStudioHttpServer({
     trpcServices: rpcServices,
     applicationRuntime,
@@ -481,7 +494,6 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         await directoryCatalog.scan()
         await applicationRuntime.initialize()
         await extensionAgentTasks.recover()
-        await installBuiltinStarterContent(applicationRuntime, resolve(officialContentDirectory))
         await kernel.start()
         await extensionManager.initialize()
         await scripts.resolve({ workspaceId: 'workspace' })

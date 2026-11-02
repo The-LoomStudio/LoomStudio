@@ -1,3 +1,5 @@
+import { parseCardFrameworkFields } from './card-framework.js'
+import { isLoomScriptFileName } from '@loom-studio/shared/loom-scripts'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { normalizeMacroOptions, promptResourceDisplayMetadataSchema } from '@loom-studio/shared'
 import { resolveLoomScriptSettings, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
@@ -31,7 +33,7 @@ export function isPromptResourceArtifact(value: unknown): value is PromptResourc
   }
 }
 
-export function normalizePromptResourceArtifact(artifact: PromptResourceArtifact): PromptResourceArtifact {
+export function normalizePromptResourceArtifact(artifact: unknown): PromptResourceArtifact {
   assertPromptResourceArtifact(artifact)
   return {
     ...structuredClone(artifact),
@@ -438,10 +440,11 @@ function assertLoomScriptAttachments(value: unknown): void {
       || attachment.script.format !== 'loom.script'
       || attachment.script.schemaVersion !== 1
       || typeof attachment.script.fileName !== 'string'
-      || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.loom\.js$/.test(attachment.script.fileName)
+      || !isLoomScriptFileName(attachment.script.fileName)
       || typeof attachment.script.source !== 'string') {
       throw new Error(`Invalid Loom Script attachment artifact: ${index}`)
     }
+    if (attachment.groupOrder !== undefined && !Number.isSafeInteger(attachment.groupOrder)) throw new Error('Invalid script group order')
     const metadata = parseLoomScriptSource(attachment.script.source)
     resolveLoomScriptSettings(metadata.settings, attachment.settings as LoomScriptSettings | undefined)
   }
@@ -536,6 +539,7 @@ export function sameTimelineTemplate(value: JsonValue, definition: Extract<State
 function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifact['card'] {
   if (!isObject(value)) throw new Error('Card bundle card must be an object')
   assertNonEmptyString(value.name, 'Card bundle card.name')
+  parseCardFrameworkFields(value)
   assertOptionalString(value.userName, 'Card bundle card.userName')
   assertOptionalString(value.description, 'Card bundle card.description')
   if (value.macros !== undefined) validateBundleMacros(value.macros)

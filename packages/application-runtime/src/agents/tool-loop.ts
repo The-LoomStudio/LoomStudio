@@ -1,3 +1,5 @@
+import { branchTranscriptEntries, pendingInterjections, withInterjectionLock } from './interjections.js'
+import { attachmentMessage, mountMessageAttachments } from './message-attachments.js'
 import { recordUserInteraction } from '@loom-studio/application-data'
 import { cloneToolSchema } from './tool-schema.js'
 import { createLoomContentScannerState, pushLoomContentChunk } from './content-transport.js'
@@ -94,7 +96,7 @@ export type ContentToolPromptRuntimeInputs = {
 }
 
 type AgentToolResolutionContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'documents' | 'providerAdapters'>
-type NativeToolLoopContext = ApplicationStateContext & Pick<ApplicationRuntimeContext, 'agentTools' | 'createId' | 'gateway' | 'runtimeLogger' | 'stateContent' | 'swipes'> & Partial<Pick<ApplicationRuntimeContext, 'observations'>>
+type NativeToolLoopContext = ApplicationStateContext & Pick<ApplicationRuntimeContext, 'agentTools' | 'createId' | 'gateway' | 'runtimeLogger' | 'stateContent' | 'swipes' | 'mediaAssets'> & Partial<Pick<ApplicationRuntimeContext, 'observations'>>
 
 export async function compileAgentToolSet(input: {
   ctx: AgentToolResolutionContext
@@ -280,6 +282,9 @@ type NativeToolLoopInput = {
   processedPrompt?: AgentRunRecoveryCheckpoint['processedPrompt']
   promptExtensionLeases?: AgentRunRecoveryCheckpoint['promptExtensionLeases']
   userInput: string
+  attachments?: import('@loom-studio/shared').ChatAttachment[]
+  beforeInterjections?: () => Promise<void>
+  initialInterjection?: AgentTranscriptEntry
   compiledToolSet: CompiledAgentToolSet
   toolExecutionScope?: ToolExecutionScope
   branchId: string
@@ -416,6 +421,15 @@ async function runToolLoop(
   const streamedToolInputs = new Map<string, { toolName?: string; input: string }>()
   const pendingTools = new Map<string, { invocation: ToolInvocation; render: (result: ToolResult) => ChatMessage }>()
 
+  const initialReceipt = input.initialInterjection?.entry.kind === 'user-interjection' ? input.initialInterjection.entry : undefined
+  if (initialReceipt) {
+    input.purpose = initialReceipt.mode === 'narrative' ? 'narrative' : 'agent'
+  }
+  const initialNarrativeId = !input.resumeUserEntry && initialReceipt?.mode === 'narrative' ? input.ctx.createId('node') : undefined
+  if (initialNarrativeId) {
+    input.purpose = 'narrative'
+    if (input.toolExecutionScope?.narrativeSource) input.toolExecutionScope.narrativeSource.cursorNodeId = initialNarrativeId
+  }
   const initial = input.resumeUserEntry
     ? await append([{
         kind: 'run-state', state: 'running',
@@ -423,7 +437,10 @@ async function runToolLoop(
         recovery: recovery(acceptedContent ? 'content' : 'provider', providerMessages, continuation?.recovery?.nextProviderStep ?? 1),
       }], undefined, continuation?.recovery ? continuation : undefined)
     : await append([
-        { kind: 'message', role: 'user', content: input.userInput },
+        { kind: 'message', role: 'user', content: input.userInput, ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+          ...(initialReceipt ? { interjectionRequestId: initialReceipt.requestId, purpose: initialReceipt.mode } : {}),
+          ...(initialNarrativeId ? { narrativeId: initialNarrativeId } : {}) },
+        ...(initialReceipt ? [{ kind: 'interjection-applied' as const, requestId: initialReceipt.requestId }] : []),
         { kind: 'run-state', state: 'running', recovery: recovery('provider', providerMessages, 1) },
       ], userEntryId)
   const userEntry = input.resumeUserEntry ?? initial.entries[0]!
@@ -444,6 +461,7 @@ async function runToolLoop(
       })
       if (input.requestContext?.abortSignal?.aborted)
         throw createAbortError(input.requestContext.abortSignal.reason)
+      await consumeInterjections()
       const stepMessages = [...providerMessages, ...freshContextMessages]
       checkpointMessages = [...stepMessages]
       freshContextMessages = []
@@ -568,7 +586,7 @@ async function runToolLoop(
       const continueAfterNarrative = isNarrative && narrativeState.declared && Boolean(contentScan.text)
         && providerResult.finishReason !== 'length'
       if (isNarrative && contentScan.text) narrativeState.logicalId ??= input.ctx.createId('narrative')
-      if (contentScan.text) {
+      if (contentScan.text.trim()) {
         stepEntries.push({
           kind: 'message',
           role: 'assistant',
@@ -642,7 +660,14 @@ async function runToolLoop(
       if (continueAfterNarrative) stepEntries.push({
         kind: 'run-state', state: 'running', recovery: recovery('provider', checkpointMessages, step + 1),
       })
-      const persistedStep = await runTool(() => append(stepEntries))
+      const persistedStep = await runTool(async () => {
+        try { return await append(stepEntries) }
+        catch (error) {
+          // The tool calls were not committed or executed; resume from the last complete request.
+          checkpointMessages = [...stepMessages]
+          throw error
+        }
+      })
       if (narrativeOutput && providerResult.finishReason === 'length') {
         continuationAssistantEntryId = persistedStep.entries.findLast(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant')?.id
       }
@@ -685,6 +710,8 @@ async function runToolLoop(
         )
         if (!assistantEntry)
           throw new Error('Final assistant transcript entry was not persisted')
+        providerMessages.push(providerMessage)
+        if (await consumeInterjections()) { nextRecoveryStep = step + 1; continue }
         completeStep('Final assistant output accepted')
         return {
           session,
@@ -850,7 +877,7 @@ async function runToolLoop(
         const checkpointEntries: AgentTranscriptEntryData[] = []
         if (streamedReasoning) checkpointEntries.push({ kind: 'reasoning', content: streamedReasoning,
           source: 'provider-native', visibility: 'collapsed', replay: 'omit' })
-        if (streamedText && !acceptedContent) checkpointEntries.push({
+        if (streamedText.trim() && !acceptedContent) checkpointEntries.push({
           kind: 'message',
           role: 'assistant',
           content: streamedText,
@@ -877,16 +904,16 @@ async function runToolLoop(
             syntheticReason: 'interrupt',
           })
         }
-        const partialEntryId = streamedText ? input.ctx.createId('agent-entry') : undefined
+        const partialEntryId = streamedText.trim() ? input.ctx.createId('agent-entry') : undefined
         const resumeMessages: ChatMessage[] = [
           ...checkpointMessages, ...freshContextMessages,
-          ...(streamedText ? [{
+          ...(streamedText.trim() ? [{
             role: 'system' as const,
             content: `The previous assistant response was interrupted. Continue from this partial response without repeating it:\n${streamedText}`,
           }] : []),
         ]
         if (partialEntryId) continuationAssistantEntryId = partialEntryId
-        if (streamedText && !acceptedContent) pendingAssistantContent += streamedText
+        if (streamedText.trim() && !acceptedContent) pendingAssistantContent += streamedText
         const checkpoint = recovery(acceptedContent ? 'content' : uncertainToolOutcome ? 'tools' : 'provider', resumeMessages, nextRecoveryStep)
         checkpointEntries.push({
           kind: 'run-state', state: suspended ? 'suspended' : 'failed', reason: errorMessage(error),
@@ -938,6 +965,60 @@ async function runToolLoop(
     throw error
   }
 
+  async function consumeInterjections(): Promise<boolean> {
+    await input.beforeInterjections?.()
+    return withInterjectionLock(input.agents, session.id, consumeInterjectionsLocked)
+  }
+
+  async function consumeInterjectionsLocked(): Promise<boolean> {
+    input.requestContext?.abortSignal?.throwIfAborted()
+    const history = await input.agents.listEntries(session.id)
+    const pending = pendingInterjections(history).filter(item => !item.entry.narrativeTarget
+      || item.entry.narrativeTarget.branchId === input.branchId)
+    if (!pending.length) return false
+    input.requestContext?.abortSignal?.throwIfAborted()
+    const branch = input.recoveryRequest.narrativeTarget ? await input.ctx.narratives!.getBranch(input.branchId) : undefined
+    const selectedHistory = branchTranscriptEntries(history, session.kind === 'timeline' ? branch?.headEntryId : (await input.agents.getSession(session.id))?.headEntryId)
+    const visibleAttachments = [...selectedHistory.flatMap(item => item.entry.kind === 'message' ? item.entry.attachments ?? [] : []),
+      ...providerMessages.flatMap(message => message.role === 'user' ? message.attachments ?? [] : [])]
+    if (input.toolExecutionScope) mountMessageAttachments(input.toolExecutionScope, input.ctx.mediaAssets,
+      [...visibleAttachments, ...pending.flatMap(item => item.entry.attachments ?? [])],
+      tools.some(tool => tool.definition.id === 'official/codeact' || tool.definition.id === 'official/codeact_json'))
+    const messages: ChatMessage[] = pending.flatMap(item => [
+      { role: 'system' as const, content: item.entry.mode === 'narrative'
+        ? (session.narrativeMode === 'automatic'
+          ? '本条用户输入来自正文入口，当前为自动正文模式：后续普通 Assistant 文本成为剧情正文。工具调用、工具结果和 reasoning 仍是工作过程。既有工具权限继续有效。'
+          : '本条用户输入来自正文入口，当前为声明式写作模式：declare_narrative 只声明下一条普通 Assistant 文本为正文；未声明的回复不自动成为正文。既有工具权限继续有效。')
+        : '本条用户输入来自讨论入口，作为讨论与指导处理，不自动将回复作为正文。既有工具权限与写作规则继续有效。' },
+      attachmentMessage(item.entry.content, item.entry.attachments),
+    ])
+    const source = input.toolExecutionScope?.narrativeSource
+    const previousCursor = source?.cursorNodeId
+    const entries: AgentTranscriptEntryData[] = []
+    for (const item of pending) {
+      const narrativeId = item.entry.mode === 'narrative' ? input.ctx.createId('node') : undefined
+      if (narrativeId && source) source.cursorNodeId = narrativeId
+      entries.push({ kind: 'message', role: 'user', content: item.entry.content, purpose: item.entry.mode,
+        ...(branch && item.entry.mode === 'discussion' ? { editBaseline: {
+          timelineId: branch.timelineId, branchId: branch.id, headNodeId: source?.cursorNodeId ?? branch.headNodeId ?? null,
+          stateRevisionId: branch.stateHeadRevisionId, workspaceRevisionId: branch.workspaceHeadRevisionId,
+        } } : {}),
+        interjectionRequestId: item.entry.requestId, ...(item.entry.attachments ? { attachments: item.entry.attachments } : {}),
+        ...(narrativeId ? { narrativeId } : {}) }, { kind: 'interjection-applied', requestId: item.entry.requestId })
+    }
+    const latest = pending.at(-1)!.entry
+    input.recoveryRequest = { ...input.recoveryRequest, input: latest.content, attachments: latest.attachments,
+      interjectionRequestId: latest.requestId, macroSelections: latest.macroSelections, activationFacts: latest.activationFacts }
+    const nextMessages = [...providerMessages, ...messages]
+    entries.push({ kind: 'run-state', state: 'running', recovery: recovery('provider', nextMessages, nextRecoveryStep) })
+    try { await appendLocked(entries) }
+    catch (error) { if (source) source.cursorNodeId = previousCursor; throw error }
+    providerMessages.push(...messages)
+    checkpointMessages = [...nextMessages]
+    input.purpose = pending.at(-1)!.entry.mode === 'narrative' ? 'narrative' : 'agent'
+    return true
+  }
+
   async function finishAcceptedContent(): Promise<NativeToolLoopResult | undefined> {
     const accepted = acceptedContent!
     await assertPromptDependencies()
@@ -962,6 +1043,8 @@ async function runToolLoop(
       continuationAssistantEntryId = undefined
       return undefined
     }
+    providerMessages.splice(0, providerMessages.length, ...checkpointMessages)
+    if (await consumeInterjections()) { nextRecoveryStep += 1; return undefined }
     completeStep('Assistant output and State content accepted')
     return {
       session, userEntry, assistantEntry, providerResult: accepted.providerResult,
@@ -1013,7 +1096,29 @@ async function runToolLoop(
     } catch { /* Observation failure must not retry or suppress the model call. */ }
   }
 
-  async function append(entries: AgentTranscriptEntryData[], firstId?: string, takeover?: NonNullable<RuntimeRequestContext['agentRun']>['continuation']) {
+  function append(entries: AgentTranscriptEntryData[], firstId?: string, takeover?: NonNullable<RuntimeRequestContext['agentRun']>['continuation']) {
+    return withInterjectionLock(input.agents, session.id, () => appendLocked(entries, firstId, takeover))
+  }
+
+  async function appendLocked(entries: AgentTranscriptEntryData[], firstId?: string, takeover?: NonNullable<RuntimeRequestContext['agentRun']>['continuation']) {
+    // Narrative tools can append to this same Timeline Session within the current Run.
+    // Rebase only over our own entries; foreign writes must still hit the count guard.
+    {
+      const current = await input.agents.getSession(session.id)
+      const expectedCount = takeover?.expectedEntryCount ?? session.entryCount
+      if (current && current.entryCount !== expectedCount) {
+        const terminalOnly = entries.every(entry => entry.kind === 'run-state' && ['failed', 'aborted'].includes(entry.state) && !entry.recovery)
+        const appended = terminalOnly ? [] : (await input.agents.listEntries(session.id)).filter(entry => entry.sequence > expectedCount)
+        if (terminalOnly || appended.length === current.entryCount - expectedCount && appended.every(entry => entry.runId === input.runId || entry.entry.kind === 'user-interjection' || entry.entry.kind === 'work-summary')) {
+          if (takeover && appended.every(entry => entry.entry.kind === 'user-interjection')) takeover = { ...takeover, expectedEntryCount: current.entryCount }
+          session = current
+          // Tool-owned writes are already committed, but bypass this loop's append event.
+          if (appended.length) input.requestContext?.agentRun?.onEvent({
+            type: 'transcript-appended', runId: input.requestContext.agentRun.runId, entries: appended,
+          })
+        }
+      }
+    }
     const previousNarrativeState = { ...narrativeState }
     const narrativeSource = input.toolExecutionScope?.narrativeSource
     const previousCursorNodeId = narrativeSource?.cursorNodeId
@@ -1038,6 +1143,8 @@ async function runToolLoop(
         if (entry === adopted) narrativeState.consumedEntryId = id
         return { id, runId: input.runId, ...(input.retryRoundId ? { roundId: input.retryRoundId } : {}), entry }
       }).map((item, _index, all) => {
+        if (item.entry.kind === 'message' && item.entry.editBaseline) return { ...item, entry: { ...item.entry,
+          editBaseline: { ...item.entry.editBaseline, headEntryId: all[_index - 1]?.id ?? session.headEntryId ?? null } } }
         if (item.entry.kind !== 'run-state' || !item.entry.recovery || !narrativeOutput) return item
         const checkpoint: JsonObject = { ...item.entry.recovery, narrativeOutput: { ...narrativeState } }
         if (adopted) {
@@ -1053,10 +1160,16 @@ async function runToolLoop(
     try {
       const transact = () => input.ctx.dataEngine.transact(write, async dataTx => {
             const agents = input.agents.transaction(dataTx)
-            if (input.materialBaseline && entries.some(entry => entry.kind === 'message' && entry.role === 'user')) {
+            if (input.materialBaseline && firstId === userEntryId && entries.some(entry => entry.kind === 'message' && entry.role === 'user')) {
               const baseline = input.materialBaseline
               const branch = input.ctx.narratives!.transaction(dataTx).getBranch(baseline.branchId)
-              if (!branch || (branch.headEntryId ?? null) !== baseline.headEntryId || (branch.headNodeId ?? null) !== baseline.headNodeId
+              let receiptHead = branch?.headEntryId ?? null
+              while (receiptHead && receiptHead !== baseline.headEntryId) {
+                const receipt = agents.getEntry(receiptHead)
+                if (receipt?.entry.kind !== 'user-interjection') break
+                receiptHead = receipt.parentEntryId ?? null
+              }
+              if (!branch || receiptHead !== baseline.headEntryId || (branch.headNodeId ?? null) !== baseline.headNodeId
                 || branch.stateHeadRevisionId !== baseline.stateRevisionId || branch.workspaceHeadRevisionId !== baseline.workspaceRevisionId)
                 throw Object.assign(new Error('Discussion context changed before the Run started'), { code: 'agent.retry_conflict' })
             }
@@ -1073,13 +1186,22 @@ async function runToolLoop(
               if (accepted) recordUserInteraction(dataTx, { id: accepted.id, sessionId: session.id, kind: 'agent' })
             }
             for (const entry of appended.entries) {
+              if (entry.entry.kind === 'message' && entry.entry.role === 'user' && entry.entry.interjectionRequestId && entry.entry.purpose === 'narrative') {
+                const target = input.recoveryRequest.narrativeTarget!
+                const narratives = input.ctx.narratives!.transaction(dataTx)
+                const branch = narratives.getBranch(target.branchId!)!
+                narratives.appendNode({ timelineId: target.timelineId, branchId: branch.id,
+                  nodeId: entry.entry.narrativeId, kind: 'user-input', expectedHeadNodeId: branch.headNodeId ?? null,
+                  stateRevisionId: branch.stateHeadRevisionId, attachments: entry.entry.attachments, body: { format: 'loom-markdown.v1', raw: entry.entry.content },
+                  source: { agentSessionId: session.id, agentMessageId: entry.id, runId: input.runId } })
+              }
               if (entry.entry.kind !== 'message' || entry.entry.role !== 'assistant'
                 || entry.entry.purpose !== 'narrative' || entry.entry.state === 'partial') continue
               narrativeOutput!.adopt(dataTx, entry, entry.entry.content)
             }
             return appended
           }).then(result => ({ ...result.value, commit: result.commit }))
-      const result = takeover || narrativeOutput || write.actor.kind === 'client'
+      const result = takeover || initialReceipt || narrativeOutput || write.actor.kind === 'client'
         ? await (adopted && input.toolExecutionScope?.withNarrativeWrite
           ? input.toolExecutionScope.withNarrativeWrite(transact) : transact())
         : await input.agents.appendEntries(write)

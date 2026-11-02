@@ -19,7 +19,7 @@
   > svg:last-child { width: 11px; }
   &:hover { color: var(--loom-color-text-muted); }
 }
-.overview { margin: 0 0 14px; }
+.overview { margin: 0; }
 .sequence { display: flow-root; }
 .failure, .status { margin: 8px 0; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
 .failure { color: var(--loom-color-danger, var(--loom-color-text-muted)); }
@@ -53,7 +53,7 @@
   .reasoning { font-size: 12px; line-height: 1.9; color: var(--loom-color-text-muted); }
 }
 .reply {
-  margin: 26px 0 18px;
+  margin: 8px 0 18px;
   font-size: 13px;
   line-height: 1.9;
   color: var(--loom-color-text-muted);
@@ -65,3 +65,26 @@
 .spin { animation: narrative-flow-spin 1.2s linear infinite; }
 @keyframes narrative-flow-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+.reply {
+  &:hover, &:focus-within {
+    [data-conversation-message-actions] { opacity: 1; pointer-events: auto; }
+  }
+}
+
+// Prose owns its own padding; only the surrounding execution controls need an inset.
+.flow[data-inset-work='true'] {
+  > .overview,
+  > .sequence > .workDetail,
+  > .sequence > .toolDetail { margin-inline: 20px; }
+}
+@media (max-width: 820px) {
+  .flow[data-inset-work='true'] {
+    > .overview,
+    > .sequence > .workDetail,
+    > .sequence > .toolDetail { margin-inline: 16px; }
+  }
+}
+
+.sequence > .reply:first-child { margin-top: 0; }
+.replyContent > :first-child { margin-top: 0; }

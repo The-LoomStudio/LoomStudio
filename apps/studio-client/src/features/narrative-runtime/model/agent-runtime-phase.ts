@@ -12,7 +12,7 @@ export function resolveAgentRuntimePhase(
   messages?: AgentTranscriptEntry[],
   _t?: Translator,
 ): AgentRuntimePhase {
-  if (activeRun?.approval || activeRun?.status === 'suspended') {
+  if (activeRun?.approval) {
     return {
       kind: 'approval',
       text: '等待确认',

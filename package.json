@@ -26,6 +26,8 @@
     "analyze:client": "LOOM_ANALYZE_BUNDLE=1 pnpm --filter @loom-studio/studio-client build",
     "benchmark:context-assets": "node --expose-gc --import tsx scripts/dev/benchmark-context-assets.ts",
     "size:client": "pnpm --filter @loom-studio/studio-client build && size-limit",
+    "resource:author": "tsx scripts/dev/resource-authoring.ts",
+    "extension:author-build": "tsx scripts/pack/build-extension-authoring.ts",
     "official:pack": "tsx scripts/pack/pack-official-content.ts",
     "example:character-status": "tsx scripts/pack/pack-character-status-example.ts",
     "data:migrate": "tsx scripts/data/migrate-data-directory.ts",

@@ -18,13 +18,13 @@ function transcript(steps: NarrativeSessionStep[], input: string, runId: string)
   push(`${runId}-user`, { kind: 'message', role: 'user', content: input })
   for (const step of steps) {
     const id = `${runId}-${step.id}`
-    if (step.kind === 'thinking') push(id, { kind: 'reasoning', content: step.content })
+    if (step.kind === 'thinking') push(id, { kind: 'reasoning', content: step.content, source: 'provider-native', visibility: 'collapsed', replay: 'omit' })
     else if (step.kind === 'tool') {
       // Keep the same presentation identity when draft parameters become a saved call.
-      if (step.state === 'running') push(id, { kind: 'tool-input', exposedName: step.title, rawInput: step.content })
+      if (step.state === 'running') push(id, { kind: 'tool-input', providerItemId: id, exposedName: step.title, rawInput: step.content, status: 'preparing' })
       else {
-        push(id, { kind: 'tool-invocation', invocationId: id, exposedName: step.title, rawInput: step.content })
-        push(`${id}-result`, { kind: 'tool-result', invocationId: id, status: 'completed', content: '样例操作已完成；没有调用业务接口。' })
+        push(id, { kind: 'tool-invocation', invocationId: id, toolId: id, exposedName: step.title, rawInput: step.content, transport: 'content', status: 'completed' })
+        push(`${id}-result`, { kind: 'tool-result', invocationId: id, toolId: id, status: 'completed', content: [{ type: 'text', text: '样例操作已完成；没有调用业务接口。' }] })
       }
     } else push(id, { kind: 'message', role: step.role ?? 'assistant', content: step.content, ...(step.state === 'running' ? { state: 'partial' } : {}) })
   }

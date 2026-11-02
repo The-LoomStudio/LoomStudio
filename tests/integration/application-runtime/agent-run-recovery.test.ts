@@ -1,3 +1,4 @@
+import { registerAgentExecutor, readInterruptedAgentRuns } from '../../../packages/application-runtime/src/agents/run-recovery.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -51,6 +52,50 @@ async function setup(runtime: ReturnType<typeof open>['runtime']) {
 }
 
 describe('durable Agent Run recovery', () => {
+  it.each([false, true])('reconciles stale markers but preserves live ownership (live=%s)', async live => {
+    const gateway = vi.fn<NonNullable<ApplicationRuntimeOptions['gateway']>['invokeChat']>(async () => ({
+      provider: 'test', model: 'test', text: 'Done', message: { role: 'assistant', content: 'Done' },
+    }))
+    const fixture = open(':memory:', gateway)
+    const release = live ? registerAgentExecutor('stale-run') : () => {}
+    try {
+      const { session } = await setup(fixture.runtime)
+      await fixture.agents.appendEntries({ actor: { kind: 'kernel', id: 'fixture' }, agentSessionId: session.id, expectedEntryCount: 0,
+        entries: [
+          { runId: 'stale-run', entry: { kind: 'run-state', state: 'running', recovery: { executor: { pid: process.pid, id: 'stale-run' } } } },
+          { runId: 'later-failure', entry: { kind: 'run-state', state: 'failed', reason: 'Blocked by stale run' } },
+        ] })
+      const next = fixture.runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'A fresh request' })
+      if (live) {
+        await expect(next).rejects.toMatchObject({ code: 'agent.session_busy' })
+        expect(gateway).not.toHaveBeenCalled()
+      } else {
+        await next
+        expect(gateway).toHaveBeenCalledTimes(1)
+        const entries = await fixture.agents.listEntries(session.id)
+        expect(entries.filter(item => item.runId === 'stale-run').at(-1)?.entry).toMatchObject({ kind: 'run-state', state: 'aborted' })
+        await fixture.runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Another request' })
+        expect(gateway).toHaveBeenCalledTimes(2)
+      }
+    } finally { release(); fixture.engine.close() }
+  })
+
+  it('finds an executing marker outside the adopted Timeline history', async () => {
+    const fixture = open(':memory:', vi.fn())
+    try {
+      const { target } = await setup(fixture.runtime)
+      const session = (await fixture.agents.getSession(target.timelineId))!
+      await fixture.agents.appendEntries({ actor: { kind: 'kernel', id: 'fixture' }, agentSessionId: session.id,
+        expectedEntryCount: session.entryCount,
+        entries: [{ runId: 'unadopted-run', entry: { kind: 'run-state', state: 'running', recovery: { executor: { pid: process.pid, id: 'unadopted-run' } } } }] })
+      await fixture.engine.transact({ actor: { kind: 'kernel', id: 'fixture' } }, async tx => {
+        fixture.agents.transaction(tx).setTimelineHead({ agentSessionId: session.id, headEntryId: session.headEntryId ?? null })
+      })
+      expect((await fixture.agents.getEntryPage({ agentSessionId: session.id })).entries.some(item => item.runId === 'unadopted-run')).toBe(false)
+      expect((await readInterruptedAgentRuns(fixture.agents, session.id, 'next-run')).interrupted).toEqual(['unadopted-run'])
+    } finally { fixture.engine.close() }
+  })
+
   it('finds an acknowledged send from its durable checkpoint after server replacement', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'loom-send-recovery-'))
     const filename = join(directory, 'data.sqlite')

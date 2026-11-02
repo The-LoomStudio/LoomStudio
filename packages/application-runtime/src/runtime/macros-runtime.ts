@@ -10,6 +10,7 @@ import type { RuntimeRequestContext } from '../types.js'
 import { readMappedResource } from '../prompt/prompt-resource-mapper.js'
 import { createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
 import { readAgentTurnVariables } from './narrative-runtime.js'
+import { hasPlayerProfile } from '../profiles/player-state.js'
 import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
 import { getApplicationStateSnapshot } from '../state/state.js'
 import type { ApplicationStateContext } from '../state/state.js'
@@ -96,7 +97,7 @@ export async function inspectApplicationMacros(
       timelineId: page.timeline.id,
       branchId: page.branch.id,
     })
-    base = await readAgentTurnVariables(ctx, state.value, card?.name ?? runtimeContext?.cardName)
+    base = await readAgentTurnVariables(ctx, state.value, card?.name ?? runtimeContext?.cardName, hasPlayerProfile(runtimeContext))
     context = {
       timelineTarget: { timelineId: page.timeline.id, branchId: page.branch.id },
       global: base.snapshot.global,

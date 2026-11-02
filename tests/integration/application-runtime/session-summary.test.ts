@@ -71,6 +71,31 @@ async function fixture(standalone = false) {
 }
 
 describe('Session summary lifecycle', () => {
+  it('keeps receipts outside a running summary and waits before invoking their response', async () => {
+    const f = await fixture(true)
+    try {
+      await f.turn('OLD_WORK')
+      f.configure({ holdSummary: true })
+      const task = f.runtime.summarizeAgentSession({ agentSessionId: f.session.id })
+      await vi.waitFor(() => expect(f.requests.some(item => item.request.metadata?.purpose === 'session-summary')).toBe(true))
+      const before = f.requests.length
+      await f.runtime.submitAgentInterjection({ agentSessionId: f.session.id, requestId: 'during-summary', input: 'NEW_RECEIPT', mode: 'discussion' })
+      const invocation = f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Continue' })
+      await new Promise(resolve => setImmediate(resolve))
+      expect(f.requests).toHaveLength(before)
+      f.release()
+      expect((await task).state).toBe('adopted')
+      await invocation
+      const summaryRequest = f.requests.find(item => item.request.metadata?.purpose === 'session-summary')!
+      expect(JSON.stringify(summaryRequest.request.messages)).not.toContain('NEW_RECEIPT')
+      expect(JSON.stringify(f.requests.at(-1)!.request.messages)).toContain('NEW_RECEIPT')
+      const entries = await f.agents.listEntries(f.session.id)
+      const summary = entries.find(item => item.entry.kind === 'work-summary')!
+      const message = entries.find(item => item.entry.kind === 'message' && item.entry.content === 'NEW_RECEIPT')!
+      expect(message.sequence).toBeGreaterThan(summary.sequence)
+    } finally { f.release(); f.engine.close() }
+  })
+
   it('keeps Narrative buffer work when a normal Session input triggers the Token fallback', async () => {
     const f = await fixture()
     try {

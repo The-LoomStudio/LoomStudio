@@ -1,4 +1,8 @@
+export { chatAttachmentSchema, readChatAttachments, sameChatAttachments } from './chat-attachments.js'
+export type { ChatAttachment } from './chat-attachments.js'
 export type { AssistantChatMessage, ChatMessage, ChatToolCall } from './chat.js'
+export { playerEntityType, playerEntity, playerEntityPath, playerProfileComponentKey, playerProfilePath, playerProfileTemplateId, readPlayerProfile } from './player-state.js'
+export type { PlayerProfileState } from './player-state.js'
 export {
   globalSearchKindSchema,
   globalSearchScopeSchema,
@@ -103,24 +107,7 @@ export function nowIso(clock: Clock = { now: () => new Date() }): string {
   return clock.now().toISOString()
 }
 
-const idAlphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-
-/** Namespace labels remain useful to injected factories; they are not part of identity. */
-export function createId(_namespace = 'id', isTaken?: (id: string) => boolean): string {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    let id = ''
-    while (id.length < 11) {
-      const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
-      for (const byte of bytes) {
-        // Reject the uneven tail instead of biasing the alphabet with modulo 256.
-        if (byte < 248) id += idAlphabet[byte % 62]
-        if (id.length === 11) break
-      }
-    }
-    if (!isTaken?.(id)) return id
-  }
-  throw new Error('Unable to allocate a unique ID')
-}
+export { createId } from './id.js'
 
 export function serializeError(error: unknown, code = 'internal.error'): SerializedError {
   if (error instanceof Error) {
@@ -151,3 +138,9 @@ export { formatResourceReference, parseResourceReference, formatEntityReference,
 
 export { promptResourceDisplayMetadataSchema } from './prompt-resource-contracts.js'
 export type { PromptResourceDisplayMetadata } from './prompt-resource-contracts.js'
+
+export { authoringNodeSchema, authoringResourceSchema, authoringApplySchema, authoringStateSchema } from './resource-authoring-contracts.js'
+export type { AuthoringNode, AuthoringResource, AuthoringApplyInput, AuthoringState } from './resource-authoring-contracts.js'
+
+export { toolReferenceSchema, extensionToolMountSchema, authoringToolMountSchema } from "./tool-mount-contracts.js"
+export type { AgentToolReference, ExtensionToolMount } from "./tool-mount-contracts.js"

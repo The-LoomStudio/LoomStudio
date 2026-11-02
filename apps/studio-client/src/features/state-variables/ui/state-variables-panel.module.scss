@@ -275,7 +275,6 @@
   &[data-active='true'] {
     color: var(--loom-color-accent);
     background: var(--loom-color-surface-subtle);
-    font-weight: 500;
   }
 }
 
@@ -364,9 +363,12 @@
 .macroInspectorMaster {
   min-height: 0;
   height: 100%;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+
+  > .masterHeader, > .macroInspectorSearch { flex: 0 0 auto; }
+  > .macroInspectorResults { flex: 1 1 0; }
 }
 
 .macroInspectorSearch {

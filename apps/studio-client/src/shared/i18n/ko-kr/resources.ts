@@ -1,6 +1,7 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'promptResource.temporaryHint': "임시로 보는 중입니다. 현재 캐릭터에 자동으로 추가되지 않습니다.",
   'dashboard.open': '대시보드',
   'promptResource.processingWarning': '프롬프트 처리 중 경고가 발생하여 일부 Lore가 건너뛰어졌을 수 있습니다. 빌드 진단을 확인하세요.',
   'promptResource.invalidResources': '다음 리소스를 읽을 수 없습니다. 다른 리소스는 계속 사용할 수 있습니다.',
@@ -182,6 +183,10 @@ export const messages = {
   'context.actionDelete': '항목 삭제',
   'context.actionMore': '추가 작업',
   'context.lifecycleAlwaysIndicator': '상주',
+  'context.actionEnableGroup': '그룹 활성화',
+  'context.actionDisableGroup': '그룹 비활성화',
+  'context.disabledByAncestor': '상위 항목 “{{label}}”에 의해 비활성화됨',
+  'context.groupEnableHint': '그룹의 빌드 참여 여부만 변경하며 각 하위 항목의 활성화 상태는 유지합니다.',
   'context.actionEnable': '항목 활성화',
   'context.actionDisable': '항목 비활성화',
   'context.actionMoveUp': '한 단계 위로',

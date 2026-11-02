@@ -107,9 +107,11 @@ export function createContext(
     const ownerInstallationId = record.target.kind === 'card' ? extensionInstallationId(packageManifest.id, record.target) : undefined
     if (asset.ownerPackageId === packageManifest.id && asset.ownerInstallationId === ownerInstallationId) return
     assertAssetCapability(instance, 'assets.read')
-    if (record.target.kind === 'card' && asset.ownerInstallationId) {
-      if (!options.canAccessAsset || !await options.canAccessAsset(asset, structuredClone(record.target))) {
-        throw new Error('Media Asset is outside this Card installation scope')
+    if (asset.ownerPackageId || (record.target.kind === 'card' && asset.ownerInstallationId)) {
+      if (!options.canAccessAsset || !await options.canAccessAsset(asset, structuredClone(record.target), {
+        packageId: packageManifest.id, dependencies: structuredClone(packageManifest.dependencies),
+      })) {
+        throw new Error('Media Asset is outside this Card or declared package dependency scope')
       }
       assertScopeActive(instance)
     }
@@ -746,7 +748,7 @@ export function createContext(
               }
             } catch (error) {
               try { await dispose() } catch (cleanupError) {
-                throw new AggregateError([error, cleanupError], 'Prompt processor creation and cleanup failed')
+                throw new AggregateError([error, cleanupError], 'Prompt processor creation and cleanup failed', { cause: cleanupError })
               }
               throw error
             }

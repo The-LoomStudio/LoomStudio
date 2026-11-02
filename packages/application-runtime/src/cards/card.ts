@@ -1,3 +1,4 @@
+import { parseCardFrameworkFields } from './card-framework.js'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { JsonObject } from '@loom-studio/shared'
 import { createId, nowIso, normalizeMacroOptions } from '@loom-studio/shared'
@@ -54,20 +55,24 @@ export function toCardSummary(card: DocumentRecord<CardSourceContent>): CardSumm
     userName: content.userName,
     description: content.description,
     openingPreview: content.opening.content.slice(0, 240),
+    ...(content.catalogSource ? { catalogSource: structuredClone(content.catalogSource) } : {}),
     media: content.media,
     createdAt: content.createdAt,
     updatedAt: content.updatedAt,
   }
 }
 
-export function normalizeCardContent(content: CardSourceContent): CardSourceContent {
-  const legacyContent = content as Partial<CardSourceContent> & {
-    opening?: OpeningChatInput | string
+type CardContentInput = Omit<CardSourceContent, 'preset' | 'opening' | 'lore'> & {
+  preset?: CardPresetInput
+  opening?: OpeningChatInput | string
+  lore?: LoreInput
+}
 
-    lore?: LoreInput
-  }
+export function normalizeCardContent(content: CardContentInput): CardSourceContent {
+  const legacyContent = content
 
   return {
+    ...parseCardFrameworkFields(content as unknown as Record<string, unknown>),
     artifactId: content.artifactId,
     ...(content.derivedFrom ? { derivedFrom: structuredClone(content.derivedFrom) } : {}),
     name: typeof legacyContent.name === 'string' && legacyContent.name.trim().length > 0 ? legacyContent.name : 'Untitled Card',

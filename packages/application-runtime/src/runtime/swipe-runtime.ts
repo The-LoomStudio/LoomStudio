@@ -74,7 +74,7 @@ async function settleDiscarded(ctx: SwipeContext, group: NarrativeSwipeGroup, re
     await finishNarrativeSwipeRun(ctx, {
       groupId: group.id, candidateId: candidate.id, runId: group.activeRunId,
       generation: group.generation, editing: candidate.editBaseRunCount !== undefined,
-    }, 'failed', request)
+    }, 'discarded', request)
   } catch (error) {
     // A commit subscriber may settle the same discarded Run before its caller does.
     if (error instanceof Error && 'code' in error && error.code === 'narrative.swipe_execution_stale') {
@@ -222,7 +222,8 @@ export async function beginNarrativeSwipeRun(
     && existing?.agentSessionId !== session.id) return undefined
   const resumedCandidate = continuation && existing?.candidates.find(candidate => candidate.runIds.includes(continuation.sourceRunId))
   const editCandidate = !target?.inputNodeId && !command && !continuation && existing && !existing.closed
-    && existing.candidates.find(candidate => candidate.id === existing!.selectedCandidateId && candidate.agentSessionId === session.id)
+    && existing.candidates.find(candidate => candidate.id === existing!.selectedCandidateId && candidate.agentSessionId === session.id
+      && (candidate.status === 'completed' || input.retry && candidate.status === 'failed'))
   const retryEntry = input.retry ? await requireAgents(ctx).getEntry(input.retry.entryId) : undefined
   const retryFailed = Boolean(input.retry && existing?.inputKind === 'communication' && editCandidate && editCandidate.status === 'failed')
   const communication = session.kind === 'timeline' && !target?.inputNodeId
@@ -345,7 +346,9 @@ export async function beginNarrativeSwipeRun(
         expectedStateHeadRevisionId: branch.stateHeadRevisionId,
         headNodeId: original.parentNodeId ?? null, stateRevisionId: original.stateRevisionId, workspaceRevisionId: original.workspaceRevisionId,
       })
+      const originalEntry = original.entryId ? ctx.agents!.transaction(tx).getEntry(original.entryId)?.entry : undefined
       const appended = narratives.appendNode({
+        attachments: originalEntry?.kind === 'message' ? originalEntry.attachments : undefined,
         kind: 'user-input',
         timelineId, branchId: branch.id, expectedHeadNodeId: baseline.headNodeId ?? null,
         stateRevisionId: original.stateRevisionId, body: { format: 'loom-markdown.v1', raw: command.input },
@@ -397,7 +400,7 @@ export async function beginNarrativeSwipeRun(
 }
 
 export async function finishNarrativeSwipeRun(
-  ctx: SwipeContext, execution: SwipeExecution | undefined, outcome: 'completed' | 'suspended' | 'failed' | 'preparation-failed', request?: RuntimeRequestContext,
+  ctx: SwipeContext, execution: SwipeExecution | undefined, outcome: 'completed' | 'suspended' | 'failed' | 'preparation-failed' | 'discarded', request?: RuntimeRequestContext,
 ) {
   if (!execution) return
   const result = await ctx.dataEngine.transact(narrativeWriteContext(request, 'application.finishNarrativeSwipeRun'), async tx => {
@@ -436,7 +439,11 @@ export async function finishNarrativeSwipeRun(
       } else {
         const prior = group.candidates.find(item => item.id === group.selectedCandidateId)
         const editing = candidate.editBaseRunCount !== undefined && prior?.id === candidate.id
-        restored = narratives.restoreBranch({
+        const preserveCommunication = outcome === 'discarded'
+          && branch.headNodeId === (editing ? prior.headNodeId : group.inputNodeId)
+          && branch.stateHeadRevisionId === (editing ? prior.stateRevisionId : group.baselineStateRevisionId)
+          && branch.workspaceHeadRevisionId === (editing ? prior.workspaceRevisionId : group.baselineWorkspaceRevisionId)
+        if (!preserveCommunication) restored = narratives.restoreBranch({
           timelineId: group.timelineId, branchId: group.branchId,
           expectedHeadNodeId: branch.headNodeId ?? null, expectedStateHeadRevisionId: branch.stateHeadRevisionId,
           headNodeId: (editing ? prior.headNodeId : group.inputNodeId) ?? null,
@@ -447,7 +454,8 @@ export async function finishNarrativeSwipeRun(
         })
         if (candidate.editBaseRunCount !== undefined && prior?.id === candidate.id) {
           candidate.status = 'completed'
-          group.excludedRunIds = [...(group.excludedRunIds ?? []), ...candidate.runIds.slice(candidate.editBaseRunCount)]
+          if (!preserveCommunication) group.excludedRunIds = [...(group.excludedRunIds ?? []), ...candidate.runIds.slice(candidate.editBaseRunCount)]
+          else candidate.headEntryId = branch.headEntryId
           candidate.editBaseRunCount = undefined
         } else {
           candidate.status = 'failed'

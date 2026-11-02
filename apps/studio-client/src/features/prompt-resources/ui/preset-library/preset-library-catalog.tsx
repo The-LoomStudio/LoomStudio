@@ -21,9 +21,8 @@ export function PresetLibraryCatalog(props: {
     `${item.name} ${item.description ?? ''} ${props.sources.find(source => source.id === item.sourceId)?.name ?? ''}`
       .toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const sourceGroups = [
-    { kind: 'personal', label: undefined },
-    { kind: 'official', label: '官方' },
     { kind: 'package', label: '扩展' },
+    { kind: 'personal', label: '个人' },
   ] as const
 
   function search(value: string) {
@@ -39,7 +38,7 @@ export function PresetLibraryCatalog(props: {
     <div className={styles.search}><SearchField aria-label="搜索预设或来源" placeholder="搜索预设或来源" clearLabel="清除搜索" value={query} onClear={() => search('')} onChange={event => search(event.target.value)} /></div>
     <div className={styles.content}>
       {sourceGroups.map(group => {
-        const sources = props.sources.filter(source => source.kind === group.kind && visible.some(item => item.sourceId === source.id))
+        const sources = props.sources.filter(source => (source.kind === group.kind || (group.kind === 'package' && source.kind === 'official')) && visible.some(item => item.sourceId === source.id))
         if (!sources.length) return null
         return <section key={group.kind} className={styles.sourceGroup} aria-label={group.label}>
           {group.label && <h2 className={styles.sourceGroupLabel}>{group.label}</h2>}
@@ -55,7 +54,7 @@ export function PresetLibraryCatalog(props: {
               {!personal && (expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
             </>
             return <section className={styles.group} key={source.id} aria-label={source.name}>
-              {personal ? <div className={styles.sourceHeading}>{heading}</div> :
+              {personal ? null :
                 <button type="button" className={styles.sourceHeading} aria-expanded={expanded} aria-controls={id}
                   onClick={() => setCollapsedIds(current => expanded ? [...current, source.id] : current.filter(item => item !== source.id))}>{heading}</button>}
               <div id={id} hidden={!expanded} className={personal ? undefined : styles.packageItems}>

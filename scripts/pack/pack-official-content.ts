@@ -3,7 +3,8 @@ import { dirname, resolve } from 'node:path'
 import { zipSync } from 'fflate'
 import { readOfficialContent } from '../../apps/studio-server/src/official/official-content.js'
 
-const [source = 'official/starter', output] = process.argv.slice(2)
+const [source, output] = process.argv.slice(2)
+if (!source) throw new Error('Specify an explicit legacy catalog directory; official content is distributed as extensions')
 const content = await readOfficialContent(resolve(source))
 const filename = resolve(output ?? `.artifacts/${content.catalog.id}-${content.catalog.version}.zip`)
 await mkdir(dirname(filename), { recursive: true })

@@ -209,9 +209,21 @@ function insertRangeMountAnchor(
 ): { element: HTMLSpanElement; dispose(): void } | undefined {
   // HTML source offsets cannot address rendered DOM text or an isolated document.
   if (root.querySelector('[data-loom-html-preview], [data-loom-safe-html], [data-loom-html-pending]')) return undefined
-  // ponytail: 完整源位置映射尚未实现；仅接受前缀逐字符相同的坐标，倒序挂载避免后方替换移动前方偏移。
-  if (root.textContent?.slice(0, end) !== sourceText.slice(0, end)) return undefined
-  const boundaries = locateTextBoundaries(root, start, end)
+  const renderedText = root.textContent ?? ''
+  let renderedStart = start
+  let renderedEnd = end
+  if (renderedText.slice(0, end) !== sourceText.slice(0, end)) {
+    // Markdown can remove paragraph separators or formatting before the target.
+    // ponytail: Until source maps are available, only relocate an intact, unique
+    // target in both texts; ambiguous or transformed targets remain unresolved.
+    const selectedText = sourceText.slice(start, end)
+    if (!selectedText || sourceText.indexOf(selectedText) !== start
+      || sourceText.indexOf(selectedText, start + 1) !== -1) return undefined
+    renderedStart = renderedText.indexOf(selectedText)
+    if (renderedStart === -1 || renderedText.indexOf(selectedText, renderedStart + 1) !== -1) return undefined
+    renderedEnd = renderedStart + selectedText.length
+  }
+  const boundaries = locateTextBoundaries(root, renderedStart, renderedEnd)
   if (!boundaries) return undefined
   const range = document.createRange()
   range.setStart(boundaries.start.node, boundaries.start.offset)

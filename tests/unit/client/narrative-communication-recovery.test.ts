@@ -2,7 +2,10 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, expect, it, vi } from 'vitest'
-import { NarrativeCommunication } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-communication.js'
+import { NarrativeExecutionFlow } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-execution-flow.js'
+import type { NarrativeSessionExecution } from '../../../apps/studio-client/src/features/narrative-runtime/model/narrative-execution-view.js'
+import { AgentToolActionItem } from '../../../apps/studio-client/src/features/sessions/ui/agent-tool-blocks.js'
+import { NarrativeCommunication, useCommunicationExpansion } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-communication.js'
 import { projectTimelineRounds } from '../../../apps/studio-client/src/features/narrative-runtime/model/timeline-execution-projection.js'
 import type { AgentTranscriptEntry, NarrativeNode } from '../../../apps/studio-client/src/entities/index.js'
 
@@ -27,7 +30,7 @@ function savedFailure(legacyAbandoned = false) {
   return projectTimelineRounds(entries, [node], 'Writer')[0]!.communications.find(item => item.anchorNodeId === node.id)!
 }
 
-async function mount(legacyAbandoned = false) {
+async function mount(legacyAbandoned = false, withReplies = false) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   const host = document.createElement('div')
   document.body.append(host)
@@ -35,14 +38,16 @@ async function mount(legacyAbandoned = false) {
   roots.push(root)
   const onContinue = vi.fn(async () => true)
   const onRetryInput = vi.fn(async () => true)
-  await act(async () => root.render(createElement(NarrativeCommunication, { candidate: savedFailure(legacyAbandoned), round: 0, activeRunId: 'failed-run', onContinue, onRetryInput })))
+  const candidate = savedFailure(legacyAbandoned)
+  if (withReplies) candidate.discussions[0]!.steps = ['first', 'last'].map(id => ({ id, kind: 'reply', role: 'assistant', title: '回复', content: id, state: 'completed' }))
+  await act(async () => root.render(createElement(NarrativeCommunication, { candidate, round: 0, activeRunId: 'failed-run', onContinue, onRetryInput })))
   return { host, onContinue, onRetryInput }
 }
 
-it('renders a persisted 503 without assistant output at the input anchor and provides direct continuation', async () => {
+it('keeps failed input recoverable without pasting the gateway error into the conversation', async () => {
   const f = await mount()
   expect(f.host.textContent).toContain('先探索世界书')
-  expect(f.host.querySelector('[role="status"]')?.textContent).toContain('HTTP 503 overloaded')
+  expect(f.host.textContent).not.toContain('HTTP 503 overloaded')
   const button = [...f.host.querySelectorAll('button')].find(item => item.textContent === '继续')!
   await act(async () => button.click())
   expect(f.onContinue).toHaveBeenCalledOnce()
@@ -78,6 +83,18 @@ it('retries saved input directly without requiring composer text', async () => {
   expect(f.onRetryInput).toHaveBeenCalledWith('input', '先探索世界书')
 })
 
+it('places retry beside copy on the last assistant reply only', async () => {
+  const f = await mount(false, true)
+  const copies = f.host.querySelectorAll('[aria-label="复制回复"]')
+  const retries = f.host.querySelectorAll<HTMLButtonElement>('[aria-label="重试沟通"]')
+  expect(copies).toHaveLength(2)
+  expect(retries).toHaveLength(1)
+  expect(retries[0]!.closest('[data-conversation-message-actions]')).toBe(copies[1]!.closest('[data-conversation-message-actions]'))
+  expect(copies[0]!.closest('[data-conversation-message-actions]')!.contains(retries[0]!)).toBe(false)
+  await act(async () => retries[0]!.click())
+  expect(f.onRetryInput).toHaveBeenCalledWith('input', '先探索世界书')
+})
+
 it('keeps edit and retry controls visible for a legacy abandoned first-request failure', async () => {
   const f = await mount(true)
   expect(f.host.querySelector<HTMLButtonElement>('[aria-label="编辑沟通输入"]')?.disabled).toBe(false)
@@ -85,4 +102,163 @@ it('keeps edit and retry controls visible for a legacy abandoned first-request f
   await act(async () => f.host.querySelector<HTMLButtonElement>('[aria-label="重试沟通"]')!.click())
   expect(f.onRetryInput).toHaveBeenCalledWith('input', '先探索世界书')
   expect(savedFailure(true).discussions[0]).toMatchObject({ retryable: true, state: 'cancelled', resumable: false })
+})
+
+
+it('keeps a reply-only narrative run and its single reasoning disclosure together', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const entry = (id: string, sequence: number, data: AgentTranscriptEntry['entry']): AgentTranscriptEntry => ({
+    id, sequence, agentSessionId: 'story', createdAt: '', roundId: 'round', runId: 'run', entry: data,
+  })
+  const entries = [
+    entry('input', 1, { kind: 'message', role: 'user', purpose: 'narrative', content: '介绍项目' }),
+    entry('thought', 2, { kind: 'reasoning', content: '先整理项目知识', state: 'completed' }),
+    entry('reply', 3, { kind: 'message', role: 'assistant', content: '这是项目介绍' }),
+  ]
+  const node: NarrativeNode = { id: 'input-node', entryId: 'input', kind: 'user-input', floor: 1, timelineId: 'story', body: { format: 'loom-markdown.v1', raw: '介绍项目' }, createdAt: '' }
+  const round = projectTimelineRounds(entries, [node], 'Assistant')[0]!
+  expect(round.nodes).toEqual([node])
+  expect(round.execution.steps).toEqual([])
+  const candidate = round.communications.find(group => group.anchorNodeId === node.id)!
+  expect(candidate.execution.steps.map(step => step.kind)).toEqual(['thinking', 'reply'])
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  roots.push(root)
+  await act(async () => root.render(createElement(NarrativeCommunication, { candidate, round: 1 })))
+  expect(host.textContent).toContain('这是项目介绍')
+  expect(host.querySelectorAll('details')).toHaveLength(0)
+  expect(host.querySelector('[aria-label="查看工作过程"]')?.getAttribute('aria-expanded')).toBe('false')
+})
+
+
+it('keeps communication collapsed by default and preserves manual choices across mode changes', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  let state!: ReturnType<typeof useCommunicationExpansion>
+  const keys = ['older', 'latest']
+  function Harness({ mode }: { mode: 'roleplay' | 'discussion' }) {
+    state = useCommunicationExpansion(mode, keys)
+    return null
+  }
+  const root = createRoot(document.createElement('div'))
+  roots.push(root)
+  await act(async () => root.render(createElement(Harness, { mode: 'roleplay' })))
+  await act(async () => root.render(createElement(Harness, { mode: 'discussion' })))
+  expect(state[0]).toEqual({})
+  await act(async () => root.render(createElement(Harness, { mode: 'roleplay' })))
+  expect(state[0]).toEqual({})
+  await act(async () => state[1](current => ({ ...current, older: true, latest: false })))
+  await act(async () => root.render(createElement(Harness, { mode: 'discussion' })))
+  expect(state[0]).toEqual({ older: true, latest: false })
+})
+
+
+it('restores explicit communication choices after remount and isolates branches', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  localStorage.clear()
+  let state!: ReturnType<typeof useCommunicationExpansion>
+  const keys = ['older', 'latest']
+  function Harness({ scope }: { scope: string }) {
+    state = useCommunicationExpansion('roleplay', keys, scope)
+    return null
+  }
+  const first = createRoot(document.createElement('div'))
+  await act(async () => first.render(createElement(Harness, { scope: 'branch-a' })))
+  await act(async () => state[1]({ older: true, latest: false }))
+  await act(async () => first.unmount())
+  const second = createRoot(document.createElement('div'))
+  roots.push(second)
+  await act(async () => second.render(createElement(Harness, { scope: 'branch-a' })))
+  expect(state[0]).toEqual({ older: true, latest: false })
+  await act(async () => second.render(createElement(Harness, { scope: 'branch-b' })))
+  expect(state[0]).toEqual({})
+  await act(async () => second.render(createElement(Harness, { scope: 'branch-a' })))
+  expect(state[0]).toEqual({ older: true, latest: false })
+  localStorage.clear()
+})
+
+
+it.each([true, false])('keeps old-prose edits under their triggering input (original loaded=%s)', originalLoaded => {
+  const entry = (id: string, sequence: number, roundId: string, runId: string, data: AgentTranscriptEntry['entry']): AgentTranscriptEntry =>
+    ({ id, sequence, roundId, runId, agentSessionId: 'story', createdAt: '', entry: data })
+  const entries = [
+    entry('input1', 1, 'round1', 'writer', { kind: 'message', role: 'user', purpose: 'narrative', narrativeId: 'user1', content: 'Write' }),
+    ...(originalLoaded ? [entry('original', 2, 'round1', 'writer', { kind: 'message', role: 'assistant', purpose: 'narrative', narrativeId: 'old-prose', content: 'Original' })] : []),
+    entry('input2', 3, 'round2', 'editor', { kind: 'message', role: 'user', purpose: 'narrative', narrativeId: 'user2', content: 'Edit the previous floor' }),
+    entry('thought', 4, 'round2', 'editor', { kind: 'reasoning', content: 'Editing now', source: 'provider-native', visibility: 'collapsed', replay: 'omit' }),
+    entry('revision', 5, 'round2', 'editor', { kind: 'message', role: 'assistant', purpose: 'narrative', narrativeId: 'new-prose', content: 'Edited' }),
+    entry('receipt', 6, 'round2', 'editor', { kind: 'message', role: 'assistant', content: 'Edited successfully' }),
+  ]
+  const node = (id: string, entryId: string, kind: NarrativeNode['kind'], floor: number, raw: string): NarrativeNode =>
+    ({ id, entryId, kind, floor, timelineId: 'story', createdAt: '', body: { format: 'loom-markdown.v1', raw } })
+  const nodes = [node('user1', 'input1', 'user-input', 1, 'Write'),
+    { ...node('new-prose', 'revision', 'narrative', 2, 'Edited'), source: { agentSessionId: 'story', runId: 'writer' } },
+    node('user2', 'input2', 'user-input', 3, 'Edit the previous floor')]
+  const rounds = projectTimelineRounds(entries, nodes, 'Writer')
+  expect(rounds).toHaveLength(2)
+  expect(rounds[0]!.execution.steps.filter(step => step.kind === 'narrative').map(step => step.content)).toEqual(['Edited'])
+  expect(rounds[0]!.communications.flatMap(group => group.execution.steps)).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: 'receipt' })]))
+  const work = rounds[1]!.communications.find(group => group.anchorNodeId === 'user2')!
+  expect(work.execution.steps.map(step => step.id)).toEqual(['thought', 'receipt'])
+})
+
+it('sends inline discussion, preserves rejected text, and ignores IME confirmation', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  roots.push(root)
+  const onSend = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+  await act(async () => root.render(createElement(NarrativeCommunication, { candidate: savedFailure(), round: 0, onSend })))
+  const textarea = host.querySelector<HTMLTextAreaElement>('[aria-label="继续与 Agent 对话"]')!
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, '调整这一段')
+    textarea.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await act(async () => textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true })))
+  expect(onSend).not.toHaveBeenCalled()
+  await act(async () => textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })))
+  expect(onSend).toHaveBeenCalledWith('调整这一段')
+  expect(textarea.value).toBe('调整这一段')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="发送沟通"]')!.click())
+  expect(textarea.value).toBe('')
+})
+
+it('exposes tool results in the collapsed header without conflating interrupted and successful work', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  roots.push(root)
+  for (const [status, label] of [['success', '执行成功'], ['error', '执行失败'], ['interrupted', '执行中断'], ['running', '执行中'], ['preparing', '准备参数中']] as const) {
+    await act(async () => root.render(createElement(AgentToolActionItem, { id: 'tool', label: 'codeact_json', iconType: 'terminal', inputs: [], status })))
+    const header = host.querySelector('button')!
+    expect(header.getAttribute('aria-expanded')).toBe('false')
+    expect(header.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe(label)
+  }
+})
+
+it('keeps manual expansion unchanged across streaming prose and completion', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  roots.push(root)
+  const execution: NarrativeSessionExecution = { id: 'run', preset: 'writer', state: 'running', steps: [{ id: 'think', kind: 'thinking', title: '思考', content: 'plan', state: 'completed' }] }
+  const render = async () => { await act(async () => root.render(createElement(NarrativeExecutionFlow, { execution: { ...execution }, reading: false, followWork: true }))) }
+  await render()
+  expect(host.querySelector('details')).toBeNull()
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="查看工作过程"]')!.click())
+  expect(host.querySelector('details')?.open).toBe(false)
+  await act(async () => host.querySelector('summary')!.click())
+  expect(host.querySelector('details')?.open).toBe(true)
+  execution.steps.push({ id: 'prose', kind: 'narrative', title: '正文', content: 'writing', state: 'running' })
+  await render()
+  expect(host.querySelector('[aria-label="剧情正文"]')).not.toBeNull()
+  expect(host.querySelector('details')?.open).toBe(true)
+  execution.steps.push({ id: 'after', kind: 'thinking', title: '收尾', content: 'finish', state: 'running' })
+  await render()
+  expect(host.querySelectorAll('details')[1]?.open).toBe(false)
+  execution.state = 'completed'
+  await render()
+  expect(host.querySelectorAll('details')).toHaveLength(2)
+  expect(host.querySelector('details')?.open).toBe(true)
 })

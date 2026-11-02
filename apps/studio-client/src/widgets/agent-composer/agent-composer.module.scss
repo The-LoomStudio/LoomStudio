@@ -19,10 +19,6 @@
   pointer-events: auto;
 }
 
-:global(html[data-loom-motion='reduce']) .layer {
-  transition: none;
-}
-
 @media (hover: hover) and (pointer: fine) {
   .layer {
     transform: translateY(calc(100% + 12px));
@@ -62,11 +58,61 @@
   }
 }
 
+
+.taskCard {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: end;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 2;
+}
+.taskCapsule, .timelineActions:not(:empty) {
+  box-sizing: border-box;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+  padding: 2px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--loom-color-surface) 72%, transparent);
+  backdrop-filter: blur(16px) saturate(135%);
+  box-shadow: 0 4px 16px #0002;
+}
+.taskCapsule { position: relative; justify-self: start; min-width: 0; max-width: 100%; }
+.timelineActions {
+  grid-column: 2;
+  &:empty { display: none; }
+  button { border: 0; border-radius: 999px; background: transparent; color: var(--loom-color-accent); gap: 5px; white-space: nowrap; }
+  svg { width: 14px; height: 14px; }
+}
+@media (max-width: 768px) {
+  .taskCard { grid-template-columns: minmax(0, 1fr) auto; }
+  .taskCapsule { height: auto; min-height: 38px; border-radius: 20px; padding-block: 4px; }
+  .timelineActions:not(:empty) { width: 38px; padding: 0; }
+  .timelineActions button { width: 38px; height: 38px; padding: 0; justify-content: center; }
+}
+.foreground { position: relative; z-index: 1; }
+
+.floatingRecovery { position: absolute; bottom: calc(100% + 4px); left: 0; width: min(440px, 100%); pointer-events: auto; }
+
+@media (max-width: 768px) {
+  .layer { transition: none; }
+  .layer:not([data-pinned='true']):not(:focus-within) {
+    transform: translateY(calc(var(--loom-mobile-chrome-progress, 0) * (100% + 72px + env(safe-area-inset-bottom, 0px))));
+  }
+  :global([data-mobile-chrome-hidden='true']) .layer:not([data-pinned='true']):not(:focus-within) {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+:global(html[data-loom-motion='reduce']) .layer { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   :global(html:not([data-loom-motion='full'])) .layer { transition: none; }
 }
-
-.taskCard { position: absolute; bottom: calc(100% - 14px); left: 12px; right: 12px; z-index: 0; }
-.foreground { position: relative; z-index: 1; }
-
-.floatingRecovery { position: absolute; bottom: calc(100% + 22px); left: 0; right: 0; }

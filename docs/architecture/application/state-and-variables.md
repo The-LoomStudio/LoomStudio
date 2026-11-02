@@ -6,11 +6,13 @@ Loom Studio 当前的 State 只区分两个持久化 Scope：Workspace Global St
 
 State 提供结构化运行数据、Schema 校验与可追溯修改，不是全部可变文本的统一容器。Application 层已经定义 Entity Type、显式 Entity、Component Definition、精确 / Entity Type 批量 Mount 与软引用；它们在创建 Timeline 时编译为普通 JSON Snapshot，不形成第二个 Entity Store，也不包含自动游戏规则调度。文本资源、宏和 Extension 私有记录的区别见 [数据能力与生命周期边界](data-capabilities-and-lifecycle.md)。
 
-变量不是第二套存储。Prompt Build 在一次构建开始时冻结 Global、可选 Timeline 与 computed 值，形成 `VariableSnapshot`。`{{User}}` / `{{user}}` 与 `{{user.description}}` 分别读取本轮 computed 中的全局用户配置名称和描述（见[用户资料](./user-profiles.md)）；`{{global.*}}` 与 `{{timeline.*}}` 只展开标量，不递归执行，也不承担赋值或结构化 Prompt 注入。
+变量不是第二套存储。Prompt Build 在一次构建开始时冻结 Global、可选 Timeline 与 computed 值，形成 `VariableSnapshot`。`{{User}}` / `{{user}}` 与 `{{user.description}}` 读取本轮 computed 中的用户名称和描述：新故事来自当前 Branch 的内置玩家资料组件；无故事调用及未迁移旧故事来自全局用户模板（见[用户资料](./user-profiles.md)）。`{{global.*}}` 与 `{{timeline.*}}` 只展开标量，不递归执行，也不承担赋值或结构化 Prompt 注入。
 
 Card / Preset 静态宏配置与 Extension 提供者进入同一来源候选组装；State 原值仍由 State Mutation 修改，宏检查不创建或写回 State。作者配置、当前宏预览和实际构建快照分别呈现，合同见 [注入与内联展开](prompt-build/injection-and-inline-expansion.md)。
 
 ## 权威与事务
+
+新 Timeline 固定包含 `loom-player:User` 及其 `loom_profile` 组件。应用内置声明与 Card / 扩展声明共同物化；作者可引用该实体挂载自己的组件，不重复声明应用实体，不覆盖资料组件。启动资料先进入 State，再用于开场与扩展初始化。精确标识、保留路径和模板生命周期见[用户资料](./user-profiles.md)。
 
 - `state_scopes` 保存 Scope identity、owner 与 Global Head；
 - `state_revisions` 保存 Parent、Operations、Changeset 与幂等键；初始化和周期 checkpoint 保存完整 Snapshot，普通 Revision 保存内部 delta。读取 API 始终物化并返回完整 JSON；

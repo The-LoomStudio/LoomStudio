@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { AlertCircle, BookOpen, RefreshCw, CheckCircle2, ChevronDown, ChevronRight, FileCode, Globe, Search, Terminal } from 'lucide-react'
+import { AlertCircle, XCircle, PauseCircle, BookOpen, RefreshCw, CheckCircle2, ChevronDown, ChevronRight, FileCode, Globe, Search, Terminal } from 'lucide-react'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { StreamingViewport } from '../../../shared/ui/streaming-viewport/streaming-viewport.js'
 import type { StepToolItem } from '../model/transcript-render-items.js'
@@ -107,8 +107,13 @@ export function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolea
         onClick={() => { if (!open) props.onInspect?.(); if (props.expansion) props.expansion.toggle(props.id, props.defaultOpen); else setLocalOpen(prev => !prev) }}
         aria-expanded={open}
       >
-        <span className={styles.toolItemIcon}>{props.status === 'running' || props.status === 'preparing' ? <RefreshCw className={styles.toolSpinner} aria-hidden="true" /> : renderIcon()}</span>
+        <span className={styles.toolItemIcon}>{renderIcon()}</span>
         <span className={styles.toolItemLabel}>{props.label}</span>
+        {props.status && <span className={styles.toolStatus} data-status={props.status} role="img"
+          aria-label={{ success: '执行成功', error: '执行失败', interrupted: '执行中断', preparing: '准备参数中', running: '执行中' }[props.status]}
+          title={{ success: '执行成功', error: '执行失败', interrupted: '执行中断', preparing: '准备参数中', running: '执行中' }[props.status]}>
+          {props.status === 'success' ? <CheckCircle2 aria-hidden="true" /> : props.status === 'error' ? <XCircle aria-hidden="true" /> : props.status === 'interrupted' ? <PauseCircle aria-hidden="true" /> : <RefreshCw className={styles.toolSpinner} aria-hidden="true" />}
+        </span>}
         {open ? (
           <ChevronDown className={styles.toolItemChevron} aria-hidden="true" />
         ) : (

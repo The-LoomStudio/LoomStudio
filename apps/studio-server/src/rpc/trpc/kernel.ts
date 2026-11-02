@@ -5,8 +5,7 @@ import { serviceProcedure as procedure, t, type StudioTrpcContext } from './cont
 
 // Types come from the actual internal handlers. Keep Kernel dispatch for its
 // tracing and extension installation checks; callers cannot choose the output.
-function callBuiltin<M extends keyof BuiltinHandlers>(ctx: StudioTrpcContext, method: M, input?: JsonValue): Promise<Awaited<ReturnType<BuiltinHandlers[M]>>> {
-  if (!ctx.services) throw new Error('Kernel services unavailable')
+function callBuiltin<M extends keyof BuiltinHandlers>(ctx: StudioTrpcContext & { services: NonNullable<StudioTrpcContext['services']> }, method: M, input?: JsonValue): Promise<Awaited<ReturnType<BuiltinHandlers[M]>>> {
   return ctx.services.kernel.callRpc<Awaited<ReturnType<BuiltinHandlers[M]>>>(method, input, {
     clientId: ctx.request.clientId!, correlationId: ctx.request.correlationId!, callId: ctx.request.callId!, parentCallId: ctx.request.parentCallId,
   })
@@ -53,6 +52,9 @@ export const extensionsRouter = t.router({
   importPackageResources: procedure.input(globalPackage).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.importPackageResources', input)),
   removePackageResources: procedure.input(globalPackage).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.removePackageResources', input)),
   updatePackageResources: procedure.input(globalPackage.extend({ packageVersion: z.string(), expectedInstallationVersion: version })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.updatePackageResources', input)),
+  listCharacters: procedure.input(pkg).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.listCharacters', input)),
+  previewCharacter: procedure.input(pkg.extend({ characterId: z.string().min(1) })).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.previewCharacter', input)),
+  importCharacter: procedure.input(pkg.extend({ characterId: z.string().min(1), digest: z.string().min(1), allowDuplicate: z.boolean().optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.importCharacter', input)),
   exportPackage: procedure.input(pkg.extend({ version: z.string() })).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.exportPackage', input)),
   callPackageRpc: procedure.input(pkg.extend({ method: z.string(), target, params: z.json().optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.callPackageRpc', input)),
   importCardPackageResources: procedure.input(installCard).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.importCardPackageResources', input)),

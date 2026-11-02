@@ -1,3 +1,5 @@
+import { InfoDialog } from '../../shared/ui/info-dialog/info-dialog.js'
+import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Button, Dialog, SearchField, Tabs } from '@loom-studio/ui'
 import { ArrowLeft, ArrowUpRight, ChartNoAxesCombined, ChevronRight, Database, HardDrive, Layers3, MessageSquare, Sparkles } from 'lucide-react'
@@ -29,7 +31,7 @@ const resourceGroups = [
 ]
 
 export function DashboardDialog(props: Props & { open: boolean; onClose(): void; headerActions?: ReactNode; detailContent?: ReactNode }) {
-  const [view, setView] = useState<DashboardView>('overview')
+  const [view, setView] = useWorkbenchView<DashboardView>('dashboard.tab', 'overview', views.map(view => view.id))
   const snapshot = view === 'resources' || view === 'storage'
   const rangeHelp = props.data.collectionStartedAt ? `用量与发送记录始于 ${new Date(props.data.collectionStartedAt).toLocaleDateString()}，此前的数据未补录。` : undefined
   const changeView = (next: DashboardView) => { setView(next); props.onViewChange?.(next) }
@@ -81,7 +83,7 @@ export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewC
   </button>)}</div> : <Empty title={search ? '没有找到匹配的角色' : '还没有游玩记录'} description={search ? '试试角色名称或故事关键词。' : '开始一段故事后，在这里回看你的足迹。'} />
 
   return <section className={styles.panel} aria-label="数据总览">
-    <div className={styles.navigation}><Tabs items={views} activeId={view} onChange={navigate} ariaLabel="Dashboard 视图" /><div className={styles.period}>
+    <div className={styles.navigation}><Tabs items={views} activeId={view} onChange={navigate} ariaLabel="Dashboard 视图" /><div className={styles.period}>{view === 'usage' && data.collectionStartedAt && <InfoDialog title="统计口径"><p>从 {new Date(data.collectionStartedAt).toLocaleDateString()} 开始记录，不补录此前用量。只统计提供商报告的 Token，包含重试和未采用的生成。</p></InfoDialog>}
       {view === 'storage' || view === 'resources' ? null : <><span className={styles.periodLabel}>统计范围</span><select aria-label="统计时间范围" value={period} onChange={event => onPeriodChange(event.target.value as DashboardPeriod)}><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select></>}
     </div></div>
     <div className={styles.scroll}>
@@ -150,7 +152,7 @@ export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewC
         </>}
       </>}
       {!!data.notices?.length && <aside className={styles.notices} aria-label="统计状态" role="status">{data.notices.map(notice => <p key={notice}>{notice}</p>)}</aside>}
-      {view === 'usage' && data.collectionStartedAt && <details className={styles.measurementHelp}><summary>统计口径</summary><p>从 {new Date(data.collectionStartedAt).toLocaleDateString()} 开始记录，不补录此前用量。只统计提供商报告的 Token，包含重试和未采用的生成。</p></details>}
+
     </div>
   </section>
 }

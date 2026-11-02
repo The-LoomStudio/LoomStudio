@@ -1,4 +1,6 @@
 export const messages = {
+  'observation.runInfo': '运行信息',
+  'observation.relatedResources': '关联资源',
   "observation.readComplete": "读取完整",
   "observation.readPartial": "部分读取",
   "observation.currentStep": "当前步骤",

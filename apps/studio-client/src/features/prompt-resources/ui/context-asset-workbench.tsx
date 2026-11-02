@@ -1,10 +1,10 @@
 import { isPromptMessageSequence } from '@loom-studio/shared'
-import { findContextAssetPath, flattenContextAssetNodes } from '../model/context-asset-tree.js'
+import { findContextAssetPath, flattenContextAssetNodes, readContextAssetDisabledAncestors } from '../model/context-asset-tree.js'
 import { canMoveContextAssetNode } from '../model/tree-ops.js'
 import { SearchHighlight } from '../../../shared/ui/search-highlight.js'
 import type { SearchReveal } from '../../../shared/lib/search-match.js'
-import { useEffect, useRef, useState } from 'react'
-import { ToggleLeft, ToggleRight } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Ban, ToggleLeft, ToggleRight } from 'lucide-react'
 import type { ContextAssetNode, PromptResource } from '../../../entities/index.js'
 import { useRestorableScroll } from '../../../shared/hooks/use-restorable-scroll.js'
 import { formatNumber, type Translator } from '../../../shared/i18n/index.js'
@@ -15,6 +15,7 @@ import { ContextAssetDetailHeader } from './context-asset-detail-header/context-
 import { ContextAssetSearch } from './context-asset-search/context-asset-search.js'
 import {
   canToggleContextAssetEnabled,
+  readContextAssetToggleLabel,
   isReadOnlyContextAssetTreeNode,
   readContextAssetTreeActions,
   renderContextAssetLifecycleIndicator,
@@ -46,6 +47,8 @@ export function ContextAssetExplorer(props: {
   expandedIds?: string[]
   query: string
   selectedId?: string
+  revealId?: string
+  renderLabelSuffix?(node: ContextAssetNode): ReactNode
   t: Translator
   variant?: 'tree' | 'flat'
   virtualized?: boolean
@@ -67,6 +70,7 @@ export function ContextAssetExplorer(props: {
   onBatchToggleEnabled?(ids: string[], enabled: boolean): Promise<{ failedIds: string[]; error?: string }>
   onChangeRole?(id: string, role: 'system' | 'user' | 'assistant'): void
 }) {
+  const disabledAncestors = readContextAssetDisabledAncestors(props.displayNodes)
   const [editingId, setEditingId] = useState<string>()
   const [error, setError] = useState<string>()
   const mountedRef = useRef(true)
@@ -120,7 +124,7 @@ export function ContextAssetExplorer(props: {
     >
       <div ref={scroll.attach} className={styles.explorerContent} onScroll={scroll.onScroll}>
         {error ? <p role="alert">{error}</p> : null}
-        <FileTree
+        <FileTree canOpenFolderDetails={() => true}
           key={props.workspaceId}
           active={props.active}
           canBatchSelect={item => !isReadOnlyContextAssetTreeNode(item as ContextAssetNode) && !['folder', 'module', 'slot'].includes(item.kind ?? '')}
@@ -177,7 +181,7 @@ export function ContextAssetExplorer(props: {
             })
           }}
           hasActions={item => !isReadOnlyContextAssetTreeNode(item as ContextAssetNode)}
-          isMuted={item => (item as ContextAssetNode).kind === 'entry' && (item as ContextAssetNode).enabled === false}
+          isMuted={item => (item as ContextAssetNode).enabled === false || disabledAncestors.has(item.id)}
           formatLabel={node => readTreeLabel(node as ContextAssetNode)}
           formatMeta={node => {
             const meta = props.formatMeta?.(node as ContextAssetNode)
@@ -198,23 +202,33 @@ export function ContextAssetExplorer(props: {
           renderLabelSuffix={item => {
             const node = item as ContextAssetNode
             const anchorId = readAnchorId(node)
+            const suffix = props.renderLabelSuffix?.(node)
+            if (suffix) return suffix
             if (!anchorId || anchorId === node.label) return null
             return <span className={styles.treeAnchorBadge} title={node.label}><SearchHighlight text={node.label} query={props.highlightQuery ?? ''} /></span>
           }}
           renderMetaLeading={item => renderContextAssetLifecycleIndicator(item as ContextAssetNode, props.t)}
           renderTrailing={item => {
             const node = item as ContextAssetNode
-            if (!canToggleContextAssetEnabled(node)) return null
+            const ancestor = disabledAncestors.get(node.id)
+            const inheritedReason = ancestor ? props.t('context.disabledByAncestor', { label: ancestor.label }) : undefined
+            const toggleable = canToggleContextAssetEnabled(node)
+            if (!toggleable && !inheritedReason) return null
             const enabled = node.enabled !== false
-            const label = props.t(enabled ? 'context.actionDisable' : 'context.actionEnable')
-            return <button type="button" className={styles.treeToggle} aria-label={`${label} ${node.label}`}
-              aria-pressed={enabled} title={label} onClick={event => {
+            const label = readContextAssetToggleLabel(node, props.t)
+            const hint = [label, node.kind === 'folder' ? props.t('context.groupEnableHint') : undefined, inheritedReason].filter(Boolean).join(' · ')
+            return <>
+              {inheritedReason && <span className={styles.treeInheritedState} title={inheritedReason} role="img" aria-label={inheritedReason}><Ban size={14} aria-hidden="true" /></span>}
+              {toggleable && <button type="button" className={styles.treeToggle} aria-label={`${label} ${node.label}`}
+              aria-pressed={enabled} title={hint} onClick={event => {
                 event.stopPropagation()
                 props.onToggleEnabled(node.id, !enabled)
               }}>
               {enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
-            </button>
+            </button>}
+            </>
           }}
+          revealId={props.revealId}
           selectedId={props.selectedId}
           variant={props.variant}
           virtualized={props.virtualized}
@@ -283,6 +297,7 @@ export function ContextAssetEditor(props: {
       {!node ? <div className={styles.emptyState}>{props.t('context.emptyBody')}</div> : (
         <ContextAssetDetail
           headerExtra={tokenSummary}
+          inheritedDisabled={pathNodes.some(parent => parent.id !== node.id && parent.enabled === false)}
           activationEditable={props.activationEditable}
           allowTargetAnchor={props.allowTargetAnchor}
           compactVirtualNotes={props.compactVirtualNotes}

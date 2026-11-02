@@ -26,10 +26,11 @@ type AgentRun = {
   sourceRunId?: string
   continuationRunId?: string
   abandoned?: boolean
+  receivedInterjections?: boolean
   checkpoint?: NonNullable<RuntimeRequestContext['agentRun']>['continuation']
   mutationApprovals: Map<string, {
     kind: 'mutation' | 'history-read'
-    event: AgentRunEvent
+    event: Extract<AgentRunEvent, { type: 'mutation-approval-requested' | 'history-read-approval-requested' }>
     resolve: (decision: VfsMutationDecision) => void
     reject: (error: Error) => void
   }>
@@ -45,9 +46,10 @@ type AgentRunSubscription = {
   partialText?: string
   partialReasoning?: string
   partialToolInputs?: Extract<AgentRunEvent, { type: 'tool-input-delta' }>[]
-  pendingApprovals?: AgentRunEvent[]
+  pendingApprovals?: Extract<AgentRunEvent, { type: 'mutation-approval-requested' | 'history-read-approval-requested' }>[]
 }
 
+const receiptLocks = new WeakMap<ApplicationRuntime, Map<string, Promise<unknown>>>()
 const runStores = new WeakMap<ApplicationRuntime, Map<string, AgentRun>>()
 const maxRetainedRuns = 128
 // ponytail: Serialized budgets bound replay payload, not total JS heap; tune with production workloads.
@@ -110,6 +112,7 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
       }) }
     },
     async create(request: InvokeAgentTurnInput, context?: RuntimeRequestContext) {
+      return withReceiptLock(runtime, request.agentSessionId, async () => {
       const runs = getRunStore(runtime)
       let runId: string | undefined
       if (request.requestId !== undefined) {
@@ -142,6 +145,48 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
       pruneCompletedRuns(runs)
       void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
       return { runId: run.id }
+      })
+    },
+    async reviseInput(input: Parameters<ApplicationRuntime['reviseAgentInput']>[0], context?: RuntimeRequestContext) {
+      return withReceiptLock(runtime, input.agentSessionId, async () => {
+        const runs = getRunStore(runtime)
+        const active = [...runs.values()].find(run => run.sessionId === input.agentSessionId && run.state === 'running')
+        const entries = await readSessionEntries(runtime, input.agentSessionId)
+        const target = entries.find(item => item.id === input.entryId)
+        if (active && (target?.entry.kind !== 'user-interjection' || target.entry.requestId === active.request?.interjectionRequestId)) throw new Error('这条输入正在执行，请等待结束或暂停后再提交')
+        const result = await runtime.reviseAgentInput(input, context)
+        if (target?.entry.kind === 'message') for (const run of runs.values()) {
+          if (run.sessionId === input.agentSessionId && run.state === 'suspended') {
+            run.checkpoint = undefined; run.request = undefined; run.abandoned = true; run.state = 'cancelled'; clearRunReplay(run)
+          }
+        }
+        if (active) appendRunEvent(active, { type: 'transcript-appended', runId: active.id, entries: [result.entry] })
+        if (!result.rerun) return result
+        const run = startAgentRun(runtime, context, interjectionRequest(input.agentSessionId, result.entry))
+        runs.set(run.id, run)
+        void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
+        return { ...result, runId: run.id }
+      })
+    },
+    async interject(input: Parameters<ApplicationRuntime['submitAgentInterjection']>[0], context?: RuntimeRequestContext) {
+      return withReceiptLock(runtime, input.agentSessionId, async () => {
+        const receipt = await runtime.submitAgentInterjection(input, context)
+        const runs = getRunStore(runtime)
+        const active = [...runs.values()].find(run => run.sessionId === input.agentSessionId && run.state === 'running')
+        if (active) {
+          active.receivedInterjections = true
+          appendRunEvent(active, { type: 'transcript-appended', runId: active.id, entries: [receipt.entry] })
+          return { ...receipt, runId: active.id }
+        }
+        if (!receipt.pending) return receipt
+        const entries = await readSessionEntries(runtime, input.agentSessionId)
+        const lastState = entries.findLast(item => item.entry.kind === 'run-state')?.entry
+        if (lastState?.kind === 'run-state' && ['suspended', 'failed', 'aborted'].includes(lastState.state)) return receipt
+        const run = startAgentRun(runtime, context, interjectionRequest(input.agentSessionId, receipt.entry))
+        runs.set(run.id, run)
+        void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
+        return { ...receipt, runId: run.id }
+      })
     },
     async subscribe(runId: string, cursor = 0, sessionId?: string): Promise<AgentRunSubscription> {
       const runs = getRunStore(runtime)
@@ -215,14 +260,16 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
     },
     async abandon(runId: string, context?: RuntimeRequestContext, agentSessionId?: string) {
       const run = getRunStore(runtime).get(runId)
+      return withReceiptLock(runtime, run?.sessionId ?? agentSessionId ?? '', async () => {
       if (!run) {
         if (!agentSessionId) throw new Error(`Agent run not found: ${runId}`)
         const state = await runtime.inspectAgentRunState({ agentSessionId, runId })
         if (state.state !== 'suspended') return { runId, accepted: false, state: state.state }
+        const pending = readPendingInterjections(await readSessionEntries(runtime, agentSessionId))
         await runtime.appendAgentTranscriptEntries({
           agentSessionId,
           expectedEntryCount: state.entryCount,
-          entries: [{ runId, entry: { kind: 'run-state', state: 'discarded' } }],
+          entries: [{ runId, entry: { kind: 'run-state', state: 'discarded' } }, ...pending.map(item => ({ entry: { kind: 'interjection-discarded' as const, requestId: item.entry.kind === 'user-interjection' ? item.entry.requestId : '' } }))],
         }, context)
         return { runId, accepted: true, state: 'suspended' as const }
       }
@@ -230,19 +277,22 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
       if (run.state !== 'suspended' || run.abandoned || run.continuationRunId) {
         return { runId: run.id, accepted: false, state: run.state }
       }
+      const pending = readPendingInterjections(await readSessionEntries(runtime, run.sessionId))
       const transcript = await runtime.getAgentTranscriptPage({ agentSessionId: run.sessionId, limit: 100 })
       await runtime.appendAgentTranscriptEntries({
         agentSessionId: run.sessionId,
         expectedEntryCount: transcript.session.entryCount,
-        entries: [{ runId: run.id, entry: { kind: 'run-state', state: 'discarded' } }],
+        entries: [{ runId: run.id, entry: { kind: 'run-state', state: 'discarded' } }, ...pending.map(item => ({ entry: { kind: 'interjection-discarded' as const, requestId: item.entry.kind === 'user-interjection' ? item.entry.requestId : '' } }))],
       }, context)
       run.checkpoint = undefined
       run.abandoned = true
       run.request = undefined
       clearRunReplay(run)
       return { runId: run.id, accepted: true, state: run.state }
+      })
     },
     async resume(input: { runId?: string; agentSessionId?: string }, context?: RuntimeRequestContext): Promise<{ runId: string; accepted: boolean; state?: AgentRun['state']; sourceRunId?: string }> {
+      return withReceiptLock(runtime, input.agentSessionId ?? (input.runId ? getRunStore(runtime).get(input.runId)?.sessionId : undefined) ?? '', async () => {
       const runs = getRunStore(runtime)
       let source: AgentRun | undefined
       if (input.runId !== undefined) {
@@ -283,7 +333,17 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         }
       }
 
+      if (sessionId) {
+        const pending = readPendingInterjections(await readSessionEntries(runtime, sessionId))
+        if (pending.length) {
+          const run = startAgentRun(runtime, context, interjectionRequest(sessionId, pending[0]!))
+          runs.set(run.id, run)
+          void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
+          return { runId: run.id, accepted: true, state: run.state }
+        }
+      }
       return { runId: input.runId ?? '', accepted: false }
+      })
     },
     state(runId: string, agentSessionId?: string) {
       const run = getRunStore(runtime).get(runId)
@@ -309,6 +369,7 @@ function startAgentRun(
   const timestamp = new Date().toISOString()
   const run: AgentRun = {
     id, createdAt: timestamp, updatedAt: timestamp, controller, request, sourceRunId, sessionId: request.agentSessionId,
+    receivedInterjections: Boolean(request.interjectionRequestId),
     ...(continuation ? { checkpoint: continuation } : {}),
     events: [], eventSizes: [], eventBytes: 0, firstCursor: 0, nextCursor: 0, partialText: '', partialReasoning: '',
     partialToolInputs: [], state: 'running', promise: Promise.resolve(), mutationApprovals: new Map(),
@@ -347,15 +408,19 @@ function startAgentRun(
     pruneCompletedRuns(getRunStore(runtime))
   }
   emit({ type: 'started', runId: id })
-  run.promise = runtime.invokeAgentTurn(request, {
+  const invoke = (nextRequest: InvokeAgentTurnInput) => runtime.invokeAgentTurn(nextRequest, {
     ...context,
     abortSignal: controller.signal,
     agentRun: {
       runId: id,
       ...(run.sendRequestDigest ? { sendRequestDigest: run.sendRequestDigest } : {}),
       onEvent: emit,
-      ...(continuation ? { continuation } : {}),
-      onSuspended: checkpoint => { transferCheckpoint(); run.checkpoint = checkpoint },
+      ...(continuation && nextRequest === request ? { continuation } : {}),
+      onSuspended: checkpoint => {
+        transferCheckpoint()
+        run.checkpoint = checkpoint
+        run.request = checkpoint.recovery?.request ?? run.request
+      },
       onHistoryReadApproval: (action, signal) => new Promise((resolve, reject) => {
         const approvalSignal = signal ?? controller.signal
         approvalSignal.throwIfAborted()
@@ -402,15 +467,27 @@ function startAgentRun(
         emit(event)
       }),
     },
-  }).then(result => {
-    if (controller.signal.aborted) throw new Error(String(controller.signal.reason ?? 'Agent run cancelled'))
-    run.state = 'completed'
-    transferCheckpoint()
-    // ponytail: Required delivery state may exceed replay budgets until acknowledged
-    // or the two-minute expiry. Never discard an undelivered Inspector result.
-    run.pendingCompletion = { type: 'completed', runId: id, result }
-    emit(run.pendingCompletion)
-  }).catch(error => {
+  })
+  run.promise = (async () => {
+    let result = await invoke(request)
+    for (;;) {
+      const next = await withReceiptLock(runtime, run.sessionId, async () => {
+        controller.signal.throwIfAborted()
+        const entries = run.receivedInterjections ? await readSessionEntries(runtime, run.sessionId) : []
+        const pending = readPendingInterjections(entries)
+        if (pending.length) return interjectionRequest(run.sessionId, pending[0]!)
+        // Receipt and terminal publication share this boundary. Later receipts see idle.
+        run.state = 'completed'
+        transferCheckpoint()
+        run.pendingCompletion = { type: 'completed', runId: id, result }
+        emit(run.pendingCompletion)
+        return undefined
+      })
+      if (!next) return
+      run.request = next
+      result = await invoke(next)
+    }
+  })().catch(error => {
     for (const pending of run.mutationApprovals.values()) pending.reject(new Error('Agent run ended before mutation approval.'))
     run.mutationApprovals.clear()
     const suspended = controller.signal.reason === 'user-pause' || Boolean(run.checkpoint && run.checkpoint !== continuation)
@@ -503,4 +580,36 @@ function sendRequestDigest(request: unknown): string {
     return value
   })
   return createHash('sha256').update(canonical).digest('hex')
+}
+
+async function withReceiptLock<T>(runtime: ApplicationRuntime, sessionId: string, work: () => Promise<T>): Promise<T> {
+  let sessions = receiptLocks.get(runtime)
+  if (!sessions) { sessions = new Map(); receiptLocks.set(runtime, sessions) }
+  const previous = sessions.get(sessionId) ?? Promise.resolve()
+  const pending = previous.catch(() => undefined).then(work)
+  sessions.set(sessionId, pending)
+  try { return await pending }
+  finally { if (sessions.get(sessionId) === pending) sessions.delete(sessionId) }
+}
+
+type TranscriptEntry = Awaited<ReturnType<ApplicationRuntime['getAgentTranscriptPage']>>['entries'][number]
+async function readSessionEntries(runtime: ApplicationRuntime, agentSessionId: string): Promise<TranscriptEntry[]> {
+  const entries: TranscriptEntry[] = []
+  let cursor: string | undefined
+  do {
+    const page = await runtime.getAgentTranscriptPage({ agentSessionId, cursor, limit: 100 })
+    entries.push(...page.entries)
+    cursor = page.nextCursor
+  } while (cursor)
+  return entries.sort((left, right) => left.sequence - right.sequence)
+}
+function readPendingInterjections(entries: TranscriptEntry[]) {
+  const settled = new Set(entries.flatMap(item => item.entry.kind === 'interjection-applied' || item.entry.kind === 'interjection-discarded' ? [item.entry.requestId] : []))
+  return entries.filter(item => item.entry.kind === 'user-interjection' && !item.entry.withdrawn && !settled.has(item.entry.requestId))
+}
+function interjectionRequest(agentSessionId: string, entry: TranscriptEntry): InvokeAgentTurnInput {
+  if (entry.entry.kind !== 'user-interjection') throw new Error('Expected persisted user interjection')
+  return { agentSessionId, input: entry.entry.content, attachments: entry.entry.attachments,
+    interjectionRequestId: entry.entry.requestId, narrativeTarget: entry.entry.narrativeTarget,
+    macroSelections: entry.entry.macroSelections, activationFacts: entry.entry.activationFacts }
 }

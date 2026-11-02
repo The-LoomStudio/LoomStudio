@@ -379,6 +379,7 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
           narrativeWriteContext(requestContext, 'application.tool.editNarrative'),
           async dataTx => {
             const edited = narratives.transaction(dataTx).editBranchNode({
+              ...(sessionId === narrative.page.timeline.id ? { executionRunId: runId } : {}),
               timelineId: narrative.page.timeline.id,
               branchId: narrative.page.branch.id,
               nodeId,

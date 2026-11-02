@@ -1,3 +1,4 @@
+import studioLogoUrl from '../../../shared/assets/logo.png'
 import { onboardingCopy } from '../model/onboarding-copy.js'
 import type { Locale } from '../../../shared/i18n/index.js'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
@@ -68,7 +69,7 @@ export function OnboardingView(props: {
   return <main className={styles.page}>
     <div className={styles.layout}>
       <aside className={styles.intro}>
-        <img ref={logo} src="/images/logo.png" alt="Loom Studio" />
+        <img ref={logo} src={studioLogoUrl} alt="Loom Studio" />
         <div className={styles.introText} data-visible={revealed} inert={!revealed}>
         <p>{copy.tagline}</p>
 

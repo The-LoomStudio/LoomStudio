@@ -230,6 +230,38 @@ export async function readAgentRunState(agents: AgentStore, input: { agentSessio
   return { runId: input.runId, state: 'suspended', entryCount, ...(latest.entry.reason ? { reason: latest.entry.reason } : {}) }
 }
 
+/** Reconcile durable execution markers only after their executor is known to have stopped.
+ * This does not resume work or replay tools. The caller must compare entryCount when writing.
+ */
+export async function readInterruptedAgentRuns(agents: AgentStore, agentSessionId: string, currentRunId: string) {
+  // Execution ownership is Session-wide, including histories outside the adopted branch.
+  const session = await agents.getSession(agentSessionId)
+  if (!session) throw new Error('Agent Session not found')
+  const entries = await agents.listEntries(agentSessionId)
+  const entryCount = session.entryCount
+  if ((await agents.getSession(agentSessionId))?.entryCount !== entryCount)
+    throw recoveryError('conflict', 'Agent transcript changed while checking execution ownership')
+  const latest = new Map<string, AgentTranscriptEntry>()
+  const checkpoints = new Map<string, AgentTranscriptEntry>()
+  for (const item of entries) {
+    if (!item.runId || item.runId === currentRunId || item.entry.kind !== 'run-state') continue
+    latest.set(item.runId, item)
+    if (item.entry.recovery) checkpoints.set(item.runId, item)
+  }
+  const interrupted: string[] = []
+  for (const [runId, item] of latest) {
+    if (item.entry.kind !== 'run-state' || !['created', 'running'].includes(item.entry.state)) continue
+    if (activeExecutors.has(runId)) throw Object.assign(new Error('Agent Session already has an executing Run'), { code: 'agent.session_busy', runId })
+    const checkpoint = checkpoints.get(runId)?.entry
+    const executor = checkpoint?.kind === 'run-state' ? checkpoint.recovery?.executor : undefined
+    if (isRecord(executor) && Number.isSafeInteger(executor.pid) && typeof executor.id === 'string') {
+      assertExecutorStopped({ pid: Number(executor.pid), id: executor.id })
+    }
+    interrupted.push(runId)
+  }
+  return { interrupted, entryCount }
+}
+
 export async function readAgentRunRecovery(
   agents: AgentStore,
   input: { agentSessionId: string; runId?: string },

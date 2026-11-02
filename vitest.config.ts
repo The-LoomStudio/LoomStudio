@@ -52,6 +52,7 @@ const resolvePath = (relative: string) => fileURLToPath(new URL(relative, import
 export default defineConfig({
   resolve: {
     alias: {
+      '@loom-studio/shared/id': resolvePath('./packages/shared/src/id.ts'),
       '@loom-studio/tokenizer/contracts': resolvePath('./packages/tokenizer/src/contracts.ts'),
       '@loom-studio/tokenizer/async': resolvePath('./packages/tokenizer/src/async-counter.ts'),
       '@loom-studio/tokenizer': resolvePath('./packages/tokenizer/src/index.ts'),
@@ -79,6 +80,7 @@ export default defineConfig({
     },
   },
   test: {
+    setupFiles: [resolvePath('./tests/support/client/load-locales.ts')],
     include: scopedTestInclude,
     exclude: testScope ? ['**/node_modules/**', '**/dist/**'] : defaultTestExclude,
     passWithNoTests: false,

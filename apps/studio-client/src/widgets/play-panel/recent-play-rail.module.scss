@@ -1,3 +1,5 @@
+@use '../../shared/styles/edge-fade';
+
 .root {
   position: relative;
   display: grid;
@@ -6,22 +8,16 @@
   max-height: min(220px, 26vh);
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--loom-color-border) 60%, transparent) transparent;
+  @include edge-fade.vertical;
+  scrollbar-width: none;
+  &[data-fade-top='true'] { --loom-fade-top: 24px; }
+  &[data-fade-bottom='true'] { --loom-fade-bottom-start: calc(100% - 28px); }
   margin: 4px 0 0;
   padding: 0 4px;
   box-sizing: border-box;
 
-  &::-webkit-scrollbar {
-    width: 4px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--loom-color-border) 60%, transparent);
-    border-radius: 9999px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  &::-webkit-scrollbar { display: none; }
+
 }
 
 .hoverIndicator {

@@ -1,3 +1,6 @@
+import { resolvePackageIcon, assertPackageDependencyRevisions, resolveDeclaredPackageDependencies } from '../extensions/package-dependency.js'
+import { resolveAgentToolReference, assertToolReferenceRevisions, assertToolDependencyConsumers, withToolDependencySnapshot, type ResolvedAgentToolReference } from '../extensions/tool-reference.js'
+import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
 import type { DocumentRecord, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
 import { isDeepStrictEqual } from 'node:util'
 import { parseExtensionInstallationSource } from '../extensions/installation-source.js'
@@ -64,7 +67,6 @@ import type {
   RuntimeRequestContext,
   TextExtractorContent,
   TextExtractorDraft,
-  TextTransformRuleContent,
   TextTransformRuleDraft,
   UpdatePortableExtensionPayloadInput,
   UpdatePortableExtensionPayloadResult,
@@ -80,11 +82,17 @@ import {
 } from './agents-runtime.js'
 
 type ExtensionsRuntimeContext = Pick<ApplicationRuntimeContext,
-  'agentTools' | 'agents' | 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources'
+  'agentTools' | 'agents' | 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources' | 'validatePackageAsset'
 >
 
 export function createExtensionsRuntimeMethods(ctx: ExtensionsRuntimeContext) {
   return {
+    checkExtensionDependencyConsumers: async (input: { packageId: string; target?: import('@loom-studio/extension-sdk').ExtensionInstallationTarget; nextVersion?: string }): Promise<void> => {
+      await withToolDependencySnapshot(ctx, async (mounts, assertFresh, resources) => {
+        await assertToolDependencyConsumers({ ...input, target: input.target ?? { kind: 'global' }, documents: ctx.documents, mounts, resources: input.nextVersion ? undefined : resources })
+        assertFresh()
+      })
+    },
     listExtensionInstallations: async (): Promise<ListExtensionInstallationsResult> => ({
       installations: (await listDocuments<ExtensionInstallationContent>(
         ctx.documents,
@@ -637,6 +645,7 @@ async function importExtensionPackageResourcesInternal(
   assertNonEmpty(input.packageId, 'packageId')
   assertNonEmpty(input.packageVersion, 'packageVersion')
   const target = input.target ?? { kind: 'global' }
+  const dependencyChecks = await resolveDeclaredPackageDependencies({ packageId: input.packageId, target, dependencies: input.dependencies, documents: ctx.documents })
   let archiveBlobId: string | undefined
   if (target.kind === 'card') {
     const card = await readDocument<CardSourceContent>(ctx.documents, target.cardId, applicationDocumentTypes.cardSource)
@@ -680,6 +689,7 @@ async function importExtensionPackageResourcesInternal(
     if (!input.update && (installation.content as ExtensionInstallationContent).participation !== input.participation) {
       throw new Error('Extension participation declaration changed; use an explicit package update')
     }
+    if (!input.update && !isDeepStrictEqual((installation.content as ExtensionInstallationContent).dependencies ?? [], input.dependencies ?? [])) throw new Error('Extension dependencies changed; use an explicit package update')
     if (!input.update && !isDeepStrictEqual((installation.content as ExtensionInstallationContent).source, source)) {
       throw new Error('Extension installation source changed; use an explicit package update')
     }
@@ -698,7 +708,7 @@ async function importExtensionPackageResourcesInternal(
   if (promptContributions.size !== input.promptResources.length) throw new Error('Extension Prompt Resource contribution ids must be unique')
   const scripts = input.loomScripts ?? []
   const scriptMetadata = new Map(scripts.map(item => {
-    if (!extensionStorageTokenPattern.test(item.contribution.id) || !item.contribution.source.endsWith('.loom.js')) throw new Error('Invalid Loom Script contribution')
+    if (!extensionStorageTokenPattern.test(item.contribution.id) || !(/\.(?:loom\.js|md)$/.test(item.contribution.source))) throw new Error('Invalid Loom Script contribution')
     return [item.contribution.id, parseLoomScriptSource(item.source)] as const
   }))
   if (scriptMetadata.size !== scripts.length) throw new Error('Duplicate Loom Script contribution')
@@ -712,6 +722,8 @@ async function importExtensionPackageResourcesInternal(
     .filter(mount => owns(mount.content.origin))
   const storedScriptMountById = new Map(storedScriptMounts.map(mount => [mount.id, mount]))
   const desiredScriptMountIds = new Set<string>()
+  const packageScriptMountId = (id: string) => localId(`${input.packageId}/script-adoption/${id}`)
+  for (const item of scripts) if (item.contribution.orderIndex !== undefined) desiredScriptMountIds.add(packageScriptMountId(item.contribution.id))
   const agentToolDefinitions = new Map<string, ToolDefinition>()
   for (const item of input.agentTools) {
     if (agentToolDefinitions.has(item.contribution.id)) throw new Error(`Extension Agent Tool contribution is duplicated: ${item.contribution.id}`)
@@ -728,6 +740,8 @@ async function importExtensionPackageResourcesInternal(
     textExtractorDrafts.set(item.contribution.id, readExtensionTextExtractor(input.packageId, item.contribution.id, item.artifact))
   }
 
+  const iconChecks: Array<{ id: string; version: number }> = []
+  const resolvedToolMounts = new Map<string, ResolvedAgentToolReference[]>()
   const promptArtifacts = new Map<string, PromptResourceArtifact>()
   const nodeIds = new Set<string>()
   for (const item of input.promptResources) {
@@ -741,6 +755,16 @@ async function importExtensionPackageResourcesInternal(
     validateExtensionPromptNodeIds(input.packageId, item.artifact.rootNode, nodeIds)
     const artifact = structuredClone(item.artifact)
     if (target.kind === 'card') remapInstalledPromptNodeIds(artifact.rootNode, localId)
+    if (artifact.metadata?.icon) {
+      const resolved = await resolvePackageIcon({ icon: artifact.metadata.icon, consumerPackageId: input.packageId,
+        consumerTarget: target, dependencies: input.dependencies, documents: ctx.documents, importingVersion: input.packageVersion })
+      if (!resolved.sameInstallation) {
+        if (!ctx.validatePackageAsset) throw new Error('Package asset validation is unavailable')
+        await ctx.validatePackageAsset({ packageId: resolved.icon.packageId, packageVersion: resolved.packageVersion, target: resolved.icon.target, path: resolved.icon.path })
+      }
+      artifact.metadata.icon = resolved.icon
+      iconChecks.push(...resolved.checks)
+    }
     promptArtifacts.set(item.contribution.id, artifact)
     if (item.contribution.scriptMounts?.length && item.contribution.resourceKind !== 'preset') throw new Error('Loom Script mounts require an Agent preset')
     for (const mount of item.contribution.scriptMounts ?? []) {
@@ -765,12 +789,19 @@ async function importExtensionPackageResourcesInternal(
           || (source.target === 'card' && target.kind !== 'card'))) throw new Error('Invalid external Lore origin')
       } else throw new Error('Invalid extension Lore mount reference')
     }
+    const resolvedTools: ResolvedAgentToolReference[] = []
     for (const mount of item.contribution.toolMounts ?? []) {
-      const definition = agentToolDefinitions.get(mount.toolId)
-      if (!definition) throw new Error(`Extension Preset Tool mount is unresolved: ${mount.toolId}`)
-      if (mount.activation !== undefined && !isPromptActivation(mount.activation)) throw new Error(`Extension Preset Tool activation is invalid: ${mount.toolId}`)
-      if (definition.input.kind === 'structured' && mount.content !== undefined) throw new Error(`Structured Tool cannot use Content placement: ${mount.toolId}`)
+      if (item.contribution.resourceKind !== 'preset') throw new Error('Tool mounts require an Agent preset')
+      if ((mount.reference === undefined) === (mount.toolId === undefined)) throw new Error('Specify exactly one Tool mount reference')
+      const reference = mount.reference ?? { kind: 'package' as const, contributionId: mount.toolId! }
+      const resolved = await resolveAgentToolReference({ reference, packageId: input.packageId, target,
+        dependencies: input.dependencies, localDefinitions: agentToolDefinitions, documents: ctx.documents, agentTools: ctx.agentTools })
+      if (resolvedTools.some(previous => previous.toolId === resolved.toolId)) throw new Error(`Duplicate Tool mount: ${resolved.toolId}`)
+      if (mount.activation !== undefined && !isPromptActivation(mount.activation)) throw new Error(`Extension Preset Tool activation is invalid: ${resolved.toolId}`)
+      if (resolved.definition.input.kind === 'structured' && mount.content !== undefined) throw new Error(`Structured Tool cannot use Content placement: ${resolved.toolId}`)
+      resolvedTools.push(resolved)
     }
+    resolvedToolMounts.set(item.contribution.id, resolvedTools)
   }
 
   const existingPromptResources = await listMappedResources(ctx.promptResources, undefined, { includeTombstone: true })
@@ -939,10 +970,10 @@ async function importExtensionPackageResourcesInternal(
     const mountId = storedScriptMounts.find(mount => mount.content.scriptDocumentId === scriptId && mount.content.origin.legacyRuleId === ruleId)?.id ?? ctx.createId('loom-script-mount')
     const packaged = readPackagedTextRuleScript(item.artifact)
     const prepared = packaged ? { metadata: packaged.metadata,
-      prepared: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(packaged.source), mediaType: 'text/javascript' }),
+      prepared: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(packaged.source), mediaType: loomScriptMediaType(packaged.fileName) }),
     } : await prepareTextTransformScript(ctx.blobs!, rule)
     return { ruleId, scriptId, mountId, rule, expectedVersion: existing?.version,
-      ...prepared, ...(packaged ? { fileName: packaged.fileName, primaryContributionId: packaged.primaryContributionId, settings: packaged.settings } : {}) }
+      ...prepared, ...(packaged ? { fileName: packaged.fileName, primaryContributionId: packaged.primaryContributionId, settings: packaged.settings, groupOrder: packaged.groupOrder } : {}) }
   }))
   for (const mount of storedScriptMounts) {
     if (mount.content.origin.legacyRuleId && storedRules.some(rule => rule.id === mount.content.origin.legacyRuleId
@@ -950,19 +981,24 @@ async function importExtensionPackageResourcesInternal(
   }
   const preparation = await Promise.allSettled(missingScripts.map(async item => ({
     id: item.contribution.id,
-    blob: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(item.source), mediaType: 'text/javascript' }),
+    blob: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(item.source), mediaType: loomScriptMediaType(item.contribution.source) }),
   })))
   const prepared = preparation.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
   const failed = preparation.find(result => result.status === 'rejected')
   if (failed?.status === 'rejected') {
     throw failed.reason
   }
-  const transaction = await ctx.dataEngine.transact({
+  const transaction = await withToolDependencySnapshot(ctx, async (dependencyMounts, assertFresh, dependencyResources) => ctx.dataEngine.transact({
     ...promptResourceWriteContext(requestContext),
     reason: 'application.importExtensionPackageResources',
   }, async dataTx => {
+    assertFresh()
     const resourceTx = ctx.promptResources.transaction(dataTx)
     return documentParticipant.participateTransaction(dataTx, async documents => {
+      await assertToolReferenceRevisions(documents, [...resolvedToolMounts.values()].flat())
+      await assertPackageDependencyRevisions(documents, [...iconChecks, ...dependencyChecks])
+      if (input.update) await assertToolDependencyConsumers({ documents, mounts: dependencyMounts, resources: dependencyResources, validatePackageAsset: ctx.validatePackageAsset,
+        packageId: input.packageId, target, nextVersion: input.packageVersion, nextContributions: new Set(agentToolDefinitions.keys()), nextPresetContributions: new Set([...promptContributions].filter(([, item]) => item.contribution.resourceKind === 'preset').map(([id]) => id)) })
       if (target.kind === 'card' && input.expectedCardVersion !== undefined) {
         const card = await readDocument<CardSourceContent>(documents, target.cardId, applicationDocumentTypes.cardSource)
         if (card.version !== input.expectedCardVersion) throw new Error('Card archive changed before resource installation')
@@ -974,6 +1010,7 @@ async function importExtensionPackageResourcesInternal(
           content: {
             packageId: input.packageId, packageVersion: input.packageVersion, target,
             ...(input.participation ? { participation: input.participation } : {}),
+            ...(input.dependencies ? { dependencies: structuredClone(input.dependencies) } : {}),
             ...(source ? { source } : {}),
             ...((archiveBlobId ?? previousArchiveBlobId) ? { archiveBlobId: archiveBlobId ?? previousArchiveBlobId } : {}),
             createdAt: installation ? (installation.content as ExtensionInstallationContent).createdAt : timestamp,
@@ -1017,7 +1054,6 @@ async function importExtensionPackageResourcesInternal(
       for (const item of missingPromptResources) {
         const artifact = promptArtifacts.get(item.contribution.id)!
         const metadata = structuredClone(artifact.metadata ?? {})
-        if (metadata.icon?.packageId === input.packageId && !metadata.icon.target) metadata.icon.target = target
         const restorableVersion = restorablePromptResourceVersions.get(item.contribution.id)
         const resourceId = promptResourceIds.get(item.contribution.id) ?? ctx.createId('prompt-resource')
         const previous = existingPromptById.get(resourceId)
@@ -1083,7 +1119,7 @@ async function importExtensionPackageResourcesInternal(
           blob: ctx.blobs!.participateWrite(dataTx, item.prepared).blob, metadata: item.metadata,
           expectedVersion: item.expectedVersion,
           mountTarget: target.kind === 'card' ? target : { kind: 'user' },
-          fileName: item.fileName, primaryContributionId: item.primaryContributionId, settings: item.settings,
+          fileName: item.fileName, primaryContributionId: item.primaryContributionId, settings: item.settings, groupOrder: item.groupOrder,
         })
       }
       for (const item of missingTextExtractors) {
@@ -1112,8 +1148,22 @@ async function importExtensionPackageResourcesInternal(
           content: {
             owner: { kind: 'extension', packageId: input.packageId, installationId },
             ...scriptMetadata.get(item.id)!,
-            source: { blobId: blob.id, mediaType: 'text/javascript', fileName: scripts.find(script => script.contribution.id === item.id)!.contribution.source.split('/').at(-1)! },
+            source: { blobId: blob.id, mediaType: loomScriptMediaType(scripts.find(script => script.contribution.id === item.id)!.contribution.source), fileName: scripts.find(script => script.contribution.id === item.id)!.contribution.source.split('/').at(-1)! },
             sourceDigest: blob.sha256, createdAt: existing?.content.createdAt ?? timestamp, updatedAt: timestamp,
+          },
+        })
+      }
+      for (const item of scripts) {
+        if (item.contribution.orderIndex === undefined) continue
+        const id = packageScriptMountId(item.contribution.id)
+        const existing = storedScriptMountById.get(id)
+        if (existing && !existing.meta.tombstone && !input.update) continue
+        await writeDocument<LoomScriptMountContent>(documents, {
+          id, type: applicationDocumentTypes.loomScriptMount, expectedVersion: existing?.version ?? 'new',
+          content: { target: target.kind === 'card' ? target : { kind: 'user' }, scriptDocumentId: scriptDocumentId(item.contribution.id),
+            enabled: false, grantedCapabilities: [], runtimeRevision: 0, orderIndex: item.contribution.orderIndex,
+            origin: { ...origin(item.contribution.id), orderOverride: true, ...(item.contribution.groupOrder !== undefined ? { groupOrder: item.contribution.groupOrder } : {}) },
+            createdAt: existing?.content.createdAt ?? timestamp, updatedAt: timestamp,
           },
         })
       }
@@ -1173,19 +1223,19 @@ async function importExtensionPackageResourcesInternal(
         for (const [orderIndex, mount] of (item.contribution.toolMounts ?? []).entries()) {
           resourceTx.addPresetToolMount({
             presetResourceId,
-            toolId: localId(mount.toolId),
+            toolId: resolvedToolMounts.get(item.contribution.id)![orderIndex]!.toolId,
             orderIndex: mount.orderIndex ?? orderIndex,
             defaultEnabled: mount.defaultEnabled ?? false,
             ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
             ...(mount.provider ? { provider: { ...mount.provider } } : {}),
             ...(mount.content ? { content: { ...mount.content } } : {}),
-            origin: origin(item.contribution.id),
+            origin: { ...origin(item.contribution.id), toolReference: resolvedToolMounts.get(item.contribution.id)![orderIndex]!.reference },
           })
         }
       }
       return undefined
     }, { allowEmpty: true })
-  })
+  }))
   await refreshAgentToolRegistry(ctx)
   return {
     ...scriptResult,
@@ -1216,9 +1266,11 @@ async function removeExtensionPackageResourcesInternal(
     if (installation.version !== input.expectedInstallationVersion) throw new Error('Extension installation changed before resource removal')
   }
   if (input.uninstall) {
-    const result = await executeDocumentMutation(ctx.documents, requestContext, 'application.uninstallExtension', async documents => {
+    const result = await withToolDependencySnapshot(ctx, async (dependencyMounts, assertFresh, dependencyResources) => executeDocumentMutation(ctx.documents, requestContext, 'application.uninstallExtension', async documents => {
+      assertFresh()
+      await assertToolDependencyConsumers({ documents, mounts: dependencyMounts, resources: dependencyResources, validatePackageAsset: ctx.validatePackageAsset, packageId: input.packageId, target: input.target ?? { kind: 'global' } })
       await documents.delete({ id: installationId, expectedVersion: input.expectedInstallationVersion! })
-    })
+    }))
     return {
       packageId: input.packageId,
       promptResourceIds: [], agentToolIds: [], textTransformRuleIds: [], textExtractorIds: [],
@@ -1269,6 +1321,13 @@ async function removeExtensionPackageResourcesInternal(
       if (input.expectedInstallationVersion !== undefined) {
         const installation = await readDocument<ExtensionInstallationContent>(documents, installationId, applicationDocumentTypes.extensionInstallation)
         if (installation.version !== input.expectedInstallationVersion) throw new Error('Extension installation changed before resource removal')
+      }
+      if ((input.target?.kind ?? 'global') === 'global') {
+        for (const card of await listDocuments<CardSourceContent>(documents, applicationDocumentTypes.cardSource)) {
+          if (card.content.defaultPreset?.packageId === input.packageId) {
+            throw new Error(`Card ${card.content.name} (${card.id}) requires Preset ${card.content.defaultPreset.contributionId}; resources cannot be removed`)
+          }
+        }
       }
       for (const tool of agentTools) await documents.delete({ id: tool.id, expectedVersion: tool.version })
       for (const extractor of textExtractors) await documents.delete({ id: extractor.id, expectedVersion: extractor.version })

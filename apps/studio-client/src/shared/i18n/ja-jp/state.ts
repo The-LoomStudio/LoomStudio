@@ -1,6 +1,9 @@
 import type { messages as zhCN } from '../zh-cn/state.js'
 
 export const messages = {
+  'registrySource.card': 'キャラクター',
+  'registrySource.extension': '拡張機能',
+  'registrySource.personal': '個人',
   'state.itemCount': '{{count}} 件',
   'state.characterCount': '{{count}} 文字',
   'macroAuthoring.optionCount': '{{count}} 選択肢',

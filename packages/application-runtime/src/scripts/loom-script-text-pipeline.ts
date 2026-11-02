@@ -60,7 +60,7 @@ export async function resolveScriptTextContributions(ctx: Pick<ApplicationRuntim
         }
         if (contribution.kind === 'text-transform') {
           const rule = resolveTextTransformContributionRule(contribution, settings)
-          rules.push({ ...rule, ...common, enabled: enabled && rule.enabled, orderIndex: mount.content.origin.legacyRuleId ? mount.content.orderIndex : mount.content.orderIndex + rule.orderIndex })
+          rules.push({ ...rule, ...common, enabled: enabled && rule.enabled, orderIndex: mount.content.orderIndex, localOrder: rule.orderIndex, orderOverridden: mount.content.origin.orderOverride === true, orderGroupExplicit: typeof mount.content.origin.groupOrder === 'number', orderGroupKey: JSON.stringify(content.owner), orderGroup: typeof mount.content.origin.groupOrder === 'number' ? mount.content.origin.groupOrder : mount.content.target.kind === 'preset' ? 0 : mount.content.target.kind === 'card' ? 1 : content.owner.kind === 'extension' ? 2 : 3 })
         } else {
           const extractor = resolveTextExtractorContribution(contribution, settings)
           extractors.push({ ...extractor, ...common, enabled: enabled && extractor.enabled, orderIndex: mount.content.orderIndex + extractor.orderIndex })
