@@ -125,6 +125,7 @@ export const messages = {
   "observation.buildError": "연결된 빌드를 읽지 못해 소스와 변수를 사용할 수 없습니다.",
   "observation.buildLoading": "연결된 빌드를 읽는 중…",
   "observation.comparisonError": "인접 요청을 읽지 못해 비교할 수 없습니다.",
+  "observation.settings": "로그 설정",
   "observation.close": "닫기",
   "observation.title": "모델 로그",
   "observation.run": "Agent 실행",

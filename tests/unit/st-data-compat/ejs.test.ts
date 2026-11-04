@@ -10,9 +10,9 @@ const entry = (id: string, content: string, label = id): ExtensionPromptEntry =>
 const context = () => ({
   mode: 'runtime' as const, signal: new AbortController().signal,
   timeline: { timelineId: 't', branchId: 'b', revisionId: 'r', value: {
-    entities: { stCompatibility: { mvu: { components: { data: {
+    mvu: {
       stat_data: { hp: 10 }, schema: {}, initialized_lorebooks: {},
-    } } } } },
+    },
   } },
 })
 
@@ -61,7 +61,7 @@ describe('isolated EJS data compatibility', () => {
       expect(patches).toContainEqual({ id: 'excluded', active: false })
       expect(await session.render(controller)).toBe('1')
       expect(await session.render(entry('read', '<%- runs %>'))).toBe('1')
-      expect(ctx.timeline.value.entities.stCompatibility.mvu.components.data.stat_data.hp).toBe(10)
+      expect(ctx.timeline.value.mvu.stat_data.hp).toBe(10)
     } finally { await session.dispose?.() }
   })
 
@@ -78,7 +78,7 @@ describe('isolated EJS data compatibility', () => {
   it('keeps State macro output as data instead of compiling it as EJS', async () => {
     const ctx = context()
     const payload = '<% throw Error("model text was executed") %>'
-    Object.assign(ctx.timeline.value.entities.stCompatibility.mvu.components.data.stat_data, { payload })
+    Object.assign(ctx.timeline.value.mvu.stat_data, { payload })
     const session = await ejsProcessor.create(ctx)
     try {
       expect(await session.render(entry('macro', '{{get_message_variable::stat_data.payload}}'))).toBe(payload)

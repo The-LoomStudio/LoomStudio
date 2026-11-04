@@ -147,9 +147,16 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
       if (token === generation.current) setError(`${message(reason)}。草稿已保留；若工作区已被更新，请先复制草稿，再刷新。`)
     } finally { if (token === generation.current) setBusy(false) }
   }
+  useEffect(() => {
+    const update = () => { if (document.visibilityState === 'visible' && !dirty && !busy) void refresh() }
+    window.addEventListener('focus', update)
+    const timer = window.setInterval(update, 5000)
+    return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
+  }, [api, timelineId, branchId, dirty, busy, selectedId, directoryId])
+
   async function refresh() {
     if (busy) return
-    if (dirty && !window.confirm('刷新将丢弃当前文件草稿并读取最新版本。请先复制需要保留的内容。继续吗？')) return
+    if (dirty) return
     const token = generation.current
     setBusy(true); setError('')
     try {
@@ -260,7 +267,7 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
       { id: 'file', label: '新建文件', icon: <FilePlus2 size={14} />, disabled: busy, onSelect: () => openDialog('file', undefined, {}) },
       { id: 'directory', label: '新建目录', icon: <FolderPlus size={14} />, disabled: busy, onSelect: () => openDialog('directory', undefined, {}) },
       { id: 'upload', label: '上传文件', icon: <Upload size={14} />, disabled: busy, onSelect: () => chooseUpload() },
-      { id: 'refresh', label: '刷新工作区', icon: <RefreshCw size={14} />, disabled: busy, onSelect: () => void refresh() },
+
     ]
   }
   function save() {
@@ -278,7 +285,7 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
             <DropdownMenuItem icon={<FolderPlus size={15} />} onSelect={() => openDialog('directory')}>新建目录</DropdownMenuItem>
             <DropdownMenuItem icon={<Upload size={15} />} onSelect={() => chooseUpload(directoryId)}>上传文件</DropdownMenuItem></DropdownMenuContent>
         </DropdownMenu>
-        <Button size="small" variant="ghost" disabled={busy} onClick={() => void refresh()} aria-label="刷新工作区" title="刷新工作区"><RefreshCw size={15} /></Button>
+        {error && <Button size="small" variant="ghost" disabled={busy || dirty} onClick={() => void refresh()}>重试读取</Button>}
       </div></div>}
       toolbar={<SearchField clearLabel="清除搜索" onClear={() => setSearch('')} value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索文件" aria-label="搜索工作区文件" />}
       explorer={<div className={styles.explorer}>

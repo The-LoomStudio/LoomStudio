@@ -152,7 +152,7 @@
     margin: 0 0 calc(8px + env(safe-area-inset-bottom, 0px));
   }
 
-  :global(html[data-keyboard-open='true']) .composer {
+  :global(html[data-composer-keyboard]) .composer {
     margin: 0 0 4px;
   }
 

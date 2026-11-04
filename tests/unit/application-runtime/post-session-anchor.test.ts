@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { SourceNode } from '../../../packages/application-runtime/src/prompt/prompt-builder.js'
 import type { PromptResourceArtifact } from '@loom-studio/application-runtime'
 import { compilePromptDataModel } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
 
@@ -12,37 +13,12 @@ const officialAssistantPreset = JSON.parse(readFileSync(
 describe('Prompt Anchor System: @chat.session.post', () => {
   it('places @chat.session.post contributions into the post-session message when preset contains explicit anchor', () => {
     const preset = officialAssistantPreset.rootNode
-    const sourceNodes = [
-      {
-        id: preset.id,
-        sourceId: 'preset-1',
-        parentId: null,
-        displayName: preset.label,
-        orderIndex: 0,
-        kind: 'module' as const,
-      },
-      ...preset.children!.flatMap((msg, msgIdx) => [
-        {
-          id: msg.id,
-          sourceId: 'preset-1',
-          parentId: preset.id,
-          displayName: msg.label,
-          orderIndex: msgIdx,
-          kind: 'message' as const,
-          capabilities: msg.capabilities,
-        },
-        ...msg.children!.map((child, childIdx) => ({
-          id: child.id,
-          sourceId: 'preset-1',
-          parentId: msg.id,
-          displayName: child.label,
-          orderIndex: childIdx,
-          kind: child.kind as 'entry' | 'virtual',
-          capabilities: child.capabilities,
-          body: child.body,
-        })),
-      ]),
+    const collect = (node: PromptResourceArtifact['rootNode'], parentId: string | null, orderIndex: number): SourceNode[] => [
+      { id: node.id, sourceId: 'preset-1', parentId, displayName: node.label,
+        orderIndex, kind: node.kind, capabilities: node.capabilities, body: node.body },
+      ...(node.children ?? []).flatMap((child, index) => collect(child, node.id, index)),
     ]
+    const sourceNodes = collect(preset, null, 0)
 
     const activeContributions = [
       {
@@ -101,7 +77,7 @@ describe('Prompt Anchor System: @chat.session.post', () => {
     expect(postSessionMsg.content).toBe('[Dynamic Lore: Eldoria is raining today]\n\n[Do not break character]\n\n[Output format requirement: keep concise]')
   })
 
-  it('falls back to append @chat.session.post right after @chat.session when preset lacks explicit post-session node', () => {
+  it('requires explicit post-session inlets and preserves their declared position when added', () => {
     // Construct an older preset that only has @chat.session and @chat.input inside a single message
     const sourceNodes = [
       {
@@ -168,7 +144,21 @@ describe('Prompt Anchor System: @chat.session.post', () => {
       },
     ]
 
-    const result = compilePromptDataModel({ sourceNodes, contributions: activeContributions })
+    const withoutInlets = compilePromptDataModel({ sourceNodes, contributions: activeContributions })
+    expect(withoutInlets.messages).toEqual([
+      { role: 'user', content: 'Historical dialogue', fragmentIds: ['session-content'] },
+      { role: 'system', content: 'Current input', fragmentIds: ['user-input'] },
+    ])
+    const result = compilePromptDataModel({
+      sourceNodes: [
+        ...sourceNodes.map(node => node.id === 'virtual-input' ? { ...node, orderIndex: 3 } : node),
+        { id: 'virtual-lower', sourceId: 'preset-old', parentId: 'msg-dialogue', displayName: '@lore.lower',
+          orderIndex: 1, kind: 'virtual', capabilities: { targetAnchorId: '@lore.lower' } },
+        { id: 'virtual-post', sourceId: 'preset-old', parentId: 'msg-dialogue', displayName: '@chat.session.post',
+          orderIndex: 2, kind: 'virtual', capabilities: { targetAnchorId: '@chat.session.post' } },
+      ],
+      contributions: activeContributions,
+    })
     expect(result.messages).toEqual([
       { role: 'user', content: 'Historical dialogue', fragmentIds: ['session-content'] },
       {
@@ -179,7 +169,7 @@ describe('Prompt Anchor System: @chat.session.post', () => {
     ])
     const content = result.messages.map(message => message.content).join('\n')
 
-    // In old preset fallback: Historical dialogue -> Triggered dynamic lower setting entry -> Jailbreak post-session instruction -> Current input
+    // Explicit inlet order: history -> lower setting -> post-session instruction -> current input
     const historyPos = content.indexOf('Historical dialogue')
     const lowerLorePos = content.indexOf('Triggered dynamic lower setting entry')
     const fallbackPos = content.indexOf('Jailbreak post-session instruction')

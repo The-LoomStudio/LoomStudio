@@ -18,7 +18,26 @@ beforeEach(() => {
 })
 afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals() })
 const initial: PromptResource = { id: 'p', version: 1, resourceKind: 'preset', createdAt: '', updatedAt: '', rootNode: { id: 'r', kind: 'module', label: 'P' } }
-const api = { listRuleSummaries: async () => ({ rules: [] }), listExtractorSummaries: async () => ({ extractors: [] }) } as ComponentProps<typeof PresetTextUses>['api']
+const api: ComponentProps<typeof PresetTextUses>['api'] = {
+  listRuleSummaries: async () => ({ rules: [] }),
+  listExtractorSummaries: async () => ({ extractors: [] }),
+  previewCardOpening: async () => { throw new Error('Unexpected previewCardOpening in preset configuration test') },
+  listRules: async () => { throw new Error('Unexpected listRules in preset configuration test') },
+  getRule: async () => { throw new Error('Unexpected getRule in preset configuration test') },
+  upsertRule: async () => { throw new Error('Unexpected upsertRule in preset configuration test') },
+  deleteRule: async () => { throw new Error('Unexpected deleteRule in preset configuration test') },
+  listExtractors: async () => { throw new Error('Unexpected listExtractors in preset configuration test') },
+  getExtractor: async () => { throw new Error('Unexpected getExtractor in preset configuration test') },
+  upsertExtractor: async () => { throw new Error('Unexpected upsertExtractor in preset configuration test') },
+  deleteExtractor: async () => { throw new Error('Unexpected deleteExtractor in preset configuration test') },
+  getOverride: async () => { throw new Error('Unexpected getOverride in preset configuration test') },
+  upsertOverride: async () => { throw new Error('Unexpected upsertOverride in preset configuration test') },
+  deleteOverride: async () => { throw new Error('Unexpected deleteOverride in preset configuration test') },
+  project: async () => { throw new Error('Unexpected project in preset configuration test') },
+  inspectTextPipeline: async () => { throw new Error('Unexpected inspectTextPipeline in preset configuration test') },
+  extract: async () => { throw new Error('Unexpected extract in preset configuration test') },
+  listRenderers: async () => { throw new Error('Unexpected listRenderers in preset configuration test') },
+}
 async function click(label: string) {
   const button = [...container.querySelectorAll('button')].find(item => item.getAttribute('aria-label') === label || item.textContent === label)!
   expect(button).toBeDefined()

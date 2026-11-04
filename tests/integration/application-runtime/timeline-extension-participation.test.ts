@@ -1,5 +1,5 @@
 import { createApplicationRuntime, createStateContributionRegistry, applicationDocumentTypes } from '@loom-studio/application-runtime'
-import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
@@ -40,7 +40,7 @@ async function setup() {
     },
     initialize() { return { 'example.memory.data': { count: ++initializations } } },
   })
-  const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, promptResources, stateContributions })
+  const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, promptResources, agents: createAgentStore({ engine }), stateContributions })
   const { card } = await runtime.createCard({ name: 'Participation test' })
   const packageId = 'example.memory'
   const installationId = extensionInstallationId(packageId, { kind: 'global' })

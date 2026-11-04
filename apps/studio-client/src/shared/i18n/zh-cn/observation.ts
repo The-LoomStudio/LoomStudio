@@ -125,6 +125,7 @@ export const messages = {
   "observation.buildError": "关联构建读取失败，来源与变量暂不可用。",
   "observation.buildLoading": "正在读取关联构建…",
   "observation.comparisonError": "相邻请求读取失败，暂不能比较变化。",
+  "observation.settings": "日志设置",
   "observation.close": "关闭",
   "observation.title": "模型日志",
   "observation.run": "Agent 运行",

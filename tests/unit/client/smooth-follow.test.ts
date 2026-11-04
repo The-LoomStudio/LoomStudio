@@ -15,7 +15,7 @@ let clock: number
 let contentHeight: number
 let follow: ReturnType<typeof useSmoothFollow>
 
-function Fixture({ enabled = true }: { enabled?: boolean } = {}) {
+function Fixture({ enabled = true }: { enabled?: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   follow = useSmoothFollow({ scrollRef, contentRef, enabled })

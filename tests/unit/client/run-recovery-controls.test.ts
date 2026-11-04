@@ -5,6 +5,7 @@ import { RunRecoveryControls, type RunRecoveryControlsProps } from '../../../app
 import { AgentComposer } from '../../../apps/studio-client/src/widgets/agent-composer/agent-composer.js'
 import { AgentChatPanel, type AgentChatPanelProps } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-chat-panel.js'
 import { ChatComposer } from '../../../apps/studio-client/src/widgets/chat-composer/chat-composer.js'
+import { InfoDialog } from '../../../apps/studio-client/src/shared/ui/info-dialog/info-dialog.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 vi.mock('react', async importOriginal => ({
@@ -54,7 +55,8 @@ describe('Run recovery controls', () => {
     const html = renderToStaticMarkup(createElement(RunRecoveryControls, props))
     expect(html).toContain('data-status="failed"')
     expect(html).toContain('role="alert"')
-    expect(html).toContain('HTTP 404')
+    const details = elements(RunRecoveryControls(props)).find(element => element.type === InfoDialog)!
+    expect(renderToStaticMarkup(details.props.children as ReactElement)).toContain('HTTP 404')
     expect(html).toContain(props.t('runRecovery.abandon'))
   })
 
@@ -100,11 +102,12 @@ describe('Run recovery controls', () => {
   it.each(['failed', 'cancelled'] as const)('offers refresh and protects a new draft after %s', status => {
     const props = recoveryProps({ runRecovery: { target: 'agent', status, input: 'original', refreshFailed: true, error: 'reported failure' } })
     const controls = elements(RunRecoveryControls(props))
-    const buttons = controls.filter(element => element.props['aria-label'])
+    const buttons = controls.filter(element => element.type !== InfoDialog && element.props['aria-label'])
     expect(buttons.map(button => button.props['aria-label'])).toEqual(['Refresh status', 'Restore original input'])
     expect(buttons[1].props.disabled).toBe(true)
     const html = renderToStaticMarkup(createElement(RunRecoveryControls, props))
-    expect(html).toContain('reported failure')
+    const details = controls.find(element => element.type === InfoDialog)!
+    expect(renderToStaticMarkup(details.props.children as ReactElement)).toContain('reported failure')
     expect(html).toContain(props.t('runRecovery.refreshFailed'))
     const enabled = elements(RunRecoveryControls({ ...props, canRestoreRunInput: true }))
       .find(element => element.props['aria-label'] === 'Restore original input')!
@@ -112,7 +115,7 @@ describe('Run recovery controls', () => {
     ;(enabled.props.onClick as () => void)()
     expect(props.restoreRunInput).toHaveBeenCalledOnce()
     const busy = elements(RunRecoveryControls({ ...props, runRecoveryBusy: true, canRestoreRunInput: true }))
-      .filter(element => element.props['aria-label'])
+      .filter(element => element.type !== InfoDialog && element.props['aria-label'])
     expect(busy.every(button => button.props.disabled)).toBe(true)
   })
 
@@ -128,7 +131,7 @@ describe('Run recovery controls', () => {
     { busy: true, activeRun: undefined },
     { busy: false, activeRun: { runId: 'run', status: 'running' as const } },
     { busy: false, activeRun: { runId: 'run', status: 'suspended' as const } },
-  ])('keeps the Session draft editable without submitting another turn: %j', state => {
+  ])('keeps the Session draft editable and delegates busy submissions to its runtime handler: %j', state => {
     const onSubmit = vi.fn()
     const onChangeInput = vi.fn()
     const props = {
@@ -138,18 +141,19 @@ describe('Run recovery controls', () => {
     }
     const composer = elements(AgentChatPanel(props)).find(element => element.type === ChatComposer)!
     expect(composer.props.textareaDisabled).toBe(false)
-    expect(composer.props.canSend).toBe(false)
+    expect(composer.props.canSend).toBe(true)
+    expect(composer.props.runStatus).toBe(state.activeRun?.status ?? 'running')
     ;(composer.props.onChangeInput as (value: string) => void)('draft while running')
     expect(onChangeInput).toHaveBeenCalledWith('draft while running')
     const preventDefault = vi.fn()
     ;(composer.props.onSubmit as (event: FormEvent) => void)({ preventDefault } as unknown as FormEvent)
-    expect(preventDefault).toHaveBeenCalledOnce()
-    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onSubmit).toHaveBeenCalledOnce()
+    expect(onSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ preventDefault }))
 
     const idle = elements(AgentChatPanel({ ...props, busy: false, activeRun: undefined })).find(element => element.type === ChatComposer)!
     expect(idle.props.canSend).toBe(true)
     ;(idle.props.onSubmit as (event: FormEvent) => void)({ preventDefault } as unknown as FormEvent)
-    expect(onSubmit).toHaveBeenCalledOnce()
+    expect(onSubmit).toHaveBeenCalledTimes(2)
   })
 
   it.each(['narrative', 'agent'] as const)('keeps drafts editable and blocks new turns in both composers when %s is disconnected', target => {

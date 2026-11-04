@@ -139,7 +139,7 @@ describe('script management scope controls', () => {
     expect(updateMount).toHaveBeenCalledWith(expect.objectContaining({ mountId: 'role', settings: { visible: true }, enabled: true }))
     expect(updateSource).not.toHaveBeenCalled()
     expect(refreshMount).not.toHaveBeenCalled()
-    expect(changed).not.toHaveBeenCalled()
+    expect(changed).toHaveBeenCalledOnce()
   })
 
   it('filters scripts by author tag without replacing the selected detail', async () => {
@@ -173,7 +173,7 @@ describe('script classification and ordering', () => {
   it('shows mixed scripts in both categories and only flattens the filtered category', async () => {
     const api = await fixture()
     const { host } = await render(api)
-    expect([...host.querySelectorAll('[aria-label="脚本分类"] [role="tab"]')].map(node => node.textContent)).toEqual(['正则', '脚本'])
+    expect([...host.querySelector('[aria-label="脚本分类"]')!.querySelectorAll('[role="tab"]')].map(node => node.textContent)).toEqual(['正则', '脚本'])
     expect(host.querySelector('[data-file-tree-node-id="helper-3"]')).not.toBeNull()
     const select = (label: string) => click([...host.querySelectorAll('[role="tab"]')].find(node => node.textContent === label)!)
     await select('正则')

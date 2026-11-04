@@ -34,7 +34,7 @@ it('removes old inline ranges while new text or owner projection is pending and 
     }))
   })
   const inline: Projection = {
-    mounts: [{ key: 'replace', target: { slot: 'node.inline', selector: { kind: 'match-ref', matchId: 'match' }, placement: 'replace' } }],
+    mounts: [{ key: 'replace', part: { type: 'text', content: '[OLD]' }, target: { slot: 'node.inline', selector: { kind: 'match-ref', matchId: 'match' }, placement: 'replace' } }],
     matches: new Map([['match', { start: 0, end: 3 }]]),
   }
   try {

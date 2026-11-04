@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import type { ResourceSearchReveal } from '../shared/lib/search-match.js'
 import type { useStudioState } from './use-studio-state.js'
 import type { useStudioUiState } from './use-studio-ui-state.js'
@@ -19,6 +20,14 @@ export function StudioResourcePanels(props: {
   searchMatch?: ResourceSearchReveal
 }) {
   const { state, uiState, navigation, assetWorkspaceId } = props
+  const routeResourceId = navigation.route.resourceId
+  const routedResource = useQuery({
+    queryKey: ['routed-prompt-resource', state.endpoint, routeResourceId],
+    enabled: Boolean(routeResourceId) && !state.promptResourceLoading
+      && !state.promptResourceDrafts.some(resource => resource.id === routeResourceId),
+    retry: false,
+    queryFn: () => state.refreshPromptResource(routeResourceId!),
+  })
   const contextAssetEditorProps = {
     globalSearchQuery: props.globalSearchQuery,
     resources: state.promptResourceDrafts,
@@ -119,7 +128,11 @@ export function StudioResourcePanels(props: {
         onSearchQueryChange={navigation.setSearchQuery}
       />
     ),
-    resource: () => (
+    resource: () => routedResource.isError && !state.promptResourceDrafts.some(resource => resource.id === routeResourceId)
+      ? <div role="alert"><p>{routedResource.error.message}</p><button type="button" onClick={() => void routedResource.refetch()}>重试读取资源</button></div>
+      : routeResourceId && !state.promptResourceDrafts.some(resource => resource.id === routeResourceId) && (state.promptResourceLoading || routedResource.isFetching)
+        ? <p role="status">正在读取资源…</p>
+        : (
       <LazyContextWorkbench
         key={state.endpoint}
         {...contextAssetEditorProps}

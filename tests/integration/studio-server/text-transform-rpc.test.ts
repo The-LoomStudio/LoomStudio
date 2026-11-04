@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseLoomScriptSource, serializeLoomScriptMetadata } from '@loom-studio/shared/loom-scripts'
+import { parseLoomScriptSource, resolveLoomScriptSettings, resolveTextTransformContributionRule, serializeMarkdownTextRule } from '@loom-studio/shared/loom-scripts'
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('Studio Server text transform RPC', () => {
@@ -154,7 +154,7 @@ describe('Studio Server text transform RPC', () => {
       if (contribution.kind !== 'text-transform') throw new Error('Expected a text rule')
       contribution.rule.effect = { kind: 'replace', replacement: '<html><body>$1</body></html>' }
       await callRpc(port, 'application.updateLoomScript', { scriptDocumentId: savedRule.scriptDocumentId,
-        expectedVersion: savedRule.version, fileName: artifact.fileName, source: serializeLoomScriptMetadata(metadata) })
+        expectedVersion: savedRule.version, fileName: artifact.fileName, source: serializeMarkdownTextRule(resolveTextTransformContributionRule(contribution, resolveLoomScriptSettings(metadata.settings)), contribution.id) })
       // Saving source does not adopt it; the old projection remains visible until refresh.
       await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: card.id, text }))
         .resolves.toMatchObject({ text: '```html\n<html><body>Done</body></html>\n```' })

@@ -63,7 +63,7 @@ describe('protected HTTP Origin boundary', () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({ result: { data: { accepted: true } } })
     expect(call).toHaveBeenCalledOnce()
-    expect(call).toHaveBeenCalledWith({ presetId: 'control', mounts: [] }, expect.objectContaining({ clientId: expect.stringMatching(/^session:/) }))
+    expect(call).toHaveBeenCalledWith({ presetId: 'control', expectedMountIds: [], mounts: [] }, expect.objectContaining({ clientId: expect.stringMatching(/^session:/) }))
   })
 
   it.each([

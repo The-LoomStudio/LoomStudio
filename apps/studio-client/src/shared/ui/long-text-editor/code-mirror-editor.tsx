@@ -302,9 +302,18 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
       }),
     })
 
+    const revealMobileCursor = () => {
+      if (window.innerWidth > 768 || !view.hasFocus) return
+      view.dom.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      view.dispatch({ effects: EditorView.scrollIntoView(view.state.selection.main.head, { y: 'nearest' }) })
+    }
+    window.visualViewport?.addEventListener('resize', revealMobileCursor)
+    view.contentDOM.addEventListener('focus', revealMobileCursor)
     viewRef.current = view
     callbacksRef.current.onUndoAvailabilityChange?.(undoDepth(view.state) > 0)
     return () => {
+      window.visualViewport?.removeEventListener('resize', revealMobileCursor)
+      view.contentDOM.removeEventListener('focus', revealMobileCursor)
       view.destroy()
       viewRef.current = null
     }

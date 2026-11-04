@@ -1,6 +1,16 @@
-.panel { height: 100%; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; color: var(--loom-color-text); }
-.header { flex: none; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 24px; padding: 10px 16px; border-bottom: 1px solid var(--loom-color-border-subtle, var(--loom-color-divider)); }
-.context { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: var(--loom-font-size-1); color: var(--loom-color-text-muted); }
-.sessionPicker { min-width: 0; max-width: 240px; span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } svg { flex-shrink: 0; } }
-.owner { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 300px; svg { flex-shrink: 0; } span { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; } }
-.empty { margin: auto; padding: 32px; max-width: 560px; text-align: center; font-size: var(--loom-font-size-2); line-height: 1.8; color: var(--loom-color-text-muted); }
+.panel { height:100%; min-height:0; min-width:0; display:flex; flex-direction:column; overflow:hidden; color:var(--loom-color-text); }
+.header { flex:none; padding:8px 16px; }
+.owner { position:relative; isolation:isolate; display:flex; align-items:center; gap:8px; overflow:hidden; min-height:260px; margin-top:8px; padding:20px; box-sizing:border-box; border-radius:14px; background:var(--loom-color-surface-subtle); }
+.owner > img { position:absolute; z-index:-1; top:0; right:0; width:clamp(160px,32%,280px); height:100%; object-fit:cover; object-position:center 20%; mask-image:linear-gradient(to right,transparent,#000 45%); }
+.owner > svg { width:20px; height:20px; flex:none; color:var(--loom-color-text-muted); }
+.ownerLabels { display:flex; flex-direction:column; gap:6px; min-width:0; max-width:75%; }
+.ownerLabels strong { font-size:var(--loom-font-size-4); font-weight:500; line-height:1.4; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ownerLabels > span { display:flex; align-items:center; gap:4px; font-size:var(--loom-font-size-1); color:var(--loom-color-text-muted); }
+.ownerLabels svg { flex:none; }
+.empty { margin:auto; padding:32px; max-width:560px; text-align:center; font-size:var(--loom-font-size-2); line-height:1.8; color:var(--loom-color-text-muted); }
+
+.pageTabs { display:flex; gap:4px; margin-top:8px; }
+.pageTabs button { display:grid; place-items:center; width:36px; height:34px; border:0; border-radius:8px; background:transparent; color:var(--loom-color-text-muted); cursor:pointer; }
+.pageTabs button[aria-selected=true] { background:var(--loom-color-accent-soft); color:var(--loom-color-accent); }
+.pageTabs button:focus-visible { outline:2px solid var(--loom-color-accent); }
+@media(max-width:640px) { .owner { min-height:220px; } .ownerLabels { max-width:60%; } }

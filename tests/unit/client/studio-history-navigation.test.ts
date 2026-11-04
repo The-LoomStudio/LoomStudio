@@ -1,5 +1,7 @@
-import type { Logger } from '@loom-studio/logging'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment happy-dom
+import { createRootLogger } from '@loom-studio/logging'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { renderHook } from '../../support/client/render-hook.js'
 import { useStudioState } from '../../../apps/studio-client/src/app/use-studio-state.js'
 
 const fixture = vi.hoisted(() => ({
@@ -15,15 +17,6 @@ const fixture = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('react', async original => ({
-  ...await original<typeof import('react')>(),
-  useEffect: () => undefined,
-  useMemo: (factory: () => unknown) => factory(),
-  useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, vi.fn()],
-  useRef: (initial: unknown) => ({ current: initial }),
-  useCallback: (callback: unknown) => callback,
-  useReducer: (_reducer: unknown, initial: unknown, initialize: (value: unknown) => unknown) => [initialize(initial), vi.fn()],
-}))
 vi.mock('../../../apps/studio-client/src/features/user-profiles/model/use-user-profiles-query.js', () => ({
   useUserProfilesQuery: () => ({}),
 }))
@@ -35,7 +28,7 @@ vi.mock('../../../apps/studio-client/src/shared/api/studio-api.js', () => ({
   createStudioApi: () => ({ history: { revert: vi.fn() } }),
 }))
 vi.mock('../../../apps/studio-client/src/features/edit-history/model/use-edit-history.js', () => ({
-  useEditHistory: () => ({ undo: fixture.undo, redo: fixture.redo }),
+  useEditHistory: () => ({ undo: fixture.undo, redo: fixture.redo, clear: vi.fn() }),
 }))
 vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-prompt-resource-state.js', () => ({
   usePromptResourceState: () => ({
@@ -47,7 +40,7 @@ vi.mock('../../../apps/studio-client/src/features/cards/model/use-cards.js', () 
   useCards: () => ({ refreshCards: fixture.refreshCards, setSelectedCardId: fixture.selectCard }),
 }))
 vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-context-assets.js', () => ({
-  useContextAssets: () => ({}),
+  useContextAssets: () => ({ setResources: vi.fn() }),
 }))
 vi.mock('../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.js', () => ({
   useProviderSettings: () => ({}),
@@ -74,16 +67,29 @@ vi.mock('../../../apps/studio-client/src/app/use-studio-derived-values.js', () =
   useStudioDerivedValues: () => ({}),
 }))
 
+vi.mock('../../../apps/studio-client/src/features/agent-presets/model/use-agent-tools.js', () => ({ useAgentTools: () => ({ tools: [] }) }))
+vi.mock('../../../apps/studio-client/src/features/user-profiles/model/use-player-profile-query.js', () => ({ usePlayerProfileQuery: () => ({}) }))
+vi.mock('../../../apps/studio-client/src/features/extension-renderers/ui/new-story-extensions.js', () => ({ useNewStoryExtensions: () => ({}) }))
+vi.mock('../../../apps/studio-client/src/app/use-studio-startup.js', () => ({ useStudioStartup: () => ({ ready: () => true }) }))
+const mounted: ReturnType<typeof renderHook>[] = []
+const logger = createRootLogger({ service: 'history-test', instanceId: 'test', sinks: [] }).child('studio')
+function studio() {
+  const hook = renderHook(() => useStudioState(logger))
+  mounted.push(hook)
+  return hook.current
+}
+afterEach(() => { for (const hook of mounted.splice(0)) hook.unmount() })
+
 beforeEach(() => {
   vi.clearAllMocks()
-  fixture.narrative = {}
+  fixture.narrative = { input: '', narrativeAttachments: { values: [], ready: true } }
 })
 
 describe.each(['undoEdit', 'redoEdit'] as const)('%s navigation after refresh', action => {
   it('does not refresh or navigate when reverting fails', async () => {
     fixture.undo.mockRejectedValue(new Error('Revert conflict'))
     fixture.redo.mockRejectedValue(new Error('Revert conflict'))
-    const state = useStudioState({} as Logger)
+    const state = studio()
     await expect(state[action](() => true)).resolves.toBeUndefined()
     expect(fixture.refreshResource).not.toHaveBeenCalled()
     expect(fixture.refreshCards).not.toHaveBeenCalled()
@@ -94,7 +100,7 @@ describe.each(['undoEdit', 'redoEdit'] as const)('%s navigation after refresh', 
     fixture.undo.mockResolvedValue({ anchor: { documentId: 'resource' } })
     fixture.redo.mockResolvedValue({ anchor: { documentId: 'resource' } })
     fixture.refreshResource.mockRejectedValue(new Error('Refresh unavailable'))
-    const state = useStudioState({} as Logger)
+    const state = studio()
     await expect(state[action](() => true)).resolves.toBeUndefined()
     expect(fixture.refreshResource).toHaveBeenCalledExactlyOnceWith('resource')
     expect(fixture.selectCard).not.toHaveBeenCalled()
@@ -106,7 +112,7 @@ describe.each(['undoEdit', 'redoEdit'] as const)('%s navigation after refresh', 
     fixture.redo.mockResolvedValue({ anchor: { documentId: 'resource', subjectId: 'root' } })
     fixture.refreshResource.mockReturnValue(read.promise)
     let canNavigate = true
-    const state = useStudioState({} as Logger)
+    const state = studio()
     const pending = state[action](() => canNavigate)
     await vi.waitFor(() => expect(fixture.refreshResource).toHaveBeenCalledWith('resource'))
     canNavigate = current
@@ -121,7 +127,7 @@ describe.each(['undoEdit', 'redoEdit'] as const)('%s navigation after refresh', 
     fixture.redo.mockResolvedValue({ anchor: { documentId: 'restored-card' } })
     fixture.refreshCards.mockReturnValue(read.promise)
     let canNavigate = true
-    const state = useStudioState({} as Logger)
+    const state = studio()
     const pending = state[action](() => canNavigate)
     await vi.waitFor(() => expect(fixture.refreshCards).toHaveBeenCalledOnce())
     canNavigate = current
@@ -135,10 +141,10 @@ describe.each(['undoEdit', 'redoEdit'] as const)('%s navigation after refresh', 
 it('passes the active preview or last-run build trace to the Inspector', () => {
   const runTrace = { diagnostics: [{ severity: 'warning', code: 'tool.missing', toolId: 'gone' }] }
   const previewTrace = { variables: { diagnostics: [{ severity: 'warning', code: 'variable.path_missing', path: 'global.gone' }] } }
-  fixture.narrative = { lastRun: { promptBuildTrace: runTrace } }
-  expect(useStudioState({} as Logger).promptBuildTrace).toBe(runTrace)
+  fixture.narrative = { ...fixture.narrative, lastRun: { promptBuildTrace: runTrace } }
+  expect(studio().promptBuildTrace).toBe(runTrace)
   fixture.narrative = { ...fixture.narrative, promptPreview: { promptBuildTrace: previewTrace } }
-  expect(useStudioState({} as Logger).promptBuildTrace).toBe(previewTrace)
+  expect(studio().promptBuildTrace).toBe(previewTrace)
   fixture.narrative = {}
-  expect(useStudioState({} as Logger).promptBuildTrace).toBeUndefined()
+  expect(studio().promptBuildTrace).toBeUndefined()
 })

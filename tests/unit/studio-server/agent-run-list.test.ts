@@ -16,7 +16,7 @@ function fixture() {
   const actor = { kind: 'system' as const, id: 'test' }
   const methods = createAgentsRuntimeMethods({ agents: store } as Parameters<typeof createAgentsRuntimeMethods>[0])
   const recover = vi.fn(async () => { throw new Error('Unknown tool outcome; refusing replay') })
-  const runtime = { listAgentRunStates: methods.listAgentRunStates, inspectAgentRunState: methods.inspectAgentRunState, prepareAgentRunRecovery: recover } as unknown as ApplicationRuntime
+  const runtime = { getAgentTranscriptPage: methods.getAgentTranscriptPage, listAgentRunStates: methods.listAgentRunStates, inspectAgentRunState: methods.inspectAgentRunState, prepareAgentRunRecovery: recover } as unknown as ApplicationRuntime
   async function seed(id: string, state?: Extract<AgentTranscriptEntryData, { kind: 'run-state' }>['state']) {
     await store.createSession({ id, actor, agentPresetId: 'preset', title: `Title ${id}`, timelineId: 'story' })
     if (state) await append(id, `${id}-run`, { kind: 'run-state', state })

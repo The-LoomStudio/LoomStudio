@@ -18,9 +18,28 @@ afterEach(() => { vi.unstubAllGlobals(); useStudioLayoutStore.getState().setWork
 
 it('retains a hidden panel without letting its detail navigation consume the active panel history', () => {
   const changePane = vi.fn()
-  const panels = Object.fromEntries(STUDIO_PANEL_IDS.map(id => [id, () => id === 'character'
+  const renderPanel = (id: typeof STUDIO_PANEL_IDS[number]) => () => id === 'character'
     ? createElement(MasterDetailWorkbench, { master: 'master', children: 'detail', mobilePane: 'detail', onMobilePaneChange: changePane })
-    : createElement('p', null, id)])) as ComponentProps<typeof StudioPanelHost>['panels']
+    : createElement('p', null, id)
+  const panels: ComponentProps<typeof StudioPanelHost>['panels'] = {
+    'model': renderPanel('model'),
+    'agent': renderPanel('agent'),
+    'user': renderPanel('user'),
+    'play': renderPanel('play'),
+    'recent': renderPanel('recent'),
+    'sessions': renderPanel('sessions'),
+    'character': renderPanel('character'),
+    'preset': renderPanel('preset'),
+    'resource': renderPanel('resource'),
+    'state': renderPanel('state'),
+    'memory': renderPanel('memory'),
+    'macro': renderPanel('macro'),
+    'text-transform': renderPanel('text-transform'),
+    'inspector': renderPanel('inspector'),
+    'logs': renderPanel('logs'),
+    'extensions': renderPanel('extensions'),
+    'settings': renderPanel('settings'),
+  }
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)

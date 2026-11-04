@@ -50,13 +50,14 @@ describe('authoring asynchronous responses', () => {
     }
     const { host, root } = mount()
     await act(async () => root.render(createElement(ThemeSettings, { controller, t })))
-    const select = host.querySelector('select')!
-    await act(async () => { select.value = 'test/theme'; select.dispatchEvent(new Event('change', { bubbles: true })) })
-    expect(select.value).toBe('test/theme')
+    const choice = [...host.querySelectorAll('button')].find(button => button.textContent?.startsWith('Theme'))!
+    await act(async () => choice.click())
+    expect(choice.getAttribute('aria-pressed')).toBe('true')
     expect(host.textContent).toContain(t('settings.themeAuthorizeJs'))
-    expect(host.textContent).toContain(t('settings.themeApply'))
+    expect(apply).toHaveBeenCalledWith({ theme: 'test/theme', enhancements: [], cssOnly: [] }, { x: 0, y: 0 })
+    expect(controller.authorize).not.toHaveBeenCalled()
     const checkbox = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!
     await act(async () => checkbox.click())
-    expect(apply).toHaveBeenLastCalledWith({ theme: 'test/theme', enhancements: [], cssOnly: ['test/theme'] })
+    expect(apply).toHaveBeenLastCalledWith({ theme: 'test/theme', enhancements: [], cssOnly: ['test/theme'] }, undefined)
   })
 })

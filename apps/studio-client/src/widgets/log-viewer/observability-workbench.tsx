@@ -27,6 +27,7 @@ type View = 'messages' | 'build' | 'variables' | 'tools' | 'usage'
 type WorkbenchProps = {
   t?: Translator
   records: ObservationRecord[]
+  directoryHeader?: ReactNode
   toolbar?: ReactNode
   selectedRecordId?: string
   selectedRecord?: ObservationRecord
@@ -43,7 +44,7 @@ export function ObservabilityWorkbench(props: WorkbenchProps) {
   return <ObservationTranslation.Provider value={props.t ?? defaultTranslator}><WorkbenchContent {...props} /></ObservationTranslation.Provider>
 }
 
-function WorkbenchContent({ records, toolbar, selectedRecordId, selectedRecord, listNotice, listFooter, detailNotice, stepNotice, onSelectRecord, onSelectStep, onKindChange }: WorkbenchProps) {
+function WorkbenchContent({ records, directoryHeader, toolbar, selectedRecordId, selectedRecord, listNotice, listFooter, detailNotice, stepNotice, onSelectRecord, onSelectStep, onKindChange }: WorkbenchProps) {
   const t = useContext(ObservationTranslation)
   const kindNames = { run: t('observation.run'), build: t('observation.standaloneBuild'), api: t('observation.api') }
   const container = useRef<HTMLDivElement>(null)
@@ -67,6 +68,8 @@ function WorkbenchContent({ records, toolbar, selectedRecordId, selectedRecord, 
   }, [])
 
   const master = <aside data-loom-mobile-tab-scope="" className={styles.master} aria-label={t('observation.records')}>
+    {directoryHeader}
+    <div className={styles.directoryNotices}>{toolbar}</div>
     <div className={styles.listHeader}><span>{t('observation.recentRecords')}</span><small>{visible.length}</small></div>
     <SearchField aria-label={t('observation.search')} placeholder={t('observation.searchLoaded')} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel={t('observation.clearSearch')} />
     <Tabs ariaLabel={t('observation.recordKind')} size="compact" activeId={filter} onChange={value => { setFilter(value); onKindChange?.(value === 'all' ? undefined : value) }} items={[
@@ -85,7 +88,7 @@ function WorkbenchContent({ records, toolbar, selectedRecordId, selectedRecord, 
   </aside>
   const detail = selected ? detailNotice ?? <RecordView key={selected.id} record={selectedRecord?.id === selected.id ? selectedRecord : selected} onSelectStep={onSelectStep} stepNotice={selectedRecord?.id === selected.id ? stepNotice : undefined} /> : detailNotice ?? <Empty title={t('observation.selectRecord')} description={t('observation.selectHint')} />
   return <div ref={container} className={styles.workbench} data-loom-component="observability-workbench">
-    <header className={styles.header}>{toolbar}</header>
+
     <div className={styles.body}>
       {narrow ? detailOpen && selected ? <div className={styles.narrowDetail}><Button onClick={() => setDetailOpen(false)}><ArrowLeft size={14} />{t('observation.returnRecords')}</Button>{detail}</div> : master
         : <WindowColumnLayout columns={[

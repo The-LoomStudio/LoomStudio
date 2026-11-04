@@ -31,7 +31,7 @@ export function packageResourceEntries(pkg: ManagedExtensionPackage): PackageRes
 
 export function packageResourceUrl(pkg: ManagedExtensionPackage, path: string): string {
   const normalized = path.replace(/^\.\//, '')
-  if (!normalized || normalized.startsWith('/') || normalized.split('/').some(part => !part || part === '..' || part === '.') || /[\\\u0000?#:]/.test(normalized)) {
+  if (!normalized || normalized.startsWith('/') || normalized.split('/').some(part => !part || part === '..' || part === '.') || /[\\?#:]/.test(normalized) || normalized.includes('\0')) {
     throw new Error('Invalid package resource path')
   }
   const target = pkg.target

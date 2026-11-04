@@ -108,7 +108,7 @@ describe('Application mutation request context', () => {
         'application.replaceProviderCredential', 'application.replaceProviderCredential', 'application.replaceProviderCredential',
       ])
       await checked('application.deleteProviderProfile', { providerProfileId: credentialId }, [
-        'application.deleteProviderProfile', 'application.deleteProviderProfile.credential', 'application.deleteProviderProfile.credential',
+        'application.deleteProviderProfile', 'application.deleteProviderProfile.credential',
       ])
 
       await checked('application.createProviderProfile', {

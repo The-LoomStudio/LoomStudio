@@ -11,6 +11,10 @@ import styles from './master-detail-workbench.module.scss'
 const NARROW_BREAKPOINT = 640
 
 export type MasterDetailWorkbenchProps = {
+  /** 目录分类 Tab、搜索、筛选及管理操作放在此栏，随移动端下钻一起隐藏。
+   * 不要在组件外加贯穿双栏的目录 Header；详情内部 Tab 仍属于 children。
+   * 设计合同见 docs/guide/ui-design.md「双栏 Panel：目录与详情的归属」。
+   */
   master: ReactNode
   children: ReactNode
   mobilePane?: 'master' | 'detail'

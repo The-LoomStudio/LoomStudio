@@ -1,6 +1,8 @@
+import { createBlobStore } from '@loom-studio/asset-store'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import {
   createAgentToolRegistry,
@@ -12,12 +14,14 @@ import {
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createId, nowIso, type ChatMessage } from '@loom-studio/shared'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { callApplicationRpc as handleAgentsRpc } from '../../support/trpc-caller.js'
 import { readSessionHistory } from '../../../packages/application-runtime/src/agents/session-history.js'
 
 const actor = { kind: 'system' as const, id: 'context-test' }
-const narrativeText = (messages: ChatMessage[]) => messages.find(message => message.role === 'developer')?.content ?? ''
+const narrativeText = (messages: ChatMessage[]) => messages.filter(message =>
+  'fragmentIds' in message && (message.fragmentIds as string[]).some(id => id.startsWith('runtime.timeline:') || id.startsWith('runtime.memory:')),
+).map(message => message.content).join('\n\n')
 const empty: NarrativeContextProjection = { version: 'initial', memory: null, rawThroughNodeId: null }
 const tool: ToolDefinition = {
   id: 'test/write', owner: { namespace: 'test' }, name: 'write_story', description: 'Write story',
@@ -27,6 +31,9 @@ const tool: ToolDefinition = {
 async function fixture(filename = ':memory:') {
   const clock = { createId, now: nowIso }
   const engine = createSqliteDataEngine({ filename, ...clock })
+  const blobDirectory = filename === ':memory:' ? mkdtempSync(join(tmpdir(), 'loom-narrative-context-blobs-')) : join(dirname(filename), 'blobs')
+  onTestFinished(() => rmSync(blobDirectory, { recursive: true, force: true }))
+  const blobs = createBlobStore({ engine, rootDirectory: blobDirectory, ...clock })
   const documents = createSqliteDocumentStore({ engine })
   const narratives = createNarrativeStore({ engine, ...clock })
   const agents = createAgentStore({ engine, ...clock })
@@ -54,7 +61,7 @@ async function fixture(filename = ':memory:') {
   let finish = false
   const requests: ChatMessage[][] = []
   const runtime = createApplicationRuntime({
-    dataEngine: engine, documents, narratives, agents, narrativeContext: registry,
+    blobs, dataEngine: engine, documents, narratives, agents, narrativeContext: registry,
     promptResources: createPromptResourceStore({ engine, ...clock }),
     agentTools: createAgentToolRegistry([tool], [{
       toolId: tool.id,
@@ -128,6 +135,7 @@ describe('Published Narrative context', () => {
     }
   })
 
+  // Forty sequential turns include real Worker startup and SQLite IO; this is a lifecycle check, not a latency budget.
   it('keeps the 1-40 write history out of the prefix until the memory source publishes, then survives restart and a new Session', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'loom-narrative-context-'))
     const filename = join(directory, 'test.sqlite')
@@ -232,7 +240,7 @@ describe('Published Narrative context', () => {
       f.engine.close()
       await rm(directory, { recursive: true, force: true })
     }
-  }, 30_000)
+  }, 60_000)
 
   it('rejects foreign or reversed coverage, malformed output and competing default sources without overwriting the published record', async () => {
     const f = await fixture()

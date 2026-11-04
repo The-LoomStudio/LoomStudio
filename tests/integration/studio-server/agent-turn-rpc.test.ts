@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { AppendNarrativeInputResult } from '@loom-studio/application-runtime'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { callRpc, withStudioServer } from './helpers.js'
 
@@ -18,8 +19,15 @@ describe('studio server Agent Turn RPC', () => {
       const input = { timelineId: timeline.id, branchId: branch.id, nodeId: 'rpc-input', expectedHeadNodeId: null, content: 'Accepted raw.' }
       await expect(callRpc(port, 'application.appendNarrativeInput', { ...input, expectedHeadNodeId: 'stale' })).rejects.toThrow('head conflict')
       await expect(callRpc(port, 'application.getAgentTranscriptPage', { agentSessionId: session.id })).resolves.toMatchObject({ entries: [] })
-      const appended = await callRpc(port, 'application.appendNarrativeInput', input)
-      expect(await callRpc(port, 'application.appendNarrativeInput', input)).toEqual(appended)
+      const appended = await callRpc<AppendNarrativeInputResult>(port, 'application.appendNarrativeInput', input)
+      const replayed = await callRpc<AppendNarrativeInputResult>(port, 'application.appendNarrativeInput', input)
+      // Empty optional attachments may be omitted when rereading the stored Node.
+      const withoutEmptyAttachments = (result: AppendNarrativeInputResult) => ({
+        ...result,
+        node: Object.fromEntries(Object.entries(result.node).filter(([key, value]) =>
+          key !== 'attachments' || !Array.isArray(value) || value.length > 0)),
+      })
+      expect(withoutEmptyAttachments(replayed)).toEqual(withoutEmptyAttachments(appended))
       await expect(callRpc(port, 'application.appendNarrativeInput', { ...input, content: 'Conflict.' })).rejects.toThrow('node conflict')
       const target = { timelineId: timeline.id, branchId: branch.id, inputNodeId: input.nodeId }
       await expect(callRpc(port, 'application.previewAgentTurn', { agentSessionId: session.id, input: 'forged', narrativeTarget: { ...target, inputNodeId: 1 } })).rejects.toThrow('inputNodeId')

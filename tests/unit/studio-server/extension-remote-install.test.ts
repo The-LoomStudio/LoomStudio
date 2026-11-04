@@ -455,7 +455,7 @@ it('loads bundled packages in place, imports presets once and preserves explicit
   })
   expect(f.state.get(packageId, 'server')?.enabled).toBe(true)
   expect(f.state.get(packageId, 'client')?.enabled).toBe(true)
-  expect(f.host.activate).toHaveBeenCalledWith(packageId, 'server')
+  expect(f.host.activate).toHaveBeenCalledWith(packageId, 'server', { kind: 'global' })
   await f.runtime.disableModule(packageId, 'server')
   await f.runtime.disableModule(packageId, 'client')
   vi.mocked(f.host.activate).mockClear()

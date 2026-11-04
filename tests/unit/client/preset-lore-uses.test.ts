@@ -1,22 +1,18 @@
-import { isValidElement, type ReactElement } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment happy-dom
+import { act, isValidElement, type ReactElement } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AgentPresetOverview } from '../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.js'
 import type { AgentToolDefinition, Card, PresetToolMount, PromptResource, LoreMount } from '../../../apps/studio-client/src/entities/index.js'
+import { renderHook } from '../../support/client/render-hook.js'
 import { FileTree, type FileTreeNode } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js'
 
-const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[] }))
-vi.mock('react', async original => ({
-  ...await original<typeof import('react')>(),
-  useMemo: (compute: () => unknown) => compute(),
-  useState: (initial: unknown) => {
-    const index = hooks.cursor++
-    if (!(index in hooks.values)) hooks.values[index] = typeof initial === 'function' ? initial() : initial
-    return [hooks.values[index], (value: unknown) => {
-      hooks.values[index] = typeof value === 'function' ? value(hooks.values[index]) : value
-    }]
-  },
-}))
-beforeEach(() => { hooks.cursor = 0; hooks.values = [] })
+const mounted: ReturnType<typeof renderHook>[] = []
+afterEach(() => { for (const hook of mounted.splice(0)) hook.unmount() })
+function renderOverview(props: Parameters<typeof AgentPresetOverview>[0]) {
+  const hook = renderHook(() => AgentPresetOverview(props))
+  mounted.push(hook)
+  return () => { hook.rerender(); return elements(hook.current) }
+}
 
 type Element = ReactElement<Record<string, unknown>>
 function elements(value: unknown): Element[] {
@@ -49,33 +45,33 @@ describe('Preset Lore mounts', () => {
       textTransformsApi: {}, modelProfiles: [], providerAccounts: [],
       t: (key: string) => key,
     } as unknown as Parameters<typeof AgentPresetOverview>[0]
-    const render = () => { hooks.cursor = 0; return elements(AgentPresetOverview(props)) }
-    const click = (element: Element) => (element.props.onClick as () => void)()
+    const render = renderOverview(props)
+    const click = (element: Element) => act(() => (element.props.onClick as () => void)())
     const tree = render()
     const directory = () => render().find(element => element.props.ariaLabel === 'Lore 来源目录')!
     const nodes = directory().props.nodes as FileTreeNode[]
-    expect(nodes.map(node => node.label)).toEqual(['不可用引用', '我的资源'])
-    expect(nodes[0]!.children![0]!.label).toBe('Lore 引用不可用：old')
+    expect(nodes.map(node => node.label)).toEqual(['个人', '不可用引用'])
+    expect(nodes[1]!.children![0]!.label).toBe('Lore 引用不可用：old')
     const search = render().find(element => element.props['aria-label'] === '搜索 Lore')!
     ;(search.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'old' } })
     expect((directory().props.nodes as FileTreeNode[]).map(node => node.label)).toEqual(['不可用引用'])
     ;(search.props.onClear as () => void)()
-    ;(directory().props.onExpandedIdsChange as (ids: string[]) => void)(['source:不可用引用'])
-    expect(directory().props.expandedIds).toEqual(['source:不可用引用'])
+    ;(directory().props.onExpandedIdsChange as (ids: string[]) => void)([])
+    expect(directory().props.expandedIds).toEqual([])
     expect(tree.some(element => element.props['aria-label'] === '编辑 Lore')).toBe(false)
-    ;(directory().props.onSelect as (node: FileTreeNode) => void)(nodes[1]!.children![0]!)
+    ;(directory().props.onSelect as (node: FileTreeNode) => void)(nodes[0]!.children![0]!)
     expect(open).toHaveBeenCalledWith('new', 'new-root')
     const enable = tree.find(element => element.props['aria-label'] === '启用 Lore：New')!
     expect(enable.props['aria-pressed']).toBe(false)
     expect(tree.some(element => /上移|下移/.test(String(element.props['aria-label'])))).toBe(false)
     click(enable)
     await vi.waitFor(() => expect(save).toHaveBeenCalledWith({ kind: 'preset', id: 'preset' },
-      [{ id: 'missing-mount' }, { loreResourceId: 'new' }]))
+      [{ id: 'missing-mount' }, { loreResourceId: 'new' }], ['missing-mount']))
     click(render().find(element => element.props['aria-label'] === '移除 Lore')!)
-    await vi.waitFor(() => expect(save).toHaveBeenLastCalledWith({ kind: 'preset', id: 'preset' }, []))
+    await vi.waitFor(() => expect(save).toHaveBeenLastCalledWith({ kind: 'preset', id: 'preset' }, [], ['missing-mount']))
   })
 
-  it('uses the shared tool tree with expandable descriptions and preserves configuration on enable', async () => {
+  it('uses the shared tool tree with inline descriptions and preserves configuration on enable', async () => {
     const tool: AgentToolDefinition = { id: 'official/codeact_json', name: 'CodeAct JSON', description: 'Structured execution',
       version: 1, createdAt: '', updatedAt: '',
       owner: { namespace: 'official' }, input: { kind: 'structured', schema: { type: 'object' } },
@@ -92,7 +88,7 @@ describe('Preset Lore mounts', () => {
       onDuplicate: vi.fn(), onDelete: vi.fn(), onExport: vi.fn(),
       textTransformsApi: {}, modelProfiles: [], providerAccounts: [], t: (key: string) => key,
     } as unknown as Parameters<typeof AgentPresetOverview>[0]
-    const render = () => { hooks.cursor = 0; return elements(AgentPresetOverview(props)) }
+    const render = renderOverview(props)
     const directory = () => render().find(element => element.props.ariaLabel === '工具来源目录')!
     expect(directory().type).toBe(FileTree)
     const group = (directory().props.nodes as FileTreeNode[])[0]!
@@ -103,7 +99,8 @@ describe('Preset Lore mounts', () => {
 
 
     const detail = () => (directory().props.renderExpandedRow as (node: FileTreeNode) => Element | null)(leaf)
-    expect(detail()).toBeNull()
+    expect(detail()?.props.children).toBe(tool.description)
+    expect(directory().props.expandedIds).toEqual([group.id])
     ;(directory().props.onExpandedIdsChange as (ids: string[]) => void)([group.id, leaf.id])
     expect(detail()?.props.children).toBe(tool.description)
     const enable = render().find(element => element.props['aria-label'] === '启用工具：CodeAct JSON')!
@@ -112,7 +109,7 @@ describe('Preset Lore mounts', () => {
     await vi.waitFor(() => expect(save).toHaveBeenCalledWith('preset', [{
       toolId: tool.id, orderIndex: 3, defaultEnabled: true,
       activation: { kind: 'always' }, provider: { order: 5 },
-    }]))
+    }], ['mount']))
   })
 
   it('places current Card Lore first and distinguishes inherited use from explicit mounts', () => {
@@ -129,11 +126,12 @@ describe('Preset Lore mounts', () => {
       onDuplicate: vi.fn(), onDelete: vi.fn(), onExport: vi.fn(),
       textTransformsApi: {}, modelProfiles: [], providerAccounts: [], t: (key: string) => key,
     } as unknown as Parameters<typeof AgentPresetOverview>[0]
-    const render = () => { hooks.cursor = 0; return elements(AgentPresetOverview(props)) }
+    const render = renderOverview(props)
     const directory = () => render().find(element => element.props.ariaLabel === 'Lore 来源目录')!
     const groups = directory().props.nodes as FileTreeNode[]
-    expect(groups.map(node => node.label)).toEqual(['当前角色 · Current Card', '我的资源'])
-    const leaf = groups[0]!.children![0]!
+    expect(groups.map(node => node.label)).toEqual(['角色', '个人'])
+    expect(groups[0]!.children![0]!.label).toBe('Current Card')
+    const leaf = groups[0]!.children![0]!.children![0]!
     expect(leaf.meta).toBe('随角色默认采用')
     expect((directory().props.isMuted as (node: FileTreeNode) => boolean)(leaf)).toBe(false)
     const icon = (directory().props.renderIcon as (node: FileTreeNode) => Element)(leaf)

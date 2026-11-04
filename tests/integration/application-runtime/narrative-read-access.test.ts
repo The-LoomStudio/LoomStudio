@@ -271,7 +271,9 @@ print("OLD=" + old.text);
       expect(JSON.stringify(allowed)).toContain('OLD=FLOOR_5')
       expect(actions).toHaveLength(2)
       expect(actions[0]?.selection).toMatchObject({ kind: 'tail', count: 1, throughFloor: 5 })
-      const prefix = (messages: ChatMessage[]) => messages.find(message => message.role === 'developer')?.content
+      const prefix = (messages: ChatMessage[]) => messages.find(message =>
+        'fragmentIds' in message && (message.fragmentIds as string[]).some(id => id.startsWith('runtime.timeline:')),
+      )?.content
       expect(prefix(requests[0]!)).toBe(prefix(requests[2]!))
       expect(prefix(requests[0]!)).toContain('FLOOR_40')
       expect(prefix(requests[0]!)).not.toContain('FLOOR_41')

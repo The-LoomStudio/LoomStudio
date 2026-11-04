@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
 import type { ErrorInfo } from 'react'
 import { AppErrorBoundary, normalizeRenderError } from '../../../apps/studio-client/src/app/app-error-boundary.js'

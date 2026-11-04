@@ -29,7 +29,7 @@ function apiFor(initial = entry()) {
   return {
     listConfigs: vi.fn(async (_input: Parameters<Props['api']['listConfigs']>[0]) => ({ configs: [initial] })),
     getConfig: vi.fn(async (_input: Parameters<Props['api']['getConfig']>[0]) => ({ config: entry('latest', 2, initial.scope) as ExtensionConfigEntry | null })),
-    upsertConfig: vi.fn(async (input: Parameters<Props['api']['upsertConfig']>[0]) => ({ config: entry(String(input.value), (input.expectedVersion ?? 0) + 1, input.scope), mutation: {} as never })),
+    upsertConfig: vi.fn<Props['api']['upsertConfig']>(async input => ({ config: entry(String(input.value), (input.expectedVersion ?? 0) + 1, input.scope), mutation: { changesetId: 'settings-fixture' } })),
   }
 }
 async function setup(overrides: Partial<Props> = {}) {
@@ -115,7 +115,7 @@ it('freezes the dirty baseline across revision refresh and requires explicit rea
   await edit('typed while reapplying', false)
   await tick()
   expect(api.upsertConfig).toHaveBeenCalledTimes(3)
-  await act(async () => reapplied.resolve({ config: entry('edited during recovery', 4), mutation: {} as never }))
+  await act(async () => reapplied.resolve({ config: entry('edited during recovery', 4), mutation: { changesetId: 'settings-fixture' } }))
   expect(input().value).toBe('typed while reapplying')
   expect(api.upsertConfig.mock.calls[3]![0]).toMatchObject({ value: 'typed while reapplying', expectedVersion: 4 })
 })
@@ -159,10 +159,10 @@ it('confirms only the submitted snapshot, drains a queued edit, and preserves an
   await edit('first')
   await edit('queued')
   expect(api.upsertConfig).toHaveBeenCalledTimes(1)
-  await act(async () => first.resolve({ config: entry('first', 2), mutation: {} as never }))
+  await act(async () => first.resolve({ config: entry('first', 2), mutation: { changesetId: 'settings-fixture' } }))
   expect(api.upsertConfig.mock.calls[1]![0]).toMatchObject({ value: 'queued', expectedVersion: 2 })
   await edit('new unsent', false)
-  await act(async () => second.resolve({ config: entry('queued', 3), mutation: {} as never }))
+  await act(async () => second.resolve({ config: entry('queued', 3), mutation: { changesetId: 'settings-fixture' } }))
   expect(input().value).toBe('new unsent')
   expect(host.textContent).toContain('等待自动保存')
   await tick()
@@ -179,7 +179,7 @@ it('isolates changed API sources and ignores late saves and pending timers after
   const nextApi = apiFor(entry('new source', 8))
   await render({ api: nextApi })
   expect(input().value).toBe('new source')
-  await act(async () => pending.resolve({ config: entry('old pending', 2), mutation: {} as never }))
+  await act(async () => pending.resolve({ config: entry('old pending', 2), mutation: { changesetId: 'settings-fixture' } }))
   await tick()
   expect(input().value).toBe('new source')
   expect(oldApi.upsertConfig).toHaveBeenCalledTimes(1)
@@ -260,7 +260,7 @@ it('ignores an installation save after switching target and does not drain its o
   await edit('A queued')
   api.listConfigs.mockResolvedValue({ configs: [entry('B', 8, { kind: 'card', cardId: 'B' })] })
   await render({ target: { kind: 'card', cardId: 'B' }, scopeContext: { cardId: 'B' } })
-  await act(async () => pending.resolve({ config: entry('A pending', 2, { kind: 'card', cardId: 'A' }), mutation: {} as never }))
+  await act(async () => pending.resolve({ config: entry('A pending', 2, { kind: 'card', cardId: 'A' }), mutation: { changesetId: 'settings-fixture' } }))
   await tick()
   expect(input().value).toBe('B')
   expect(api.upsertConfig).toHaveBeenCalledTimes(1)

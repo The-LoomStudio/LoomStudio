@@ -46,10 +46,10 @@ describe('resource reference navigation model', () => {
     expect(parseEntityReference(view.uri!)).toEqual({ kind: 'entity', type: 'resource', id: 'resource/1', nodeId: 'root/2' })
     expect(view.title).toBe('User resource')
   })
-  it('returns run, provider and extension URIs while keeping sessions non-navigable', async () => {
+  it('returns run, official provider, extension and Session URIs', async () => {
     const listProviders = vi.fn()
       .mockResolvedValueOnce({ providerProfiles: [], nextCursor: 'next' })
-      .mockResolvedValueOnce({ providerProfiles: [{ id: 'provider/1', displayName: 'User provider' }] })
+      .mockResolvedValueOnce({ providerProfiles: [{ id: 'provider/1', displayName: 'User provider', providerExtensionId: 'official.openai' }] })
     const api = {
       extensions: { list: vi.fn().mockResolvedValue({ items: [{ packageId: 'example.ext', displayName: 'User extension' }] }) },
       providerProfiles: { list: listProviders },
@@ -64,8 +64,7 @@ describe('resource reference navigation model', () => {
     }
     expect(listProviders).toHaveBeenLastCalledWith({ cursor: 'next', limit: 100 })
     const session = await loadEntityReference(api, { kind: 'entity', type: 'session', id: 'session/1' })
-    expect(session.uri).toBeUndefined()
-    expect(session.note).toContain('暂不支持直接定位')
+    expect(parseEntityReference(session.uri!)).toEqual({ kind: 'entity', type: 'session', id: 'session/1' })
   })
   it('fetches the exact resource ID and highlights only the matching source version', async () => {
     const { api, getResource } = apiFixture()
@@ -123,7 +122,7 @@ describe('resource reference navigation model', () => {
   it('preserves resource identity when navigating between resources with the same node ID', () => {
     for (const panel of ['resource', 'preset'] as const) {
       for (const resourceId of ['first', 'second', 'first']) {
-        expect(readStudioRoute(`/studio/${panel === 'preset' ? 'presets' : 'resources'}/reference/${encodeURIComponent(resourceId)}/node/shared-node`)).toEqual({
+        expect(readStudioRoute(`/studio/${panel === 'preset' ? 'agents' : 'resources'}/reference/${encodeURIComponent(resourceId)}/node/shared-node`)).toEqual({
           panel: panel === 'preset' ? 'agent' : panel, resourceId, assetId: 'shared-node',
         })
       }

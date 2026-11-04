@@ -40,25 +40,25 @@ var y = (...e) => e.filter((e, t, n) => !!e && e.trim() !== "" && n.indexOf(e) =
 		...i
 	}));
 	return i.displayName = S(e), i;
-}, k = O("arrow-left", [["path", {
+}, ee = O("arrow-left", [["path", {
 	d: "m12 19-7-7 7-7",
 	key: "1l729n"
 }], ["path", {
 	d: "M19 12H5",
 	key: "x3x0zl"
-}]]), A = O("book-open", [["path", {
+}]]), k = O("book-open", [["path", {
 	d: "M12 7v14",
 	key: "1akyts"
 }], ["path", {
 	d: "M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z",
 	key: "ruj8y"
-}]]), j = O("check", [["path", {
+}]]), A = O("check", [["path", {
 	d: "M20 6 9 17l-5-5",
 	key: "1gmf2c"
-}]]), M = O("chevron-right", [["path", {
+}]]), j = O("chevron-right", [["path", {
 	d: "m9 18 6-6-6-6",
 	key: "mthhwq"
-}]]), N = O("file-text", [
+}]]), M = O("file-text", [
 	["path", {
 		d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
 		key: "1oefj6"
@@ -79,37 +79,7 @@ var y = (...e) => e.filter((e, t, n) => !!e && e.trim() !== "" && n.indexOf(e) =
 		d: "M16 17H8",
 		key: "z1uh3a"
 	}]
-]), P = O("layers", [
-	["path", {
-		d: "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
-		key: "zw3jo"
-	}],
-	["path", {
-		d: "M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12",
-		key: "1wduqc"
-	}],
-	["path", {
-		d: "M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17",
-		key: "kqbvx6"
-	}]
-]), F = O("refresh-cw", [
-	["path", {
-		d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",
-		key: "v9h5vc"
-	}],
-	["path", {
-		d: "M21 3v5h-5",
-		key: "1q7to0"
-	}],
-	["path", {
-		d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16",
-		key: "3uifl3"
-	}],
-	["path", {
-		d: "M8 16H3v5",
-		key: "1cv678"
-	}]
-]), I = O("settings", [["path", {
+]), N = O("settings", [["path", {
 	d: "M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915",
 	key: "1i5ecw"
 }], ["circle", {
@@ -117,32 +87,13 @@ var y = (...e) => e.filter((e, t, n) => !!e && e.trim() !== "" && n.indexOf(e) =
 	cy: "12",
 	r: "3",
 	key: "1v7zrd"
-}]]), L = O("sparkles", [
-	["path", {
-		d: "M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z",
-		key: "1s2grr"
-	}],
-	["path", {
-		d: "M20 2v4",
-		key: "1rf3ol"
-	}],
-	["path", {
-		d: "M22 4h-4",
-		key: "gwowj6"
-	}],
-	["circle", {
-		cx: "4",
-		cy: "20",
-		r: "2",
-		key: "6kqj1y"
-	}]
-]), R = O("x", [["path", {
+}]]), P = O("x", [["path", {
 	d: "M18 6 6 18",
 	key: "1bl5f8"
 }], ["path", {
 	d: "m6 6 12 12",
 	key: "d8bk6v"
-}]]), z = {
+}]]), F = {
 	pending: "准备中",
 	running: "生成中",
 	draft: "待确认",
@@ -151,7 +102,7 @@ var y = (...e) => e.filter((e, t, n) => !!e && e.trim() !== "" && n.indexOf(e) =
 	cancelled: "已取消",
 	interrupted: "已中断",
 	discarded: "已丢弃"
-}, B = (e) => e.valid ? e.resident ? "常驻注入" : e.published ? "等待探索" : z[e.status] ?? e.status : "来源已变化", V = (e) => `${e.fromFloor}–${e.throughFloor} 楼`, H = [
+}, I = (e) => e.valid ? e.resident ? "常驻注入" : e.published ? "等待探索" : F[e.status] ?? e.status : "来源已变化", L = (e) => `${e.fromFloor}–${e.throughFloor} 楼`, R = [
 	[
 		"batchFloors",
 		"每批正文楼数",
@@ -195,21 +146,17 @@ var y = (...e) => e.filter((e, t, n) => !!e && e.trim() !== "" && n.indexOf(e) =
 		64e3
 	]
 ];
-function U({ snapshot: e, busy: t, save: n, back: r }) {
-	let [i, a] = o(e.policy), [s] = o(e.policyVersion);
+function z({ snapshot: e, busy: t, save: n }) {
+	let [r, i] = o(e.policy), [a] = o(e.policyVersion);
 	return /* @__PURE__ */ v("form", {
 		className: "settings",
 		onSubmit: (e) => {
-			e.preventDefault(), n(i, s);
+			e.preventDefault(), n(r, a);
 		},
 		children: [
-			/* @__PURE__ */ v("header", {
+			/* @__PURE__ */ _("header", {
 				className: "detailHeading",
-				children: [/* @__PURE__ */ _(u, {
-					"aria-label": "返回摘要",
-					onClick: r,
-					children: /* @__PURE__ */ _(k, { size: 16 })
-				}), /* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("h2", { children: "总结设置" }), /* @__PURE__ */ _("p", { children: "仅应用于当前故事" })] })]
+				children: /* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("h2", { children: "总结设置" }), /* @__PURE__ */ _("p", { children: "仅应用于当前故事" })] })
 			}),
 			/* @__PURE__ */ v("div", {
 				className: "settingsBody",
@@ -218,20 +165,20 @@ function U({ snapshot: e, busy: t, save: n, back: r }) {
 						className: "switchRow",
 						children: [/* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("strong", { children: "自动准备摘要" }), /* @__PURE__ */ _("p", { children: "后台整理固定来源，不阻塞主剧情。生成后仍需整批确认。" })] }), /* @__PURE__ */ _(h, {
 							label: "自动准备摘要",
-							checked: i.enabled,
+							checked: r.enabled,
 							disabled: t,
-							onChange: (e) => a({
-								...i,
+							onChange: (e) => i({
+								...r,
 								enabled: e
 							})
 						})]
 					}),
 					["原文总结 · LV1", "分层压缩 · LV2"].map((e, n) => /* @__PURE__ */ v("section", {
 						className: "settingsGroup",
-						children: [/* @__PURE__ */ _("h3", { children: e }), H.slice(n * 3, n * 3 + 3).map(([e, n, r, o, s]) => /* @__PURE__ */ _(l, {
+						children: [/* @__PURE__ */ _("h3", { children: e }), R.slice(n * 3, n * 3 + 3).map(([e, n, a, o, s]) => /* @__PURE__ */ _(l, {
 							id: `memory-${e}`,
 							label: n,
-							description: r,
+							description: a,
 							children: (n) => /* @__PURE__ */ _(p, {
 								...n,
 								name: e,
@@ -239,9 +186,9 @@ function U({ snapshot: e, busy: t, save: n, back: r }) {
 								pattern: "[0-9]+",
 								required: !0,
 								disabled: t,
-								value: String(i[e]),
-								onChange: (t) => a({
-									...i,
+								value: String(r[e]),
+								onChange: (t) => i({
+									...r,
 									[e]: Number(t.target.value)
 								}),
 								onBlur: (e) => e.target.setCustomValidity(Number(e.target.value) < o || Number(e.target.value) > s ? `请输入 ${o}–${s} 之间的整数` : ""),
@@ -251,7 +198,7 @@ function U({ snapshot: e, busy: t, save: n, back: r }) {
 					}, e)),
 					/* @__PURE__ */ v("section", {
 						className: "presetHint",
-						children: [/* @__PURE__ */ _(A, { size: 18 }), /* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("strong", { children: "提示词与模型" }), /* @__PURE__ */ _("p", { children: "在 Agent 预设中打开「剧情总结」配置模型和提示词。LV1 / LV2 共用一个预设，角色世界书通过锚点提供参考。" })] })]
+						children: [/* @__PURE__ */ _(k, { size: 18 }), /* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("strong", { children: "提示词与模型" }), /* @__PURE__ */ _("p", { children: "在 Agent 预设中打开「剧情总结」配置模型和提示词。LV1 / LV2 共用一个预设，角色世界书通过锚点提供参考。" })] })]
 					})
 				]
 			}),
@@ -263,22 +210,22 @@ function U({ snapshot: e, busy: t, save: n, back: r }) {
 				}), /* @__PURE__ */ v(c, {
 					disabled: t,
 					type: "submit",
-					children: [/* @__PURE__ */ _(j, { size: 16 }), "保存设置"]
+					children: [/* @__PURE__ */ _(A, { size: 16 }), "保存设置"]
 				})]
 			})
 		]
 	});
 }
-function W({ call: e }) {
-	let [t, n] = o(), [r, s] = o(""), [p, h] = o(!1), [y, b] = o(), [x, S] = o("list"), [C, w] = o(""), [T, E] = o("all"), [D, O] = o({}), [z, H] = o(), [W, G] = o(!1), K = a(!0), q = a(!1), J = a(!1);
+function B({ call: e, timelineId: t }) {
+	let n = a(null), [r, s] = o(), [p, h] = o(""), [y, b] = o(""), [x, S] = o(!1), [C, w] = o(), [T, E] = o("dashboard"), [D, O] = o(""), [F, R] = o("all"), [B, V] = o({}), [H, U] = o(), [W, G] = o(!1), K = a(!0), q = a(!1), J = a(!1);
 	async function Y() {
 		if (!J.current) {
 			J.current = !0;
 			try {
 				let t = await e("status");
-				K.current && n(t);
+				K.current && (s(t), b(""));
 			} catch (e) {
-				K.current && s(e instanceof Error ? e.message : String(e));
+				K.current && b(e instanceof Error ? e.message : String(e));
 			} finally {
 				J.current = !1;
 			}
@@ -297,348 +244,380 @@ function W({ call: e }) {
 	async function X(t, n = {}) {
 		if (q.current && t !== "cancel") return;
 		let r = t !== "cancel";
-		r && (q.current = !0, h(!0)), s("");
+		r && (q.current = !0, S(!0)), h("");
 		try {
 			let r = await e(t, n);
 			if (!K.current) return;
-			r?.id && (b(r.id), S("detail")), t === "prepare" && !r && s("当前没有可生成的新批次，请查看已有摘要的处理状态。"), t === "configure" && S("list"), await Y();
+			r?.id && (w(r.id), E("detail")), t === "prepare" && !r && h("当前没有可生成的新批次，请查看已有摘要的处理状态。"), t === "configure" && E("list"), await Y();
 		} catch (e) {
-			K.current && s(e instanceof Error ? e.message : String(e));
+			K.current && h(e instanceof Error ? e.message : String(e));
 		} finally {
-			r && (q.current = !1, K.current && h(!1));
+			r && (q.current = !1, K.current && S(!1));
 		}
 	}
-	let Z = t?.batches.find((e) => e.id === y) ?? t?.batches.find((e) => e.status === "draft") ?? t?.batches[0], Q = t?.batches.filter((e) => `${V(e)} ${e.text}`.toLowerCase().includes(C.toLowerCase()) && (T === "all" || T === "draft" && !["confirmed", "discarded"].includes(e.status) || T === "resident" && e.resident || T === "explore" && e.status === "confirmed" && !e.resident && e.valid)) ?? [], $ = t?.batches.some((e) => e.running);
+	i(() => {
+		n.current?.dispatchEvent(new CustomEvent("loom:memory-navigation", {
+			bubbles: !0,
+			composed: !0,
+			detail: { page: T }
+		}));
+	}, [T]), i(() => {
+		let e = (e) => {
+			let n = e.detail;
+			n?.timelineId === t && [
+				"dashboard",
+				"settings",
+				"list"
+			].includes(n.page) && E(n.page);
+		};
+		return window.addEventListener("loom:memory-page", e), () => window.removeEventListener("loom:memory-page", e);
+	}, [t]);
+	let Z = r?.batches.find((e) => e.id === C) ?? r?.batches.find((e) => e.status === "draft") ?? r?.batches[0], Q = r?.batches.filter((e) => `${L(e)} ${e.text}`.toLowerCase().includes(D.toLowerCase()) && (F === "all" || F === "draft" && !["confirmed", "discarded"].includes(e.status) || F === "resident" && e.resident || F === "explore" && e.status === "confirmed" && !e.resident && e.valid)) ?? [], $ = r?.batches.some((e) => e.running);
 	return /* @__PURE__ */ v("section", {
+		ref: n,
 		className: "memory",
 		"aria-label": "剧情记忆工作台",
-		"data-page": x,
-		children: [
-			/* @__PURE__ */ v("header", {
-				className: "toolbar",
-				children: [/* @__PURE__ */ v("div", {
-					className: "summary",
-					children: [
-						/* @__PURE__ */ _(P, { size: 18 }),
-						/* @__PURE__ */ _("strong", { children: "剧情摘要" }),
-						/* @__PURE__ */ _("span", { children: t ? `${t.batches.filter((e) => e.resident).length} 份常驻 · 当前 ${t.headFloor} 楼` : "正在加载…" })
-					]
-				}), /* @__PURE__ */ v("div", {
-					className: "actions",
-					children: [
-						/* @__PURE__ */ v(c, {
-							disabled: !t || p || $,
-							onClick: () => void X("prepare", { level: 1 }),
-							children: [/* @__PURE__ */ _(L, { size: 15 }), "立即总结 LV1"]
-						}),
-						/* @__PURE__ */ v(c, {
-							disabled: !t || p || $,
-							onClick: () => void X("prepare", { level: 2 }),
-							children: [/* @__PURE__ */ _(P, { size: 15 }), "压缩 LV2"]
-						}),
-						/* @__PURE__ */ _(u, {
-							"aria-label": "刷新剧情记忆",
-							onClick: () => {
-								s(""), Y();
-							},
-							children: /* @__PURE__ */ _(F, { size: 16 })
-						}),
-						/* @__PURE__ */ _(u, {
-							"aria-label": "总结设置",
-							disabled: !t,
-							onClick: () => S(x === "settings" ? "list" : "settings"),
-							children: /* @__PURE__ */ _(I, { size: 16 })
-						})
-					]
-				})]
-			}),
-			r && /* @__PURE__ */ v("div", {
-				className: "notice",
-				role: "alert",
-				children: [/* @__PURE__ */ _("span", { children: r }), /* @__PURE__ */ _(u, {
-					"aria-label": "关闭提示",
-					onClick: () => s(""),
-					children: /* @__PURE__ */ _(R, { size: 14 })
-				})]
-			}),
-			t ? x === "settings" ? /* @__PURE__ */ _(U, {
-				snapshot: t,
-				busy: p,
-				back: () => S("list"),
-				save: (e, t) => void X("configure", {
-					value: e,
-					expectedVersion: t
-				})
-			}) : /* @__PURE__ */ v("div", {
-				className: "workbench",
-				children: [/* @__PURE__ */ v("aside", {
-					className: "sidebar",
-					"aria-label": "摘要列表",
-					children: [
-						/* @__PURE__ */ v("div", {
-							className: "filters",
-							children: [/* @__PURE__ */ _(d, {
-								"aria-label": "搜索摘要",
-								placeholder: "搜索楼层或正文",
-								clearLabel: "清空搜索",
-								value: C,
-								onChange: (e) => w(e.target.value),
-								onClear: () => w("")
-							}), /* @__PURE__ */ _(f, {
-								ariaLabel: "筛选摘要",
-								size: "compact",
-								activeId: T,
-								onChange: E,
-								items: [
-									{
-										id: "all",
-										label: "全部"
-									},
-									{
-										id: "draft",
-										label: "待处理"
-									},
-									{
-										id: "resident",
-										label: "常驻"
-									},
-									{
-										id: "explore",
-										label: "探索"
-									}
-								]
-							})]
-						}),
-						/* @__PURE__ */ v("nav", {
-							className: "list",
-							"aria-label": "摘要批次",
-							children: [Q.map((e) => /* @__PURE__ */ v(c, {
-								className: "batch",
-								"aria-current": e.id === Z?.id ? "true" : void 0,
-								onClick: () => {
-									b(e.id), S("detail");
-								},
-								children: [
-									/* @__PURE__ */ v("span", {
-										className: "level",
-										children: ["L", e.level]
-									}),
-									/* @__PURE__ */ v("span", {
-										className: "batchIdentity",
-										children: [/* @__PURE__ */ v("strong", { children: ["第 ", V(e)] }), /* @__PURE__ */ v("small", { children: [
-											B(e),
-											" · ",
-											e.tokenCount,
-											" Token"
-										] })]
-									}),
-									/* @__PURE__ */ _(M, { size: 14 })
-								]
-							}, e.id)), !Q.length && /* @__PURE__ */ _("p", {
-								className: "listEmpty",
-								children: t.batches.length ? "没有匹配的摘要" : "还没有剧情摘要"
-							})]
-						}),
-						/* @__PURE__ */ v("div", {
-							className: "sidebarFoot",
-							children: [
-								"每 ",
-								t.policy.batchFloors,
-								" 楼一批 · 缓冲 ",
-								t.policy.bufferFloors,
-								" 楼",
-								/* @__PURE__ */ _(c, {
-									size: "small",
-									onClick: () => S("settings"),
-									children: "调整"
-								})
-							]
-						})
-					]
-				}), /* @__PURE__ */ _("main", {
-					className: "detail",
-					children: Z ? /* @__PURE__ */ v(g, { children: [
-						/* @__PURE__ */ v("header", {
-							className: "detailHeading",
-							children: [
-								/* @__PURE__ */ _(u, {
-									className: "back",
-									"aria-label": "返回摘要列表",
-									onClick: () => S("list"),
-									children: /* @__PURE__ */ _(k, { size: 16 })
-								}),
-								/* @__PURE__ */ _(N, { size: 20 }),
-								/* @__PURE__ */ v("div", { children: [/* @__PURE__ */ v("h2", { children: [
-									"LV",
-									Z.level,
-									" · 第 ",
-									V(Z)
-								] }), /* @__PURE__ */ v("p", { children: [
-									Z.tokenCount,
-									" / ",
-									Z.budget,
-									" Token · 版本 ",
-									Z.version
-								] })] }),
-								/* @__PURE__ */ _("span", {
-									className: "badge",
-									"data-invalid": !Z.valid,
-									children: B(Z)
-								})
-							]
-						}),
-						/* @__PURE__ */ v("div", {
-							className: "body",
-							children: [
-								!Z.valid && /* @__PURE__ */ _("p", {
-									className: "warning",
-									children: "来源已不属于当前剧情，这份摘要不会注入，也不能确认。"
-								}),
-								Z.error && /* @__PURE__ */ _("p", {
-									className: "warning",
-									children: Z.error
-								}),
-								/* @__PURE__ */ _("article", {
-									className: "text",
-									children: Z.text || (Z.running ? "正在整理固定来源，你可以继续主剧情写作。" : "尚无摘要正文，可在下方重试生成。")
-								}),
-								/* @__PURE__ */ v("details", {
-									className: "sources",
-									children: [
-										/* @__PURE__ */ _("summary", { children: "来源与覆盖范围" }),
-										/* @__PURE__ */ _("p", {
-											className: "muted",
-											children: Z.level === 1 ? `原文第 ${V(Z)}` : `${Z.inputs?.length ?? 0} 份 LV1 摘要 · 第 ${V(Z)}`
-										}),
-										/* @__PURE__ */ _(c, {
-											disabled: !Z.valid || W,
-											onClick: async () => {
-												G(!0);
-												try {
-													let t = await e("source", { id: Z.id });
-													K.current && H({
-														id: Z.id,
-														text: t.text
-													});
-												} catch (e) {
-													K.current && s(e instanceof Error ? e.message : String(e));
-												} finally {
-													K.current && G(!1);
-												}
-											},
-											children: W ? "正在读取…" : "读取固定来源"
-										}),
-										z?.id === Z.id && /* @__PURE__ */ _("pre", {
-											className: "source",
-											children: z.text
-										})
-									]
-								}, Z.id)
-							]
-						}),
-						/* @__PURE__ */ _("footer", {
-							className: "review",
-							children: Z.status === "confirmed" ? /* @__PURE__ */ _("p", {
-								className: "muted",
-								children: Z.valid ? Z.resident ? "这份摘要已纳入当前剧情上下文。" : Z.published ? "已由高层摘要覆盖，保留供探索。" : "已确认，达到原文缓冲边界后自动采用。" : "来源失效，已停止注入。"
-							}) : Z.running ? /* @__PURE__ */ v("div", {
-								className: "actions",
-								children: [/* @__PURE__ */ _("span", {
-									className: "muted",
-									role: "status",
-									children: "正在生成摘要…"
-								}), /* @__PURE__ */ _(c, {
-									onClick: () => void X("cancel", { id: Z.id }),
-									children: "取消生成"
-								})]
-							}) : Z.status !== "discarded" && Z.valid ? /* @__PURE__ */ v(g, { children: [/* @__PURE__ */ _(l, {
-								id: "memory-revision",
-								label: "修订要求",
-								children: (e) => /* @__PURE__ */ _(m, {
-									...e,
-									value: D[Z.id] ?? "",
-									placeholder: "补充遗漏的事件、人物承诺或因果关系…",
-									onChange: (e) => O({
-										...D,
-										[Z.id]: e.target.value
-									}),
-									rows: 3
-								})
-							}), /* @__PURE__ */ v("div", {
-								className: "reviewActions",
-								children: [
-									/* @__PURE__ */ _(c, {
-										variant: "danger",
-										disabled: p,
-										onClick: () => void X("discard", {
-											id: Z.id,
-											version: Z.version
-										}),
-										children: "丢弃草稿"
-									}),
-									/* @__PURE__ */ _("span", {}),
-									/* @__PURE__ */ _(c, {
-										disabled: p,
-										onClick: () => void X("revise", {
-											id: Z.id,
-											version: Z.version,
-											input: D[Z.id]?.trim() || "请重新整理完整摘要，保留必要事实与因果，并遵守输出上限。"
-										}),
-										children: [
-											"failed",
-											"cancelled",
-											"interrupted"
-										].includes(Z.status) ? "重试生成" : "提交修订"
-									}),
-									/* @__PURE__ */ v(c, {
-										disabled: p || Z.status !== "draft" || Z.tokenCount > Z.budget || !Z.text.trim(),
-										onClick: () => void X("confirm", {
-											id: Z.id,
-											version: Z.version
-										}),
-										children: [/* @__PURE__ */ _(j, { size: 16 }), "确认整批摘要"]
-									})
-								]
-							})] }) : null
-						})
-					] }) : /* @__PURE__ */ v("div", {
-						className: "empty",
+		"data-page": T,
+		children: [p && /* @__PURE__ */ v("div", {
+			className: "notice",
+			role: "alert",
+			children: [/* @__PURE__ */ _("span", { children: p }), /* @__PURE__ */ _(u, {
+				"aria-label": "关闭提示",
+				onClick: () => h(""),
+				children: /* @__PURE__ */ _(P, { size: 14 })
+			})]
+		}), r ? T === "dashboard" ? /* @__PURE__ */ v("main", {
+			className: "dashboard",
+			children: [/* @__PURE__ */ v("section", {
+				className: "dashboardCard",
+				children: [
+					/* @__PURE__ */ _("h2", { children: "剧情记忆" }),
+					/* @__PURE__ */ _("p", {
+						className: "muted",
+						children: "原文分批整理为 LV1，积累后压缩为 LV2，确认后纳入剧情上下文。"
+					}),
+					/* @__PURE__ */ v("div", {
+						className: "metrics",
 						children: [
-							/* @__PURE__ */ _(A, { size: 32 }),
-							/* @__PURE__ */ _("h2", { children: "为故事留下一份记忆" }),
-							/* @__PURE__ */ v("p", { children: [
-								"原文分批整理为 LV1，积累后压缩为 LV2。",
-								/* @__PURE__ */ _("br", {}),
-								"确认采用后，仍能回查原文与下层摘要。"
-							] }),
-							/* @__PURE__ */ v(c, {
-								onClick: () => S("settings"),
-								children: [/* @__PURE__ */ _(I, { size: 16 }), "配置总结"]
+							/* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("strong", { children: r.headFloor }), /* @__PURE__ */ _("span", { children: "当前楼层" })] }),
+							/* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("strong", { children: r.batches.filter((e) => e.resident).length }), /* @__PURE__ */ _("span", { children: "常驻摘要" })] }),
+							/* @__PURE__ */ v("div", { children: [/* @__PURE__ */ _("strong", { children: r.batches.filter((e) => e.status === "draft").length }), /* @__PURE__ */ _("span", { children: "待确认" })] })
+						]
+					}),
+					/* @__PURE__ */ v("div", {
+						className: "dashboardActions",
+						children: [
+							/* @__PURE__ */ _(c, {
+								disabled: x || $,
+								onClick: () => void X("prepare", { level: 1 }),
+								children: "总结 LV1"
 							}),
-							/* @__PURE__ */ _("small", { children: "首次使用请在「剧情总结」预设中选择模型。" })
+							/* @__PURE__ */ _(c, {
+								disabled: x || $,
+								onClick: () => void X("prepare", { level: 2 }),
+								children: "压缩 LV2"
+							}),
+							/* @__PURE__ */ _(c, {
+								onClick: () => E("list"),
+								children: "查看数据"
+							})
 						]
 					})
+				]
+			}), y && /* @__PURE__ */ v("div", {
+				role: "alert",
+				children: [y, /* @__PURE__ */ _(c, {
+					onClick: () => void Y(),
+					children: "重试读取"
 				})]
-			}) : /* @__PURE__ */ v("div", {
-				className: "empty",
+			})]
+		}) : T === "settings" ? /* @__PURE__ */ _(z, {
+			snapshot: r,
+			busy: x,
+			save: (e, t) => void X("configure", {
+				value: e,
+				expectedVersion: t
+			})
+		}) : /* @__PURE__ */ v("div", {
+			className: "workbench",
+			children: [/* @__PURE__ */ v("aside", {
+				className: "sidebar",
+				"aria-label": "摘要列表",
 				children: [
-					/* @__PURE__ */ _(A, { size: 28 }),
-					/* @__PURE__ */ _("p", { children: r ? "剧情记忆暂时无法读取" : "正在读取剧情记忆…" }),
-					r && /* @__PURE__ */ _(c, {
-						onClick: () => void Y(),
-						children: "重试"
+					y && /* @__PURE__ */ v("div", {
+						className: "notice",
+						role: "alert",
+						children: [/* @__PURE__ */ _("span", { children: y }), /* @__PURE__ */ _(c, {
+							onClick: () => void Y(),
+							children: "重试读取"
+						})]
+					}),
+					/* @__PURE__ */ v("div", {
+						className: "filters",
+						children: [/* @__PURE__ */ _(d, {
+							"aria-label": "搜索摘要",
+							placeholder: "搜索楼层或正文",
+							clearLabel: "清空搜索",
+							value: D,
+							onChange: (e) => O(e.target.value),
+							onClear: () => O("")
+						}), /* @__PURE__ */ _(f, {
+							ariaLabel: "筛选摘要",
+							size: "compact",
+							activeId: F,
+							onChange: R,
+							items: [
+								{
+									id: "all",
+									label: "全部"
+								},
+								{
+									id: "draft",
+									label: "待处理"
+								},
+								{
+									id: "resident",
+									label: "常驻"
+								},
+								{
+									id: "explore",
+									label: "探索"
+								}
+							]
+						})]
+					}),
+					/* @__PURE__ */ v("nav", {
+						className: "list",
+						"aria-label": "摘要批次",
+						children: [Q.map((e) => /* @__PURE__ */ v(c, {
+							className: "batch",
+							"aria-current": e.id === Z?.id ? "true" : void 0,
+							onClick: () => {
+								w(e.id), E("detail");
+							},
+							children: [
+								/* @__PURE__ */ v("span", {
+									className: "level",
+									children: ["L", e.level]
+								}),
+								/* @__PURE__ */ v("span", {
+									className: "batchIdentity",
+									children: [/* @__PURE__ */ v("strong", { children: ["第 ", L(e)] }), /* @__PURE__ */ v("small", { children: [
+										I(e),
+										" · ",
+										e.tokenCount,
+										" Token"
+									] })]
+								}),
+								/* @__PURE__ */ _(j, { size: 14 })
+							]
+						}, e.id)), !Q.length && /* @__PURE__ */ _("p", {
+							className: "listEmpty",
+							children: r.batches.length ? "没有匹配的摘要" : "还没有剧情摘要"
+						})]
+					}),
+					/* @__PURE__ */ v("div", {
+						className: "sidebarFoot",
+						children: [
+							"每 ",
+							r.policy.batchFloors,
+							" 楼一批 · 缓冲 ",
+							r.policy.bufferFloors,
+							" 楼",
+							/* @__PURE__ */ _(c, {
+								size: "small",
+								onClick: () => E("settings"),
+								children: "调整"
+							})
+						]
 					})
 				]
-			})
-		]
+			}), /* @__PURE__ */ _("main", {
+				className: "detail",
+				children: Z ? /* @__PURE__ */ v(g, { children: [
+					/* @__PURE__ */ v("header", {
+						className: "detailHeading",
+						children: [
+							/* @__PURE__ */ _(u, {
+								className: "back",
+								"aria-label": "返回摘要列表",
+								onClick: () => E("list"),
+								children: /* @__PURE__ */ _(ee, { size: 16 })
+							}),
+							/* @__PURE__ */ _(M, { size: 20 }),
+							/* @__PURE__ */ v("div", { children: [/* @__PURE__ */ v("h2", { children: [
+								"LV",
+								Z.level,
+								" · 第 ",
+								L(Z)
+							] }), /* @__PURE__ */ v("p", { children: [
+								Z.tokenCount,
+								" / ",
+								Z.budget,
+								" Token · 版本 ",
+								Z.version
+							] })] }),
+							/* @__PURE__ */ _("span", {
+								className: "badge",
+								"data-invalid": !Z.valid,
+								children: I(Z)
+							})
+						]
+					}),
+					/* @__PURE__ */ v("div", {
+						className: "body",
+						children: [
+							!Z.valid && /* @__PURE__ */ _("p", {
+								className: "warning",
+								children: "来源已不属于当前剧情，这份摘要不会注入，也不能确认。"
+							}),
+							Z.error && /* @__PURE__ */ _("p", {
+								className: "warning",
+								children: Z.error
+							}),
+							/* @__PURE__ */ _("article", {
+								className: "text",
+								children: Z.text || (Z.running ? "正在整理固定来源，你可以继续主剧情写作。" : "尚无摘要正文，可在下方重试生成。")
+							}),
+							/* @__PURE__ */ v("details", {
+								className: "sources",
+								children: [
+									/* @__PURE__ */ _("summary", { children: "来源与覆盖范围" }),
+									/* @__PURE__ */ _("p", {
+										className: "muted",
+										children: Z.level === 1 ? `原文第 ${L(Z)}` : `${Z.inputs?.length ?? 0} 份 LV1 摘要 · 第 ${L(Z)}`
+									}),
+									/* @__PURE__ */ _(c, {
+										disabled: !Z.valid || W,
+										onClick: async () => {
+											G(!0);
+											try {
+												let t = await e("source", { id: Z.id });
+												K.current && U({
+													id: Z.id,
+													text: t.text
+												});
+											} catch (e) {
+												K.current && h(e instanceof Error ? e.message : String(e));
+											} finally {
+												K.current && G(!1);
+											}
+										},
+										children: W ? "正在读取…" : "读取固定来源"
+									}),
+									H?.id === Z.id && /* @__PURE__ */ _("pre", {
+										className: "source",
+										children: H.text
+									})
+								]
+							}, Z.id)
+						]
+					}),
+					/* @__PURE__ */ _("footer", {
+						className: "review",
+						children: Z.status === "confirmed" ? /* @__PURE__ */ _("p", {
+							className: "muted",
+							children: Z.valid ? Z.resident ? "这份摘要已纳入当前剧情上下文。" : Z.published ? "已由高层摘要覆盖，保留供探索。" : "已确认，达到原文缓冲边界后自动采用。" : "来源失效，已停止注入。"
+						}) : Z.running ? /* @__PURE__ */ v("div", {
+							className: "actions",
+							children: [/* @__PURE__ */ _("span", {
+								className: "muted",
+								role: "status",
+								children: "正在生成摘要…"
+							}), /* @__PURE__ */ _(c, {
+								onClick: () => void X("cancel", { id: Z.id }),
+								children: "取消生成"
+							})]
+						}) : Z.status !== "discarded" && Z.valid ? /* @__PURE__ */ v(g, { children: [/* @__PURE__ */ _(l, {
+							id: "memory-revision",
+							label: "修订要求",
+							children: (e) => /* @__PURE__ */ _(m, {
+								...e,
+								value: B[Z.id] ?? "",
+								placeholder: "补充遗漏的事件、人物承诺或因果关系…",
+								onChange: (e) => V({
+									...B,
+									[Z.id]: e.target.value
+								}),
+								rows: 3
+							})
+						}), /* @__PURE__ */ v("div", {
+							className: "reviewActions",
+							children: [
+								/* @__PURE__ */ _(c, {
+									variant: "danger",
+									disabled: x,
+									onClick: () => void X("discard", {
+										id: Z.id,
+										version: Z.version
+									}),
+									children: "丢弃草稿"
+								}),
+								/* @__PURE__ */ _("span", {}),
+								/* @__PURE__ */ _(c, {
+									disabled: x,
+									onClick: () => void X("revise", {
+										id: Z.id,
+										version: Z.version,
+										input: B[Z.id]?.trim() || "请重新整理完整摘要，保留必要事实与因果，并遵守输出上限。"
+									}),
+									children: [
+										"failed",
+										"cancelled",
+										"interrupted"
+									].includes(Z.status) ? "重试生成" : "提交修订"
+								}),
+								/* @__PURE__ */ v(c, {
+									disabled: x || Z.status !== "draft" || Z.tokenCount > Z.budget || !Z.text.trim(),
+									onClick: () => void X("confirm", {
+										id: Z.id,
+										version: Z.version
+									}),
+									children: [/* @__PURE__ */ _(A, { size: 16 }), "确认整批摘要"]
+								})
+							]
+						})] }) : null
+					})
+				] }) : /* @__PURE__ */ v("div", {
+					className: "empty",
+					children: [
+						/* @__PURE__ */ _(k, { size: 32 }),
+						/* @__PURE__ */ _("h2", { children: "为故事留下一份记忆" }),
+						/* @__PURE__ */ v("p", { children: [
+							"原文分批整理为 LV1，积累后压缩为 LV2。",
+							/* @__PURE__ */ _("br", {}),
+							"确认采用后，仍能回查原文与下层摘要。"
+						] }),
+						/* @__PURE__ */ v(c, {
+							onClick: () => E("settings"),
+							children: [/* @__PURE__ */ _(N, { size: 16 }), "配置总结"]
+						}),
+						/* @__PURE__ */ _("small", { children: "首次使用请在「剧情总结」预设中选择模型。" })
+					]
+				})
+			})]
+		}) : /* @__PURE__ */ v("div", {
+			className: "empty",
+			children: [
+				/* @__PURE__ */ _(k, { size: 28 }),
+				/* @__PURE__ */ _("p", { children: y ? "剧情记忆暂时无法读取" : "正在读取剧情记忆…" }),
+				y && /* @__PURE__ */ v(g, { children: [/* @__PURE__ */ _("p", {
+					role: "alert",
+					children: y
+				}), /* @__PURE__ */ _(c, {
+					onClick: () => void Y(),
+					children: "重试"
+				})] })
+			]
+		})]
 	});
 }
 //#endregion
 //#region ui/panel.module.css?inline
-var G = ":host{height:100%;min-height:0;display:flex!important}[data-loom-renderer-shadow-root]{flex:1;min-width:0;min-height:0;display:flex}.memory{min-width:0;min-height:0;color:var(--loom-color-text);font:var(--loom-font-size-2,14px)/1.6 var(--loom-font-family-sans,sans-serif);pointer-events:auto;flex-direction:column;flex:1;display:flex;container-type:inline-size}.memory *{box-sizing:border-box}.memory h2,.memory h3,.memory p{margin:0}.memory h2{font-size:var(--loom-font-size-3,16px);font-weight:600}.memory h3{font-size:var(--loom-font-size-2,14px);font-weight:600}.toolbar,.summary,.actions,.detailHeading,.footer,.notice,.switchRow{align-items:center;gap:10px;display:flex}.toolbar{border-bottom:1px solid var(--loom-color-divider);flex-wrap:wrap;flex:none;padding:10px 16px}.summary{flex-wrap:wrap;flex:1}.summary>span,.muted,.detailHeading p,.settingsBody p{color:var(--loom-color-text-muted);font-size:var(--loom-font-size-1,12px)}.actions{flex-wrap:wrap;gap:4px}.notice{color:var(--loom-color-danger);background:var(--loom-color-surface-subtle);border-radius:var(--loom-radius-control);margin:8px 16px;padding:8px 12px}.notice>span{overflow-wrap:anywhere;flex:1}.workbench{flex:1;grid-template-columns:280px minmax(0,1fr);min-height:0;display:grid}.sidebar{border-right:1px solid var(--loom-color-divider);flex-direction:column;min-height:0;display:flex}.filters{flex-direction:column;gap:12px;padding:12px 12px 0;display:flex}.list{flex:1;min-height:0;padding:8px;overflow:auto}.batch[data-loom-ui-button]{text-align:left;border-radius:var(--loom-radius-control);justify-content:flex-start;gap:10px;width:100%;padding:12px 10px}.batch[aria-current=true]{background:var(--loom-color-accent-soft)}.batch:hover{background:var(--loom-color-surface-subtle)}.batchIdentity{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.batchIdentity small{color:var(--loom-color-text-muted);font-weight:400;font-size:var(--loom-font-size-1,12px)}.level{font-size:var(--loom-font-size-1,12px);color:var(--loom-color-accent)}.listEmpty{color:var(--loom-color-text-muted);padding:16px}.sidebarFoot{font-size:var(--loom-font-size-1,12px);color:var(--loom-color-text-muted);border-top:1px solid var(--loom-color-divider);justify-content:space-between;align-items:center;padding:10px 12px;display:flex}.detail,.settings{flex-direction:column;flex:1;min-width:0;min-height:0;display:flex}.detailHeading{border-bottom:1px solid var(--loom-color-divider);flex:none;padding:16px 20px}.detailHeading>div{flex:1;min-width:0}.detailHeading p{margin-top:3px}.badge{font-size:var(--loom-font-size-1,12px);background:var(--loom-color-surface-subtle);border-radius:var(--loom-radius-control);white-space:nowrap;padding:3px 8px}.badge[data-invalid=true],.warning{color:var(--loom-color-danger)}.body{flex:1;min-height:0;padding:20px 24px;overflow:auto}.text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.85}.warning{margin-bottom:16px!important}.sources{border-top:1px solid var(--loom-color-divider);margin-top:28px;padding-top:12px}.sources summary{cursor:pointer;color:var(--loom-color-text-muted);margin-bottom:10px}.source{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--loom-color-surface-subtle);max-height:320px;font-size:var(--loom-font-size-1,12px);padding:12px;overflow:auto}.review{border-top:1px solid var(--loom-color-divider);flex:none;padding:14px 20px}.reviewActions{flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;display:flex}.reviewActions>span{flex:1}.review textarea{resize:vertical;max-height:180px}.empty{text-align:center;color:var(--loom-color-text-muted);flex-direction:column;align-items:center;gap:14px;margin:auto;padding:32px 24px;display:flex}.empty h2{color:var(--loom-color-text)}.empty small{font-size:var(--loom-font-size-1,12px)}.settingsBody{flex:1;min-height:0;padding:20px 24px;overflow:auto}.switchRow{justify-content:space-between;max-width:760px;padding-bottom:20px}.settingsGroup{border-top:1px solid var(--loom-color-divider);grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;max-width:760px;padding:20px 0;display:grid}.settingsGroup h3{grid-column:1/-1}.presetHint{background:var(--loom-color-surface-subtle);border-radius:var(--loom-radius-control);align-items:flex-start;gap:12px;max-width:760px;padding:16px;display:flex}.presetHint svg{flex:none;margin-top:3px}.footer{border-top:1px solid var(--loom-color-divider);flex:none;justify-content:space-between;padding:12px 20px}.back[data-loom-ui-icon-button]{display:none}@container (width<=639px){.workbench{grid-template-columns:minmax(0,1fr)}.memory[data-page=list] .detail,.memory[data-page=detail] .sidebar{display:none}.back[data-loom-ui-icon-button]{display:inline-flex}.sidebar{border-right:0}.settingsGroup{grid-template-columns:1fr}.summary>span{display:none}.body,.settingsBody{padding:16px}}";
+var V = ":host{height:100%;min-height:0;display:flex!important}[data-loom-renderer-shadow-root]{flex:1;min-width:0;min-height:0;display:flex}.memory{min-width:0;min-height:0;color:var(--loom-color-text);font:var(--loom-font-size-2,14px)/1.6 var(--loom-font-family-sans,sans-serif);pointer-events:auto;flex-direction:column;flex:1;display:flex;container-type:inline-size}.memory *{box-sizing:border-box}.memory h2,.memory h3,.memory p{margin:0}.memory h2{font-size:var(--loom-font-size-3,16px);font-weight:600}.memory h3{font-size:var(--loom-font-size-2,14px);font-weight:600}.toolbar,.summary,.actions,.detailHeading,.footer,.notice,.switchRow{align-items:center;gap:10px;display:flex}.toolbar{flex-wrap:wrap;flex:none;padding:10px 16px}.summary{flex-wrap:wrap;flex:1}.summary>span,.muted,.detailHeading p,.settingsBody p{color:var(--loom-color-text-muted);font-size:var(--loom-font-size-1,12px)}.actions{flex-wrap:wrap;gap:4px}.notice{color:var(--loom-color-danger);background:var(--loom-color-surface-subtle);border-radius:var(--loom-radius-control);margin:8px 16px;padding:8px 12px}.notice>span{overflow-wrap:anywhere;flex:1}.workbench{flex:1;grid-template-columns:280px minmax(0,1fr);min-height:0;display:grid}.sidebar{border-right:1px solid var(--loom-color-divider);flex-direction:column;min-height:0;display:flex}.filters{flex-direction:column;gap:12px;padding:12px 12px 0;display:flex}.list{flex:1;min-height:0;padding:8px;overflow:auto}.batch[data-loom-ui-button]{text-align:left;border-radius:var(--loom-radius-control);justify-content:flex-start;gap:10px;width:100%;padding:12px 10px}.batch[aria-current=true]{background:var(--loom-color-accent-soft)}.batch:hover{background:var(--loom-color-surface-subtle)}.batchIdentity{flex-direction:column;flex:1;gap:3px;min-width:0;display:flex}.batchIdentity small{color:var(--loom-color-text-muted);font-weight:400;font-size:var(--loom-font-size-1,12px)}.level{font-size:var(--loom-font-size-1,12px);color:var(--loom-color-accent)}.listEmpty{color:var(--loom-color-text-muted);padding:16px}.sidebarFoot{font-size:var(--loom-font-size-1,12px);color:var(--loom-color-text-muted);border-top:1px solid var(--loom-color-divider);justify-content:space-between;align-items:center;padding:10px 12px;display:flex}.detail,.settings{flex-direction:column;flex:1;min-width:0;min-height:0;display:flex}.detailHeading{border-bottom:1px solid var(--loom-color-divider);flex:none;padding:16px 20px}.detailHeading>div{flex:1;min-width:0}.detailHeading p{margin-top:3px}.badge{font-size:var(--loom-font-size-1,12px);background:var(--loom-color-surface-subtle);border-radius:var(--loom-radius-control);white-space:nowrap;padding:3px 8px}.badge[data-invalid=true],.warning{color:var(--loom-color-danger)}.body{flex:1;min-height:0;padding:20px 24px;overflow:auto}.text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.85}.warning{margin-bottom:16px!important}.sources{border-top:1px solid var(--loom-color-divider);margin-top:28px;padding-top:12px}.sources summary{cursor:pointer;color:var(--loom-color-text-muted);margin-bottom:10px}.source{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--loom-color-surface-subtle);max-height:320px;font-size:var(--loom-font-size-1,12px);padding:12px;overflow:auto}.review{border-top:1px solid var(--loom-color-divider);flex:none;padding:14px 20px}.reviewActions{flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;display:flex}.reviewActions>span{flex:1}.review textarea{resize:vertical;max-height:180px}.empty{text-align:center;color:var(--loom-color-text-muted);flex-direction:column;align-items:center;gap:14px;margin:auto;padding:32px 24px;display:flex}.empty h2{color:var(--loom-color-text)}.empty small{font-size:var(--loom-font-size-1,12px)}.settingsBody{flex:1;min-height:0;padding:20px 24px;overflow:auto}.switchRow{justify-content:space-between;max-width:760px;padding-bottom:20px}.settingsGroup{border-top:1px solid var(--loom-color-divider);grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;max-width:760px;padding:20px 0;display:grid}.settingsGroup h3{grid-column:1/-1}.presetHint{background:var(--loom-color-surface-subtle);border-radius:var(--loom-radius-control);align-items:flex-start;gap:12px;max-width:760px;padding:16px;display:flex}.presetHint svg{flex:none;margin-top:3px}.footer{border-top:1px solid var(--loom-color-divider);flex:none;justify-content:space-between;padding:12px 20px}.back[data-loom-ui-icon-button]{display:none}@container (width<=639px){.workbench{grid-template-columns:minmax(0,1fr)}.memory[data-page=list] .detail,.memory[data-page=detail] .sidebar{display:none}.back[data-loom-ui-icon-button]{display:inline-flex}.sidebar{border-right:0}.settingsGroup{grid-template-columns:1fr}.summary>span{display:none}.body,.settingsBody{padding:16px}}.toolbar{align-items:stretch;gap:8px;padding:8px 12px}.summary{grid-template-columns:16px minmax(0,1fr);align-items:center;gap:4px 8px;display:grid}.summary>svg{width:16px;height:16px}.summary>strong{font-size:var(--loom-font-size-2,14px);font-weight:500}.summary>span{font-size:var(--loom-font-size-1,12px);grid-column:2}.actions{flex-wrap:nowrap;gap:4px;width:100%}.actions svg{flex:none;width:14px;height:14px}.actions>button{font-size:var(--loom-font-size-1,12px);white-space:nowrap;padding:5px 6px}.actions>button:last-child{margin-left:auto}.toolbar{background:var(--loom-color-surface-subtle);border-radius:0 0 12px 12px;margin:0 12px 8px;padding:8px 10px 10px}.summary{flex-basis:100%;grid-template-columns:minmax(0,1fr);gap:3px}.summary>svg{display:none}.summary>span{grid-column:1;display:block}.actions{grid-template-columns:minmax(0,1fr) minmax(0,1fr) 28px;align-items:center;gap:2px;display:grid}.actions>button{justify-content:center;min-width:0;padding:5px 2px;font-size:12px;line-height:1.4}.actions>button:last-child{margin:0}.actions svg{width:13px!important;height:13px!important}.filters{padding-top:4px}.pageTabs{flex:none;gap:4px;padding:4px 16px;display:flex}.pageTabs button{width:36px;height:34px;color:var(--loom-color-text-muted);cursor:pointer;background:0 0;border:0;border-radius:8px;place-items:center;display:grid}.pageTabs button[aria-selected=true]{background:var(--loom-color-accent-soft);color:var(--loom-color-accent)}.pageTabs button:focus-visible{outline:2px solid var(--loom-color-accent)}.dashboard{flex:1;min-height:0;padding:16px;overflow:auto}.dashboardCard{background:var(--loom-color-surface-subtle);border-radius:14px;flex-direction:column;gap:16px;padding:20px;display:flex}.metrics{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;display:grid}.metrics>div{flex-direction:column;gap:4px;display:flex}.metrics strong{font-size:24px;font-weight:600}.metrics span{color:var(--loom-color-text-muted);font-size:12px}.dashboardActions{flex-wrap:wrap;gap:8px;display:flex}.settings{gap:16px;padding:16px;overflow:auto}.settings>._detailHeading_10qet_8{border:0;padding:0 4px}.settingsBody{flex-direction:column;flex:none;gap:16px;padding:0;display:flex;overflow:visible}.switchRow,.settingsGroup,.presetHint{background:var(--loom-color-surface-subtle);border:0;border-radius:14px;max-width:none;margin:0;padding:20px}.settings>._footer_10qet_8{border:0;padding:0 4px}";
 //#endregion
 //#region ui/entry.tsx
-function K(e) {
+function H(e) {
 	e.renderers.register({
 		id: "memory",
 		name: "剧情记忆",
@@ -649,14 +628,17 @@ function K(e) {
 		let n = e.timeline?.target;
 		if (!n) throw Error("剧情记忆需要当前 Timeline。");
 		let r = s(t);
-		return r.render(/* @__PURE__ */ v(g, { children: [/* @__PURE__ */ _("style", { children: G }), /* @__PURE__ */ _(W, { call: (t, r = {}) => e.rpc.call(`official.story-memory.${t}`, {
+		return r.render(/* @__PURE__ */ v(g, { children: [/* @__PURE__ */ _("style", { children: V }), /* @__PURE__ */ _(B, {
 			timelineId: n.timelineId,
-			branchId: n.branchId,
-			...r
-		}) })] })), { dispose() {
+			call: (t, r = {}) => e.rpc.call(`official.story-memory.${t}`, {
+				timelineId: n.timelineId,
+				branchId: n.branchId,
+				...r
+			})
+		})] })), { dispose() {
 			r.unmount();
 		} };
 	} });
 }
 //#endregion
-export { K as activate };
+export { H as activate };

@@ -285,9 +285,6 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     presetId: selectedResource?.id,
     tools: props.tools,
   }), [props.toolMounts, props.tools, selectedResource?.id])
-  const replaceToolMounts = (presetId: string, mounts: PresetToolMountInput[], baseline: string[]) => {
-    return props.onReplaceToolMounts(presetId, validPresetToolMounts(mounts, props.tools), baseline)
-  }
   const mainOrderNodes = useMemo(() => selectedResource
     ? [readPromptResourceWorkbenchRoot(selectedResource)] : [], [selectedResource])
   const workbenchNodes = mainOrderNodes

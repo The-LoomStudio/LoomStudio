@@ -257,3 +257,9 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+@media (max-width: 768px) {
+  .toolbar { position:static; }
+  .editor[data-compact='true'] .toolbar { position:static; }
+  .editorHost { scroll-margin-block:12px; }
+}

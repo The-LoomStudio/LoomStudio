@@ -687,12 +687,6 @@ function assertOptionalNumber(value: unknown, label: string): void {
   if (value !== undefined && typeof value !== 'number') throw new Error(`${label} must be a number`)
 }
 
-function assertOptionalStringArray(value: unknown, label: string): void {
-  if (value !== undefined && (!Array.isArray(value) || !value.every(item => typeof item === 'string'))) {
-    throw new Error(`${label} must be a string array`)
-  }
-}
-
 function isPromptResourceNodeKind(value: unknown): value is PromptResourceNode['kind'] {
   return typeof value === 'string' && value.trim().length > 0
 }

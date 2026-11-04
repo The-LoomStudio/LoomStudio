@@ -1,6 +1,19 @@
 import type { messages as zhCN } from '../zh-cn/textTransforms.js'
 
 export const messages = {
+  'textTransform.ruleUnavailable': 'Rule unavailable.',
+  'textTransform.ruleSummaryVersion': 'Rule summary · v{{version}}',
+  'textTransform.editFullScript': 'Edit full script',
+  'textTransform.ruleSummaryHint': 'Rules are declared by scripts. Edit the full source on the extension script page, then refresh its adopted scopes after saving.',
+  'textTransform.ruleMatch': 'Match',
+  'textTransform.ruleReplacement': 'Replacement',
+  'textTransform.ruleProcessing': 'Processing',
+  'textTransform.ruleDepth': 'Depth {{min}}–{{max}}',
+  'textTransform.ruleUnlimited': 'Unlimited',
+  'textTransform.ruleTest': 'Script rule test',
+  'textTransform.ruleTestHint': 'Test declared rules using the saved source and default settings. JavaScript is not executed and results are not saved.',
+  'textTransform.ruleTestText': 'Rule test text',
+  'textTransform.test': 'Test',
   'textTransform.title': 'History Text Pipeline',
   'textTransform.inspectorTitle': 'History Text Pipeline Inspector',
   'textTransform.tabRules': 'Rules',

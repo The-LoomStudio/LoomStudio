@@ -280,7 +280,7 @@ function RuleSummaryDetail({ controller }: { controller: TextTransformController
   const [result, setResult] = useState('')
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState('')
-  if (!rule) return <p className={styles.emptyState}>规则不可用。</p>
+  if (!rule) return <p className={styles.emptyState}>{controller.t('textTransform.ruleUnavailable')}</p>
   const scriptId = rule.scriptDocumentId
   const canOpen = scriptId && controller.visibleScripts.some(item => item.script.id === scriptId)
   async function testRule() {
@@ -293,18 +293,18 @@ function RuleSummaryDetail({ controller }: { controller: TextTransformController
     } catch (cause) { setError(readError(cause)) } finally { setTesting(false) }
   }
   return <>
-    <header className={styles.detailHeader}><div className={styles.headerTitle}><Scissors aria-hidden="true" size={16} /><h3>{rule.name}</h3><small>规则摘要 · v{rule.version}</small></div>
-      {canOpen ? <Button size="small" variant="secondary" disabled={controller.busy} onClick={() => void controller.selectScript(scriptId)}>编辑完整脚本</Button> : null}
+    <header className={styles.detailHeader}><div className={styles.headerTitle}><Scissors aria-hidden="true" size={16} /><h3>{rule.name}</h3><small>{controller.t('textTransform.ruleSummaryVersion', { version: rule.version })}</small></div>
+      {canOpen ? <Button size="small" variant="secondary" disabled={controller.busy} onClick={() => void controller.selectScript(scriptId)}>{controller.t('textTransform.editFullScript')}</Button> : null}
     </header>
     <div className={styles.inspectionContainer}>
-      <p className={styles.metaLine}>规则由脚本声明。请在扩展的脚本页修改完整源码，保存后刷新采用范围。</p>
-      <section className={styles.inspectionSection}><h4>匹配</h4><pre className={styles.dryRunOutput}>{`/${rule.matcher.pattern}/${rule.matcher.flags}`}</pre></section>
-      <section className={styles.inspectionSection}><h4>{rule.effect.kind === 'replace' ? '替换正文' : '处理方式'}</h4><pre className={styles.dryRunOutput}>{rule.effect.kind === 'replace' ? rule.effect.replacement : JSON.stringify(rule.effect, null, 2)}</pre></section>
-      <p className={styles.metaLine}>{rule.phases.join(' · ')} · {rule.targets.join(' · ')}{rule.range ? ` · 深度 ${rule.range.minDepth ?? 0}–${rule.range.maxDepth ?? '不限'}` : ''}</p>
+      <p className={styles.metaLine}>{controller.t('textTransform.ruleSummaryHint')}</p>
+      <section className={styles.inspectionSection}><h4>{controller.t('textTransform.ruleMatch')}</h4><pre className={styles.dryRunOutput}>{`/${rule.matcher.pattern}/${rule.matcher.flags}`}</pre></section>
+      <section className={styles.inspectionSection}><h4>{controller.t(rule.effect.kind === 'replace' ? 'textTransform.ruleReplacement' : 'textTransform.ruleProcessing')}</h4><pre className={styles.dryRunOutput}>{rule.effect.kind === 'replace' ? rule.effect.replacement : JSON.stringify(rule.effect, null, 2)}</pre></section>
+      <p className={styles.metaLine}>{rule.phases.join(' · ')} · {rule.targets.join(' · ')}{rule.range ? ` · ${controller.t('textTransform.ruleDepth', { min: rule.range.minDepth ?? 0, max: rule.range.maxDepth ?? controller.t('textTransform.ruleUnlimited') })}` : ''}</p>
       {scriptId && controller.loomScriptsApi ? <section className={styles.inspectionSection}>
-        <h4>脚本规则测试</h4><p className={styles.metaLine}>按已保存源码和默认配置测试脚本中的声明规则，不执行 JavaScript、不保存结果。</p>
-        <textarea aria-label="规则测试文本" className={styles.rawJsonTextarea} value={sample} onChange={event => setSample(event.target.value)} />
-        <Button size="small" disabled={testing} onClick={() => void testRule()}>测试</Button>
+        <h4>{controller.t('textTransform.ruleTest')}</h4><p className={styles.metaLine}>{controller.t('textTransform.ruleTestHint')}</p>
+        <textarea aria-label={controller.t('textTransform.ruleTestText')} className={styles.rawJsonTextarea} value={sample} onChange={event => setSample(event.target.value)} />
+        <Button size="small" disabled={testing} onClick={() => void testRule()}>{controller.t('textTransform.test')}</Button>
         {error ? <p role="alert">{error}</p> : null}{result ? <pre className={styles.dryRunOutput}>{result}</pre> : null}
       </section> : null}
     </div>

@@ -32,10 +32,17 @@ export function StateSourcesPanel(props: Props) {
   const [expandedIds, setExpandedIds] = useState(['definitions', 'extensions'])
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const { api, t, timelineTarget: target } = props
-  const key = JSON.stringify([props.card?.id, props.card?.version, target?.timelineId, target?.branchId, props.refreshToken, refresh])
+  const key = JSON.stringify([props.card?.id, props.card?.version, target?.timelineId, target?.branchId, props.refreshToken])
   const current = outcome?.api === api && outcome.key === key ? outcome : undefined
   const data = current && 'data' in current ? current.data : undefined
   const error = current && 'error' in current ? current.error : undefined
+
+  useEffect(() => {
+    const update = () => { if (document.visibilityState === 'visible') setRefresh(value => value + 1) }
+    window.addEventListener('focus', update)
+    const timer = window.setInterval(update, 5000)
+    return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -44,7 +51,7 @@ export function StateSourcesPanel(props: Props) {
       cause => { if (active) setOutcome({ api, key, error: cause instanceof Error ? cause.message : String(cause) }) },
     )
     return () => { active = false }
-  }, [api, key])
+  }, [api, key, refresh])
 
   const nodes: FileTreeNode[] = data ? [
     ...(data.timeline ? [{ id: 'section:timeline', isSection: true, label: 'Timeline', children: [
@@ -78,12 +85,12 @@ export function StateSourcesPanel(props: Props) {
         <header className={styles.masterHeader}>
           {props.header}
         </header>
-        <div className={styles.masterToolbar}>
+        {error && <div className={styles.masterToolbar}>
           <button type="button" className={styles.toolbarIconBtn} disabled={!current}
             aria-label={t('stateVariables.refresh')} title={t('stateVariables.refresh')} onClick={() => setRefresh(value => value + 1)}>
             <RefreshCw size={14} aria-hidden="true" />
           </button>
-        </div>
+        </div>}
         <div className={styles.masterBody}><FileTree
           ariaLabel={t('stateSources.title')} nodes={nodes} selectedId={selection}
           expandedIds={expandedIds} onExpandedIdsChange={setExpandedIds}

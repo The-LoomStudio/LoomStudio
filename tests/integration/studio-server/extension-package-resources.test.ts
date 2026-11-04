@@ -68,7 +68,7 @@ describe('Studio Server Extension Package resources', () => {
       await callRpc(port, 'application.updateLoomScriptMount', {
         mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 0, grantedCapabilities: ['state.read'],
       })
-      const resolve = (card: typeof a) => callRpc<{ mounts: Array<{ source: string; enabled: boolean; grantedCapabilities: string[]; script: { contributions: Array<{ inputs: Array<{ ruleId: string }> }> } }> }>(
+      const resolve = (card: typeof a) => callRpc<{ mounts: Array<{ source: string; enabled: boolean; grantedCapabilities: string[]; script: { metadataId: string; contributions: Array<{ inputs: Array<{ ruleId: string }> }> } }> }>(
         port, 'application.resolveLoomScriptRendererMounts', { timelineId: card.timelineId, presetId: card.presetId },
       )
       const first = await resolve(a)
@@ -85,14 +85,18 @@ describe('Studio Server Extension Package resources', () => {
         })
       }
       await update('2.0.0', source.replace('value = 1', 'value = 2'))
+      // Package updates preserve the adopted Script revision until explicit refresh.
+      expect((await resolve(a)).mounts[0]).toMatchObject({ enabled: true, grantedCapabilities: ['state.read'], source: expect.stringContaining('value = 1') })
+      const updatedMount = (await callRpc<{ mounts: Array<{ id: string; version: number }> }>(port, 'application.listLoomScriptMounts', { target: { kind: 'preset', presetId: a.presetId } })).mounts[0]!
+      await callRpc(port, 'application.refreshLoomScriptMount', { mountId: updatedMount.id, expectedVersion: updatedMount.version })
       expect((await resolve(a)).mounts[0]).toMatchObject({ enabled: true, grantedCapabilities: ['state.read'], source: expect.stringContaining('value = 2') })
       expect((await resolve(cards[1]!)).mounts[0]).toMatchObject({ enabled: false, source: expect.stringContaining('value = 1') })
       await update('3.0.0')
-      expect((await resolve(a)).mounts).toEqual([])
+      expect((await resolve(a)).mounts.filter(item => item.script.metadataId === 'example.scene')).toEqual([])
       await expect(callRpc(port, 'application.getLoomScript', { scriptDocumentId: a.scriptId })).rejects.toThrow('not found')
-      expect((await resolve(cards[1]!)).mounts).toHaveLength(1)
+      expect((await resolve(cards[1]!)).mounts.filter(item => item.script.metadataId === 'example.scene')).toHaveLength(1)
       await update('4.0.0', source)
-      expect((await resolve(a)).mounts[0]).toMatchObject({ enabled: false, grantedCapabilities: [] })
+      expect((await resolve(a)).mounts.find(item => item.script.metadataId === 'example.scene')).toMatchObject({ enabled: false, grantedCapabilities: [] })
     })
   })
 
@@ -637,7 +641,7 @@ async function writeVersionedResourcePackage(root: string, version: string, cont
 function promptResource(resourceKind: 'preset' | 'lore', id: string, packageId = 'example.package-resources') {
   return {
     format: 'loom.promptResource',
-    schemaVersion: 1,
+    schemaVersion: 2,
     resourceKind,
     rootNode: {
       id: `${packageId}.${id}`,

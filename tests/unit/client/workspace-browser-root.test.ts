@@ -44,7 +44,7 @@ describe('Workspace root node', () => {
       expect(root).toMatchObject({ label: '/workspace', kind: 'folder', children: expect.arrayContaining([expect.objectContaining({ id: 'memory' })]) })
       expect(props.expandedIds).toContain(root.id)
       expect(props.getActions!(root).map(action => action.type === 'separator' ? 'separator' : action.id))
-        .toEqual(['file', 'directory', 'upload', 'refresh'])
+        .toEqual(['file', 'directory', 'upload'])
       await act(async () => props.onSelect(root))
       expect(f.tree().selectedId).toBe(root.id)
     } finally { f.dispose() }

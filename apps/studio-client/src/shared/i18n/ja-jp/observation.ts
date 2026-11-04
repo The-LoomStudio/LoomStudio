@@ -125,6 +125,7 @@ export const messages = {
   "observation.buildError": "関連する構築を読み込めません。ソースと変数は利用できません。",
   "observation.buildLoading": "関連する構築を読み込み中…",
   "observation.comparisonError": "隣接リクエストを読み込めず、比較できません。",
+  "observation.settings": "ログ設定",
   "observation.close": "閉じる",
   "observation.title": "モデルログ",
   "observation.run": "Agent 実行",

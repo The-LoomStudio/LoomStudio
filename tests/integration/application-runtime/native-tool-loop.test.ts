@@ -1337,7 +1337,7 @@ describe('Native Function Tool Loop', () => {
   it('fails isolated classification without saving raw partial Narrative or adopting it', async () => {
     const raw = `${'a'.repeat(20_000)}!`
     const fixture = await createFixture({ execute: vi.fn(), invokeChat: async request => {
-      request.onEvent?.({ type: 'text-delta', delta: raw })
+      request.onEvent?.({ type: 'text-delta', runId: 'classification-fixture', delta: raw })
       return { provider: 'test', model: 'test-model', text: raw, finishReason: 'stop', message: { role: 'assistant', content: raw } }
     } })
     try {

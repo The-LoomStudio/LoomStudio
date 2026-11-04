@@ -1,6 +1,19 @@
 import type { messages as zhCN } from '../zh-cn/textTransforms.js'
 
 export const messages = {
+  'textTransform.ruleUnavailable': 'ルールを利用できません。',
+  'textTransform.ruleSummaryVersion': 'ルール概要 · v{{version}}',
+  'textTransform.editFullScript': 'スクリプト全体を編集',
+  'textTransform.ruleSummaryHint': 'ルールはスクリプトで宣言されます。拡張機能のスクリプトページでソースを編集し、保存後に適用範囲を更新してください。',
+  'textTransform.ruleMatch': '一致',
+  'textTransform.ruleReplacement': '置換テキスト',
+  'textTransform.ruleProcessing': '処理方法',
+  'textTransform.ruleDepth': '深さ {{min}}–{{max}}',
+  'textTransform.ruleUnlimited': '無制限',
+  'textTransform.ruleTest': 'スクリプトルールのテスト',
+  'textTransform.ruleTestHint': '保存済みソースと既定の設定で宣言ルールをテストします。JavaScript は実行されず、結果は保存されません。',
+  'textTransform.ruleTestText': 'ルールのテストテキスト',
+  'textTransform.test': 'テスト',
   'textTransform.title': 'History テキストパイプライン',
   'textTransform.inspectorTitle': 'History テキストパイプラインインスペクター',
   'textTransform.tabRules': 'ルール',

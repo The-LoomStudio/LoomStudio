@@ -432,7 +432,7 @@
   .timeline {
     --loom-fade-bottom-end: calc(100% - var(--loom-composer-height, var(--loom-input-height)) - 4px - env(safe-area-inset-bottom, 0px));
   }
-  :global(html[data-keyboard-open='true']) .timeline {
+  :global(html[data-composer-keyboard]) .timeline {
     --loom-fade-bottom-end: calc(100% - var(--loom-composer-height, var(--loom-input-height)) - 4px);
   }
 }

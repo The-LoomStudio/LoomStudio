@@ -115,7 +115,7 @@ describe('opening selection', () => {
       const custom = await handleTimelineRpc(context.runtime, 'application.replaceNarrativeOpening', {
         ...target, expectedHeadNodeId: null, openingContent: 'Custom {{char}}',
       }) as Awaited<ReturnType<typeof context.runtime.replaceNarrativeOpening>>
-      expect(custom.nodes[0]).toMatchObject({ body: { raw: 'Custom {{char}}' } })
+      expect(custom.nodes[0]).toMatchObject({ body: { raw: 'Custom Hero' } })
       const identity = await context.runtime.replaceNarrativeOpening({ ...target, expectedHeadNodeId: custom.branch.headNodeId!, openingId: 'arrival' })
       const archive = (await context.runtime.exportTimelineArchive(target)).archive
       const imported = await context.runtime.importTimelineArchive({ source: JSON.stringify(archive) })

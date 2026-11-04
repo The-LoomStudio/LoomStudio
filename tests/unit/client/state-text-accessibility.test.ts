@@ -2,6 +2,9 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { Card } from '../../../apps/studio-client/src/entities/card.js'
+import { ScriptManagementPanel } from '../../../apps/studio-client/src/features/loom-scripts/ui/script-management-panel.js'
+import { createScriptManagementPreviewApi } from '../../../apps/studio-client/src/dev-preview/script-management-fixtures.js'
+import { playerEntityType } from '@loom-studio/shared'
 import { StateAuthoringPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-authoring-panel.js'
 import { PipelineWorkbenchView } from '../../../apps/studio-client/src/features/text-transforms/ui/pipeline-workbench-view.js'
 import {
@@ -40,7 +43,7 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
     expect(html).toContain(`aria-label="${t('stateAuthoring.cardConfig')}"`)
     expect(html).toContain(`aria-label="${t('stateVariables.resizeSidebar')}"`)
     expect(html).toContain('stateTemplates:') // Serialized fields are not translated.
-    if (locale === 'en-US') expect(html).not.toMatch(/[\u3400-\u9fff]/)
+    if (locale === 'en-US') expect(html.replaceAll(playerEntityType.label!, '')).not.toMatch(/[\u3400-\u9fff]/)
   })
 
   it('localizes assembly errors without translating user IDs', () => {
@@ -76,19 +79,32 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
     expect(html).toContain(t('stateAuthoring.unknownEntityType', { entity: 'kept-entity', type: 'deleted-type' }))
   })
 
-  it.each(['rule', 'extractor'] as const)('names the %s JSON editor and document ID', kind => {
-    const title = t(kind === 'rule' ? 'textTransform.ruleTitle' : 'textTransform.extractorTitle')
-    const html = renderDetail({
-      selectedTarget: { kind, id: 'document-1' },
-      selectedRuleId: 'document-1', selectedExtractorId: 'document-1',
-      ruleText: '{"name":"USER RULE","matcher":{"kind":"regex"}}',
-      extractorText: '{"name":"USER EXTRACTOR","parser":"key-value-lines"}',
+  it('names the extractor JSON editor and document ID', () => {
+    const title = t('textTransform.extractorTitle')
+    const html = renderDetail({ selectedTarget: { kind: 'extractor', id: 'document-1' },
+      selectedExtractorId: 'document-1', extractorText: '{"name":"USER EXTRACTOR","parser":"key-value-lines"}',
     })
-    if (kind === 'rule') expect(html).toContain('<small>document-1</small>')
-    else expect(html).toContain(`aria-label="${t('textTransform.documentId')}"`)
+    expect(html).toContain(`aria-label="${t('textTransform.documentId')}"`)
     expect(html).toContain(`aria-label="${t('textTransform.jsonEditor', { title })}"`)
-    expect(html).toContain(kind === 'rule' ? 'USER RULE' : 'USER EXTRACTOR')
-    expect(html).toContain(kind === 'rule' ? 'regex' : 'key-value-lines')
+    expect(html).toContain('USER EXTRACTOR')
+    expect(html).toContain('key-value-lines')
+    if (locale === 'en-US') expect(html).not.toMatch(/[\u3400-\u9fff]/)
+  })
+
+  it('shows a localized rule summary instead of the retired JSON editor', () => {
+    const html = renderDetail({ selectedTarget: { kind: 'rule', id: 'document-1' }, selectedRuleId: 'document-1',
+      rules: [{ id: 'document-1', version: 2, name: 'USER RULE', owner: { kind: 'workspace' }, enabled: true,
+        orderIndex: 0, matcher: { kind: 'regex', pattern: 'USER_PATTERN', flags: 'g' },
+        effect: { kind: 'replace', replacement: 'USER REPLACEMENT' }, targets: ['narrative'], phases: ['display'],
+        range: { minDepth: 1 }, createdAt: '', updatedAt: '',
+      }],
+    })
+    expect(html).toContain('<h3>USER RULE</h3>')
+    expect(html).toContain(t('textTransform.ruleSummaryVersion', { version: 2 }))
+    expect(html).toContain('/USER_PATTERN/g')
+    expect(html).toContain('USER REPLACEMENT')
+    expect(html).toContain(t('textTransform.ruleDepth', { min: 1, max: t('textTransform.ruleUnlimited') }))
+    expect(html).not.toContain(t('textTransform.jsonEditor', { title: t('textTransform.ruleTitle') }))
     if (locale === 'en-US') expect(html).not.toMatch(/[\u3400-\u9fff]/)
   })
 
@@ -124,16 +140,18 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
       scriptFileName: 'user.loom.js', scriptSource: '// USER SOURCE',
     })
     expect(html).toContain(`aria-label="${t('textTransform.scriptFileName')}"`)
-    expect(html).toContain(`aria-label="${t('textTransform.source')}"`)
+    expect(html).toMatch(new RegExp(`<span[^>]*id="[^"]+">${t('textTransform.source')}</span>`))
     expect(html).toContain(`aria-label="${t('textTransform.order')}"`)
     expect(html).toContain('user.loom.js')
   })
 
   it('exposes a named native import button and file input', () => {
-    const html = renderDetail({ loomScriptsApi: {} as NonNullable<TextTransformProps['loomScriptsApi']> }, true)
-    const label = t('textTransform.importScript')
-    expect(html).toMatch(new RegExp(`<button[^>]*aria-label="${label}"[^>]*type="button"`))
-    expect(html).toMatch(new RegExp(`<input[^>]*aria-label="${label}"[^>]*type="file"`))
+    const html = renderToStaticMarkup(createElement(ScriptManagementPanel, {
+      api: createScriptManagementPreviewApi(), onScriptsChanged: noop, t,
+    }))
+    expect(html).toMatch(/<button[^>]*aria-label="导入脚本或规则"[^>]*type="button"/)
+    expect(html).toMatch(/<input[^>]*type="file"[^>]*aria-label="导入脚本"/)
+    expect(html).toContain('accept=".loom.js,.js,.md,text/javascript,text/markdown"')
   })
 
   it('names runtime context and filters and localizes status options', () => {

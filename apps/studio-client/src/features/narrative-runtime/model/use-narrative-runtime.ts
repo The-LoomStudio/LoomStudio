@@ -25,7 +25,7 @@ export { inspectSessionRunStatus, releasePrimaryRun, mergeAgentRunEntries } from
 export type { ActiveAgentRun, RunRecovery } from './agent-run-observer.js'
 import { useNarrativeCollections } from './use-narrative-collections.js'
 import { useTimelineSession } from './use-timeline-session.js'
-import { useSessionRun, streamingEntry } from './use-session-run.js'
+import { useSessionRun } from './use-session-run.js'
 import type { LatestOperationContext } from '../../../shared/hooks/use-async-operations.js'
 import { openingChoiceRequest, type OpeningChoice } from '../../cards/model/opening-choice.js'
 import type { NewStorySetup } from '../../extension-renderers/ui/new-story-extensions.js'

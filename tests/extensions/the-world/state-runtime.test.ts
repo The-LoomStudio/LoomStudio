@@ -5,7 +5,7 @@ import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createId, nowIso } from '@loom-studio/shared'
+import { createId, nowIso, playerEntity } from '@loom-studio/shared'
 import { createWorldRoot } from '../../../extensions/the-world/src/world-state.js'
 import { activate } from '../../../extensions/the-world/src/server/index.js'
 
@@ -97,7 +97,7 @@ describe('The World handlers with real State Service', () => {
       expect((await f.read({ arguments: {} }, f.context(target))).state.theWorld).toEqual(expected)
       const document = await f.documents.get(`timeline-runtime-context:${target.timelineId}`)
       expect(document?.content).toMatchObject({
-        stateEntities: [{ typeId: 'official-the-world-entity', entityId: 'world' }],
+        stateEntities: [playerEntity, { typeId: 'official-the-world-entity', entityId: 'world' }],
         stateComponents: expect.arrayContaining([expect.objectContaining({ path: 'theWorld.entities.world.components.world', componentKey: 'world' })]),
         stateBindings: expect.arrayContaining([expect.objectContaining({ path: 'theWorld.entities.world.components.world', installationId: f.installationId })]),
       })
@@ -208,6 +208,7 @@ describe('The World handlers with real State Service', () => {
     try {
       const { target } = await f.timeline()
       const before = await f.read({ arguments: {} }, f.context(target))
+      const initialSnapshot = (await f.runtime.getStateSnapshot({ target })).snapshot
       const legacy = { schemaVersion: 1, branch: target, entities: {
         world: { schemaVersion: 1, id: 'world', kind: 'world', createdBy: 'author', components: { world: {} } },
       } }
@@ -217,7 +218,8 @@ describe('The World handlers with real State Service', () => {
       await expect(f.read({ arguments: {} }, f.context(target))).rejects.toThrow('explicit upgrade')
       const preview = await f.rpc('previewWorldUpgrade', target)
       expect(preview.revisionId).toBe(installed.snapshot.revisionId)
-      expect((await f.runtime.getStateSnapshot({ target })).snapshot.value).toEqual({ theWorld: legacy })
+      expect(installed.snapshot.value).toEqual({ ...initialSnapshot.value, theWorld: legacy })
+      expect((await f.runtime.getStateSnapshot({ target })).snapshot).toEqual(installed.snapshot)
       const request = { ...target, expectedRevisionId: preview.revisionId, state: preview.state, idempotencyKey: 'upgrade' }
       await expect(f.rpc('commitWorldUpgrade', {
         ...request, state: { entities: { world: { components: { world: {}, weather: { kind: 'clear' } } } } },

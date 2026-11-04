@@ -1,6 +1,19 @@
 import type { messages as zhCN } from '../zh-cn/textTransforms.js'
 
 export const messages = {
+  'textTransform.ruleUnavailable': '규칙을 사용할 수 없습니다.',
+  'textTransform.ruleSummaryVersion': '규칙 요약 · v{{version}}',
+  'textTransform.editFullScript': '전체 스크립트 편집',
+  'textTransform.ruleSummaryHint': '규칙은 스크립트에서 선언됩니다. 확장 스크립트 페이지에서 전체 소스를 편집하고 저장한 뒤 적용 범위를 새로 고치세요.',
+  'textTransform.ruleMatch': '일치',
+  'textTransform.ruleReplacement': '대체 텍스트',
+  'textTransform.ruleProcessing': '처리 방식',
+  'textTransform.ruleDepth': '깊이 {{min}}–{{max}}',
+  'textTransform.ruleUnlimited': '제한 없음',
+  'textTransform.ruleTest': '스크립트 규칙 테스트',
+  'textTransform.ruleTestHint': '저장된 소스와 기본 설정으로 선언된 규칙을 테스트합니다. JavaScript를 실행하거나 결과를 저장하지 않습니다.',
+  'textTransform.ruleTestText': '규칙 테스트 텍스트',
+  'textTransform.test': '테스트',
   'textTransform.title': 'History 텍스트 파이프라인',
   'textTransform.inspectorTitle': 'History 텍스트 파이프라인 검사기',
   'textTransform.tabRules': '규칙',

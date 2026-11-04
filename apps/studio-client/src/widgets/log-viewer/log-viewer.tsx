@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
 import { Checkbox, Dialog, IconButton, SearchField, TextInput } from '@loom-studio/ui'
 import { ArrowDown, Copy, Download, Filter, RefreshCw, Search, Square, X } from 'lucide-react'
@@ -18,6 +19,7 @@ import styles from './log-viewer.module.scss'
 declare const __LOOM_STUDIO_VERSION__: string
 
 export function LogViewer(props: {
+  directoryHeader?: ReactNode
   active: boolean
   api: StudioApi['logs']
   referenceApi?: StudioApi
@@ -198,6 +200,7 @@ export function LogViewer(props: {
   }
 
   return <section className={styles.viewer} aria-label={props.t('logs.title')}>
+    {props.directoryHeader}
     <div className={styles.controls}>
     <div className={styles.toolbar}>
       <div className={styles.sources} role="group" aria-label={props.t('logs.source')}>

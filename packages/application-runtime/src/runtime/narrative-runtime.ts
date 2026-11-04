@@ -7,7 +7,6 @@ import { readUserProfiles, resolveCurrentUserProfile, validateProfileAvatar } fr
 import { createPlayerStateContribution, hasPlayerProfile } from '../profiles/player-state.js'
 import { workspaceBinaryLimit } from './workspace-runtime.js'
 import type { DocumentRecord } from '@loom-studio/document-store'
-import type { JsonObject } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { readDocument, writeDocument } from '../foundation/document-store.js'

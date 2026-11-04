@@ -11,7 +11,7 @@ export function activate(ctx: ClientExtensionActivationContext) {
       if (!target) throw new Error('剧情记忆需要当前 Timeline。')
       const reactRoot = createRoot(root)
       const call = (method: string, args: Record<string, unknown> = {}) => ctx.rpc.call(`official.story-memory.${method}`, { timelineId: target.timelineId, branchId: target.branchId, ...args } as never)
-      reactRoot.render(<><style>{panelCss}</style><StoryMemoryPanel call={call} /></>)
+      reactRoot.render(<><style>{panelCss}</style><StoryMemoryPanel timelineId={target.timelineId} call={call} /></>)
       return { dispose() { reactRoot.unmount() } }
     },
   })

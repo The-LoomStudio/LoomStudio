@@ -1,5 +1,6 @@
-import { useEffect, type ReactNode } from 'react'
-import { Button, Checkbox } from '@loom-studio/ui'
+import { Settings } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Button, Checkbox, Dialog, IconButton } from '@loom-studio/ui'
 import { formatEntityReference, type EntityReference } from '@loom-studio/shared'
 import { useLogReferenceLabels } from '../../features/log-viewer/model/use-log-reference-labels.js'
 import type { ObservationReference } from '../../features/observability/model/observation-view.js'
@@ -10,9 +11,10 @@ import { mapObservationStep, mapObservationSummary } from '../../features/observ
 import { useObservations } from '../../features/observability/model/use-observations.js'
 import styles from '../../features/observability/ui/observability-workbench.module.scss'
 
-type Props = { active: boolean; api: StudioApi; endpoint: string; t: Translator; searchParams: URLSearchParams; onSearchParamsChange(params: URLSearchParams): void }
+type Props = { directoryHeader?: ReactNode; active: boolean; api: StudioApi; endpoint: string; t: Translator; searchParams: URLSearchParams; onSearchParamsChange(params: URLSearchParams): void }
 
-export function ObservabilityPanel({ active, api, endpoint, t, searchParams, onSearchParamsChange }: Props) {
+export function ObservabilityPanel({ directoryHeader, active, api, endpoint, t, searchParams, onSearchParamsChange }: Props) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const targetRecord = searchParams.get('observationId') ?? undefined
   const state = useObservations(api, endpoint, targetRecord, active)
   useEffect(() => { if (targetRecord) state.setRecordId(targetRecord) }, [targetRecord])
@@ -63,7 +65,8 @@ export function ObservabilityPanel({ active, api, endpoint, t, searchParams, onS
     : state.entry.isError ? notice(t('observation.readError'), state.entry.refetch)
       : state.entry.isPending ? notice(t('observation.loading'))
         : state.entry.data === null ? notice(t('observation.unavailable'), state.entry.refetch) : undefined
-  return <ObservabilityWorkbench
+  return <><ObservabilityWorkbench
+    directoryHeader={<div className={styles.directoryHeading}>{directoryHeader}<IconButton aria-label={t('observation.settings')} title={t('observation.settings')} onClick={() => setSettingsOpen(true)}><Settings size={16} /></IconButton></div>}
     t={t}
     records={state.records.map(record => ({ ...mapObservationSummary(record, t), source: names.labels.get(`run:${record.id}`)?.source }))}
     selectedRecordId={state.recordId}
@@ -73,15 +76,17 @@ export function ObservabilityPanel({ active, api, endpoint, t, searchParams, onS
     listFooter={<>{!!state.list.data?.pages[0]?.dropped && notice(t('observation.dropped', { count: state.list.data.pages[0].dropped }))}{state.list.hasNextPage && <Button disabled={state.list.isFetchingNextPage} onClick={() => { void state.list.fetchNextPage() }}>{t('observation.loadMore')}</Button>}</>}
     detailNotice={detailNotice}
     stepNotice={stepNotice}
-    toolbar={<><Button size="small" onClick={() => { void state.list.refetch(); if (state.recordId) void state.detail.refetch(); if (state.step) void state.entry.refetch() }}>{t('observation.refresh')}</Button><small>{t(state.persistence.data?.enabled ? 'observation.retentionPersisted' : 'observation.retention')}</small>
-      <label className={styles.persistenceToggle}><Checkbox checked={state.persistence.data?.enabled ?? false} disabled={!state.persistence.data?.available || state.setPersistence.isPending} onChange={event => state.setPersistence.mutate(event.target.checked)} />{t('observation.persistAcrossRestart')}</label>
-      {state.persistence.isError ? notice(t('observation.persistenceReadFailed'), state.persistence.refetch) : null}
-      {state.setPersistence.isError ? notice(t('observation.persistenceSaveFailed'), () => state.setPersistence.mutate(state.setPersistence.variables!)) : null}
-      {state.persistence.data?.error ? <div className={styles.persistenceError} role="status">{t('observation.persistenceError')} {state.persistence.data.error}</div> : null}
-      {state.persistence.data && !state.persistence.data.available ? notice(t('observation.persistenceUnavailable')) : null}
+    toolbar={<>
       {state.buildId && state.build.isError ? notice(t('observation.buildError'), state.build.refetch) : null}
       {state.buildId && state.build.isPending ? notice(t('observation.buildLoading')) : null}
       {state.previousEntry.isError ? notice(t('observation.comparisonError'), state.previousEntry.refetch) : null}
     </>}
-  />
+  /><Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} title={t('observation.settings')} closeLabel={t('observation.close')} closeOnBackdrop>
+    <div className={styles.logSettings}>      <label className={styles.persistenceToggle}><Checkbox checked={state.persistence.data?.enabled ?? false} disabled={!state.persistence.data?.available || state.setPersistence.isPending} onChange={event => state.setPersistence.mutate(event.target.checked)} />{t('observation.persistAcrossRestart')}</label><small>{t(state.persistence.data?.enabled ? 'observation.retentionPersisted' : 'observation.retention')}</small>
+      {state.persistence.isError ? notice(t('observation.persistenceReadFailed'), state.persistence.refetch) : null}
+      {state.setPersistence.isError ? notice(t('observation.persistenceSaveFailed'), () => state.setPersistence.mutate(state.setPersistence.variables!)) : null}
+      {state.persistence.data?.error ? <div className={styles.persistenceError} role="status">{t('observation.persistenceError')} {state.persistence.data.error}</div> : null}
+      {state.persistence.data && !state.persistence.data.available ? notice(t('observation.persistenceUnavailable')) : null}
+</div>
+  </Dialog></>
 }

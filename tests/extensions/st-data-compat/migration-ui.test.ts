@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ClientExtensionModule, ClientRenderer, ClientRendererContext, ExtensionRegistrationHandle } from '@loom-studio/extension-sdk'
+import { readClientThemeSnapshot } from '../../../apps/studio-client/src/features/extension-renderers/model/client-theme.js'
 import extension from '../../../extensions/st-data-compat/src/client/index.js'
 
 const cleanups: ExtensionRegistrationHandle[] = []
@@ -32,7 +33,15 @@ async function mount(call: (method: string, params: { directory?: string; sessio
   } as unknown as Parameters<NonNullable<ClientExtensionModule['activate']>>[0])
   const root = document.createElement('div')
   document.body.append(root)
-  const handle = await renderer.mount(root, { signal: controller.signal, close } as ClientRendererContext)
+  const rendererContext: ClientRendererContext = {
+    identity: { owner: { kind: 'extension', packageId: 'sillytavern.importer', moduleId: 'client' }, contributionId: 'overall-migration-modal' },
+    surface: 'shell.workspace-panel',
+    scope: { kind: 'workspace', key: 'workspace' },
+    host: { compact: false, prefersReducedMotion: false, theme: 'inherit', themeSnapshot: readClientThemeSnapshot() },
+    signal: controller.signal,
+    close,
+  }
+  const handle = await renderer.mount(root, rendererContext)
   if (!handle) throw new Error('Migration Renderer must return its cleanup handle')
   cleanups.push(handle)
   const path = root.querySelector<HTMLInputElement>('[data-action="path"]')!

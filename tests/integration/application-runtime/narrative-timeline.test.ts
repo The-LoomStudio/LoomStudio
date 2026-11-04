@@ -1,7 +1,7 @@
 import { createApplicationRuntime, createStateContributionRegistry, type StateContributionRegistry } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createNarrativeStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore } from '@loom-studio/application-data'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 import { installedExtensionContributionId } from '@loom-studio/extension-sdk'
@@ -19,7 +19,7 @@ function createTestRuntime(options?: { stateContributions?: StateContributionReg
   const documents = createSqliteDocumentStore({ engine })
   const narratives = createNarrativeStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, promptResources, stateContributions: options?.stateContributions })
+  const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, promptResources, agents: createAgentStore({ engine }), stateContributions: options?.stateContributions })
   return { documents, engine, runtime }
 }
 

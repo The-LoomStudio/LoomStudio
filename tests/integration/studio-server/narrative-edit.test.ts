@@ -2,10 +2,12 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { playerEntity, playerEntityType, playerProfilePath } from '@loom-studio/shared'
+import { createPlayerStateContribution } from '../../../packages/application-runtime/src/profiles/player-state.js'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createNarrativeStore, createPromptResourceStore, createStateStore } from '@loom-studio/application-data'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createApplicationRuntime } from '@loom-studio/application-runtime'
+import { createApplicationRuntime, type TimelineRuntimeContextContent } from '@loom-studio/application-runtime'
 import { callApplicationRpc as handleTimelineRpc } from '../../support/trpc-caller.js'
 
 describe('branch-local Narrative text editing', () => {
@@ -44,12 +46,23 @@ describe('branch-local Narrative text editing', () => {
         const stateTx = states.transaction(tx)
         const scope = stateTx.createScope({ kind: 'timeline', ownerId: created.timeline.id })
         for (const id of ['state-initial', 'state-sibling', 'state-later']) {
-          stateTx.createRevision({ id, scopeId: scope.id, snapshot: { marker: id }, operations: [] })
+          stateTx.createRevision({ id, scopeId: scope.id, snapshot: { marker: id, $loom: { players: { User: { components: { loom_profile: { name: 'User', description: '' } } } } } }, operations: [] })
         }
       })
+      const documents = createSqliteDocumentStore({ engine })
       const runtime = createApplicationRuntime({
-        dataEngine: engine, documents: createSqliteDocumentStore({ engine }), narratives: store, states,
+        dataEngine: engine, documents, narratives: store, states,
         promptResources: createPromptResourceStore({ engine, createId, now }),
+      })
+      const { card } = await runtime.createCard({ name: 'Edit source' })
+      await documents.write({
+        actor,
+        id: `timeline-runtime-context:${created.timeline.id}`, type: 'airp.timelineRuntimeContext', expectedVersion: 'new',
+        content: {
+          timelineId: created.timeline.id, sourceCardId: card.id, sourceCardVersion: card.version,
+          stateEntityTypes: [playerEntityType], stateEntities: [playerEntity], stateComponents: [], stateReferences: [],
+          stateContributionSources: [], stateBindings: [{ path: playerProfilePath, schema: createPlayerStateContribution({ name: 'User', description: '' }).templates[0]!.schema }], createdAt: now(),
+        } satisfies TimelineRuntimeContextContent,
       })
       const params = {
         timelineId: created.timeline.id, branchId: created.branch.id,

@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | [前端CDP修复与验收接续](./frontend-cdp-remediation-2026-11-04.md) | 修复已完成 / 真实验收延期 | 保存三批与追加小项实施证据；剩余候选与旧契约目录见后续清单，原审计已归档。 |
 | [Fake Provider 真实链路调试](./fake-provider-debug-runtime-plan.md) | 方向已确认 / 待实施 | 模拟模型响应，复用正式 Run、工具、持久化与日志；按真实闭环、可控生命周期、前端调试三阶段交付。本次仅编写计划。 |
+| [Lore 树顺序与锚点投影](./lore-tree-injection-order-plan.md) | 已接入 / 待界面验收 | 树 DFS 顺序、作者深度清理及只读锚点分组已实现；待用户确认布局、移动端与键盘体验。 |
 | [Timeline 玩家资料 State](./timeline-player-profile-state-plan.md) | 已接入 / 待界面验收 | 内置玩家资料、启动副本、作者引用及消费接线已完成；确认启动窗口与运行态编辑体验，真实 Provider 未验收。 |
 | [扩展角色目录与 Framework 依赖](./extension-character-catalog-plan.md) | W1–W3 已归档 / W4–W5 延期 | 仅保留远程角色目录、跨包 RPC 与独立脚本依赖；诺姆已实际导入使用。 |
 | [资源下载与更新](./resource-download-and-update-plan.md) | 讨论计划 / 未授权实现 | 作品／角色包、扩展及依赖下载，自动检测、更新提醒、变更保存与 Diff 冲突审阅；具体合同待收束。 |

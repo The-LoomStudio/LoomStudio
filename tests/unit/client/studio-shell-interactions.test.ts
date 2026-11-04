@@ -75,7 +75,7 @@ it('clears an unfinished drawer drag when switching to desktop', async () => {
 it('allows mobile navigation clicks and Escape closes only its drawer', async () => {
   const input = props('logs')
   await act(async () => root.render(createElement(StudioPage, input)))
-  await click(host.querySelector('[title="rail.closePanel"]')!)
+  await click(host.querySelector('[aria-controls="studio-mobile-navigation"]')!)
   await click(host.querySelector('[data-mobile-drawer] [aria-controls="studio-resource-panel"]')!)
   expect(input.navigation.togglePanel).toHaveBeenCalledWith('resource')
   expect(input.navigation.closePanel).not.toHaveBeenCalled()

@@ -1,7 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { createBlobStore } from '@loom-studio/asset-store'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
-import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createApplicationRuntime, createOfficialAgentToolRegistry, type ImportExtensionPackageResourcesInput } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
@@ -13,12 +15,15 @@ function readOfficialJson(path: string) {
 
 function fixture() {
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
+  const blobDirectory = mkdtempSync(join(tmpdir(), 'loom-official-assistant-resources-blobs-'))
+  onTestFinished(() => rmSync(blobDirectory, { recursive: true, force: true }))
+  const blobs = createBlobStore({ engine, rootDirectory: blobDirectory, createId, now: nowIso })
   const documents = createSqliteDocumentStore({ engine })
   const promptResources = createPromptResourceStore({ engine })
   const agents = createAgentStore({ engine })
   const narratives = createNarrativeStore({ engine })
   const runtime = createApplicationRuntime({
-    dataEngine: engine,
+    blobs, dataEngine: engine,
     documents,
     promptResources,
     agentTools: createOfficialAgentToolRegistry(),
@@ -39,7 +44,7 @@ function fixture() {
 function officialPackage(): ImportExtensionPackageResourcesInput {
   const manifest = readOfficialJson('manifest.json')
   const contributions = manifest.contributes
-  // This fixture has no blobStore; keep every non-script manifest contribution intact.
+  // This suite imports the package text resources independently of its optional Script mounts.
   return {
     packageId: manifest.id,
     packageVersion: manifest.version,
@@ -125,15 +130,15 @@ describe.skipIf(!existsSync(new URL('../../../official/extensions/loom-assistant
       expect((await runtime.getTextTransformRule({ ruleId })).rule.enabled).toBe(false)
 
       const provider = await runtime.createProviderProfile({
-        providerExtensionId: 'official.fake',
+        providerExtensionId: 'official.openai-compatible',
         displayName: 'Test Provider',
         config: {},
-        enabledModelIds: [officialFakeModelId],
+        enabledModelIds: ['test'],
       })
       await runtime.updateAgentPreset({
         agentPresetId: presetId,
         expectedVersion: preset.version,
-        model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
+        model: { providerProfileId: provider.providerProfile.id, modelId: 'test' },
       })
       const session = await runtime.createAgentSession({ agentPresetId: presetId })
       const preview = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: '展示助手提示' })

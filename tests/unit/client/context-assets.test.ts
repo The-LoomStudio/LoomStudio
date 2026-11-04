@@ -8,6 +8,7 @@ import {
   deleteContextAssetNode,
   duplicateContextAssetNode,
 } from '../../../apps/studio-client/src/features/prompt-resources/model/tree-ops.js'
+import { writeProjectionCapability } from '../../../apps/studio-client/src/features/prompt-resources/model/context-asset-normalization.js'
 import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/prompt-resources/model/prompt-resource-view.js'
 import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-build-context.js'
 import { resolveVirtualDisplayName, resolveVirtualExtension } from '../../../apps/studio-client/src/features/prompt-resources/model/context-asset-tree.js'
@@ -216,7 +217,7 @@ function mounts(source: LoreMount['source'], loreResourceIds: string[]): LoreMou
 }
 
 function baseNodes(): ContextAssetNode[] {
-  return [
+  const nodes: ContextAssetNode[] = [
     {
       id: 'preset-module',
       label: 'Preset',
@@ -276,6 +277,7 @@ function baseNodes(): ContextAssetNode[] {
       ],
     },
   ]
+  return nodes.map(withProjectionCapabilities)
 }
 
 function findNode(nodes: ContextAssetNode[], id: string): ContextAssetNode | undefined {
@@ -286,6 +288,11 @@ function findNode(nodes: ContextAssetNode[], id: string): ContextAssetNode | und
   }
 
   return undefined
+}
+
+function withProjectionCapabilities(node: ContextAssetNode): ContextAssetNode {
+  return { ...node, ...(node.projection ? { capabilities: writeProjectionCapability(node.capabilities, node.projection) } : {}),
+    ...(node.children ? { children: node.children.map(withProjectionCapabilities) } : {}) }
 }
 
 function idSequence(...ids: string[]): () => string {

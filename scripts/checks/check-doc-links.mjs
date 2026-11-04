@@ -34,6 +34,9 @@ function collectWorkspaceReadmes(directory) {
     }
 
     const entryPath = path.join(directory, entry.name)
+    // Extension Host creates and disposes per-instance execution snapshots here.
+    // Validate author package READMEs, not transient or retired runtime copies.
+    if (entryPath === path.join(repositoryRoot, 'extensions', '.runtime')) continue
 
     if (entry.isDirectory()) {
       collectWorkspaceReadmes(entryPath)

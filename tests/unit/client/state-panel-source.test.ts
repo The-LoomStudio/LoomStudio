@@ -9,6 +9,7 @@ import { StateAuthoringPanel } from '../../../apps/studio-client/src/features/st
 import { StateSourcesPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-sources-panel.js'
 import { StudioStatePanel } from '../../../apps/studio-client/src/app/studio-state-panel.js'
 import { FileTree, type FileTreeNode } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js'
+import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 import { findNodeById } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree-model.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { StateTarget } from '../../../apps/studio-client/src/entities/index.js'
@@ -20,9 +21,18 @@ vi.mock('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon
 }))
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
-vi.mock('../../../apps/studio-client/src/shared/notifications/index.js', () => ({ notify: { success: vi.fn(() => 'test-success'), error: vi.fn(() => 'test-error') } }))
+vi.mock('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js', async original => {
+  const actual = await original<typeof import('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js')>()
+  return { ...actual, useStudioLayoutStore: Object.assign(
+    (select: (state: ReturnType<typeof actual.useStudioLayoutStore.getState>) => unknown) => select(actual.useStudioLayoutStore.getState()),
+    actual.useStudioLayoutStore,
+  ) }
+})
+vi.mock('../../../apps/studio-client/src/shared/notifications/index.js', () => ({ notify: { success: vi.fn(() => 'test-success'), error: vi.fn(() => 'test-error'), failure: vi.fn(() => 'test-failure') } }))
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
+  // ponytail: this legacy harness checks synchronous callbacks/element projections; lifecycle behavior needs the independent DOM regressions.
+  useCallback: <T,>(callback: T) => callback,
   useMemo: (factory: () => unknown) => factory(),
   useState: (initial: unknown) => {
     const index = hooks.cursor++
@@ -48,7 +58,7 @@ vi.mock('react', async importOriginal => ({
 type Element = ReactElement<Record<string, unknown>>
 function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements)
-  if (!isValidElement<Record<string, unknown>>(value)) return []
+  if (!isValidElement<Record<string, unknown>>(value)) return value && typeof value === 'object' ? Object.values(value).flatMap(elements) : []
   return [value, ...Object.values(value.props).flatMap(elements)]
 }
 function snapshot(target: StateTarget, count: number) {
@@ -100,7 +110,7 @@ function fixture() {
   }
   return { props, apply, get, render, settle, controls }
 }
-beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = []; vi.clearAllMocks() })
+beforeEach(() => { useStudioLayoutStore.setState({ viewPreferences: {} }); hooks.cursor = 0; hooks.values = []; hooks.effects = []; vi.clearAllMocks() })
 
 describe('State panel source isolation', () => {
   it('reveals the current branch description and saves edits to its State', async () => {
@@ -528,8 +538,8 @@ describe('State source inspection panel', () => {
     pending.resolve(sourceInspection())
     const tree = elements(await f.settle()).find(item => item.type === FileTree)!
     const nodes = tree.props.nodes as ComponentProps<typeof FileTree>['nodes']
-    expect(nodes.find(item => item.id === 'extensions')!.children).toEqual([])
-    expect(nodes.find(item => item.id === 'timeline')!.meta).toBe(next.timeline!.target.timelineId)
+    expect(findNodeById(nodes, 'extensions')).toBeUndefined()
+    expect(findNodeById(nodes, 'timeline')!.meta).toBe(next.timeline!.target.timelineId)
   })
 
   it('keeps paused accepted declarations and missing Branch data visible and read-only', async () => {

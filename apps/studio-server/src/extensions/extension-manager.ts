@@ -355,7 +355,7 @@ export function createServerExtensionManager(options: {
               errors: errors.map(item => serializeError(item)),
             })
           } catch (recordError) { errors.push(recordError) }
-          throw new AggregateError(errors, `${failedStage} failed; recovery incomplete at ${recoveryFailures.join(', ')}: ${errors.map(item => item instanceof Error ? item.message : String(item)).join('; ')}`)
+          throw new AggregateError(errors, `${failedStage} failed; recovery incomplete at ${recoveryFailures.join(', ')}: ${errors.map(item => item instanceof Error ? item.message : String(item)).join('; ')}`, { cause: error })
         }
         throw error
       }

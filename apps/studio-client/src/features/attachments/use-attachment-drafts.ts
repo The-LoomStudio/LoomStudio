@@ -49,7 +49,7 @@ export function useAttachmentDrafts(scope: string, initial: ChatAttachment[] = [
     const next = fn(read(key))
     drafts.current.set(key, next)
     const storageKey = `loom:attachment-draft:v1:${key}`
-    if (next.length) safeLocalStorage.setItem(storageKey, JSON.stringify(next.map(({ previewUrl, retryable, ...item }) => item)))
+    if (next.length) safeLocalStorage.setItem(storageKey, JSON.stringify(next.map(({ previewUrl: _previewUrl, retryable: _retryable, ...item }) => item)))
     else safeLocalStorage.removeItem(storageKey)
     refresh(value => value + 1)
   }

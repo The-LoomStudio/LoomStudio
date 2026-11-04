@@ -125,6 +125,7 @@ export const messages = {
   "observation.buildError": "Linked build could not be read; sources and variables are unavailable.",
   "observation.buildLoading": "Loading linked build…",
   "observation.comparisonError": "The adjacent request could not be read; comparison is unavailable.",
+  "observation.settings": "Log settings",
   "observation.close": "Close",
   "observation.title": "Model logs",
   "observation.run": "Agent runs",

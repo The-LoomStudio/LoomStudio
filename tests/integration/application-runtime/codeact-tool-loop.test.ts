@@ -1,10 +1,14 @@
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createBlobStore } from '@loom-studio/asset-store'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import { createApplicationRuntime, createNarrativeContextRegistry, createOfficialAgentToolRegistry } from '@loom-studio/application-runtime'
 import type { GatewayChatResult } from '@loom-studio/application-runtime'
 import type { AiGatewayRequest } from '@loom-studio/ai-gateway'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import type { VfsMutationPreview } from '../../../packages/application-runtime/src/vfs/types.js'
 
 function authorContext() {
@@ -19,6 +23,9 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
   const createId = (prefix: string) => `${prefix}-${++sequence}`
   const now = () => '2026-09-21T00:00:00.000Z'
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const blobDirectory = mkdtempSync(join(tmpdir(), 'loom-codeact-tool-loop-blobs-'))
+  onTestFinished(() => rmSync(blobDirectory, { recursive: true, force: true }))
+  const blobs = createBlobStore({ engine, rootDirectory: blobDirectory, createId, now })
   const agents = createAgentStore({ engine, createId, now })
   const calls: Array<Pick<AiGatewayRequest, 'messages' | 'tools'>> = []
   const toolId = mode === 'content' ? 'official/codeact' : 'official/codeact_json'
@@ -26,7 +33,7 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
   const narrativeContext = createNarrativeContextRegistry()
   const narratives = createNarrativeStore({ engine, createId, now })
   const runtime = createApplicationRuntime({
-    dataEngine: engine, documents: createSqliteDocumentStore({ engine }),
+    blobs, dataEngine: engine, documents: createSqliteDocumentStore({ engine }),
     agents, narratives: cancelAfterAppend ? {
       ...narratives,
       appendNode: async (input) => {

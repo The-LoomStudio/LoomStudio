@@ -301,7 +301,7 @@ describe('Default preset: simulated Agent lifecycle', () => {
     expect(visible(requests[0]!.messages)).toEqual([
       { role: 'system', content: 'ROLE:WRITER\n\nSOP:WRITE_WITH_TOOLS\n\nSTYLE:清晰自然，人物言行符合已有设定。' },
       { role: 'system', content: toolInstructions },
-      { role: 'system', content: '<world>\n\nSTABLE_B\n\nSTABLE_A\n\n</world>' },
+      { role: 'system', content: '<world>\n\nSTABLE_A\n\nSTABLE_B\n\n</world>' },
       { role: 'system', content: 'MEMORY:EARLIER_EVENTS' },
       { role: 'system', content: ['<history>', ...initialWindow.map(project), '</history>'].join('\n\n') },
       { role: 'system', content: sessionMemory },

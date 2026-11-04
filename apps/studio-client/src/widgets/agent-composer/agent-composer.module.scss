@@ -53,7 +53,7 @@
     pointer-events: auto;
   }
 
-  :global(html[data-keyboard-open='true']) .layer {
+  :global(html[data-composer-keyboard]) .layer {
     margin: 0 auto 4px;
   }
 }

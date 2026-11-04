@@ -1,5 +1,5 @@
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
-import { createNarrativeStore, createNarrativeSwipeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createNarrativeSwipeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionNarrativeActivity } from '@loom-studio/extension-sdk'
@@ -10,7 +10,7 @@ it('reports committed narrative invalidations with exact branch heads and ignore
   const engine = createSqliteDataEngine({ filename: ':memory:', createId: prefix => `${prefix}-${++sequence}`, now: () => new Date().toISOString() })
   const narratives = createNarrativeStore({ engine })
   const swipes = createNarrativeSwipeStore({ engine })
-  const runtime = createApplicationRuntime({ dataEngine: engine, narratives,
+  const runtime = createApplicationRuntime({ dataEngine: engine, narratives, agents: createAgentStore({ engine }),
     documents: createSqliteDocumentStore({ engine }), promptResources: createPromptResourceStore({ engine }) })
   const actor = { kind: 'system' as const, id: 'test' }
   const events: Extract<ExtensionNarrativeActivity, { kind: 'changed' }>[] = []

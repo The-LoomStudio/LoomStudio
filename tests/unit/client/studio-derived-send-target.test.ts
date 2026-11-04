@@ -45,6 +45,9 @@ vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-pro
 }))
 vi.mock('../../../apps/studio-client/src/app/use-studio-startup.js', () => ({ useStudioStartup: () => ({ ready: () => true }) }))
 
+vi.mock('../../../apps/studio-client/src/features/agent-presets/model/use-agent-tools.js', () => ({ useAgentTools: () => ({ tools: [] }) }))
+vi.mock('../../../apps/studio-client/src/features/user-profiles/model/use-player-profile-query.js', () => ({ usePlayerProfileQuery: () => ({}) }))
+
 const input: Parameters<typeof useStudioDerivedValues>[0] = {
   t: createTranslator('zh-CN'),
   timeline: { id: 'timeline', activeBranchId: 'branch', createdAt: '', updatedAt: '', promptResourceIds: [] },
@@ -57,7 +60,8 @@ const session = { kind: 'timeline' as const, id: 'timeline', timelineId: 'timeli
 const logger = createRootLogger({ service: 'send-target-test', instanceId: 'test', sinks: [] }).child('studio')
 beforeEach(() => {
   runtime.current = { timeline: input.timeline, branch: input.branch, nodes: [], input: input.narrativeInput,
-    agentInput: input.agentInput, agentSessionReady: true, primarySession: session }
+    agentInput: input.agentInput, agentSessionReady: true, primarySession: session,
+    narrativeAttachments: { values: [], ready: true, items: [], notice: '', add: vi.fn(async () => {}), retry: vi.fn(async () => {}), remove: vi.fn(), moveTo: vi.fn(), clear: vi.fn() } }
 })
 
 function derived(changes: Partial<typeof input> = {}) {
@@ -86,9 +90,9 @@ describe('Studio send target availability', () => {
     expect(derived({ primarySession: { ...session, timelineId: 'other' } }).canPreviewPrompt).toBe(false)
   })
 
-  it('blocks Narrative send while its root is running, suspended, or changing the opening', () => {
+  it('allows Narrative input during running or suspended roots while still guarding opening changes', () => {
     for (const status of ['running', 'suspended'] as const)
-      expect(studio({ rootActiveRun: { runId: 'run', status } }).canSend).toBe(false)
+      expect(studio({ rootActiveRun: { runId: 'run', status } }).canSend).toBe(true)
     expect(studio({ rootActiveRun: undefined, openingChanged: true }).canSend).toBe(false)
     expect(studio({ openingChanged: false }).canSend).toBe(true)
   })

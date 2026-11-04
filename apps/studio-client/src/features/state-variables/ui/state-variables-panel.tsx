@@ -149,6 +149,15 @@ export function StateVariablesPanel(props: Props) {
     void refresh()
   }, [source])
 
+  useEffect(() => {
+    const update = () => {
+      if (document.visibilityState === 'visible' && dirtyCount === 0 && !saveRequestRef.current) void refresh()
+    }
+    window.addEventListener('focus', update)
+    const timer = window.setInterval(update, 5000)
+    return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
+  }, [source, dirtyCount])
+
   async function saveAllDirtyProperties() {
     const snapshot = currentSnapshot
     const saveContextKey = draftContextKey
@@ -428,7 +437,7 @@ export function StateVariablesPanel(props: Props) {
             <header className={styles.masterHeader}>
               {props.header}
             </header>
-            <div className={styles.masterToolbar}>
+            {error && <div className={styles.masterToolbar}>
               <button
                 aria-label={props.t('stateVariables.refresh')}
                 title={props.t('stateVariables.refresh')}
@@ -439,7 +448,7 @@ export function StateVariablesPanel(props: Props) {
               >
                 <RefreshCw aria-hidden="true" size={14} />
               </button>
-            </div>
+            </div>}
             <div className={styles.treeContainer}>
               <FileTree
                 ariaLabel={props.t('stateVariables.navigation')}

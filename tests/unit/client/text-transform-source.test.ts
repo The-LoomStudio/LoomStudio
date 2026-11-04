@@ -64,6 +64,7 @@ function fixture() {
   const props: TextTransformProps = {
     api: {
       inspectTextPipeline, getOverride, upsertOverride, listRules,
+      listRuleSummaries: async () => ({ rules: [] }), listExtractorSummaries: async () => ({ extractors: [] }),
       listExtractors: async () => ({ extractors: [] }), listRenderers: async () => ({ renderers: [] }),
       getRule: async () => { throw new Error('Unexpected rule read') },
       upsertRule: async () => { throw new Error('Unexpected rule write') },

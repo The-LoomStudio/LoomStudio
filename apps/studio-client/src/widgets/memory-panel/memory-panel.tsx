@@ -1,4 +1,7 @@
-import { useSyncExternalStore } from 'react'
+import { LayoutDashboard, Settings, Database } from 'lucide-react'
+import { cardMediaUrl } from '../../shared/lib/card-media.js'
+import { UserRound } from 'lucide-react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Button } from '@loom-studio/ui'
 import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { rendererContributionKey } from '../../shared/extension-renderer-runtime/renderer-registry.js'
@@ -23,6 +26,14 @@ type Props = {
 }
 
 export function MemoryPanel(props: Props) {
+  const panelRef = useRef<HTMLElement>(null)
+  const [memoryPage, setMemoryPage] = useState('dashboard')
+  useEffect(() => {
+    const panel = panelRef.current
+    const navigate = (event: Event) => { const page = (event as CustomEvent).detail?.page; if (typeof page === 'string') setMemoryPage(page) }
+    panel?.addEventListener('loom:memory-navigation', navigate)
+    return () => panel?.removeEventListener('loom:memory-navigation', navigate)
+  }, [])
   useSyncExternalStore(props.rendererHost.subscribe, props.rendererHost.renderRevision, props.rendererHost.renderRevision)
   const timelineId = props.timelineId ?? props.defaultTimelineId
   const timelineQuery = useQuery({
@@ -30,18 +41,33 @@ export function MemoryPanel(props: Props) {
     queryFn: () => props.api.narratives.get(timelineId!), enabled: Boolean(timelineId), retry: false,
   })
   const timeline = timelineQuery.data?.timeline
+  const cardId = timeline?.createdFrom?.cardId
+  const cardQuery = useQuery({ queryKey: ['memory-card-owner', props.endpoint, cardId],
+    queryFn: () => props.api.cards.get(cardId!), enabled: Boolean(cardId), retry: false })
+  const card = cardQuery.data?.card
+  const avatar = card ? cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version) : undefined
   const branchId = props.branchId ?? timeline?.activeBranchId
   const currentScope = props.rendererHost.scopeSnapshot()
   const scope = { kind: 'timeline' as const, key: timelineId ?? '' }
   const currentTarget = timelineId === currentScope.timelineId && branchId === currentScope.branchId
   const hasMemoryRenderer = currentTarget && props.rendererHost.list('memory.panel').some(renderer =>
     renderer.definition.instanceScope === 'timeline' && props.rendererHost.canUse(rendererContributionKey(renderer), scope))
-  return <section data-loom-mobile-tab-scope="" className={styles.panel} aria-label="记忆">
+  return <section ref={panelRef} data-memory-detail={props.view === 'plot' && memoryPage === 'detail'} data-loom-mobile-tab-scope="" className={styles.panel} aria-label="记忆">
     <header className={styles.header}>
       <PanelTabs activeId={props.view} ariaLabel="记忆类型" items={[
         { id: 'plot', label: '剧情记忆' }, { id: 'workspace', label: '共享工作区' },
       ]} onChange={view => props.onNavigate({ timelineId, branchId, view })} />
-      <span className={styles.owner}><GitBranch size={13} /><span>{timeline?.title || '未选择 Timeline'}</span></span>
+      {props.view === 'plot' && <nav className={styles.pageTabs} aria-label="记忆页面" role="tablist">{[
+        { id:'dashboard', label:'Dashboard', icon:<LayoutDashboard size={18} /> },
+        { id:'settings', label:'配置', icon:<Settings size={18} /> },
+        { id:'list', label:'数据', icon:<Database size={18} /> },
+      ].map(tab => <button type="button" key={tab.id} role="tab" title={tab.label} aria-label={tab.label}
+        aria-selected={(memoryPage === 'detail' ? 'list' : memoryPage) === tab.id}
+        onClick={() => window.dispatchEvent(new CustomEvent('loom:memory-page', { detail:{ timelineId, page:tab.id } }))}>{tab.icon}</button>)}</nav>}
+      {props.view === 'plot' && memoryPage === 'dashboard' && <div className={styles.owner}>
+        {avatar ? <img src={avatar} alt="" /> : <UserRound size={24} aria-hidden="true" />}
+        <div className={styles.ownerLabels}><strong>{card?.name ?? (cardId ? '角色资料暂不可用' : '独立故事')}</strong><span title={timeline?.title}><GitBranch size={12} aria-hidden="true" />{timeline?.title || '未选择 Timeline'}</span></div>
+      </div>}
     </header>
     {props.view === 'plot' ? timelineQuery.error
       ? <div className={styles.empty} role="alert"><p>{timelineQuery.error.message}</p><button onClick={() => void timelineQuery.refetch()}>重试</button></div>
