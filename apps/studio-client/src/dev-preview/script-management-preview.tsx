@@ -15,6 +15,6 @@ export function ScriptManagementPreview() {
     <header className={styles.toolbar}><strong>脚本管理 · 交互预览</strong><span>仅内存示例，不执行脚本</span>
       {(['normal', 'empty', 'many'] as const).map(value => <Button size="small" key={value} aria-pressed={scene === value} onClick={() => setScene(value)}>{{ normal: '正常', empty: '空列表', many: '较多脚本' }[value]}</Button>)}
     </header>
-    <div className={styles.panel}><ScriptManagementPanel key={scene} api={api} cardId="preview-card" onScriptsChanged={() => {}} t={t} header={<strong className={styles.label}>脚本</strong>} /></div>
+    <div className={styles.panel}><ScriptManagementPanel endpoint={`preview:${scene}`} key={scene} api={api} cardId="preview-card" onScriptsChanged={() => {}} t={t} header={<strong className={styles.label}>脚本</strong>} /></div>
   </main>
 }

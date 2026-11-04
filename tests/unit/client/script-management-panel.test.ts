@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 // @vitest-environment happy-dom
 import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 import { parseLoomScriptSource } from '@loom-studio/shared/loom-scripts'
@@ -18,7 +19,8 @@ async function render(api = createScriptManagementPreviewApi(), initialFilter: '
   const root = createRoot(host)
   roots.push(root)
   const changed = vi.fn()
-  await act(async () => root.render(createElement(ScriptManagementPanel, { api, initialFilter: initialFilter ?? undefined, cardId, onScriptsChanged: changed, t: createTranslator('zh-CN') })))
+  await act(async () => root.render(createElement(QueryClientProvider, { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) }, createElement(ScriptManagementPanel, { endpoint: 'test', api, initialFilter: initialFilter ?? undefined, cardId, onScriptsChanged: changed, t: createTranslator('zh-CN') }))))
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   return { host, api, changed, root }
 }
 async function click(element: Element | null) { expect(element).not.toBeNull(); await act(async () => (element as HTMLElement).click()) }
@@ -211,5 +213,47 @@ describe('script classification and ordering', () => {
     expected[all.indexOf('helper-0')] = 'helper-2'
     expected[all.indexOf('helper-2')] = 'helper-0'
     expect(api.reorder).toHaveBeenCalledWith({ groups: [{ owner: { kind: 'user' }, scriptIds: expected }] })
+  })
+})
+
+describe('shared script catalog visibility', () => {
+  it('loads only an active page and reuses its catalog in the sibling page', async () => {
+    const { StudioPanelActive } = await import('../../../apps/studio-client/src/shared/studio-shell/studio-panel-active.js')
+    const { MobileTabPageActive } = await import('../../../apps/studio-client/src/shared/ui/mobile-tab-pages/mobile-tab-pages.js')
+    const api = createScriptManagementPreviewApi()
+    const list = vi.spyOn(api, 'list')
+    const listMounts = vi.spyOn(api, 'listMounts')
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } })
+    const host = document.createElement('div')
+    document.body.append(host)
+    const root = createRoot(host)
+    roots.push(root)
+    async function show(active: boolean, page: 'packages' | 'runtime' | 'rules') {
+      await act(async () => root.render(createElement(QueryClientProvider, { client },
+        createElement(StudioPanelActive.Provider, { value: active },
+          ...(['runtime', 'rules'] as const).map(category => createElement(MobileTabPageActive.Provider, { key: category, value: page === category },
+            createElement(ScriptManagementPanel, { endpoint: 'shared-test', category, api, onScriptsChanged: () => {}, t: createTranslator('zh-CN') }))),
+        ),
+      )))
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    }
+    await show(true, 'packages')
+    expect(list).not.toHaveBeenCalled()
+    expect(listMounts).not.toHaveBeenCalled()
+    await show(true, 'runtime')
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(listMounts).toHaveBeenCalledTimes(1)
+    await show(true, 'rules')
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(listMounts).toHaveBeenCalledTimes(1)
+    await show(false, 'rules')
+    await client.invalidateQueries({ queryKey: ['loom-script-catalog', 'shared-test'] })
+    expect(list).toHaveBeenCalledTimes(1)
+    await show(true, 'rules')
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(listMounts).toHaveBeenCalledTimes(2)
+    await act(async () => root.unmount())
+    roots.splice(roots.indexOf(root), 1)
+    client.clear()
   })
 })

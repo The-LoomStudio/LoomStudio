@@ -1,10 +1,13 @@
+import { useQuery } from '@tanstack/react-query'
+import { StudioPanelActive } from '../../../shared/studio-shell/studio-panel-active.js'
+import { MobileTabPageActive } from '../../../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
 import { RelatedLore } from '../../prompt-resources/ui/related-lore/related-lore.js'
 import { RuleUsageFields } from './rule-usage-fields.js'
 import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
 import { useWorkbenchView } from '../../../shared/studio-shell/use-workbench-view.js'
 import { Button, IconButton, Tabs, SearchField, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@loom-studio/ui'
 import { ScanSearch, ChevronDown, Code2, Download, Folder, Plus, Power, ToggleLeft, ToggleRight, RefreshCw, Upload, X } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { loomScriptMediaType, resolveLoomScriptSettings, type LoomScriptMountTarget, type LoomScriptSettingDefinition, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { LoomScript, LoomScriptMount, LoomScriptOwner } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
@@ -19,6 +22,9 @@ import { scriptCapabilityLabel } from '../model/script-capabilities.js'
 import { createScriptTemplate, createTextRuleScriptTemplate } from '../model/script-template.js'
 import { sceneScriptDevelopment, sceneScriptMetadataId } from '../model/scene-script-development.js'
 import styles from './script-management-panel.module.scss'
+
+const emptyScripts: LoomScript[] = []
+const emptyMounts: LoomScriptMount[] = []
 
 const TextRulePreviewDialog = lazy(async () => ({ default: (await import('./text-rule-preview-dialog.js')).TextRulePreviewDialog }))
 
@@ -36,6 +42,7 @@ type ScriptSettingsSnapshot = {
 }
 
 export function ScriptManagementPanel(props: {
+  endpoint: string
   api: Pick<StudioApi['loomScripts'], 'list' | 'listMounts' | 'export' | 'import' | 'update' | 'createMount' | 'updateMount' | 'refreshMount'> & Partial<Pick<StudioApi['loomScripts'], 'preview' | 'getSettings' | 'removeMount' | 'remove' | 'reorder'>>
   promptResourceApi?: StudioApi['promptResources']
   onNavigate?(path: string): void
@@ -48,7 +55,6 @@ export function ScriptManagementPanel(props: {
   getOwnerName?(owner: LoomScriptOwner): string | undefined
   onRelatedResourceChanged?(): void | Promise<void>
   onScriptsChanged(): void
-  refreshToken?: number
   onInspect?: () => void
   header?: ReactNode
   t: Translator
@@ -58,8 +64,19 @@ export function ScriptManagementPanel(props: {
   useEffect(() => { if (props.initialFilter) setFilter(props.initialFilter) }, [props.initialFilter])
   const filter = props.category ?? savedFilter
   const viewKey = props.category ? `scripts.${props.category}` : 'scripts'
-  const [scripts, setScripts] = useState<LoomScript[]>([])
-  const [mounts, setMounts] = useState<LoomScriptMount[]>([])
+  const panelActive = useContext(StudioPanelActive)
+  const pageActive = useContext(MobileTabPageActive)
+  const visible = panelActive && pageActive
+  const catalog = useQuery({
+    queryKey: ['loom-script-catalog', props.endpoint],
+    queryFn: async () => {
+      const [scripts, mounts] = await Promise.all([props.api.list(), props.api.listMounts()])
+      return { scripts: scripts.scripts, mounts: mounts.mounts }
+    },
+    enabled: visible,
+  })
+  const scripts = catalog.data?.scripts ?? emptyScripts
+  const mounts = catalog.data?.mounts ?? emptyMounts
   const [draft, setDraft] = useState<ScriptDraft>()
   const [previewOpen, setPreviewOpen] = useState(false)
   const [detailTab, setDetailTab] = useWorkbenchView<'run' | 'source'>(`${viewKey}.detail`, 'run', ['run', 'source'])
@@ -88,6 +105,7 @@ export function ScriptManagementPanel(props: {
   const requestRef = useRef(0)
   const initialSelectionRef = useRef<string | undefined>(undefined)
   useEffect(() => {
+    if (!visible) return
     if (!props.initialScriptId) { initialSelectionRef.current = undefined; return }
     if (initialSelectionRef.current === props.initialScriptId || busy) return
     const script = scripts.find(item => item.id === props.initialScriptId || item.contributions.some(contribution => contribution.kind !== 'renderer' && (item.textResourceIds?.[contribution.id] ?? `${item.id}:${contribution.id}`) === props.initialScriptId))
@@ -97,7 +115,7 @@ export function ScriptManagementPanel(props: {
       if (!scriptMatchesFilter(script, filter)) setFilter(scriptMatchesFilter(script, 'rules') ? 'rules' : 'runtime')
       void selectScript(script)
     }
-  }, [props.initialScriptId, scripts, busy])
+  }, [props.initialScriptId, scripts, busy, visible])
   const scopeOwner = scope.startsWith('owner:') ? JSON.parse(scope.slice(6)) as LoomScriptOwner : undefined
   const creationOwner: LoomScriptOwner = scopeOwner ?? (scope === 'card' && props.cardId ? { kind: 'card', cardId: props.cardId } : { kind: 'user' })
   function ownerTarget(owner: LoomScriptOwner): LoomScriptMountTarget {
@@ -122,22 +140,13 @@ export function ScriptManagementPanel(props: {
   useEffect(() => { if (tag && !tags.includes(tag)) setTag('') }, [tag, tags])
 
   async function load() {
-    const [scriptResult, mountResult] = await Promise.all([props.api.list(), props.api.listMounts()])
-    setScripts(scriptResult.scripts)
-    setMounts(mountResult.mounts)
+    const result = await catalog.refetch()
+    if (result.error) throw result.error
   }
-  useEffect(() => {
-    let active = true
-    void Promise.all([props.api.list(), props.api.listMounts()]).then(([scriptResult, mountResult]) => {
-      if (!active) return
-      setScripts(scriptResult.scripts)
-      setMounts(mountResult.mounts)
-    }).catch(cause => { if (active) setError(readError(cause)) })
-    return () => { active = false; requestRef.current++ }
-  }, [props.api, props.refreshToken])
+  useEffect(() => () => { requestRef.current++ }, [props.api])
 
   useEffect(() => {
-    if (!props.api.getSettings) return
+    if (!visible || !props.api.getSettings) return
     let active = true
     setSettingsPending(true)
     void Promise.all(selectedMounts.map(async mount => [mount.id, await props.api.getSettings!({ mountId: mount.id })] as const))
@@ -145,7 +154,7 @@ export function ScriptManagementPanel(props: {
       .catch(cause => { if (active) setError(readError(cause)) })
       .finally(() => { if (active) setSettingsPending(false) })
     return () => { active = false }
-  }, [props.api, selectedMounts, draft?.script?.version])
+  }, [props.api, selectedMounts, draft?.script?.version, visible])
 
   async function run(operation: () => Promise<void>) {
     if (busy) return
@@ -432,7 +441,9 @@ export function ScriptManagementPanel(props: {
             </button>
           }}
           onSelect={node => { const script = entries.get(node.id)?.script; if (script) void selectScript(script) }} />
-        {!scripts.length ? <p className={styles.muted}>暂无脚本。新建或导入后，再授权并启用。</p> : null}
+        {visible && catalog.isPending ? <p role="status">正在读取脚本目录…</p> : null}
+        {catalog.error ? <p role="alert">{readError(catalog.error)} <button type="button" onClick={() => void catalog.refetch()}>重试</button></p> : null}
+        {!catalog.isPending && !catalog.error && !scripts.length ? <p className={styles.muted}>暂无脚本。新建或导入后，再授权并启用。</p> : null}
         {scripts.length > 0 && !visibleScripts.length ? <p className={styles.muted}>此范围内没有匹配的脚本。调整范围、搜索词或标签。</p> : null}
       </div>
       <p className={styles.sortHint}>拖动来源组和同类条目调整顺序；运行脚本排序仅用于管理，不代表执行顺序。</p>

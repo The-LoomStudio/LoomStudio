@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -146,9 +147,9 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
   })
 
   it('exposes a named native import button and file input', () => {
-    const html = renderToStaticMarkup(createElement(ScriptManagementPanel, {
-      api: createScriptManagementPreviewApi(), onScriptsChanged: noop, t,
-    }))
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, createElement(ScriptManagementPanel, {
+      endpoint: 'test', api: createScriptManagementPreviewApi(), onScriptsChanged: noop, t,
+    })))
     expect(html).toMatch(/<button[^>]*aria-label="导入脚本或规则"[^>]*type="button"/)
     expect(html).toMatch(/<input[^>]*type="file"[^>]*aria-label="导入脚本"/)
     expect(html).toContain('accept=".loom.js,.js,.md,text/javascript,text/markdown"')

@@ -1,5 +1,7 @@
+import { StudioPanelActive } from '../../../shared/studio-shell/studio-panel-active.js'
+import { MobileTabPageActive } from '../../../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
 import { useWorkbenchView } from '../../../shared/studio-shell/use-workbench-view.js'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Clock, Code2, Copy, FileText, Folder, FolderOpen, Globe, Layers, Maximize2, Minus, Plus, RefreshCw, Save } from 'lucide-react'
 import { notify } from '../../../shared/notifications/index.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
@@ -30,6 +32,9 @@ type RuntimeScope = 'global' | 'timeline'
 type SnapshotSource = { api: Props['api']; key: string }
 
 export function StateVariablesPanel(props: Props) {
+  const panelActive = useContext(StudioPanelActive)
+  const pageActive = useContext(MobileTabPageActive)
+  const visible = panelActive && pageActive
   const [globalSnapshot, setGlobalSnapshot] = useState<StateSnapshot>()
   const [timelineSnapshot, setTimelineSnapshot] = useState<StateSnapshot>()
   const [scope, setScope] = useWorkbenchView<RuntimeScope>('state.runtime.scope', props.timelineTarget ? 'timeline' : 'global', props.timelineTarget ? ['timeline', 'global'] : ['global'])
@@ -146,17 +151,23 @@ export function StateVariablesPanel(props: Props) {
     setDraftContextKey('')
     setEditedProperties({})
     setError('')
-    void refresh()
   }, [source])
 
   useEffect(() => {
+    if (!visible) return
+    if (snapshotSource !== source || (dirtyCount === 0 && !saveRequestRef.current)) void refresh()
+    return () => { requestIdRef.current++ }
+  }, [source, visible])
+
+  useEffect(() => {
+    if (!visible) return
     const update = () => {
       if (document.visibilityState === 'visible' && dirtyCount === 0 && !saveRequestRef.current) void refresh()
     }
     window.addEventListener('focus', update)
     const timer = window.setInterval(update, 5000)
     return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
-  }, [source, dirtyCount])
+  }, [source, dirtyCount, visible])
 
   async function saveAllDirtyProperties() {
     const snapshot = currentSnapshot

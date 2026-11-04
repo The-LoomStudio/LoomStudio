@@ -105,3 +105,12 @@ Vitest 通过、TypeScript 通过、客观浏览器诊断和人工视觉验收�
 会话恢复探针的入口、运行步骤和隔离边界见
 [浏览器恢复诊断](../../tests/probes/client/session-recovery.md)；
 它运行真实 React 生命周期，但使用内存 API，不替代真实后端端到端验证。
+
+
+### 独立扩展的测试归属
+
+扩展自己的 parser、normalizer、Worker 和业务集成测试放在扩展仓库，由扩展的 test / test:typecheck 执行；主应用测试不得静态导入未追踪的 `extensions/` 源码或构建产物。混合用例拆开：主应用以原生 Artifact 验证领域合同，扩展验证转换结果符合合同。不能用 skip、空声明或 passWithNoTests 掩盖缺失仓库。
+
+当前 checkout 集成测试可复用 `tests/support/extension-vitest-config.ts`，配置显式限定扩展自己的测试路径，并统一宿主根目录、别名、环境。Runtime、Store、Blob 等能力直接使用现有 Workspace 包；Server 内部测试辅助仅作为对应版本的兼容性测试依赖，不承诺公共 SDK。真正多个扩展共同需要的 fixture 再抽小的开发测试包，不整体公开主应用测试树。
+
+扩展 CI 检出指定宿主版本，将自身放在对应 Workspace 路径，安装依赖、构建真实产物并运行自己的测试；主应用的干净检出必须独立通过。STData 已提供该布局及独立 workflow。扩展仓库文件必须单独提交发布，主仓库忽略的本地扩展不会随主应用 push 上传。

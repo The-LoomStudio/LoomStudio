@@ -247,6 +247,18 @@ Dialog懒挂DOM不等于父render懒计算：直接JSX children中的JSON.string
 
 ## 7. 退出前清理与同轮沉淀
 
+### Network 与 Performance 关联取证
+
+Panel取证分首次打开、再次打开、子页切换和关闭后窗口。StudioPanelHost保活与MobileTabPages同时挂载兄弟页时，stage.hidden、子页选中、document.visibilityState是三个不同层级；页面仍可见不能证明Panel活跃。按完整URL/已有postData在本地比较身份，仅输出相等布尔和计数，避免将不同scope当重复。周期请求至少跨两个实际周期，再追interval/focus的所有者；不能把已有Agent任务轮询归给每个新Panel。
+
+被动MutationObserver可在目标可见DOM出现时写performance.mark并自行disconnect；用同一trace中真实click的EventDispatch到mark计算，不能把工具动作前mark到下一轮读数当交互耗时。DOM可见不等于绘制完成，嵌套EventDispatch的dur与顶层RunTask也不能直接互换。等待懒加载消费者就绪后再结束trace；过早停止的录制必须保留覆盖缺口。
+
+本轮原生DevTools可读Network的Timing/Initiator及Performance火焰图、Bottom-up、摘要；AX点击后界面更新可能稍晚，先核对选中标签，不因一次旧快照重复点击。浏览器API创建页不一定切换原生焦点，必须核对活动URL；共享焦点若出现其他任务页面，停止快捷键输入，不能把错页录制当目标页证据。
+
+本轮绑定tab的`Tracing.start/end`可用，`Profiler.enable`返回method not found，两者分别记录。ReportEvents在Tracing.end返回后异步到达，继续读dataCollected直至tracingComplete，检查truncated/hasMore。按Renderer与CrRendererMain筛选，再以目标Document的ResourceSendRequest定位导航起点，排除导航前GC；不同名字的嵌套dur不能相加为CPU总量。没有采样栈不能将编译chunk/React调度函数当最终业务热点。DevTools自动选中窗口可能只覆盖录制一部分，Bottom-up数值须带选中范围，包含分析开销的窗口不能当纯交互耗时。
+
+生产对照先实际构建。独立preview启动成功不代表认证成功，本轮新Origin的/auth/session实测403；不得改鉴权或伪造Origin来凑通过。隔离临时数据目录、同源production模式服务可以验证生产前端启动，但空库/无扩展与实际故事不是等规模对照；服务端tsx启动也不是完整发行包验收。独立后端使用不同hostname避免覆盖同host的session cookie，完成后停止自建服务。实际工作区构建和浏览器消费仍需分别核对。
+
 结束或中断实验前核对：已知暂停请求放行/明确终止；Fetch patterns 清空；订阅取消；Observer disconnect；计时器和新增事件监听器释放；原型/fetch/Storage 包装及媒体/viewport/样式恢复；删除探针全局变量；releaseObjectGroup；撤销断点和本轮开启的诊断域；关闭自建页，不关用户页。Debugger/CDP RemoteObject 和自己保存的数组也可能保留对象，不拿探针引入的保留当产品泄漏。
 
 每轮 Issue 写事实、基线、数值、触发链、反证、覆盖缺口和清理结果；**同轮**将新发现的可复用方法或失败教训合并到本文相应段落。不要只追加日期流水账、重复已知限制、复制缺陷全文，或把候选升级成稳定工具能力。工具变化时更新能力限定；仅日志/超时未解释时不能登记为通过。

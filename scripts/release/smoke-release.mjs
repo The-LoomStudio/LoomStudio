@@ -142,7 +142,7 @@ try {
   }
   assert.equal((await rpc('system.ping', { echo: 'release-smoke' })).echo, 'release-smoke')
   const content = await rpc('official.listContent')
-  assert.ok(content.packages[0].resources.every(resource => resource.available), 'Starter was not installed')
+  assert.deepEqual(content, { packages: [] }, 'Retired Starter content must not be seeded in a fresh release')
   const bundled = (await rpc('extensions.listPackages')).items
   assert.deepEqual(bundled.map(item => item.packageId).sort(), ['official.story-memory'], 'Unexpected official packages in release')
   for (const item of bundled) {
@@ -157,16 +157,16 @@ try {
   assert.equal(await moduleResponse.text(), await readFile(join(directory, 'official/extensions/story-memory/client.js'), 'utf8'))
   const officialSetup = await rpc('extensions.officialSetup')
   assert.equal(officialSetup.completed, false)
-  assert.deepEqual(officialSetup.items.map(item => item.id), ['sillytavern.importer', 'official.the-world'])
+  assert.deepEqual(officialSetup.items.map(item => item.id).sort(), ['official.loom-assistant', 'official.backgrounds', 'sillytavern.importer', 'official.the-world'].sort(), 'Unexpected official setup choices')
   await rpc('extensions.finishOfficialSetup')
   await stop()
   assert.ok((await stat(localPaths.databaseFile)).size > 0)
   origin = await start()
   cookie = await session()
-  assert.deepEqual(await rpc('official.listContent'), content, 'Starter changed after restart')
+  assert.deepEqual(await rpc('official.listContent'), content, 'Retired Starter content was restored after restart')
   assert.equal((await rpc('extensions.officialSetup')).completed, true, 'Official selection skip was not persisted')
   await stop()
-  console.log('Release smoke passed: default user data paths without Loom overrides, external cwd, static files, deep links, auth, starter, no dev extensions, restart and shutdown.')
+  console.log('Release smoke passed: default user data paths without Loom overrides, external cwd, static files, deep links, auth, no retired starter, bundled story memory, no dev extensions, restart and shutdown.')
 } finally {
   await stop(false)
 }

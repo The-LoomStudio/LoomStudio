@@ -1,4 +1,5 @@
-import { Suspense, useEffect, useState, type ComponentProps, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Suspense, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Dialog } from '@loom-studio/ui'
 import styles from './rule-inspector-dialog.module.scss'
 import { ExtensionWorkspace } from '../../features/extension-renderers/ui/extension-workspace.js'
@@ -6,6 +7,7 @@ import { ScriptManagementPanel } from '../../features/loom-scripts/ui/script-man
 import type { StudioApi } from '../../shared/api/studio-api.js'
 
 type Props = Omit<ComponentProps<typeof ExtensionWorkspace>, 'renderScripts'> & {
+  endpoint: string
   active: boolean
   runtimeInspector?: ReactNode
   scriptScopes?: ComponentProps<typeof ScriptManagementPanel>['scopes']
@@ -19,6 +21,13 @@ type Props = Omit<ComponentProps<typeof ExtensionWorkspace>, 'renderScripts'> & 
 }
 
 export function RendererWorkspacePanel(props: Props) {
+  const queryClient = useQueryClient()
+  const catalogRevision = useRef(props.scriptsRefreshToken)
+  useEffect(() => {
+    if (catalogRevision.current === props.scriptsRefreshToken) return
+    catalogRevision.current = props.scriptsRefreshToken
+    void queryClient.invalidateQueries({ queryKey: ['loom-script-catalog', props.endpoint] })
+  }, [queryClient, props.endpoint, props.scriptsRefreshToken])
   const canInspect = props.active && props.mode === 'management'
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const requestedInspector = props.searchParams.get('ruleInspector')
@@ -26,8 +35,8 @@ export function RendererWorkspacePanel(props: Props) {
   const requestedFilter = props.searchParams.get('scriptFilter')
   const initialFilter = requestedFilter === 'rules' || requestedFilter === 'runtime' ? requestedFilter : undefined
   return <><ExtensionWorkspace {...props} renderScripts={(header, category) =>
-    <ScriptManagementPanel previewContext={props.scriptPreviewContext} category={category} initialFilter={initialFilter} initialScriptId={props.searchParams.get('scriptId') ?? undefined} api={props.scriptApi} promptResourceApi={props.promptResourceApi} onNavigate={props.onNavigate} scopes={props.scriptScopes} getOwnerName={props.getScriptOwnerName} cardId={props.settingScopeContext.cardId}
-      onRelatedResourceChanged={props.onRelatedResourceChanged} onScriptsChanged={props.onScriptsChanged} refreshToken={props.scriptsRefreshToken}
+    <ScriptManagementPanel endpoint={props.endpoint} previewContext={props.scriptPreviewContext} category={category} initialFilter={initialFilter} initialScriptId={props.searchParams.get('scriptId') ?? undefined} api={props.scriptApi} promptResourceApi={props.promptResourceApi} onNavigate={props.onNavigate} scopes={props.scriptScopes} getOwnerName={props.getScriptOwnerName} cardId={props.settingScopeContext.cardId}
+      onRelatedResourceChanged={props.onRelatedResourceChanged} onScriptsChanged={props.onScriptsChanged}
       onInspect={canInspect && props.runtimeInspector ? () => setInspectorOpen(true) : undefined}
       t={props.t} header={header} />
   } />

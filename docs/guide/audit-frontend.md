@@ -6,6 +6,8 @@
 
 需要浏览器现场证据时，按 [CDP 与 Console 实战取证](frontend-cdp-diagnostics.md)接入现有页面、选择探针和清理。每轮新增的已验证方法、失败原因或误判反证，同步更新该指南；具体缺陷、规模读数与修复状态仍写入 Issue。
 
+进一步关联 Network 请求瀑布、DevTools 请求详情与 Performance 火焰图时，见 [CDP 深度专审准备](../workbench/reference/frontend-cdp-deep-audit-preparation-2026-11-04.md)及其归档报告；后续边界由审查后续清单承接。
+
 ## 1. UI 结构与 SCSS 收敛
 
 **检查什么：**

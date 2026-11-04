@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Button } from '@loom-studio/ui'
@@ -20,6 +20,8 @@ vi.mock('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon
   useExtensionIdentities: () => [],
 }))
 
+afterEach(() => { vi.unstubAllGlobals() })
+
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
 vi.mock('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js', async original => {
   const actual = await original<typeof import('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js')>()
@@ -32,6 +34,7 @@ vi.mock('../../../apps/studio-client/src/shared/notifications/index.js', () => (
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
   // ponytail: this legacy harness checks synchronous callbacks/element projections; lifecycle behavior needs the independent DOM regressions.
+  useContext: (context: { _currentValue: unknown }) => context._currentValue,
   useCallback: <T,>(callback: T) => callback,
   useMemo: (factory: () => unknown) => factory(),
   useState: (initial: unknown) => {
@@ -110,7 +113,10 @@ function fixture() {
   }
   return { props, apply, get, render, settle, controls }
 }
-beforeEach(() => { useStudioLayoutStore.setState({ viewPreferences: {} }); hooks.cursor = 0; hooks.values = []; hooks.effects = []; vi.clearAllMocks() })
+beforeEach(() => {
+  vi.stubGlobal('document', { visibilityState: 'visible' })
+  vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn(), setInterval: vi.fn(), clearInterval: vi.fn() })
+  useStudioLayoutStore.setState({ viewPreferences: {} }); hooks.cursor = 0; hooks.values = []; hooks.effects = []; vi.clearAllMocks() })
 
 describe('State panel source isolation', () => {
   it('reveals the current branch description and saves edits to its State', async () => {

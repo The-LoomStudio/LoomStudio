@@ -76,7 +76,6 @@ export default defineConfig({
       '@loom-studio/shared/tool-mounts': resolvePath('./packages/shared/src/tool-mount-contracts.ts'),
       '@loom-studio/shared/macros': resolvePath('./packages/shared/src/macros.ts'),
       '@loom-studio/shared': resolvePath('./packages/shared/src/index.ts'),
-      '@loom-studio/sillytavern-importer': resolvePath('./extensions/st-data-compat/src/index.ts'),
     },
   },
   test: {

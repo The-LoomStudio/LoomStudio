@@ -14,5 +14,6 @@
 - [`ecosystem-audit-improvement-summary.md`](ecosystem-audit-improvement-summary.md) — 三方 Reference 审计提炼出的 LoomStudio 改进优先级、边界与后续 Workbench 课题
 
 - [审查工作指南](audit-playbook.md) — 可复用的审查经验与关闭方法，不是待修 Issue。
+- [2026-11-04 CDP 深度专审准备](frontend-cdp-deep-audit-preparation-2026-11-04.md) — Network 瀑布、DevTools 详情与 Performance 火焰图关联取证方法；本轮结果与两项修复已归档，后续边界见报告。
 - [2026-11-03 精简审查准备](code-simplification-audit-preparation-2026-11-03.md) — 项目与 Git 基线、历史去重、前后端职责地图和审查顺序；实际结论与五项实施见[归档报告](../../archive/issues/code-simplification-audit-2026-11-03.md)。
 - [2026-11-03 UI / UX 审查准备](ui-ux-audit-preparation-2026-11-03.md) — 限定前端 UI、CSS、React 状态流及直接相关后端契约；记录入口地图、历史去重和后续分包建议，尚未开展正式专项审查。

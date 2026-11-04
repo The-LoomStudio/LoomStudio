@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { convertSillyTavernCard } from '../../../extensions/st-data-compat/src/normalizer/card.js'
 import { encodeCardBundleZip, decodeCardBundleZip, loadCardBundleFiles } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
 import { callApplicationRpc as handleTimelineRpc } from '../../support/trpc-caller.js'
 import { callApplicationRpc as handleCardsRpc } from '../../support/trpc-caller.js'
@@ -139,14 +138,8 @@ describe('opening selection', () => {
     }
   })
 
-  it('preserves ST alternatives through ZIP and directory loading', async () => {
-    const { artifact } = convertSillyTavernCard({
-      spec: 'chara_card_v2', spec_version: '2.0',
-      data: { name: 'Hero', first_mes: 'Default', alternate_greetings: ['Forest', 'Harbor'] },
-    })
-    expect(artifact.card.opening).toMatchObject({ content: 'Default',
-      alternatives: [{ content: 'Forest' }, { content: 'Harbor' }],
-    })
+  it('preserves native alternatives through ZIP and directory loading', async () => {
+    const artifact: CardBundleArtifact = { schemaVersion: 4, artifactId: 'opening-test', displayName: 'Hero', contextAssets: [], card: { name: 'Hero', preset: { system: '' }, opening: { content: 'Default' }, lore: { entries: [] } } }
     artifact.card.opening = { id: 'default', title: 'Default title', content: 'Default', alternatives: [
       { id: 'forest', title: 'Forest title', content: 'Forest' },
       { id: 'harbor', title: 'Harbor title', content: 'Harbor' },

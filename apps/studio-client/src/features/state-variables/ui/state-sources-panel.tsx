@@ -1,6 +1,8 @@
+import { StudioPanelActive } from '../../../shared/studio-shell/studio-panel-active.js'
+import { MobileTabPageActive } from '../../../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
 import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
 import { ExtensionIcon, useExtensionIdentities } from '../../../shared/ui/extension-icon/extension-icon.js'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useState, type ReactNode } from 'react'
 import { BookOpen, Database, Folder, RefreshCw } from 'lucide-react'
 import { playerEntityPath, playerProfilePath, type StateContribution } from '@loom-studio/shared'
 import type { Card } from '../../../entities/card.js'
@@ -25,6 +27,9 @@ type ExtensionSource = StateSourcesInspection['extensions'][number]
 type Outcome = { api: Props['api']; key: string } & ({ data: StateSourcesInspection } | { error: string })
 
 export function StateSourcesPanel(props: Props) {
+  const panelActive = useContext(StudioPanelActive)
+  const pageActive = useContext(MobileTabPageActive)
+  const visible = panelActive && pageActive
   const identities = useExtensionIdentities()
   const [outcome, setOutcome] = useState<Outcome>()
   const [refresh, setRefresh] = useState(0)
@@ -38,20 +43,22 @@ export function StateSourcesPanel(props: Props) {
   const error = current && 'error' in current ? current.error : undefined
 
   useEffect(() => {
+    if (!visible) return
     const update = () => { if (document.visibilityState === 'visible') setRefresh(value => value + 1) }
     window.addEventListener('focus', update)
     const timer = window.setInterval(update, 5000)
     return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
-  }, [])
+  }, [visible])
 
   useEffect(() => {
+    if (!visible) return
     let active = true
     void api.inspectSources({ cardId: props.card?.id, target }).then(
       data => { if (active) setOutcome({ api, key, data }) },
       cause => { if (active) setOutcome({ api, key, error: cause instanceof Error ? cause.message : String(cause) }) },
     )
     return () => { active = false }
-  }, [api, key, refresh])
+  }, [api, key, refresh, visible])
 
   const nodes: FileTreeNode[] = data ? [
     ...(data.timeline ? [{ id: 'section:timeline', isSection: true, label: 'Timeline', children: [

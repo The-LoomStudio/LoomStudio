@@ -435,6 +435,7 @@ export function createStudioPanels(input: {
       searchParams={navigation.searchParams} onSearchParamsChange={params => { void navigation.setSearchParams(params) }} />,
     extensions: (active, surface) => (
       <LazyRendererWorkspacePanel
+        endpoint={state.endpoint}
         key={state.endpoint}
         active={active}
         mode={surface === 'tool' ? 'management' : 'workspace'}

@@ -73,9 +73,6 @@
       ],
       "@loom-studio/shared/macros": [
         "../packages/shared/src/macros.ts"
-      ],
-      "@loom-studio/sillytavern-importer": [
-        "../extensions/st-data-compat/src/index.ts"
       ]
     }
   },
