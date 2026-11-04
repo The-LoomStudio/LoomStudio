@@ -292,25 +292,22 @@ function cloneContextAssetNode(node: ContextAssetNode, makeId: () => string, isR
 
 function normalizeProjectionOrderNodes(nodes: ContextAssetNode[]): ContextAssetNode[] {
   const liveNodes = flattenContextAssetNodes(nodes)
-  const liveIds = new Set(liveNodes.map(node => node.id))
   const liveSlotKeys = new Set(liveNodes.map(node => node.projection?.slotKey).filter((slotKey): slotKey is string => Boolean(slotKey)))
 
-  return normalizeProjectionOrderNodesInner(nodes, liveIds, liveSlotKeys)
+  return normalizeProjectionOrderNodesInner(nodes, liveSlotKeys)
 }
 
 function normalizeProjectionOrderNodesInner(
   nodes: ContextAssetNode[],
-  liveIds: Set<string>,
   liveSlotKeys: Set<string>,
 ): ContextAssetNode[] {
   return nodes.map(node => {
-    const children = node.children ? normalizeProjectionOrderNodesInner(node.children, liveIds, liveSlotKeys) : undefined
+    const children = node.children ? normalizeProjectionOrderNodesInner(node.children, liveSlotKeys) : undefined
     if (node.kind !== 'order') return children ? { ...node, children } : node
 
     return {
       ...node,
       ...(children ? { children } : {}),
-      orderList: node.orderList?.filter(id => liveIds.has(id)),
       slotRanks: node.slotRanks?.filter(rank => liveSlotKeys.has(rank.slotKey)),
     }
   })

@@ -16,3 +16,5 @@
 .origin[data-compact] .labels { display: flex; align-items: center; gap: 10px; }
 .origin[data-compact] .labels strong { min-width: 0; max-width: 18em; }
 .origin[data-compact] .labels small { max-width: 10em; }
+
+.titleRow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; min-width: 0; }

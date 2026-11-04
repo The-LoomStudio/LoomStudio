@@ -59,7 +59,7 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
   })
   await runtime.initialize()
   const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Writer' })
-  await runtime.replacePresetToolMounts({
+  await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id),
     presetId: preset.id,
     mounts: [{ toolId, defaultEnabled: true, orderIndex: 0 }],
   })
@@ -68,7 +68,7 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
     resourceId: setting.id, targetAssetId: setting.rootNode.id, position: 'inside',
     asset: { id: 'key-setting', kind: 'entry', label: 'Key', body: 'KEY_SENTINEL belongs to C.', capabilities: { targetAnchorId: '@lore.stable' } },
   })
-  await runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.id }, loreResourceIds: [setting.id] })
+  await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: preset.id }, loreResourceIds: [setting.id] })
   const { providerProfile } = await runtime.createProviderProfile({
     providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test'],
   })
@@ -80,6 +80,37 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
 }
 
 describe('CodeAct production tool loop', () => {
+  it('requires explicit global approval despite allow policy and edits another card resource through CodeAct', async () => {
+    const f = await fixture('json', 'tool_call', `
+await ctx.setAuthorMode(true, 'global');
+const roots = await ctx.ls('/resources', { format: 'json' });
+const root = roots.entries.find(item => item.path.includes('Other Character'));
+const files = await ctx.ls(root.path, { format: 'json' });
+const file = files.entries.find(item => item.path.endsWith('/Detail.md'));
+await ctx.read(file.path);
+print(await ctx.write(file.path, 'UPDATED_OTHER_CARD'));
+`)
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Other Character' })
+      const { resource } = await f.runtime.createPromptResource({ resourceKind: 'lore', name: 'Other Lore' })
+      await f.runtime.createPromptResourceAsset({ resourceId: resource.id, targetAssetId: resource.rootNode.id,
+        position: 'inside', asset: { id: 'other-detail', kind: 'entry', label: 'Detail', body: 'ORIGINAL' } })
+      await f.runtime.updateCardPromptResources({ expectedVersion: (await f.runtime.getCard({ cardId: card.id })).card.version, cardId: card.id, promptResourceIds: [resource.id] })
+      const current = (await f.runtime.getAgentPreset({ agentPresetId: f.preset.id })).agentPreset
+      await f.runtime.updateAgentPreset({ agentPresetId: current.id, expectedVersion: current.version,
+        approvalPolicy: { authorMode: 'allow', resourceWrite: 'allow' } })
+      const approvals: VfsMutationPreview[] = []
+      const context = authorContext()
+      context.agentRun.onMutationApproval = async preview => { approvals.push(preview); return { decision: 'allow' } }
+      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Edit the other character setting.' }, context)
+      expect(approvals.map(item => item.action)).toEqual(['author-mode', 'replace'])
+      expect(approvals[0]?.authorScope).toBe('global')
+      expect(approvals[1]?.before).toContain('Other Character')
+      const updated = (await f.runtime.getPromptResource({ resourceId: resource.id })).resource
+      expect(updated.rootNode.children?.find(node => node.id === 'other-detail')?.body).toBe('UPDATED_OTHER_CARD')
+    } finally { f.engine.close() }
+  })
+
   it.each(['ask', 'allow', 'deny'] as const)('persists and enforces the Preset author-mode approval policy: %s', async mode => {
     const f = await fixture('json', 'tool_call', 'await ctx.setAuthorMode(true); print("author mode enabled");')
     try {

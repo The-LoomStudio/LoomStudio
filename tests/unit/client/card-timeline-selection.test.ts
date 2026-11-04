@@ -91,6 +91,20 @@ afterEach(() => {
 })
 
 describe('Card timeline selection', () => {
+  it('remembers a successful main preset selection and passes it when creating the next story', async () => {
+    const f = fixture()
+    await f.render().activateTimeline('existing')
+    f.input.onSelectAgentPreset = vi.fn(id => { f.input.selectedAgentPresetId = id })
+    await expect(f.render().configureRoot({ agentPresetId: 'chosen' })).resolves.toBe(true)
+    expect(f.input.onSelectAgentPreset).toHaveBeenCalledWith('chosen')
+    f.list.mockResolvedValueOnce({ timelines: [] })
+    await f.render().createTimelineFromCard('a')
+    expect(f.create).toHaveBeenCalledWith(expect.objectContaining({ agentPresetId: 'chosen' }))
+    f.updateSession.mockRejectedValueOnce(new Error('Unavailable'))
+    await expect(f.render().configureRoot({ agentPresetId: 'failed' })).resolves.toBe(false)
+    expect(f.input.selectedAgentPresetId).toBe('chosen')
+  })
+
   it('restores edited custom content from only its node while retaining the source candidate identity', async () => {
     const f = fixture()
     const page = details('edited')
@@ -593,6 +607,54 @@ describe('Card timeline selection', () => {
     f.requests.get('same')!.resolve({ timelines: [details('stale').timeline] })
     await old
     expect(f.render().cardTimelines.map(item => item.id)).toEqual(['fresh'])
+  })
+
+  it.each(['navigation', 'reset', 'replacement'] as const)('discards a delayed Timeline page after %s invalidates its activation', async invalidation => {
+    const f = fixture()
+    await f.render().activateTimeline('current')
+    const page = Promise.withResolvers<ReturnType<typeof details>>()
+    const started = Promise.withResolvers<void>()
+    let current = true
+    f.getPage.mockImplementationOnce(() => { started.resolve(); return page.promise })
+    const activation = f.render().activateTimeline('stale', undefined, () => current)
+    await started.promise
+    if (invalidation === 'navigation') current = false
+    else if (invalidation === 'reset') f.render().resetToDraftTimeline()
+    else await f.render().activateTimeline('replacement')
+    page.resolve(details('stale'))
+    await expect(activation).resolves.toBeUndefined()
+    const state = f.render()
+    expect(state.timeline?.id).toBe(invalidation === 'reset' ? undefined : invalidation === 'replacement' ? 'replacement' : 'current')
+    expect(state.agentSessionLoading).toBe(false)
+    expect(state.agentSessionReady).toBe(true)
+  })
+
+  it.each(['directory', 'transcript'] as const)('does not publish a restored Session after navigation expires during its %s read', async stage => {
+    const f = fixture()
+    const selected = { ...session('stale-agent'), timelineId: 'story' }
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let current = true
+    f.listSessions.mockImplementation(async () => {
+      if (stage === 'directory') { started.resolve(); await release.promise }
+      return { sessions: [selected] }
+    })
+    f.input.api.agentSessions.getTranscript = vi.fn(async () => {
+      if (stage === 'transcript') { started.resolve(); await release.promise }
+      return { session: selected, entries: [] }
+    })
+    const activation = f.render().activateTimeline('story', undefined, () => current)
+    await started.promise
+    current = false
+    release.resolve()
+    await expect(activation).resolves.toBeUndefined()
+    const state = f.render()
+    expect(state.agentSession).toBeUndefined()
+    expect(state.agentMessages).toEqual([])
+    expect(state.activeAgentRun).toBeUndefined()
+    if (stage === 'directory') expect(state.agentSessions).toEqual([])
+    expect(state.agentSessionLoading).toBe(false)
+    expect(state.agentSessionReady).toBe(true)
   })
 
   it('does not cancel explicit Timeline navigation when bootstrap selects a default Card', async () => {

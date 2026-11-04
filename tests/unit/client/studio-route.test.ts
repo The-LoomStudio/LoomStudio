@@ -8,7 +8,7 @@ describe('studio routes', () => {
     expect(readStudioRoute('/studio/agents')).toEqual({ panel: 'agent' })
     expect(readStudioRoute('/studio/play')).toEqual({ panel: 'play' })
     expect(readStudioRoute('/studio/recent')).toEqual({ panel: 'recent' })
-    expect(readStudioRoute('/studio/history')).toEqual({ panel: 'sessions' })
+    expect(readStudioRoute('/studio/history')).toEqual({ panel: null })
     expect(readStudioRoute('/studio/extensions')).toEqual({ panel: 'extensions' })
     expect(readStudioRoute('/studio/chat/timeline-1/branch/main')).toEqual({ panel: null, timelineId: 'timeline-1', branchId: 'main' })
     expect(readStudioRoute('/studio/characters/card-1')).toEqual({ panel: 'character', cardId: 'card-1' })

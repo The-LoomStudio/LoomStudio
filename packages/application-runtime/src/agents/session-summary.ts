@@ -55,7 +55,7 @@ export async function planSessionSummary(ctx: Context, input: {
   let narrative: Boundary['narrative']
   let memory: SummaryPlan['memory']
   let floorsDue = false
-  const retiredBefore = prior?.boundary?.retiredThroughSequence ?? previous?.sequence ?? 0
+  const retiredBefore = prior?.boundary.retiredThroughSequence ?? 0
   if (input.session.kind === 'timeline') {
     // Root buffers retain whole story rounds, including every Run and discussion
     // between successive roleplay inputs. Preparation has no round counter.
@@ -184,16 +184,21 @@ function markHistoryBoundary(plan: SummaryPlan, messages: ChatMessage[], entries
 export function createSessionSummaryCoordinator(ctx: Context) {
   const pending = new Map<string, Pending>()
   const status = (sessionId: string): SessionSummaryStatus => ({ ...(pending.get(sessionId)?.status ?? { state: 'idle' }) })
+  const deletedSession = new Error('Summary Session deleted')
   async function record(task: Pending, state: 'preparing' | 'submitted' | 'failed', content: string, request?: RuntimeRequestContext, toolArguments?: string) {
-    await ctx.dataEngine.transact(narrativeWriteContext(request, 'application.sessionSummaryAudit'), async tx => {
-      const store = requireAgents(ctx).transaction(tx)
-      const session = store.getSession(task.plan.sessionId)
-      // Session deletion owns removal; do not recreate a deleted Session through audit writes.
-      if (!session || session.deletedAt) return
-      if (toolArguments !== undefined) task.toolArguments = toolArguments
-      store.writeSummaryTask({ agentSessionId: session.id, taskId: task.status.taskId!, state, content,
-        sourceThroughSequence: task.plan.boundary.sourceThroughSequence, toolArguments: task.toolArguments })
-    })
+    try {
+      await ctx.dataEngine.transact(narrativeWriteContext(request, 'application.sessionSummaryAudit'), async tx => {
+        const store = requireAgents(ctx).transaction(tx)
+        const session = store.getSession(task.plan.sessionId)
+        // Session deletion owns removal; do not recreate a deleted Session through audit writes.
+        if (!session || session.deletedAt) throw deletedSession
+        if (toolArguments !== undefined) task.toolArguments = toolArguments
+        store.writeSummaryTask({ agentSessionId: session.id, taskId: task.status.taskId!, state, content,
+          sourceThroughSequence: task.plan.boundary.sourceThroughSequence, toolArguments: task.toolArguments })
+      })
+    } catch (error) {
+      if (error !== deletedSession) throw error
+    }
   }
   async function start(plan: SummaryPlan, source: { messages: ChatMessage[]; model: ProviderModelSelection; entries: AgentTranscriptEntry[]; entryCount: number }, request?: RuntimeRequestContext) {
     const existing = pending.get(plan.sessionId)
@@ -329,4 +334,24 @@ export function createSessionSummaryCoordinator(ctx: Context) {
     }
     return status(sessionId)
   } }
+}
+
+const summaryCoordinators = new WeakMap<object, ReturnType<typeof createSessionSummaryCoordinator>>()
+
+/** Share lifecycle ownership with cascade deletion through the AgentStore owner. */
+export function getSessionSummaryCoordinator(ctx: Context) {
+  if (!ctx.agents) return createSessionSummaryCoordinator(ctx)
+  const agents = ctx.agents
+  let coordinator = summaryCoordinators.get(agents)
+  if (!coordinator) {
+    coordinator = createSessionSummaryCoordinator(ctx)
+    summaryCoordinators.set(agents, coordinator)
+  }
+  return coordinator
+}
+
+/** Call only after the deletion transaction has committed. */
+export function forgetDeletedSessionSummaries(agents: object | undefined, sessionIds: Iterable<string>): void {
+  const coordinator = agents ? summaryCoordinators.get(agents) : undefined
+  for (const sessionId of sessionIds) coordinator?.forget(sessionId)
 }

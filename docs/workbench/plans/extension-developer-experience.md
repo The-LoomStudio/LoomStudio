@@ -18,7 +18,7 @@
    内部组件可复用不等于已经形成稳定的公开 `@loom-studio/ui` SDK。
 2. **动态能力发现**：按现有 Registry / RPC 元数据核对 `system.introspect` 的真实缺口，再决定 Schema 和 DevTools 范围。
    Logger 或已有 RPC 清单不能作为完整 Schema 自省已交付的证据。
-3. **扩展代码脚手架**：代码模板与轻量创建工具仍是候选，须等待真实发布和作者使用合同明确；不生成另一套核心逻辑。资源目录、MD 元数据、排序、校验与构建及资源样例统一由[资源作者工作流与 DX](./resource-authoring-dx-plan.md)承担，不在本页重复规划。
+3. **扩展代码脚手架**：代码模板与轻量创建工具仍是候选，须等待真实发布和作者使用合同明确；不生成另一套核心逻辑。资源目录、MD 元数据、排序、校验与构建及资源样例首版交付见[资源作者工作流与 DX](../../archive/plans/resource-authoring-dx-plan.md)，不在本页重复规划。
 4. **设置消费者与演进**：The World 正式普通设置迁移、第三方兼容和长期 Schema 迁移策略尚未完成。
    多步骤 Flow 是独立延期切片，不因已有整体迁移需求就直接塞入 Setting Schema。
 
@@ -35,7 +35,7 @@
 - 当前 SDK / Host 事实见 [Extension Architecture](../../architecture/extensions/README.md)与 `packages/extension-sdk/src/index.ts`。
 - 远程安装、更新和官方预构建发行由 [Extension 模块后续](./extension-module-completion-plan.md)承担，不在 DX 重建安装流程。
 - 前端目录所有权由[独立边界计划](../../archive/plans/frontend-feature-boundary-consolidation-plan.md)处理；本页不接管其写集或改变 UI 产品语义。
-- 资源创作所需 CLI、作者格式与 Studio Apply 归[资源作者工作流与 DX](./resource-authoring-dx-plan.md)；通用应用访问与 MCP 仍归[适配器计划](./application-capability-cli-mcp-adapters-plan.md)，不从“开发者体验”推导实施授权。
+- 资源创作所需 CLI、作者格式与 Studio Apply 归[资源作者工作流与 DX](../../archive/plans/resource-authoring-dx-plan.md)；通用应用访问与 MCP 仍归[适配器计划](./application-capability-cli-mcp-adapters-plan.md)，不从“开发者体验”推导实施授权。
 
 ## 最小关闭条件与验证边界
 

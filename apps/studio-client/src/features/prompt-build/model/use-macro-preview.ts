@@ -4,6 +4,7 @@ import type { StudioApi } from '../../../shared/api/studio-api.js'
 
 type UseMacroPreviewInput = {
   api: StudioApi['macros']
+  ready: boolean
   branchId?: string
   cardId?: string
   cardVersion?: number
@@ -25,6 +26,7 @@ export function useMacroPreview(input: UseMacroPreviewInput) {
   }>({ key: '', loading: false })
 
   useEffect(() => {
+    if (!input.ready) return
     let cancelled = false
     setPreview(current => ({ key: input.key, inspection: current.key === input.key ? current.inspection : undefined, loading: true }))
     void input.api.inspect({
@@ -39,10 +41,11 @@ export function useMacroPreview(input: UseMacroPreviewInput) {
       if (!cancelled) setPreview({ key: input.key, loading: false, error: error instanceof Error ? error.message : String(error) })
     })
     return () => { cancelled = true }
-  }, [input.api, input.branchId, input.cardId, input.cardVersion, input.key, input.lastRunId, input.presetId, input.resourceRevision, input.selections, input.timelineId, refreshToken])
+  }, [input.ready, input.api, input.branchId, input.cardId, input.cardVersion, input.key, input.lastRunId, input.presetId, input.resourceRevision, input.selections, input.timelineId, refreshToken])
 
+  const visiblePreview: typeof preview = input.ready ? preview : { key: input.key, loading: true }
   return {
-    preview,
+    preview: visiblePreview,
     refresh: () => setRefreshToken(current => current + 1),
   }
 }

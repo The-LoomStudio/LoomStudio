@@ -32,6 +32,8 @@ Metadata ID 不作为本地唯一键。同 ID、同名或同版本再次导入�
 
 `airp.loomScriptMount` 保存目标 Owner、Script Document ID、顺序、可选固定版本、启用状态、`adoptedDocumentVersion`、配置 overrides、`adoptedSettings`、`runtimeRevision` 和用户授予的 capability。新 Mount 固定为禁用且无 Grant；请求 capability 不等于获得 capability。
 
+作用域新建/导入通过 `importLoomScript` 的可选 `mount` 同时提交 Script 与初始 Mount，二者位于同一 Blob/Document mutation；前端不再接续第二次创建挂载请求。采用已有 Script 仍使用独立 createMount。Card 资源目录中的规则只读展示，编辑转到其完整 Script，避免旧规则 upsert 有损覆盖源码。
+
 - 同一处理上下文中按 User < Workspace < Preset < Card 选择同一脚本的一个 Mount；显式关闭也覆盖低优先级启用，移除范围才恢复继承。独立导入副本不合并；
 - Narrative Timeline 通过来源 Card 读取当前 Mount；启用 Mount 解析已采用的版本，保存源码不更新运行实例，显式刷新才采用新版。移除的 Mount 不从旧 Timeline 快照恢复；
 - Mount 显式固定版本仍表示用户当前选择；刷新校验目标版本与运行环境信任，成功后更新采用版本、配置快照及运行修订；只保存配置不会改变运行修订。已有启用 Mount 在服务初始化时补齐采用版本。Grant 取当前 Mount 的授权，代码更新不增加权限。
@@ -103,6 +105,8 @@ SDK 的 `WorkerExtensionActivationContext` 提供通过 MessagePort 调用的既
 
 停止先撤销宿主桥与订阅，再尽力调用返回句柄的 `dispose()`，最多等待 250 ms 后 `terminate()`；启动上限 10 秒。运行中崩溃同样回收，并更新实例诊断与失败状态。已经提交给宿主的外部副作用不能撤回。保存不重启、单 Mount 刷新、角色与全局生命周期沿用前述合同。
 
+Host MessagePort桥每实例最多32个真实未结算请求；单请求10秒后只回复一次`ctx.timeout`，实际工作及requestId仍占容量，直到Promise结算。达到上限返回`ctx.busy`，不通过timeout假释放额度，也不强制取消已提交操作；dispose清监听与计时器并禁止晚回。永久未结算操作占槽直到对应bridge生命周期结束，其他bridge独立。
+
 可导入示例：[Worker 第七天提醒](./examples/worker-day-notifier.loom.js)。它订阅全局 State 的 `world.day`，达到 7 时通知，每次运行只提醒一次；不持久化去重状态，不发送用户消息或调用 AI。导入后在扩展的“脚本”页授权并启用，导入/保存本身不启动。
 
 ## Text Pipeline 输入
@@ -170,6 +174,7 @@ capture_remove:
 YAML 结束分隔行之后的全部文字就是替换正文，不再增加容器围栏、JSON 字符串或 JavaScript 注释。缩进、空白、换行和内部 HTML/CSS/JS 原样保存；正文空字符串表示删除，只有空格或换行则仍是替换内容。正则建议用 YAML 单引号以免反斜杠发生双重转义；`regex_flags` 省略时为 `g`，显式空字符串表示仅处理第一个匹配。首版一份 Markdown 只有一条规则。
 
 - `phases: [display]` 为显示投影，`[prompt]` 为提示词投影，可同时指定两者；它们不改持久正文。`[classify]` 是已有保存时分类阶段，不能与投影阶段混写。
+- `description` 可选，支持 YAML 多行文本。当前上下文中已有效采用并启用的规则，其说明常驻参与 Agent PromptBuild；不要求正则匹配、不要求包含 prompt 阶段。`description_anchor` 可选，默认 `@chat.tools`，只支持一个锚点；缺失锚点给出 `prompt.rule_description_anchor_missing` 诊断，不转投其他位置。空白说明不注入，同一规则同时适用于剧情与会话时只贡献一次。沿用有效规则序列与采用版本，来源证据保留脚本文档、规则 ID 和版本。这里不提供独立的关键词或条件触发；复杂说明继续使用 Lore。
 - `capture_remove` 按列出顺序对被引用的捕获内容做区分大小写的字面量删除，适用于 `$&`、`$1` 等编号捕获及 `$<name>`；不修改模板、未匹配正文或前后缀引用。不将其解释成新的正则。
 - `streaming` 默认关闭。开启后，对原始流式快照按当前规则顺序重新计算，仅运行开启流式的 display 规则；不把上一轮替换结果作为输入，也不写入历史。允许作者匹配尚未闭合的内容。浏览器最多约每 100ms 采样一次，结束快照立即走正常显示投影。
 - `targets` 默认 `[narrative, agent-session]`；`min_depth` / `max_depth` 可限制作用深度。
@@ -187,3 +192,43 @@ YAML 结束分隔行之后的全部文字就是替换正文，不再增加容器
 角色和预设附件携带源码、采用顺序及组序；扩展导出会收集本安装下新增的脚本、更新保存后的源码与顺序，并从 Manifest 中去掉明确删除的声明。重新导入扩展新增脚本不授予代码权限、不自动启用。旧 `transformRules` 包槽仍可携带完整 Script artifact，保持已有引用地址。
 
 渲染器如何解释正文里的 HTML 围栏、保留 iframe 实例并接受 CTX 更新、嵌套渲染和 TSX 编译均不属于正则处理器。流式投影可更新文本，不承诺 iframe 内部状态不重建。
+
+
+## 使用配置与运行时 Config
+
+“规则与启用”里的 `ruleUsage` 是采用范围的覆盖值：深度、作用对象、阶段、流式开关保存后直接进入有效文本管线，不改源码或 runtimeRevision。未覆盖项来自已采用源码版本；null 深度表示明确不限，恢复默认删除该项覆盖。显示与后续 PromptBuild 共用这份结果，不追改已保存正文。
+
+声明式规则的作者 `settings` 保存后立即更新有效规则和 description；可执行脚本的 `scriptSettings` 仍是启动/刷新时快照。源码保存不代表采用新版。
+
+需要运行中读写持久配置的 client、client-worker、server 脚本使用 `ctx.configs`，申请 `configs.read` / `configs.write`。它按脚本文档身份隔离，提供 list/get/upsert/subscribe，复用宿主 Config 存储与乐观并发。修改已有值必须传 expectedVersion；重新导入的新副本有独立身份，不继承 Config。client-sandbox 暂不提供这项后台能力。
+
+```js
+// 头部另需声明 @capability configs.read 和 @capability configs.write
+export async function activate(ctx) {
+  const scope = { kind: 'global' }; // 角色所属脚本使用自己的 card/timeline/session scope
+  const current = await ctx.configs.get({ scope, key: 'mode' });
+  if (!current) await ctx.configs.upsert({ scope, key: 'mode', value: 'normal' });
+  const subscription = await ctx.configs.subscribe({ scope }, entries => {
+    // 根据 entries 更新本脚本自己的界面或逻辑；不自动操作其他资源开关。
+  });
+  return { dispose: () => subscription.dispose() };
+}
+```
+
+默认读取 scope 为当前 Timeline、角色或全局；显式订阅绑定 scope，不随界面偷偷换目标。角色所属脚本不能访问别的角色或全局 Config，客户端也不能指定工作台当前上下文以外的故事/会话。server 复用宿主的角色归属检查。订阅首版每秒检查版本并在退出时清理；不重启脚本。配置不是 Branch State，不随剧情回退。
+
+## 关联 Lore 快捷管理
+
+规则可写：
+
+```yaml
+lore_refs:
+  - resourceId: my-lore-resource
+    nodeId: my-format-entry
+```
+
+工具的对应字段为 `prompt.loreRefs`，元素结构相同。普通引用使用资源 ID 与节点 ID；扩展包内可用本包 promptResources 贡献 ID 作为 resourceId，安装时解析到该安装实例。角色包内部引用随复制重映射；单独分享脚本不会携带或复制 Lore，目标缺失时界面提示修正。
+
+引用不会自动注入、采用或授权。规则/工具详情中可打开关联 Lore，逐项切换它原有的节点开关；这会影响节点的所有采用处，父级、触发与采用范围仍然有效。不存在统一联动状态，脚本退出不撤销用户开关。简短 description 与复杂 Lore 可以并存，工具原有顶层 description 和 content 调用协议保持。
+
+Script Config写入与作用域存活校验共享DataEngine事务。Timeline/Agent Session校验使用该事务的Store，不调用普通异步read重入；配置仍要求相应授权、当前runtimeRevision与更新expectedVersion。

@@ -48,7 +48,7 @@ State/Workspace 导致的分支提交也可能触发，不能假定事件一定�
 
 独立资源 ZIP v2 为 `manifest.json`、`index.json`、`entries/0.md` 与嵌套条目 Markdown。索引 schema 为 `loom.promptResource.files.v1`，artifact 保存资源配置，rootNode 保存节点 metadata、body 相对路径和 children 顺序。正文为空也有独立文件；没有正文的节点不伪造空文件。
 
-扩展 `contributes.promptResources[].source` 可指向该 index，Markdown 相对索引目录读取；安装收集全部引用，拒绝目录逃逸、symlink、缺文件与超限。旧 monolithic Artifact JSON 和 ZIP v1 继续可读。编辑后走既有导入/更新入口，不提供自动双向同步，也不要求 CLI。
+扩展 `contributes.promptResources[].source` 可指向该 index，Markdown 相对索引目录读取；安装收集全部引用，拒绝目录逃逸、symlink、缺文件与超限。当前文件索引为 `loom.promptResource.files.v1`，ZIP manifest 为 `loom.promptResource.zip.v2`，还原为 Prompt Resource Artifact `schemaVersion: 2`；旧 Artifact schema 与 ZIP v1 不再读取。编辑后走既有导入/更新入口，不提供自动双向同步，也不要求 CLI。
 
 同一总结 Preset 的条件条目示例：
 

@@ -6,6 +6,7 @@ import { createClientExtensionHost, type ClientExtensionDataApi, type ClientTime
 import { createClientExtensionDataApi, mapPackageImportState } from '../../../apps/studio-client/src/features/extension-renderers/model/use-client-extension-runtime.js'
 import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 import { useAppearanceStore } from '../../../apps/studio-client/src/shared/studio-shell/appearance-store.js'
+import { resolvePackageResourceTarget } from '../../../apps/studio-client/src/features/extension-renderers/model/package-resource-target.js'
 
 function extensionPackage(enabled = true): ManagedClientExtensionPackage {
   return {
@@ -535,6 +536,24 @@ describe('Client Extension Host', () => {
     })
     expect(mapped?.modules).toEqual(extensionPackage().modules)
     expect(privateMapped?.importedResources).toEqual({ transformRuleContributionIds: ['private-rule'], textExtractorContributionIds: [] })
+  })
+
+  it('opens imported script and tool summaries without a full catalog, preserving missing targets', async () => {
+    let installed = true
+    const api = {
+      loomScripts: { getSummary: async () => ({ script: installed ? { id: 'script', contributionKinds: ['text-transform'] } : null }) },
+      agentTools: { getSummary: async () => ({ tool: installed ? { id: 'tool' } : null }) },
+    } as unknown as Parameters<typeof resolvePackageResourceTarget>[0]['api']
+    const input = { pkg: extensionPackage(), api, promptResources: [] }
+    await expect(resolvePackageResourceTarget({ ...input, entry: { id: 'contribution', kind: 'script' } })).resolves.toEqual({
+      path: '/studio/extensions?extensionView=scripts&scriptFilter=rules&scriptId=script',
+    })
+    await expect(resolvePackageResourceTarget({ ...input, entry: { id: 'contribution', kind: 'tool' } })).resolves.toEqual({
+      path: '/studio/agents?toolId=tool',
+    })
+    installed = false
+    await expect(resolvePackageResourceTarget({ ...input, entry: { id: 'contribution', kind: 'script' } })).resolves.toBeUndefined()
+    await expect(resolvePackageResourceTarget({ ...input, entry: { id: 'contribution', kind: 'tool' } })).resolves.toBeUndefined()
   })
 
   it('activates declared Renderer contributions and disposes them when disabled', async () => {

@@ -40,11 +40,11 @@ describe('official content installation', () => {
       assetId: 'official.loom-assistant.instructions',
       body: 'User edited instructions.',
     })
-    await fixture.runtime.replaceLoreMounts({
+    await fixture.runtime.replaceLoreMounts({ expectedMountIds: (await fixture.runtime.listLoreMounts({ source: { kind: 'preset', id: preset.resource.id } })).mounts.map(mount => mount.id),
       source: { kind: 'preset', id: preset.resource.id },
       loreResourceIds: [],
     })
-    await fixture.runtime.replacePresetToolMounts({ presetId: preset.resource.id, mounts: [] })
+    await fixture.runtime.replacePresetToolMounts({ expectedMountIds: (await fixture.runtime.listPresetToolMounts({ presetId: preset.resource.id })).mounts.map(mount => mount.id), presetId: preset.resource.id, mounts: [] })
 
     const second = await fixture.runtime.installOfficialContent(input)
     expect(second.resources).toEqual(input.resources.map(resource => ({ id: resource.id, created: false })))

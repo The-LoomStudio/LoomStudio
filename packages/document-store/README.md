@@ -48,7 +48,7 @@ Store 本身提供 `subscribeCommits()`，可直接作为 Data Commit Source；�
 
 ## 依赖职责
 
-本包复用 `@loom-studio/data-engine` 的连接、FIFO、migration、事务和提交日志；`@loom-studio/shared` 提供跨端 JSON/标识等基础合同。SQLite 运行能力来自 Engine 使用的 Node `node:sqlite`，不是独立第三方数据库驱动。本包只实现 Document 版本与回滚语义，不重复拥有连接、Commit Journal 或领域 Store。
+本包复用 `@loom-studio/data-engine` 的连接、FIFO、schema 初始化、事务和提交日志；`@loom-studio/shared` 提供跨端 JSON/标识等基础合同。SQLite 运行能力来自 Engine 使用的 Node `node:sqlite`，不是独立第三方数据库驱动。本包只实现 Document 版本与回滚语义，不重复拥有连接、Commit Journal 或领域 Store。
 
 ## 构建与验证
 

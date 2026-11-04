@@ -2,7 +2,7 @@ import { HeroArtwork } from '../../shared/ui/story-hero/hero-artwork.js'
 import { StoryHero } from '../../shared/ui/story-hero/story-hero.js'
 import type { CardSummary } from '../../entities/index.js'
 import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Button, Dialog, Tabs } from '@loom-studio/ui'
 import { ArrowRightLeft, ArrowUpRight, Camera, Check, Plus, Search, Trash2, UserRound, Pencil } from 'lucide-react'
 import { t as defaultT, type Translator } from '../../shared/i18n/index.js'
@@ -16,6 +16,7 @@ export type UserProfileView = {
 }
 
 export type MyProfileProps = {
+  active?: boolean
   profiles: readonly UserProfileView[]
   currentProfileId: string | null
   resources: ReactNode
@@ -48,6 +49,7 @@ function Avatar({ profile, hero = false }: { profile: UserProfileView; hero?: bo
 // Persistence stays in the feature controller; the developer preview uses memory only.
 export function MyProfile(props: MyProfileProps) {
   const t = props.t ?? defaultT
+  const active = props.active ?? true
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [refreshOpen, setRefreshOpen] = useState(false)
   const [tab, setTab] = useWorkbenchView('profile.tab', 'profile', ['profile', 'resources'] as const)
@@ -56,6 +58,39 @@ export function MyProfile(props: MyProfileProps) {
   const [editing, setEditing] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
   const nameId = useId()
+  const contentRef = useRef<HTMLElement>(null)
+  const resourcesRef = useRef<HTMLElement>(null)
+  const scrollPositions = useRef({ profile: 0, resources: 0 })
+  const restoringProfile = useRef(false)
+  useLayoutEffect(() => {
+    if (!active) return
+    if (resourcesRef.current) resourcesRef.current.scrollTop = scrollPositions.current.resources
+    const content = contentRef.current
+    if (!content) return
+    const target = scrollPositions.current.profile
+    let restoring = true
+    restoringProfile.current = true
+    const stop = () => {
+      if (!restoring) return
+      restoring = false
+      restoringProfile.current = false
+      observer.disconnect()
+      for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown']) content.removeEventListener(event, stop)
+    }
+    const restore = () => {
+      if (!restoring) return
+      content.scrollTop = target
+      if (Math.abs(content.scrollTop - target) < 1) stop()
+    }
+    // A returning panel may still have its narrow/collapsed layout. Keep the
+    // saved offset until its content can reach it, unless the user takes over.
+    const observer = new ResizeObserver(restore)
+    observer.observe(content)
+    for (const child of content.children) observer.observe(child)
+    for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown']) content.addEventListener(event, stop, { passive: true })
+    restore()
+    return stop
+  }, [active])
   const current = props.profiles.find(profile => profile.id === props.currentProfileId)
   const latest = useRef(props)
   latest.current = props
@@ -78,11 +113,14 @@ export function MyProfile(props: MyProfileProps) {
   }
 
   return <section data-loom-mobile-tab-scope="" className={styles.panel} aria-label={t('userProfile.title')}>
-    <div className={styles.content}>
+    <div className={styles.pageTabs}><Tabs ariaLabel={t('userProfile.title')} activeId={tab} onChange={setTab} items={[{ id: 'profile', label: t('userProfile.profileTab') }, { id: 'resources', label: t('userProfile.resourcesTab') }]} /></div>
+    <div className={styles.layout}>
+    <section ref={contentRef} className={styles.content} data-active={tab === 'profile'} aria-label={t('userProfile.profileTab')}
+      onScroll={event => { if (active && !restoringProfile.current) scrollPositions.current.profile = event.currentTarget.scrollTop }}>
       <header className={styles.hero}>
         {current ? <>
           <button className={styles.portrait} type="button" disabled={props.busy} aria-label={t('userProfile.edit')} onClick={() => setEditing(true)}>
-            <Avatar profile={current} hero />
+            {active && <Avatar profile={current} hero />}
           </button>
           <div className={styles.heroContent}>
             <span className={styles.eyebrow}>{t('userProfile.title')} · {t('userProfile.profileTab')}</span>
@@ -110,8 +148,7 @@ export function MyProfile(props: MyProfileProps) {
         {props.onRefresh && <Button variant="ghost" disabled={props.busy || props.saving} onClick={() => props.dirty ? setRefreshOpen(true) : props.onRefresh?.()}>{t('userProfile.refresh')}</Button>}
       </div> : null}
 
-      <Tabs ariaLabel={t('userProfile.title')} activeId={tab} onChange={setTab} items={[{ id: 'profile', label: t('userProfile.profileTab') }, { id: 'resources', label: t('userProfile.resourcesTab') }]} />
-      {tab === 'profile' && props.currentStory ? <div className={styles.currentStory}><StoryHero
+      {active && props.currentStory ? <div className={styles.currentStory}><StoryHero
         character={props.currentStory.character} label={t('userProfile.currentStory')}
         title={props.currentStory.title || t('userProfile.currentStory')} description={t('userProfile.currentStoryHint')}
         actions={<Button className={styles.storyLink} variant="ghost" disabled={props.busy} onClick={() => { void props.currentStory?.onOpen() }}>
@@ -119,7 +156,9 @@ export function MyProfile(props: MyProfileProps) {
         </Button>} />
       </div> : null}
 
-      {tab === 'resources' ? <div className={styles.body}>{props.resources}</div> : null}
+    </section>
+    <section ref={resourcesRef} className={styles.resources} data-active={tab === 'resources'} aria-label={t('userProfile.resourcesTab')}
+      onScroll={event => { if (active) scrollPositions.current.resources = event.currentTarget.scrollTop }}>{props.resources}</section>
     </div>
 
     <Dialog open={editing && !!current} onClose={() => { props.onCommit?.(); setEditing(false) }} title={t('userProfile.edit')} className={styles.editDialog}>
@@ -151,7 +190,7 @@ export function MyProfile(props: MyProfileProps) {
       <label className={styles.search}><Search size={16} aria-hidden="true" /><input autoFocus value={query} onChange={event => setQuery(event.target.value)} placeholder={t('userProfile.search')} aria-label={t('userProfile.searchLabel')} /></label>
       <div className={styles.profileList}>
         {matches.map(profile => <button type="button" key={profile.id} className={styles.profileOption} aria-pressed={profile.id === current?.id} disabled={props.busy} onClick={async () => { if (await props.onSelect(profile.id) !== false) setPickerOpen(false) }}>
-          <span className={styles.smallAvatar}><Avatar profile={profile} /></span>
+          <span className={styles.smallAvatar}>{active && <Avatar profile={profile} />}</span>
           <span className={styles.optionText}><strong>{profile.name.trim() || 'User'}</strong><span>{profile.description || t('userProfile.noDescription')}</span></span>
           {profile.id === current?.id ? <span className={styles.selected}><Check size={16} /><span>{t('userProfile.selected')}</span></span> : null}
         </button>)}

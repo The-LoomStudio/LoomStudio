@@ -40,9 +40,9 @@ it('publishes macro, node and model edits to the Preset projection and uses thei
   let editor!: ReturnType<typeof useContextAssets>
   function Consumer() {
     state = usePromptResourceState({ api, endpoint: '/rpc' })
-    presets = useAgentPresets({ resources: state.promptResources })
+    presets = useAgentPresets({ resources: state.promptResources, ready: state.resourcesReady })
     const t = createTranslator('en-US')
-    commands = usePromptResourceCommands({ api, t, promptResources: state.promptResources, setPromptResources: state.setPromptResources, setLoreMounts: state.setLoreMounts, setPresetToolMounts: state.setPresetToolMounts, invalidatePromptResourceState: async () => {}, recordEdit: () => {}, runMutation: action => action(), refreshCards: async () => {}, refreshCardTimelines: async () => {} })
+    commands = usePromptResourceCommands({ api, t, promptResources: state.promptResources, loreMounts: state.loreMounts, presetToolMounts: state.presetToolMounts, setPromptResources: state.setPromptResources, setLoreMounts: state.setLoreMounts, setPresetToolMounts: state.setPresetToolMounts, invalidatePromptResourceState: async () => {}, recordEdit: () => {}, runMutation: action => action(), refreshCards: async () => {}, refreshCardTimelines: async () => {} })
     editor = useContextAssets({ api, scope: '/rpc', resources: state.promptResources, onResourceChange: resource => state.setPromptResources(current => current.map(item => item.id === resource.id ? resource : item)), recordEdit: () => {}, runAction: action => action(), t })
     return null
   }

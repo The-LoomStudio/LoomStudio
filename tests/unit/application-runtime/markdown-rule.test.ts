@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseLoomScriptSource, serializeMarkdownTextRule } from '@loom-studio/shared/loom-scripts'
+import { parseLoomScriptSource, serializeMarkdownTextRule, resolveTextTransformContributionRule } from '@loom-studio/shared/loom-scripts'
 import { projectHistoryEntries, type TextTransformRuleEntry } from '@loom-studio/application-runtime'
 
 function parse(body: string, extra = '') {
@@ -8,7 +8,7 @@ function parse(body: string, extra = '') {
 function contribution(source: ReturnType<typeof parse>) {
   const item = source.contributions[0]!
   if (item.kind !== 'text-transform') throw new Error('Expected rule')
-  return item.rule
+  return resolveTextTransformContributionRule(item)
 }
 const source = { kind: 'agent-session', sessionId: 'test' } as const
 function project(text: string, draft: ReturnType<typeof contribution>, streaming = false) {
@@ -17,6 +17,19 @@ function project(text: string, draft: ReturnType<typeof contribution>, streaming
 }
 
 describe('Markdown text rule source', () => {
+  it('round trips stable Lore links without embedding their content', () => {
+    const rule = contribution(parse('replacement', 'lore_refs:\n  - resourceId: lore-a\n    nodeId: entry-a\n'))
+    expect(rule.loreRefs).toEqual([{ resourceId: 'lore-a', nodeId: 'entry-a' }])
+    expect(contribution(parseLoomScriptSource(serializeMarkdownTextRule(rule)))).toEqual(rule)
+  })
+
+  it('round trips optional prompt descriptions without changing the replacement body', () => {
+    const rule = contribution(parse('<div>$1</div>', 'description: |\n  输出 <Message>正文</Message>。\n  不要省略结束标签。\ndescription_anchor: "@chat.tools"\n'))
+    expect(rule.description).toBe('输出 <Message>正文</Message>。\n不要省略结束标签。\n')
+    expect(contribution(parseLoomScriptSource(serializeMarkdownTextRule(rule)))).toEqual(rule)
+    expect(contribution(parse('')).description).toBeUndefined()
+  })
+
   it('preserves the raw body including nested fences, comments, and CRLF without executing it', () => {
     const body = '\r\n```html\r\n<div>$1</div><script>/* comment */ throw new Error("never")</script>\r\n```\r\n  '
     const parsed = parse(body)

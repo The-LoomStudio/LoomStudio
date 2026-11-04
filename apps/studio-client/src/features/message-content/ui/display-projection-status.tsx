@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { notify } from '../../../shared/notifications/index.js'
 import type { HistoryProjectionSnapshot } from '../../../entities/index.js'
 
@@ -14,6 +14,7 @@ export function DisplayProjectionStatus(props: {
   projection?: { warning?: string; error?: string; diagnostics?: HistoryProjectionSnapshot['diagnostics']; inspect?: () => void; refreshing?: boolean; retry?: () => void }
   retryLabel: string
 }) {
+  const ownerId = useId()
   const message = props.projection?.error ?? props.projection?.warning
   const latest = useRef(props.projection)
   latest.current = props.projection
@@ -23,11 +24,11 @@ export function DisplayProjectionStatus(props: {
   const inspect = !failed && !props.projection?.diagnostics?.every(item => item.code === 'display.entry.stale')
   useEffect(() => {
     if (!message) return
-    const options = { id: `display-projection:${message}`, description, details: message,
+    const options = { id: `display-projection:${ownerId}`, description, details: message,
       action: inspect && latest.current?.inspect ? { label: '检查规则', onClick: () => latest.current?.inspect?.() }
         : latest.current?.retry ? { label: props.retryLabel, onClick: () => latest.current?.retry?.() } : undefined }
     const id = failed ? notify.error('内容显示处理失败', options) : notify.warning('内容显示规则需要检查', options)
     return () => { notify.dismiss(id) }
-  }, [message, description, failed, inspect, props.retryLabel])
+  }, [ownerId, message, description, failed, inspect, props.retryLabel])
   return null
 }

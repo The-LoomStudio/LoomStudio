@@ -63,8 +63,8 @@ describe('The World through the real Studio Server tool bridge', () => {
         })
         const { resources } = await rpc<{ resources: Array<{ id: string; origin?: { packageId: string } }> }>('application.listPromptResources', {})
         const setting = resources.find(resource => resource.origin?.packageId === 'official.the-world')!
-        await rpc('application.replaceLoreMounts', { source: { kind: 'preset', id: agentPreset.id }, loreResourceIds: [setting.id] })
-        await rpc('application.replacePresetToolMounts', {
+        await rpc('application.replaceLoreMounts', { expectedMountIds: (await rpc<{ mounts: Array<{ id: string }> }>('application.listLoreMounts', { source: { kind: 'preset', id: agentPreset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: agentPreset.id }, loreResourceIds: [setting.id] })
+        await rpc('application.replacePresetToolMounts', { expectedMountIds: (await rpc<{ mounts: Array<{ id: string }> }>('application.listPresetToolMounts', { presetId: agentPreset.id })).mounts.map(mount => mount.id),
           presetId: agentPreset.id,
           mounts: ['read-world-state', 'update-world-state'].map((id, orderIndex) => ({
             toolId: `official.the-world/${id}`, defaultEnabled: true, orderIndex,

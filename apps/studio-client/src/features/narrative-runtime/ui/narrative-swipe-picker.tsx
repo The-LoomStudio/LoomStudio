@@ -34,7 +34,7 @@ export function NarrativeSwipePicker(props: {
   }
   return <>
     {candidates[index]?.status === 'failed' ? <span role="status">{t('swipe.noBody')}</span> : null}
-    {swipe.reason ? <span role="status">{swipe.reason}</span> : null}
+    {!swipe.active && swipe.reason ? <span role="status">{swipe.reason}</span> : null}
     <ConversationMessageAction disabled={!canGenerate} label={t(canRetry ? 'swipe.retry' : 'swipe.regenerate')}
       onClick={() => generate(canRetry ? 'retry' : 'regenerate')}><RotateCcw aria-hidden="true" /></ConversationMessageAction>
     {index >= 0 ? <SwipeControl index={index} count={candidates.length} disabled={!canSelect}

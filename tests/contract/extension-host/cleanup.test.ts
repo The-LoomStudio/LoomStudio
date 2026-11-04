@@ -74,6 +74,39 @@ describe('extension host cleanup contract', () => {
     }
   })
 
+  it('waits for delayed activation before disposing all registered callbacks', async () => {
+    const { kernel, extensionHost } = createExtensionHostHarness()
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const marker = '__loom_delayed_activation_cleanup__'
+    Object.defineProperty(globalThis, marker, { value: { started, release }, configurable: true })
+    await kernel.start()
+    const packageId = 'example.delayedCleanup'
+    const directory = createExtensionFixture('delayed-cleanup', {
+      manifest: manifest(packageId, [{ name: `${packageId}.echo` }]),
+      source: `export async function activate(ctx) {
+        ctx.rpc.register('${packageId}.echo', () => 'active');
+        const gate = globalThis['${marker}']; gate.started.resolve(); await gate.release.promise;
+      }`,
+    })
+    try {
+      await extensionHost.discover(directory)
+      const activation = extensionHost.activate(packageId, 'server')
+      await started.promise
+      await expect(kernel.callRpc(`${packageId}.echo`, {})).resolves.toBe('active')
+      let disposed = false
+      const disposal = extensionHost.dispose(packageId, 'server').then(() => { disposed = true })
+      await Promise.resolve()
+      expect(disposed).toBe(false)
+      release.resolve()
+      await Promise.all([activation, disposal])
+      expect(extensionHost.list()[0]).toMatchObject({ state: 'disabled', instance: { state: 'disposed' } })
+      await expect(kernel.callRpc(`${packageId}.echo`, {})).rejects.toThrow('method not found')
+    } finally {
+      release.resolve(); await extensionHost.disposeAll(); await kernel.stop(); Reflect.deleteProperty(globalThis, marker)
+    }
+  })
+
   it('forget removes the discovered module and allows a later rediscovery', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()

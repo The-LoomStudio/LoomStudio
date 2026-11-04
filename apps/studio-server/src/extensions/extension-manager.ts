@@ -1,3 +1,4 @@
+import { listExtensionRecoveryRecords } from './extension-recovery.js'
 import { loadPromptResourceFiles } from '../codecs/prompt-resource-files.js'
 import type {
   EventCapabilityCategory,
@@ -25,13 +26,14 @@ import { parseExtensionManifest } from '@loom-studio/extension-host'
 import { serializeError } from '@loom-studio/shared'
 import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { cp, mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
-import { acquireExtension, checkGitUpdate, createDownloadWorkspace, extensionGit, parseDownloadSource, readDownloadMetadata, satisfiesExtensionVersion, type ExtensionCandidate } from './extension-download.js'
+import { downloadExtensionZip, acquireExtension, checkGitUpdate, createDownloadWorkspace, extensionGit, parseDownloadSource, readDownloadMetadata, satisfiesExtensionVersion, type ExtensionCandidate } from './extension-download.js'
 import { writeJsonAtomically } from '../platform/atomic-json.js'
 import { discoverExtensionSources, removeExtensionDevLink, type DiscoveredExtensionSource, type ExtensionSource } from './extension-sources.js'
 import {
   installExtensionPackageFromDirectory,
+  type InstalledExtensionPackage,
   exportExtensionPackageZip,
   installExtensionPackageFromZip,
   uninstallExtensionPackageDirectory,
@@ -80,6 +82,7 @@ export type ServerExtensionManager = ExtensionManagementService & {
 
 export function createServerExtensionManager(options: {
   host: ExtensionHost
+  onModuleBatchCompleted?(result: import('@loom-studio/kernel').ExtensionModuleBatchResult): void
   diagnostics: DiagnosticsRegistry
   stateStore: ExtensionStateStore
   repositoryDirectory?: string
@@ -100,7 +103,7 @@ export function createServerExtensionManager(options: {
     loomScripts?: Array<{ contribution: { id: string; source: string; orderIndex?: number; groupOrder?: number }; source: string }>
     target?: ExtensionInstallationTarget
     expectedCardVersion?: number
-    update?: { expectedInstallationVersion: number }
+    update?: { expectedInstallationVersion: number; expectedPreviewFingerprint?: string }
     packageId: string
     packageVersion: string
     dependencies?: import('@loom-studio/extension-sdk').ExtensionManifest['dependencies']
@@ -121,7 +124,9 @@ export function createServerExtensionManager(options: {
       artifact: JsonValue
     }>
   }): Promise<import('@loom-studio/application-runtime').ImportExtensionPackageResourcesResult>
-  removePackageResources(input: { packageId: string; target?: ExtensionInstallationTarget; expectedInstallationVersion?: number; uninstall?: true }): Promise<import('@loom-studio/application-runtime').RemoveExtensionPackageResourcesResult>
+  previewPackageResources(input: import('@loom-studio/application-runtime').PreviewExtensionPackageResourcesInput): Promise<import('@loom-studio/application-runtime').PreviewExtensionPackageResourcesResult>
+  uninstallInstallation(input: { packageId: string; target?: ExtensionInstallationTarget; expectedInstallationVersion: number }): Promise<unknown>
+  removePackageResources(input: { packageId: string; target?: ExtensionInstallationTarget; expectedInstallationVersion?: number }): Promise<import('@loom-studio/application-runtime').RemoveExtensionPackageResourcesResult>
 }): ServerExtensionManager {
   const catalog = new Map<string, PackageCatalogRecord>()
   const importingAssetSources = new Map<string, PackageCatalogRecord>()
@@ -222,12 +227,12 @@ export function createServerExtensionManager(options: {
       }, 10 * 60_000)
       timer.unref()
       prepared.set(token, { root, candidates: [...candidates.values()], replacement, expected, timer })
-      return { token, packages: [...candidates.values()].map(item => ({
-        packageId: item.manifest.id, version: item.manifest.version, displayName: item.manifest.displayName,
+      return { token, packages: await Promise.all([...candidates.values()].map(async item => ({
+        packageId: item.manifest.id, version: item.manifest.version, displayName: item.manifest.displayName, description: item.manifest.description, installedBytes: await packageBytes(item.directory),
         ...(item.source ? { source: { ...item.source } } : {}), ...(item.commit ? { commit: item.commit } : {}),
         replacing: item.manifest.id === replacement,
         modules: (item.manifest.modules ?? []).map(module => ({ id: module.id, runtime: module.runtime, capabilities: module.capabilities ?? {} })),
-      })) }
+      }))) }
     } catch (error) {
       await rm(root, { recursive: true, force: true })
       throw error
@@ -282,34 +287,75 @@ export function createServerExtensionManager(options: {
       await mkdir(historyRoot, { recursive: true })
       const backup = join(historyRoot, `${id}-${randomUUID()}`)
       const desired = new Map((previous?.manifest.modules ?? []).map(module => [module.id, readDesiredState(options.stateStore, id, module.id)]))
-      if (previous) {
-        stage = 'save-recovery'
-        recovery = { recordPath: `${backup}.recovery.json`, backupDirectory: backup, historyDirectory: join(historyRoot, id) }
-        await writeJsonAtomically(recovery.recordPath, {
-          version: 1, packageId: id, fromVersion: previous.manifest.version, toVersion: candidate.manifest.version,
-          destination, ...recovery, desired: Object.fromEntries(desired),
-        })
-        stage = 'disable-old-modules'
-        for (const module of previous.manifest.modules ?? []) {
-          const state = desired.get(module.id)!
-          await options.stateStore.set(id, module.id, { ...state, enabled: false })
-        }
-        stage = 'dispose-old-modules'
-        for (const module of serverModules(previous.manifest)) await options.host.dispose(id, module.id)
-        stage = 'backup-old-code'
-        await rename(previous.directory, backup)
-      }
-      stage = 'replace-code'
+      let backedUp = false
+      let replacementInstalled = false
+      const disposed = new Set<string>()
       try {
+        if (previous) {
+          stage = 'save-recovery'
+          recovery = { recordPath: `${backup}.recovery.json`, backupDirectory: backup, historyDirectory: join(historyRoot, id) }
+          await writeJsonAtomically(recovery.recordPath, {
+            version: 1, packageId: id, fromVersion: previous.manifest.version, toVersion: candidate.manifest.version,
+            destination, ...recovery, desired: Object.fromEntries(desired),
+          })
+          stage = 'disable-old-modules'
+          for (const module of previous.manifest.modules ?? []) {
+            const state = desired.get(module.id)!
+            await options.stateStore.set(id, module.id, { ...state, enabled: false })
+          }
+          stage = 'dispose-old-modules'
+          for (const module of serverModules(previous.manifest)) {
+            disposed.add(module.id)
+            await options.host.dispose(id, module.id)
+          }
+          stage = 'backup-old-code'
+          await rename(previous.directory, backup)
+          backedUp = true
+        }
+        stage = 'replace-code'
         await rename(next.directory, destination)
+        replacementInstalled = true
         await options.host.discover(destination)
       } catch (error) {
-        await rm(destination, { recursive: true, force: true })
-        if (previous) {
-          await rename(backup, destination)
-          await options.host.discover(destination)
-          for (const [moduleId, state] of desired) await options.stateStore.set(id, moduleId, state)
-          for (const module of serverModules(previous.manifest)) if (desired.get(module.id)?.enabled) await options.host.activate(id, module.id)
+        const failedStage = stage
+        const errors: unknown[] = [error]
+        let recoveryStage = 'restore-old-code'
+        const recoveryFailures: string[] = []
+        try {
+          if (replacementInstalled) await rm(destination, { recursive: true, force: true })
+          if (backedUp) {
+            await rename(backup, destination)
+            await options.host.discover(destination)
+          }
+        } catch (restoreError) { errors.push(restoreError); recoveryFailures.push(recoveryStage) }
+        if (previous && stage !== 'save-recovery') {
+          recoveryStage = 'restore-old-desired'
+          for (const [moduleId, state] of desired) {
+            try { await options.stateStore.set(id, moduleId, state) }
+            catch (restoreError) { errors.push(restoreError); recoveryFailures.push(recoveryStage) }
+          }
+          if (errors.length === 1) {
+            recoveryStage = 'reactivate-old-modules'
+            for (const module of serverModules(previous.manifest)) {
+              if (!disposed.has(module.id) || !desired.get(module.id)?.enabled) continue
+              try {
+                // dispose may reject after cleanup; an instance still live must not be activated twice.
+                const current = findRuntime(options.host, id, module.id)
+                if (current?.instance && ['active', 'degraded'].includes(current.instance.state)) continue
+                await options.host.activate(id, module.id)
+              } catch (restoreError) { errors.push(restoreError); recoveryFailures.push(recoveryStage) }
+            }
+          }
+        }
+        if (errors.length > 1) {
+          try {
+            if (recovery) await writeJsonAtomically(recovery.recordPath, {
+              version: 1, packageId: id, fromVersion: previous?.manifest.version, toVersion: candidate.manifest.version,
+              destination, ...recovery, desired: Object.fromEntries(desired), failedStage, recoveryStage: recoveryFailures[0], recoveryFailures,
+              errors: errors.map(item => serializeError(item)),
+            })
+          } catch (recordError) { errors.push(recordError) }
+          throw new AggregateError(errors, `${failedStage} failed; recovery incomplete at ${recoveryFailures.join(', ')}: ${errors.map(item => item instanceof Error ? item.message : String(item)).join('; ')}`)
         }
         throw error
       }
@@ -442,11 +488,16 @@ export function createServerExtensionManager(options: {
     await options.host.activate(record.manifest.id, moduleId, target)
   }
 
+  type ResourceUpdate = { expectedInstallationVersion: number; packageVersion: string; expectedPreviewFingerprint?: string }
+  type CardResourceSource = { record: PackageCatalogRecord; cardId: string; expectedCardVersion: number }
+  function importResources(packageId: string, update?: ResourceUpdate, cardSource?: CardResourceSource): Promise<ImportedExtensionPackageResources>
+  function importResources(packageId: string, update: ResourceUpdate, cardSource: CardResourceSource | undefined, preview: true): Promise<import('@loom-studio/application-runtime').PreviewExtensionPackageResourcesResult>
   async function importResources(
     packageId: string,
-    update?: { expectedInstallationVersion: number; packageVersion: string },
-    cardSource?: { record: PackageCatalogRecord; cardId: string; expectedCardVersion: number },
-  ): Promise<ImportedExtensionPackageResources> {
+    update?: ResourceUpdate,
+    cardSource?: CardResourceSource,
+    preview?: true,
+  ): Promise<ImportedExtensionPackageResources | import('@loom-studio/application-runtime').PreviewExtensionPackageResourcesResult> {
     assertInitialized(initialized)
     const record = cardSource?.record ?? requireAvailablePackage(catalog, packageId)
     if (update && record.manifest.version !== update.packageVersion) throw new Error('Extension package changed; review the update again')
@@ -464,7 +515,7 @@ export function createServerExtensionManager(options: {
     const assetKey = assetSourceKey(packageId, target, record.manifest.version)
     importingAssetSources.set(assetKey, record)
     try {
-    const imported = await options.importPackageResources({
+    const payload: Parameters<typeof options.importPackageResources>[0] = {
       packageId,
       packageVersion: record.manifest.version,
       ...(record.manifest.dependencies ? { dependencies: structuredClone(record.manifest.dependencies) } : {}),
@@ -476,7 +527,7 @@ export function createServerExtensionManager(options: {
         contribution, source: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode((await readFileFromPackage(record, contribution.source)).bytes),
       }))),
       ...(cardSource ? { target: { kind: 'card' as const, cardId: cardSource.cardId }, expectedCardVersion: cardSource.expectedCardVersion } : {}),
-      ...(update ? { update: { expectedInstallationVersion: update.expectedInstallationVersion } } : {}),
+      ...(update ? { update: { expectedInstallationVersion: update.expectedInstallationVersion, expectedPreviewFingerprint: update.expectedPreviewFingerprint } } : {}),
       promptResources,
       agentTools: await Promise.all((record.manifest.contributes?.agentTools ?? []).map(async contribution => ({
         contribution, definition: await readPackageJson(record, contribution.source),
@@ -487,7 +538,9 @@ export function createServerExtensionManager(options: {
       textExtractors: await Promise.all((record.manifest.contributes?.textExtractors ?? []).map(async contribution => ({
         contribution, artifact: await readPackageJson(record, contribution.source),
       }))),
-    })
+    }
+    if (preview) return await options.previewPackageResources({ ...payload, update: payload.update! })
+    const imported = await options.importPackageResources(payload)
     return { packageId, version: record.manifest.version, ...imported }
     } finally { importingAssetSources.delete(assetKey) }
   }
@@ -500,9 +553,99 @@ export function createServerExtensionManager(options: {
     try {
       await importResources(packageId)
     } catch (error) {
-      throw new Error(`Extension ${packageId} is installed, but resource import failed. Retry Import Resources: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+      throw new ExtensionInstallFailure('import-resources', true, undefined, error)
     }
   }
+  async function finishLocalPackageInstall(installed: InstalledExtensionPackage, zip: boolean): Promise<ManagedExtensionPackage> {
+    try {
+      await validateDependencies(installed.manifest)
+      if (zip) await writeFile(join(installed.directory, '.loom-zip-install'), 'installed\n')
+      if (catalog.has(installed.manifest.id)) {
+        throw new Error(`Extension Package source already exists: ${installed.manifest.id}`)
+      }
+      await options.host.discover(installed.directory)
+      const record: PackageCatalogRecord = {
+        manifest: installed.manifest,
+        sources: [{ kind: 'installed', directory: installed.directory }],
+        directory: installed.directory,
+        available: true,
+      }
+      catalog.set(installed.manifest.id, record)
+      for (const moduleManifest of serverModules(installed.manifest)) {
+        if (!options.stateStore.get(installed.manifest.id, moduleManifest.id)?.enabled) continue
+        await options.host.activate(installed.manifest.id, moduleManifest.id)
+      }
+    } catch (error) {
+      await uninstallExtensionPackageDirectory({
+        directory: installed.directory,
+        installedDirectory: options.installedDirectory,
+        flat: true,
+      }).catch(() => undefined)
+      throw error
+    }
+    await importNewGlobalResources(installed.manifest.id)
+    return toManagedPackage(installed.manifest.id, requireAvailablePackage(catalog, installed.manifest.id), options.stateStore, globalRuntimes(options.host))
+  }
+
+  async function enableModule(packageId: string, moduleId: string, requestedGrants?: import('@loom-studio/kernel').ExtensionModuleCapabilityGrants, target?: ExtensionInstallationTarget): Promise<ManagedExtensionModule> {
+    assertInitialized(initialized)
+    const record = packageRecord(packageId, target)
+    if (!record.available) throw new Error(`Extension package is unavailable: ${packageId}`)
+    await validateDependencies(record.manifest, target)
+    const moduleManifest = requireModule(record.manifest, moduleId)
+    if (target?.kind === 'card') await options.readCardPackage({ cardId: target.cardId, packageId, source: 'installed' })
+    const previous = readDesiredState(options.stateStore, packageId, moduleId, target)
+    const eventGrants = requestedGrants?.eventCapabilities === undefined
+      ? previous.grantedEventCapabilities
+      : validateEventGrants(packageId, moduleManifest, requestedGrants.eventCapabilities)
+    const assetGrants = requestedGrants?.assetCapabilities === undefined
+      ? previous.grantedAssetCapabilities
+      : validateAssetGrants(packageId, moduleManifest, requestedGrants.assetCapabilities)
+    const uiGrants = requestedGrants?.uiCapabilities ?? previous.grantedUiCapabilities ?? []
+    if (uiGrants.some(grant => grant !== 'ui.notify' || (moduleManifest.runtime !== 'client' && moduleManifest.runtime !== 'client-worker') || moduleManifest.capabilities?.[grant] !== true)) {
+      throw new Error(`Extension module ${moduleKey(packageId, moduleId)} did not request a supported UI capability`)
+    }
+    const desired = await options.stateStore.set(packageId, moduleId, {
+      enabled: true,
+      grantedEventCapabilities: eventGrants,
+      grantedAssetCapabilities: assetGrants,
+      grantedUiCapabilities: uiGrants,
+    }, target)
+
+    let runtime: ExtensionModuleSummary | undefined
+    if (moduleManifest.runtime === 'server') {
+      const current = findRuntime(options.host, packageId, moduleId, target)
+      if (current?.instance && (current.instance.state === 'active' || current.instance.state === 'degraded')) {
+        if (sameCapabilities(previous.grantedEventCapabilities, eventGrants)
+          && sameCapabilities(previous.grantedAssetCapabilities, assetGrants)) {
+          runtime = current
+        } else {
+          runtime = await options.host.reload(packageId, moduleId, target)
+          moduleReloadIds(record)[moduleId] = randomUUID()
+        }
+      } else {
+        runtime = await options.host.activate(packageId, moduleId, target)
+      }
+    }
+    return toManagedModule(packageId, record, moduleManifest, desired, runtime, target)
+
+  }
+  async function disableModule(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ManagedExtensionModule> {
+    assertInitialized(initialized)
+    const record = packageRecord(packageId, target)
+    const moduleManifest = requireModule(record.manifest, moduleId)
+    const previous = readDesiredState(options.stateStore, packageId, moduleId, target)
+    const desired = await options.stateStore.set(packageId, moduleId, {
+      enabled: false,
+      grantedEventCapabilities: previous.grantedEventCapabilities,
+      grantedAssetCapabilities: previous.grantedAssetCapabilities,
+      grantedUiCapabilities: previous.grantedUiCapabilities ?? [],
+    }, target)
+    if (moduleManifest.runtime === 'server') await options.host.dispose(packageId, moduleId, target)
+    return toManagedModule(packageId, record, moduleManifest, desired, findRuntime(options.host, packageId, moduleId, target), target)
+
+  }
+  const moduleBatches = new Map<string, import('@loom-studio/kernel').ExtensionModuleBatchResult>()
   let operationQueue = Promise.resolve()
 
   function serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -512,6 +655,69 @@ export function createServerExtensionManager(options: {
   }
 
   return {
+    previewPackageResources: input => serialize(async () => {
+      if (input.target?.kind === 'card') {
+        if (input.expectedCardVersion === undefined) throw new Error('Card resource preview requires expectedCardVersion')
+        const cardId = input.target.cardId
+        const record = await prepareCardPackage({ cardId, packageId: input.packageId, expectedCardVersion: input.expectedCardVersion })
+        return importResources(input.packageId, input, { record, cardId, expectedCardVersion: input.expectedCardVersion }, true)
+      }
+      return importResources(input.packageId, input, undefined, true)
+    }),
+    listRecoveryRecords: () => listExtensionRecoveryRecords(options.installedDirectory),
+    listModuleBatches: () => ({ batches: structuredClone([...moduleBatches.values()]) }),
+    getModuleBatch: batchId => {
+      const batch = moduleBatches.get(batchId)
+      if (!batch) throw new Error(`Extension module batch not found: ${batchId}`)
+      return structuredClone(batch)
+    },
+    startModuleBatch: async input => {
+      assertInitialized(initialized)
+      packageRecord(input.packageId, input.target)
+      const ids = input.modules.map(item => item.moduleId)
+      if (ids.length === 0 || new Set(ids).size !== ids.length || ids.some(id => !id)) throw new Error('Extension module batch requires unique module IDs')
+      const request = structuredClone(input)
+      const batch: import('@loom-studio/kernel').ExtensionModuleBatchResult = {
+        batchId: randomUUID(), packageId: input.packageId, target: input.target ?? { kind: 'global' }, enabled: input.enabled, state: 'queued', results: [],
+      }
+      moduleBatches.set(batch.batchId, batch)
+      void serialize(async () => {
+        batch.state = 'running'
+        for (const item of request.modules) {
+          try {
+            const previous = readDesiredState(options.stateStore, request.packageId, item.moduleId, request.target)
+            const record = packageRecord(request.packageId, request.target)
+            const module = requireModule(record.manifest, item.moduleId)
+            const current = findRuntime(options.host, request.packageId, item.moduleId, request.target)
+            const active = current?.instance?.state === 'active' || current?.instance?.state === 'degraded'
+            const grantsUnchanged = !item.grants || (
+              (item.grants.eventCapabilities === undefined || sameCapabilities(previous.grantedEventCapabilities, item.grants.eventCapabilities))
+              && (item.grants.assetCapabilities === undefined || sameCapabilities(previous.grantedAssetCapabilities, item.grants.assetCapabilities))
+              && (item.grants.uiCapabilities === undefined || sameCapabilities(previous.grantedUiCapabilities ?? [], item.grants.uiCapabilities)))
+            const unchanged = previous.enabled === request.enabled && grantsUnchanged
+              && (module.runtime !== 'server' || (request.enabled ? active : !current?.instance))
+            if (unchanged) {
+              batch.results.push({ moduleId: item.moduleId, status: 'unchanged' })
+              continue
+            }
+            if (request.enabled) await enableModule(request.packageId, item.moduleId, item.grants, request.target)
+            else await disableModule(request.packageId, item.moduleId, request.target)
+            batch.results.push({ moduleId: item.moduleId, status: unchanged ? 'unchanged' : 'completed' })
+          } catch (error) {
+            batch.results.push({ moduleId: item.moduleId, status: 'failed', message: error instanceof Error ? error.message : String(error) })
+          }
+        }
+        batch.state = 'completed'
+        const completed = [...moduleBatches.values()].filter(item => item.state === 'completed')
+        for (const old of completed.slice(0, Math.max(0, completed.length - 100))) moduleBatches.delete(old.batchId)
+        try { options.onModuleBatchCompleted?.(structuredClone(batch)) }
+        catch (error) {
+          options.diagnostics.add({ severity: 'error', code: 'extension.batch_notification_failed', source: 'extension-manager', packageId: batch.packageId,
+            message: `Extension module batch completion notification failed: ${batch.batchId}`, details: { error: serializeError(error) } })
+        }
+      })
+      return { batchId: batch.batchId }
+    },
     previewPackageZip: source => withPreparationSlot(async () => {
       assertInitialized(initialized)
       const root = await createDownloadWorkspace()
@@ -536,10 +742,25 @@ export function createServerExtensionManager(options: {
       const completed = (await readOfficialState()).completed === true
       return {
         completed,
-        items: [
+        items: await Promise.all([
+          { id: 'official.loom-assistant', name: '诺姆助手', source: { kind: 'git' as const, url: 'https://github.com/The-LoomStudio/LS_Nom_Assistant.git' } },
+          { id: 'official.backgrounds', name: '官方背景', source: { kind: 'git' as const, url: 'https://github.com/The-LoomStudio/LS_Background.git' } },
           { id: 'sillytavern.importer', name: 'ST 数据导入', source: { kind: 'git' as const, url: 'https://github.com/The-LoomStudio/LS_STBridge.git' } },
           { id: 'official.the-world', name: 'The World', source: { kind: 'git' as const, url: 'https://github.com/The-LoomStudio/LS_The_World.git' } },
-        ].filter(item => !catalog.has(item.id)),
+        ].map(async item => {
+          const installed = catalog.get(item.id)
+          try {
+            const manifest = installed?.manifest ?? parseExtensionManifest(JSON.parse(Buffer.from(await downloadExtensionZip({
+              kind: 'zip', url: item.source.url.replace('https://github.com/', 'https://raw.githubusercontent.com/').replace(/\.git$/, '/HEAD/manifest.json'),
+            }, 0, { maxBytes: 1024 * 1024, timeoutMs: 8_000 })).toString('utf8')))
+            if (manifest.id !== item.id) throw new Error('Manifest ID mismatch')
+            return { ...item, name: manifest.displayName, description: manifest.description,
+              ...(installed ? { installedVersion: installed.manifest.version } : {}) }
+          } catch {
+            return { ...item, metadataError: '无法读取扩展说明，请稍后重试',
+              ...(installed ? { installedVersion: installed.manifest.version } : {}) }
+          }
+        })),
       }
     },
     finishOfficialSetup: () => serialize(async () => {
@@ -593,7 +814,7 @@ export function createServerExtensionManager(options: {
             installed.push({ packageId: candidate.manifest.id, version: candidate.manifest.version })
             await importNewGlobalResources(candidate.manifest.id)
           } catch (error) {
-            if (error instanceof ExtensionInstallFailure && error.codeCommitted) {
+            if (error instanceof ExtensionInstallFailure && error.codeCommitted && !installed.some(item => item.packageId === candidate.manifest.id)) {
               installed.push({ packageId: candidate.manifest.id, version: candidate.manifest.version })
             }
             return { installed, failed: {
@@ -780,7 +1001,7 @@ export function createServerExtensionManager(options: {
       await stopCardPackage(previous, target)
       try {
         await importResources(input.packageId, {
-          expectedInstallationVersion: input.expectedInstallationVersion, packageVersion: input.packageVersion,
+          expectedInstallationVersion: input.expectedInstallationVersion, packageVersion: input.packageVersion, expectedPreviewFingerprint: input.expectedPreviewFingerprint,
         }, { ...input, record: next })
       } catch (error) {
         throw new Error(`Card package update failed; old modules remain stopped: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
@@ -816,10 +1037,10 @@ export function createServerExtensionManager(options: {
       if (installation?.version !== input.expectedInstallationVersion) throw new Error('Extension installation changed before uninstall')
       assertCardDependentsCompatible(installations, input.packageId, target.cardId)
       await stopCardPackage(record, target)
-      await options.removePackageResources({ packageId: input.packageId, target, expectedInstallationVersion: input.expectedInstallationVersion, uninstall: true })
+      await options.uninstallInstallation({ packageId: input.packageId, target, expectedInstallationVersion: input.expectedInstallationVersion })
       await forgetCardPackage(record, target)
       // ponytail: Shared archives survive uninstall; reclaim only after an installation-aware cache collector exists.
-      return { packageId: input.packageId, version: record.manifest.version, target, removed: true }
+      return { packageId: input.packageId, version: record.manifest.version, target, removed: true, resourcesRetained: true }
     }),
 
     installPackage: sourceDirectory => serialize(async () => {
@@ -829,33 +1050,7 @@ export function createServerExtensionManager(options: {
         installedDirectory: options.installedDirectory,
         flat: true,
       })
-      try {
-        await validateDependencies(installed.manifest)
-        if (catalog.has(installed.manifest.id)) {
-          throw new Error(`Extension Package source already exists: ${installed.manifest.id}`)
-        }
-        await options.host.discover(installed.directory)
-        const record: PackageCatalogRecord = {
-          manifest: installed.manifest,
-          sources: [{ kind: 'installed', directory: installed.directory }],
-          directory: installed.directory,
-          available: true,
-        }
-        catalog.set(installed.manifest.id, record)
-        for (const moduleManifest of serverModules(installed.manifest)) {
-          if (!options.stateStore.get(installed.manifest.id, moduleManifest.id)?.enabled) continue
-          await options.host.activate(installed.manifest.id, moduleManifest.id)
-        }
-      } catch (error) {
-        await uninstallExtensionPackageDirectory({
-          directory: installed.directory,
-          installedDirectory: options.installedDirectory,
-          flat: true,
-        }).catch(() => undefined)
-        throw error
-      }
-      await importNewGlobalResources(installed.manifest.id)
-      return toManagedPackage(installed.manifest.id, requireAvailablePackage(catalog, installed.manifest.id), options.stateStore, globalRuntimes(options.host))
+      return finishLocalPackageInstall(installed, false)
     }),
 
     installPackageZip: source => serialize(async () => {
@@ -865,34 +1060,7 @@ export function createServerExtensionManager(options: {
         installedDirectory: options.installedDirectory,
         flat: true,
       })
-      try {
-        await validateDependencies(installed.manifest)
-        await writeFile(join(installed.directory, '.loom-zip-install'), 'installed\n')
-        if (catalog.has(installed.manifest.id)) {
-          throw new Error(`Extension Package source already exists: ${installed.manifest.id}`)
-        }
-        await options.host.discover(installed.directory)
-        const record: PackageCatalogRecord = {
-          manifest: installed.manifest,
-          sources: [{ kind: 'installed', directory: installed.directory }],
-          directory: installed.directory,
-          available: true,
-        }
-        catalog.set(installed.manifest.id, record)
-        for (const moduleManifest of serverModules(installed.manifest)) {
-          if (!options.stateStore.get(installed.manifest.id, moduleManifest.id)?.enabled) continue
-          await options.host.activate(installed.manifest.id, moduleManifest.id)
-        }
-      } catch (error) {
-        await uninstallExtensionPackageDirectory({
-          directory: installed.directory,
-          installedDirectory: options.installedDirectory,
-          flat: true,
-        }).catch(() => undefined)
-        throw error
-      }
-      await importNewGlobalResources(installed.manifest.id)
-      return toManagedPackage(installed.manifest.id, requireAvailablePackage(catalog, installed.manifest.id), options.stateStore, globalRuntimes(options.host))
+      return finishLocalPackageInstall(installed, true)
     }),
 
     uninstallPackage: (packageId, version, deleteData) => serialize(async () => {
@@ -950,66 +1118,12 @@ export function createServerExtensionManager(options: {
         packageId,
         version: record.manifest.version,
         removed: true,
+        resourcesRetained: true,
       }
     }),
 
-    enableModule: (packageId, moduleId, requestedGrants, target) => serialize(async () => {
-      assertInitialized(initialized)
-      const record = packageRecord(packageId, target)
-      if (!record.available) throw new Error(`Extension package is unavailable: ${packageId}`)
-      await validateDependencies(record.manifest, target)
-      const moduleManifest = requireModule(record.manifest, moduleId)
-      if (target?.kind === 'card') await options.readCardPackage({ cardId: target.cardId, packageId, source: 'installed' })
-      const previous = readDesiredState(options.stateStore, packageId, moduleId, target)
-      const eventGrants = requestedGrants?.eventCapabilities === undefined
-        ? previous.grantedEventCapabilities
-        : validateEventGrants(packageId, moduleManifest, requestedGrants.eventCapabilities)
-      const assetGrants = requestedGrants?.assetCapabilities === undefined
-        ? previous.grantedAssetCapabilities
-        : validateAssetGrants(packageId, moduleManifest, requestedGrants.assetCapabilities)
-      const uiGrants = requestedGrants?.uiCapabilities ?? previous.grantedUiCapabilities ?? []
-      if (uiGrants.some(grant => grant !== 'ui.notify' || (moduleManifest.runtime !== 'client' && moduleManifest.runtime !== 'client-worker') || moduleManifest.capabilities?.[grant] !== true)) {
-        throw new Error(`Extension module ${moduleKey(packageId, moduleId)} did not request a supported UI capability`)
-      }
-      const desired = await options.stateStore.set(packageId, moduleId, {
-        enabled: true,
-        grantedEventCapabilities: eventGrants,
-        grantedAssetCapabilities: assetGrants,
-        grantedUiCapabilities: uiGrants,
-      }, target)
-
-      let runtime: ExtensionModuleSummary | undefined
-      if (moduleManifest.runtime === 'server') {
-        const current = findRuntime(options.host, packageId, moduleId, target)
-        if (current?.instance && (current.instance.state === 'active' || current.instance.state === 'degraded')) {
-          if (sameCapabilities(previous.grantedEventCapabilities, eventGrants)
-            && sameCapabilities(previous.grantedAssetCapabilities, assetGrants)) {
-            runtime = current
-          } else {
-            runtime = await options.host.reload(packageId, moduleId, target)
-            moduleReloadIds(record)[moduleId] = randomUUID()
-          }
-        } else {
-          runtime = await options.host.activate(packageId, moduleId, target)
-        }
-      }
-      return toManagedModule(packageId, record, moduleManifest, desired, runtime, target)
-    }),
-
-    disableModule: (packageId, moduleId, target) => serialize(async () => {
-      assertInitialized(initialized)
-      const record = packageRecord(packageId, target)
-      const moduleManifest = requireModule(record.manifest, moduleId)
-      const previous = readDesiredState(options.stateStore, packageId, moduleId, target)
-      const desired = await options.stateStore.set(packageId, moduleId, {
-        enabled: false,
-        grantedEventCapabilities: previous.grantedEventCapabilities,
-        grantedAssetCapabilities: previous.grantedAssetCapabilities,
-        grantedUiCapabilities: previous.grantedUiCapabilities ?? [],
-      }, target)
-      if (moduleManifest.runtime === 'server') await options.host.dispose(packageId, moduleId, target)
-      return toManagedModule(packageId, record, moduleManifest, desired, findRuntime(options.host, packageId, moduleId, target), target)
-    }),
+    enableModule: (...args) => serialize(() => enableModule(...args)),
+    disableModule: (...args) => serialize(() => disableModule(...args)),
 
     reloadModule: (packageId, moduleId, target) => serialize(async () => {
       assertInitialized(initialized)
@@ -1408,4 +1522,16 @@ function moduleKey(packageId: string, moduleId: string): string {
 
 function assertInitialized(initialized: boolean): void {
   if (!initialized) throw new Error('Extension manager has not been initialized')
+}
+
+// Count package payload only; Git metadata is not installed content.
+async function packageBytes(directory: string): Promise<number> {
+  let bytes = 0
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.name === '.git') continue
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) bytes += await packageBytes(path)
+    else if (entry.isFile()) bytes += (await stat(path)).size
+  }
+  return bytes
 }

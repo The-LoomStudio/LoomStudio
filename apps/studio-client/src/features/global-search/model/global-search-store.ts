@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+import { create, type StateCreator } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
 import { globalSearchReducer, INITIAL_GLOBAL_SEARCH_STATE, type GlobalSearchState } from './global-search-model.js'
@@ -8,12 +8,21 @@ type SearchStore = {
   dispatch(endpoint: string, action: Parameters<typeof globalSearchReducer>[1]): void
 }
 
-export const useGlobalSearchStore = create<SearchStore>()(persist((set) => ({
+type PersistedSearchStore = Pick<SearchStore, 'byEndpoint'>
+
+const createSearchStore: StateCreator<SearchStore, [], [['zustand/persist', PersistedSearchStore]]> = (setTransient, get, api) => persist<SearchStore, [], [], PersistedSearchStore>((setPersisted) => ({
   byEndpoint: {},
-  dispatch: (endpoint, action) => set(current => ({ byEndpoint: {
-    ...current.byEndpoint,
-    [endpoint]: globalSearchReducer(current.byEndpoint[endpoint] ?? INITIAL_GLOBAL_SEARCH_STATE, action),
-  } })),
+  dispatch: (endpoint, action) => {
+    const current = get()
+    const previous = current.byEndpoint[endpoint] ?? INITIAL_GLOBAL_SEARCH_STATE
+    const next = globalSearchReducer(previous, action)
+    if (next.query === previous.query && next.scope === previous.scope && next.kind === previous.kind
+      && next.mode === previous.mode && next.candidateQuery === previous.candidateQuery) return
+    // Keep the original set before persist wraps it: candidate UI state is not a storage update.
+    const set = next.query !== previous.query || next.scope !== previous.scope || next.kind !== previous.kind
+      ? setPersisted : setTransient
+    set({ byEndpoint: { ...current.byEndpoint, [endpoint]: next } })
+  },
 }), {
   name: 'loom-studio-global-search',
   storage: createJSONStorage(() => safeLocalStorage),
@@ -36,4 +45,6 @@ export const useGlobalSearchStore = create<SearchStore>()(persist((set) => ({
     }
     return { ...current, byEndpoint }
   },
-}))
+})(setTransient, get, api)
+
+export const useGlobalSearchStore = create<SearchStore>()(createSearchStore)

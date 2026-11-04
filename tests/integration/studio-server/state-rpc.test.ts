@@ -17,7 +17,10 @@ describe('Studio Server state RPC', () => {
       })
 
       expect(updated.snapshot.value).toEqual({ gold: 12 })
-      expect(updated.mutation.changesetId).toMatch(/^chg-/)
+      expect(updated.mutation.changesetId).toEqual(expect.any(String))
+      expect(updated.mutation.changesetId.length).toBeGreaterThan(0)
+      await expect(callRpc(port, 'application.getStateSnapshot', { target: { scope: 'global' } }))
+        .resolves.toMatchObject({ snapshot: updated.snapshot })
       const definition = await callRpc<{ definition: { id: string } }>(port, 'application.upsertStateDefinition', {
         definitionId: 'state.score',
         definition: { kind: 'global', path: 'global.score', schema: { type: 'number' }, default: 1 },

@@ -14,7 +14,6 @@ import type {
 
 type ProviderAdapter = {
   id: string
-  aliases: string[]
   kind: AiProviderKind | 'fake'
   accountConfigSchema: ProviderAccountSchema
   credentialSchema: ProviderAccountSchema
@@ -52,10 +51,10 @@ export function createOfficialProviderAdapterRegistry(options: {
   aiCapabilities?: AiGatewayCapabilityRegistry
 } = {}): ProviderAdapterRegistry {
   const adapters = createOfficialAdapters()
-  const aliases = new Map(adapters.flatMap(adapter => adapter.aliases.map(alias => [alias, adapter] as const)))
+  const adaptersById = new Map(adapters.map(adapter => [adapter.id, adapter]))
 
   function requireAdapter(providerExtensionId: string): ProviderAdapter {
-    const adapter = aliases.get(providerExtensionId)
+    const adapter = adaptersById.get(providerExtensionId)
     if (!adapter) throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
     return adapter
   }
@@ -86,7 +85,7 @@ export function createOfficialProviderAdapterRegistry(options: {
       return { adapterId: adapter.id, provider, capability: adapter.capability }
     },
     validateAccountConfig: (providerExtensionId, config) => {
-      const adapter = aliases.get(providerExtensionId)
+      const adapter = adaptersById.get(providerExtensionId)
       if (adapter) return adapter.parseAccountConfig(config) as JsonObject
       if (getDynamicProvider(providerExtensionId)) {
         return options.aiCapabilities!.validateAccountConfig(providerExtensionId, config)
@@ -94,7 +93,7 @@ export function createOfficialProviderAdapterRegistry(options: {
       throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
     },
     validateCredential: (providerExtensionId, credential) => {
-      const adapter = aliases.get(providerExtensionId)
+      const adapter = adaptersById.get(providerExtensionId)
       if (adapter) return adapter.parseCredential(credential) as Record<string, string>
       if (getDynamicProvider(providerExtensionId)) {
         return options.aiCapabilities!.validateCredential(providerExtensionId, credential)
@@ -102,7 +101,7 @@ export function createOfficialProviderAdapterRegistry(options: {
       throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
     },
     getSchemas: providerExtensionId => {
-      const adapter = aliases.get(providerExtensionId)
+      const adapter = adaptersById.get(providerExtensionId)
       if (adapter) return { accountConfig: adapter.accountConfigSchema, credential: adapter.credentialSchema }
       const provider = getDynamicProvider(providerExtensionId)
       if (!provider) throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
@@ -149,9 +148,8 @@ function createOfficialAdapters(): ProviderAdapter[] {
       ...(input.fetch ? { fetch: input.fetch } : {}),
     })
   }
-  const provider = (id: string, aliases: string[], kind: AiProviderKind, listModels?: ProviderAdapter['listModels']): ProviderAdapter => ({
+  const provider = (id: string, kind: AiProviderKind, listModels?: ProviderAdapter['listModels']): ProviderAdapter => ({
     id,
-    aliases,
     kind,
     accountConfigSchema,
     credentialSchema,
@@ -161,13 +159,12 @@ function createOfficialAdapters(): ProviderAdapter[] {
     ...(listModels ? { listModels } : {}),
   })
   return [
-    provider('official.openai', ['official.openai', 'openai'], 'openai', discoverModels),
-    provider('official.anthropic', ['official.anthropic', 'anthropic'], 'anthropic'),
-    provider('official.google', ['official.google', 'google'], 'google'),
-    provider('official.openai-compatible', ['official.openai-compatible', 'openai-compatible'], 'openai-compatible', discoverModels),
+    provider('official.openai', 'openai', discoverModels),
+    provider('official.anthropic', 'anthropic'),
+    provider('official.google', 'google'),
+    provider('official.openai-compatible', 'openai-compatible', discoverModels),
     {
       id: 'official.fake',
-      aliases: ['official.fake', 'fake'],
       kind: 'fake',
       accountConfigSchema: emptyAccountSchema,
       credentialSchema: emptyAccountSchema,

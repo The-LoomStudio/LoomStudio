@@ -1,3 +1,5 @@
+import { messages as extensionsFlow } from './zh-cn/extensions-flow.js'
+import { messages as extensionReview } from './zh-cn/extension-review.js'
 import { messages as observation } from './zh-cn/observation.js'
 import { messages as userProfile } from './zh-cn/user-profile.js'
 import { messages as common } from './zh-cn/common.js'
@@ -25,6 +27,8 @@ export const zhCN = {
   ...state,
   ...prompt,
   ...extensions,
+  ...extensionsFlow,
+  ...extensionReview,
   ...settings,
   ...textTransforms,
   ...logs,

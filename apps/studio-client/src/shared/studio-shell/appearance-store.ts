@@ -10,6 +10,7 @@ export type AppearanceState = {
   canvasWidth: number
   explicitOverrides: { canvasWidth?: true; blur?: true; opacity?: true }
   narrativeOverscan: number
+  focusComposerOnStartup: boolean
   followAI: boolean
   material: AppearanceMaterial
   setBackground(background: AppearanceBackground | null): void
@@ -20,6 +21,7 @@ export type AppearanceState = {
   resetMaterial(): void
   setMaterialParameter(parameter: 'blur' | 'opacity', value: number | undefined): void
   setNarrativeOverscan(count: number): void
+  setFocusComposerOnStartup(value: boolean): void
   setFollowAI(value: boolean): void
   setMaterial(value: AppearanceMaterial): void
 }
@@ -35,6 +37,7 @@ export const useAppearanceStore = create<AppearanceState>()(persist((set) => ({
   canvasWidth: APPEARANCE_DEFAULTS.canvasWidth,
   explicitOverrides: {},
   narrativeOverscan: 5,
+  focusComposerOnStartup: false,
   followAI: true,
   material: { ...APPEARANCE_DEFAULTS.material },
   setBackground: background => set({ background, scopedBackground: null }),
@@ -57,6 +60,7 @@ export const useAppearanceStore = create<AppearanceState>()(persist((set) => ({
     return { material: { ...state.material, [parameter]: value ?? APPEARANCE_DEFAULTS.material[parameter] }, explicitOverrides }
   }),
   setNarrativeOverscan: narrativeOverscan => set({ narrativeOverscan }),
+  setFocusComposerOnStartup: focusComposerOnStartup => set({ focusComposerOnStartup }),
   setFollowAI: followAI => set({ followAI }),
   setMaterial: material => set(state => ({ material, explicitOverrides: {
     ...state.explicitOverrides,
@@ -82,6 +86,7 @@ export const useAppearanceStore = create<AppearanceState>()(persist((set) => ({
         && saved.canvasWidth >= 540 && saved.canvasWidth <= 1120 ? saved.canvasWidth : current.canvasWidth,
       narrativeOverscan: typeof saved.narrativeOverscan === 'number' && Number.isInteger(saved.narrativeOverscan)
         && saved.narrativeOverscan >= 0 && saved.narrativeOverscan <= 50 ? saved.narrativeOverscan : current.narrativeOverscan,
+      focusComposerOnStartup: saved.focusComposerOnStartup === true,
       followAI: typeof saved.followAI === 'boolean' ? saved.followAI : current.followAI,
       material: {
         mode: material.mode === 'solid' || material.mode === 'translucent' || material.mode === 'glass' ? material.mode : current.material.mode,
@@ -97,16 +102,11 @@ export const useAppearanceStore = create<AppearanceState>()(persist((set) => ({
       const flags = overrides as Record<string, unknown>
       restored.explicitOverrides = {
         ...(flags.canvasWidth === true ? { canvasWidth: true as const } : {}),
-        ...(flags.blur === true || flags.material === true ? { blur: true as const } : {}),
-        ...(flags.opacity === true || flags.material === true ? { opacity: true as const } : {}),
+        ...(flags.blur === true ? { blur: true as const } : {}),
+        ...(flags.opacity === true ? { opacity: true as const } : {}),
       }
     } else {
-      // ponytail: Legacy storage persisted defaults automatically; explicit choices equal to defaults cannot be recovered.
-      restored.explicitOverrides = {
-        ...(restored.canvasWidth !== APPEARANCE_DEFAULTS.canvasWidth ? { canvasWidth: true as const } : {}),
-        ...(restored.material.blur !== APPEARANCE_DEFAULTS.material.blur ? { blur: true as const } : {}),
-        ...(restored.material.opacity !== APPEARANCE_DEFAULTS.material.opacity ? { opacity: true as const } : {}),
-      }
+      restored.explicitOverrides = {}
     }
     return restored
   },
@@ -115,6 +115,7 @@ export const useAppearanceStore = create<AppearanceState>()(persist((set) => ({
     canvasWidth: state.canvasWidth,
     explicitOverrides: state.explicitOverrides,
     narrativeOverscan: state.narrativeOverscan,
+    focusComposerOnStartup: state.focusComposerOnStartup,
     followAI: state.followAI,
     material: state.material,
   }),

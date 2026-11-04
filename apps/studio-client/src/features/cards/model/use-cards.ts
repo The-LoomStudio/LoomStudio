@@ -28,9 +28,11 @@ type CardEditor = {
 const emptyCardEditor: CardEditor = {}
 
 export function useCards(input: UseCardsInput) {
-  const selectionSourceRef = useRef({ api: input.api, request: 0, collectionWrite: 0, disposed: false })
+  const selectionSourceRef = useRef({ api: input.api, request: 0, collectionWrite: 0, disposed: false,
+    detailReads: new Map<string, ReturnType<StudioApi['cards']['get']>>() })
   if (selectionSourceRef.current.api !== input.api) {
-    selectionSourceRef.current = { api: input.api, request: 0, collectionWrite: 0, disposed: false }
+    selectionSourceRef.current = { api: input.api, request: 0, collectionWrite: 0, disposed: false,
+      detailReads: new Map() }
   }
   const selectionSource = selectionSourceRef.current
   useEffect(() => {
@@ -38,6 +40,7 @@ export function useCards(input: UseCardsInput) {
     return () => {
       selectionSource.disposed = true
       selectionSource.request += 1
+      selectionSource.detailReads.clear()
     }
   }, [selectionSource])
   const refreshRequest = useRef(0)
@@ -68,6 +71,17 @@ export function useCards(input: UseCardsInput) {
     setSelectedCardId(cardId)
   }, [selectionSource, setSelectedCardId])
   const selectedCard = cards.find(card => card.id === selectedCardId)
+  const readCardDetails = useCallback((cardId: string, fresh = false) => {
+    const pending = selectionSource.detailReads.get(cardId)
+    if (pending && !fresh) return pending
+    const request = selectionSource.api.cards.get(cardId)
+    selectionSource.detailReads.set(cardId, request)
+    const clear = () => {
+      if (selectionSource.detailReads.get(cardId) === request) selectionSource.detailReads.delete(cardId)
+    }
+    void request.then(clear, clear)
+    return request
+  }, [selectionSource])
   useEffect(() => {
     if (!selectedCardId || selectedCard?.validationError !== undefined) {
       setSelectedCardDetails(undefined)
@@ -78,7 +92,10 @@ export function useCards(input: UseCardsInput) {
     void input.runAction(async () => {
       let result
       try {
-        result = await input.api.cards.get(selectedCardId)
+        result = await readCardDetails(selectedCardId)
+        if (current && selectedCard && result.card.version < selectedCard.version) {
+          result = await readCardDetails(selectedCardId, true)
+        }
       } catch (error) {
         if (current && selectionSourceRef.current === selectionSource && !selectionSource.disposed) throw error
         return
@@ -169,9 +186,9 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
-  async function replaceCardPromptResources(cardId: string, promptResourceIds: string[]) {
+  async function replaceCardPromptResources(cardId: string, promptResourceIds: string[], expectedVersion: number) {
     await input.runAction(async () => {
-      const result = await input.api.cards.updatePromptResources({ cardId, promptResourceIds })
+      const result = await input.api.cards.updatePromptResources({ cardId, promptResourceIds, expectedVersion })
       recordCardEdit({
         label: input.t('history.card.update'),
         changesetId: result.mutation.changesetId,
@@ -266,7 +283,11 @@ export function useCards(input: UseCardsInput) {
     return { version: result.card.version, macros: result.card.macros ?? {}, macroOptions: result.card.macroOptions }
   }
 
-  async function deleteCards(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }) {
+  async function deleteCards(
+    cardIds: string[],
+    options?: { includePlayData?: boolean; includePromptResources?: boolean },
+    onCommitted?: (deletedCardIds: readonly string[]) => void,
+  ) {
     const ids = [...new Set(cardIds)].filter(cardId => cards.some(card => card.id === cardId))
     if (ids.length === 0) return
     const deletedNames = ids.map(id => cards.find(card => card.id === id)?.name).filter((name): name is string => Boolean(name))
@@ -282,6 +303,7 @@ export function useCards(input: UseCardsInput) {
       setCards(current => current.filter(card => !deletedIds.has(card.id)))
       setSelectedCardId(current => current && deletedIds.has(current) ? undefined : current)
       setSelectedCardDetails(current => current && deletedIds.has(current.id) ? undefined : current)
+      onCommitted?.(deleted.cardIds)
       await refreshCards()
       if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
       if (options?.includePromptResources) {
@@ -399,7 +421,9 @@ export function useCards(input: UseCardsInput) {
           throw new Error(input.t('character.directoryConflict', { count: preview.conflicts.length }))
         }
         const saved = await input.api.cards.saveDirectory(card.id, preview.token)
-        notify.success(input.t('character.directorySaved', { count: saved.changedFiles }), { description: saved.directory })
+        const title = input.t('character.directorySaved', { count: saved.changedFiles })
+        if (saved.cleanupWarning) notify.warning(title, { description: saved.directory, details: saved.cleanupWarning })
+        else notify.success(title, { description: saved.directory })
         return
       }
       const suffix = format === 'png' ? 'export.png' : format === 'polyglot' ? 'export.polyglot.png' : 'export.loomcard'
@@ -415,6 +439,7 @@ export function useCards(input: UseCardsInput) {
   }
 
   function applyUpdatedCard(card: Card): void {
+    selectionSource.detailReads.delete(card.id)
     setSelectedCardDetails(current => current?.id === card.id && current.version <= card.version ? card : current)
     setCards(current => current.map(summary => summary.id === card.id && summary.version <= card.version
       ? { ...summary, ...readCardDraft(card), media: card.media, version: card.version, updatedAt: card.updatedAt }
@@ -453,6 +478,7 @@ export function useCards(input: UseCardsInput) {
     setSelectedCardId: setSelectedCardIdFromNavigation,
     selectedCard,
     selectedCardDetails,
+    readCardDetails,
     refreshCards,
     createCard,
     updateCardProfile,

@@ -246,7 +246,7 @@ print("OLD=" + old.text);
         } },
       })
       const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Writer' })
-      await runtime.replacePresetToolMounts({ presetId: preset.id, mounts: [{ toolId, defaultEnabled: true, orderIndex: 0 }] })
+      await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id), presetId: preset.id, mounts: [{ toolId, defaultEnabled: true, orderIndex: 0 }] })
       const { providerProfile } = await runtime.createProviderProfile({
         providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['model'],
       })

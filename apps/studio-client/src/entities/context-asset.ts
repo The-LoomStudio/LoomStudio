@@ -10,7 +10,6 @@ export type ContextAssetNode = {
   kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
   label: string
   meta?: string
-  orderList?: string[]
   readOnly?: boolean
   skeletonPatch?: {
     items?: PromptCompositionItem[]
@@ -22,7 +21,7 @@ export type ContextAssetNode = {
       orderIndex: number
       accepts?: Array<'preset' | 'lore' | 'narrativeChat' | 'narrativeHistory' | 'sessionHistory' | 'runtime'>
       renderHint?: {
-        providerRoleHint?: 'system' | 'developer' | 'assistant' | 'user'
+        providerRoleHint?: 'system' | 'assistant' | 'user'
         wrapper?: 'section' | 'message'
       }
     }>
@@ -65,7 +64,7 @@ export type PromptCompositionCapabilities = {
   }
 }
 
-type PromptProviderRole = 'system' | 'developer' | 'assistant' | 'user'
+type PromptProviderRole = 'system' | 'assistant' | 'user'
 
 type PromptCompositionItemBase = {
   id: string

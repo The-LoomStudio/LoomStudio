@@ -4,6 +4,8 @@
 
 从 [Client README](../../apps/studio-client/README.md)定位当前 feature、widget、shared 和验证入口；能力选择参考[依赖所有权](../architecture/platform/external-dependency-ownership.md)，样式参考 [UI 准则](ui-design.md)。源码入口和领域行为以当前文件为准，不凭本文恢复旧组件或旧状态模型。
 
+需要浏览器现场证据时，按 [CDP 与 Console 实战取证](frontend-cdp-diagnostics.md)接入现有页面、选择探针和清理。每轮新增的已验证方法、失败原因或误判反证，同步更新该指南；具体缺陷、规模读数与修复状态仍写入 Issue。
+
 ## 1. UI 结构与 SCSS 收敛
 
 **检查什么：**

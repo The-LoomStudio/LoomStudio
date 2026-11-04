@@ -2,7 +2,8 @@ import { describe, expect, it, vi, onTestFinished } from 'vitest'
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { defaultCardPng, encodeCardPng } from '../../../apps/studio-server/src/codecs/card-png.js'
+import { encodeCardBundleZip } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
+import { defaultCardPng, encodeCardBundlePng } from '../../../apps/studio-server/src/codecs/card-png.js'
 import { authenticatedFetch, callRpc, withStudioServer as withMainStudioServer } from '../../integration/studio-server/helpers.js'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
@@ -473,10 +474,10 @@ describe('studio server SillyTavern silent import pipeline', () => {
       const nativeResponse = await authenticatedFetch(port, '/cards/import/png', {
         method: 'POST',
         headers: { 'content-type': 'image/png' },
-        body: new Uint8Array(encodeCardPng(defaultCardPng, {
+        body: new Uint8Array(encodeCardBundlePng(defaultCardPng, encodeCardBundleZip({ artifact: {
           schemaVersion: 4, artifactId: 'native-card', displayName: 'Native card',
           card: { name: 'Native card' }, contextAssets: [],
-        })),
+        }, avatar: { bytes: defaultCardPng, mediaType: 'image/png' } }))),
       })
       expect(nativeResponse.status).toBe(201)
       await callRpc(port, 'extensions.enableModule', module)

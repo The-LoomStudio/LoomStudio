@@ -1,5 +1,6 @@
+// @vitest-environment node
 import { describe, expect, it, vi } from 'vitest'
-import { fixture, hooks } from '../../support/client/narrative-runtime.js'
+import { settle, fixture, hooks } from '../../support/client/narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import type { DataOperation } from '../../../apps/studio-client/src/shared/api/data-commit-events.js'
 
@@ -34,16 +35,16 @@ describe('Narrative edits across HTTP and SSE', () => {
         }
         return editEvent
       }
-      const f = fixture()
+      const f = await fixture()
       f.createTimeline.mockResolvedValue(created)
-      f.createSession.mockResolvedValue({
-        session: { ...f.result.agentSession, timelineId: created.timeline.id },
-        mutation: { changesetId: 'create-session' },
-      })
+      f.input.api.agentSessions.get = id => callRpc(port, 'application.getAgentSession', { agentSessionId: id })
+      f.getTranscript.mockImplementation(params => callRpc(port, 'application.getAgentTranscriptPage', params))
+      f.input.api.agentSessions.list = params => callRpc(port, 'application.listAgentSessions', params ?? {})
       vi.stubGlobal('EventSource', class {})
-      await f.render().createAgentSession('profile', true)
+      await settle(() => f.render().createTimelineFromCard())
+      await f.loadRoot()
       f.render()
-      const dispose = hooks.commitEffect?.()
+      const dispose = f.unmount
       const oldReadReady = Promise.withResolvers<Page>()
       const releaseOldRead = Promise.withResolvers<void>()
       const reads: Promise<void>[] = []
@@ -74,7 +75,7 @@ describe('Narrative edits across HTTP and SSE', () => {
         hooks.narrativeConnected?.()
         const oldPage = await oldReadReady.promise
         expect(oldPage.nodes[0]?.body.raw).toBe('Original')
-        await f.render().editNarrativeNode(created.nodes[0]!.id, 'Edited')
+        await settle(() => f.render().editNarrativeNode(created.nodes[0]!.id, 'Edited'))
         const editedHead = f.render().branch?.headNodeId
         expect(editedHead).not.toBe(oldPage.branch.headNodeId)
         expect(f.render().nodes[0]?.body.raw).toBe('Edited')

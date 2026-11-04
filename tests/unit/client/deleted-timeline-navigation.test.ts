@@ -10,7 +10,8 @@ const fixture = vi.hoisted(() => ({
   navigate: vi.fn(),
   location: { key: 'initial', pathname: '/studio', search: '', hash: '', state: {} as unknown },
 }))
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router-dom', async original => ({
+  ...await original<typeof import('react-router-dom')>(),
   useLocation: () => fixture.location,
   useNavigate: () => fixture.navigate,
   useNavigationType: () => 'PUSH',
@@ -41,20 +42,20 @@ describe('Deleted Timeline navigation', () => {
     expect(fixture.navigate).toHaveBeenCalledExactlyOnceWith('/studio', {
       replace: true,
       state: studioHistoryState('/rpc', {
-        ...workspace, panel: null, cardId: 'source-card',
+        ...workspace, panel: null, previewCardId: 'source-card',
         timelineId: undefined, branchId: undefined, nodeId: undefined,
       }),
     })
     harness.unmount()
   })
 
-  it('opens a card preview without retaining narrative or panel context', () => {
+  it('opens a card preview without changing the browsing panel or card', () => {
     const harness = renderHook(() => useStudioNavigation({ endpoint: '/rpc', api: {} as StudioApi }))
     harness.current.openCardPreview('preview-card')
     expect(fixture.navigate).toHaveBeenCalledWith('/studio', {
       replace: false,
       state: studioHistoryState('/rpc', {
-        panel: null, search: '', cardId: 'preview-card',
+        ...workspace, previewCardId: 'preview-card', timelineId: undefined, branchId: undefined, nodeId: undefined,
       }),
     })
     harness.unmount()

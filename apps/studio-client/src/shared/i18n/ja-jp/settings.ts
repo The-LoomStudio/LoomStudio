@@ -77,6 +77,8 @@ export const messages = {
   'settings.about': '情報',
   'settings.back': '設定に戻る',
   'settings.categories': '設定カテゴリ',
+  'settings.focusComposerOnStartup': '起動時に本文入力欄にフォーカス',
+  'settings.focusComposerOnStartupHelp': '既定はオフです。再読み込み後の起動時に一度だけ適用され、操作を始めた場合はフォーカスを移しません。',
   'settings.general': '一般',
   'settings.narrativeOverscan': '本文上下のバッファメッセージ数',
   'settings.appearance': '外観',

@@ -10,6 +10,7 @@ type ContextAssetTreeActionsInput = {
   onDelete(id: string): void
   onDuplicate(id: string): void
   onRename?(id: string): void
+  onViewAnchors?(id: string): void
   onAddFolder?(parentId: string): void
   onAddAnchor?(parentId: string): void
   onAddMessageBlock?(parentId: string): void
@@ -92,7 +93,6 @@ export function renderContextAssetTreeIcon(node: ContextAssetAppearance, expande
   if (node.kind === 'message') {
     const role = node.capabilities?.roleHint
     if (role === 'system') return <Cog aria-hidden="true" />
-    if (role === 'developer') return <Cog aria-hidden="true" />
     if (role === 'assistant') return <Bot aria-hidden="true" />
     if (role === 'user') return <UserRound aria-hidden="true" />
     return <MessagesSquare aria-hidden="true" />
@@ -156,6 +156,11 @@ export function readContextAssetTreeActions(
   }
 
   if (items.length > 0) items.unshift({ id: 'add-group', type: 'separator', label: input.t('context.menuGroupAdd') })
+
+  if (node.category === 'lore-root' && input.onViewAnchors) {
+    if (items.length) items.push({ id: 'view-separator', type: 'separator' })
+    items.push({ icon: <Anchor aria-hidden="true" />, id: 'viewAnchors', label: input.t('context.anchors.title'), onSelect: () => input.onViewAnchors!(node.id) })
+  }
 
   if (node.kind === 'message' && input.onChangeRole) {
     const currentRole = node.capabilities?.roleHint ?? 'system'

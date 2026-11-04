@@ -1,3 +1,4 @@
+import { publishCommitNotification } from './commit-notifications.js'
 import type { DataCommitSubscription } from '@loom-studio/data-engine'
 import type { JsonValue } from '@loom-studio/shared'
 import type { ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
@@ -52,10 +53,10 @@ export function createKernel(options: CreateKernelOptions): Kernel {
       stageOneRegistrations = registerStageOneHandlers(kernel, options, eventBus, { studioVersion, kernelVersion, protocolVersion })
       dataCommitSubscription = options.dataCommits.subscribeCommits(commit => {
         const eventOptions = dataCommitEventOptions(commit)
-        eventBus.emit('data.changed', summarizeDataCommit(commit), eventOptions)
+        publishCommitNotification(eventBus, options.diagnostics, 'data.changed', () => summarizeDataCommit(commit), eventOptions)
         const documentOperations = readDocumentOperations(commit)
         if (documentOperations.length > 0) {
-          eventBus.emit('docs.changed', summarizeDocumentCommit(commit, documentOperations), eventOptions)
+          publishCommitNotification(eventBus, options.diagnostics, 'docs.changed', () => summarizeDocumentCommit(commit, documentOperations), eventOptions)
         }
       })
       active = true

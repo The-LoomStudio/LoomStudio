@@ -51,7 +51,7 @@ describe('resource authoring Runtime', () => {
       const created = await runtime.applyResourceAuthoring({ resources: [{ resource: preset, create: true }, { resource: lore, create: true }] })
       const snapshot = created.resources.find(item => item.resource.id === 'preset')!
       expect(await store.listLoreMounts({ source: { kind: 'preset', id: 'preset' } })).toHaveLength(1)
-      await store.replaceLoreMounts({ actor: { kind: 'system', id: 'test' }, source: { kind: 'preset', id: 'preset' }, mounts: [] })
+      await store.replaceLoreMounts({ expectedMountIds: (await store.listLoreMounts({ source: { kind: 'preset', id: 'preset' } })).map(mount => mount.id), actor: { kind: 'system', id: 'test' }, source: { kind: 'preset', id: 'preset' }, mounts: [] })
       expect((await store.getResource('preset'))?.version).toBe(snapshot.version)
       await expect(runtime.applyResourceAuthoring({ resources: [{ resource: snapshot.resource, expectedVersion: snapshot.version, expectedDigest: snapshot.digest }] })).rejects.toThrow('changed since export')
       const currentLore = created.resources.find(item => item.resource.id === 'lore')!
@@ -168,7 +168,7 @@ describe('resource authoring Runtime', () => {
       expect(mount?.origin).toMatchObject({ kind: 'manual', consumerInstallationId: consumer.installationId })
       expect(mount?.origin).not.toHaveProperty('packageId')
       const provider = (await runtime.listExtensionInstallations()).installations.find(item => item.packageId === 'test.provider')!
-      await expect(runtime.removeExtensionPackageResources({ packageId: 'test.provider', uninstall: true, expectedInstallationVersion: provider.version })).rejects.toThrow('dependency cannot be uninstalled')
+      await expect(runtime.uninstallExtensionInstallation({ packageId: 'test.provider', expectedInstallationVersion: provider.version })).rejects.toThrow('dependency cannot be uninstalled')
       expect((await runtime.captureResourceAuthoring({ resourceId })).resource.toolMounts).toEqual(snapshot.resource.toolMounts)
     } finally { await engine.close() }
   })

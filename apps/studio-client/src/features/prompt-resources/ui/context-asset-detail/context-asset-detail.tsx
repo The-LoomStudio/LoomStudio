@@ -1,7 +1,7 @@
 import { isPromptMessageSequence } from '@loom-studio/shared'
 import { buildSearchMatchPattern, searchRevealKey, type SearchReveal } from '../../../../shared/lib/search-match.js'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { Anchor, Bot, Braces, ChevronDown, Equal, Info, KeyRound, ListFilter, ListOrdered, RefreshCw, Settings2, Zap } from 'lucide-react'
+import { Anchor, Bot, Braces, ChevronDown, Equal, Info, KeyRound, ListFilter, RefreshCw, Settings2, Zap } from 'lucide-react'
 import type { ContextAssetNode, PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { LongTextEditor, type LongTextEditorHandle } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
@@ -51,7 +51,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   const anchorDatalistId = useId()
   const [keywordsText, setKeywordsText] = useState(activationDraft.keywords)
   const [anchorPickerOpen, setAnchorPickerOpen] = useState(false)
-  const lastNodeIdRef = useRef(props.node.id)
+  const keywordsSourceRef = useRef({ nodeId: props.node.id, value: activationDraft.keywords })
 
   useEffect(() => {
     const reveal = props.revealMatch
@@ -67,9 +67,12 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
     input.scrollIntoView({ block: 'center' })
   }, [props.revealMatch?.requestId, props.revealMatch?.query, props.node.id, body])
 
-  if (lastNodeIdRef.current !== props.node.id) {
-    lastNodeIdRef.current = props.node.id
-    setKeywordsText(activationDraft.keywords)
+  const previousKeywords = keywordsSourceRef.current
+  if (previousKeywords.nodeId !== props.node.id || previousKeywords.value !== activationDraft.keywords) {
+    keywordsSourceRef.current = { nodeId: props.node.id, value: activationDraft.keywords }
+    if (previousKeywords.nodeId !== props.node.id || keywordsText === previousKeywords.value) {
+      setKeywordsText(activationDraft.keywords)
+    }
   }
 
   if (isPromptMessageSequence(props.node)) {
@@ -149,6 +152,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 onChange={event => updateCapabilities({ targetAnchorId: event.target.value })}
                 onBlur={event => updateCapabilities({ targetAnchorId: event.target.value.trim() }, true)}
                 onKeyDown={event => {
+                  if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
                   if (event.key === 'Enter') {
                     event.currentTarget.blur()
                   }
@@ -227,6 +231,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                     updateActivation({ keywords: keywordsText }, true)
                   }}
                   onKeyDown={event => {
+                    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
                     if (event.key === 'Enter') {
                       event.currentTarget.blur()
                     }
@@ -314,19 +319,6 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
               </dd>
             </div>
           ) : null}
-          <div>
-            <dt><ListOrdered aria-hidden="true" />{props.t('context.metadata.localDepth') || '排序深度 (Depth)'}</dt>
-            <dd>
-              <input
-                className={styles.inlineInput}
-                disabled={readOnly}
-                type="number"
-                value={props.node.capabilities?.localDepth ?? 0}
-                onChange={event => updateCapabilities({ localDepth: parseInt(event.target.value, 10) || 0 })}
-                onBlur={event => updateCapabilities({ localDepth: parseInt(event.target.value, 10) || 0 }, true)}
-              />
-            </dd>
-          </div>
           <div>
             <dt><RefreshCw aria-hidden="true" />{props.t('context.metadata.lifecycle')}</dt>
             <dd>

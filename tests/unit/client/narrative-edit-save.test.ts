@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createElement, isValidElement, type ComponentProps, type ReactElement } from 'react'
+import { projectTimelineRounds } from '../../../apps/studio-client/src/features/narrative-runtime/model/timeline-execution-projection.js'
 import { NarrativeCommunication } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-communication.js'
 import { NarrativeTimeline } from '../../../apps/studio-client/src/widgets/narrative-timeline/narrative-timeline.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
@@ -60,12 +61,17 @@ describe('Narrative正文保存', () => {
     const start = vi.fn()
     const t = createTranslator('zh-CN')
     const props: ComponentProps<typeof NarrativeTimeline> = {
+      rounds: [],
       busy: false, emptyTimelineText: '', hasOlder: false,
       getNodeLink: () => '', onEditNode: vi.fn(), onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t, timeline: [], onStartStory: start,
       openingDraft: { content: '', isPlaceholder: true },
     }
-    const render = () => { hooks.cursor = 0; return elements(NarrativeTimeline(props)) }
+    const render = () => {
+      hooks.cursor = 0
+      props.rounds = projectTimelineRounds(props.workEntries ?? [], props.timeline, '尚未选择预设', props.activeRun)
+      return elements(NarrativeTimeline(props))
+    }
     const button = () => render().find(element => element.type === 'button' && element.props.onClick === start)
     expect(button()?.props.disabled).toBe(false)
     expect(button()?.props.children).toContain('开始一个新故事')
@@ -80,6 +86,7 @@ describe('Narrative正文保存', () => {
   it('automatically supplies node raw text and updated drafts to live counting without a refresh button', () => {
     const t = createTranslator('en-US')
     const props: ComponentProps<typeof NarrativeTimeline> = {
+      rounds: [],
       busy: false, emptyTimelineText: '', hasOlder: true,
       getNodeLink: () => '', onEditNode: vi.fn(), onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t, timelineId: 'timeline',
@@ -88,7 +95,11 @@ describe('Narrative正文保存', () => {
         body: { format: 'loom-markdown.v1', raw: '**Original** {{macro}}' }, createdAt: '2026-09-23T00:00:00Z',
       }],
     }
-    const render = () => { hooks.cursor = 0; return elements(NarrativeTimeline(props)) }
+    const render = () => {
+      hooks.cursor = 0
+      props.rounds = projectTimelineRounds(props.workEntries ?? [], props.timeline, '尚未选择预设', props.activeRun)
+      return elements(NarrativeTimeline(props))
+    }
     expect(render().some(element => element.props['aria-label'] === t('tokens.refresh'))).toBe(false)
     expect(liveCounter.useTokenCounts).toHaveBeenLastCalledWith(['**Original** {{macro}}'], JSON.stringify(['timeline', 'node']))
     expect(elements(render().find(element => element.props.createdAt)?.props.metadata).find(element => 'textTokens' in element.props)?.props.textTokens)
@@ -108,10 +119,11 @@ describe('Narrative正文保存', () => {
     render()
     expect(liveCounter.useTokenCounts).toHaveBeenLastCalledWith(['Changed', 'Older'], JSON.stringify(['other-timeline', 'node', 'older']))
   })
-  it.each([false, true])('keeps an independent icon toggle in the message footer, including empty communication (%s)', hasReply => {
+  it.each([false, true])('keeps communication independent of swipe, including an empty connecting conversation (%s)', hasReply => {
     let mode = 'roleplay'
     const swipe = createElement('button', { 'aria-label': 'Swipe candidates' }, '1 / 1')
     const props: ComponentProps<typeof NarrativeTimeline> = {
+      rounds: [],
       busy: false, emptyTimelineText: '', hasOlder: false,
       getNodeLink: () => '', onEditNode: vi.fn(), onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t: createTranslator('zh-CN'), timelineId: 'timeline',
@@ -120,22 +132,28 @@ describe('Narrative正文保存', () => {
       workEntries: [
         { id: 'story', roundId: 'round', agentSessionId: 'timeline', sequence: 1, runId: 'run', createdAt: '',
           entry: { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Story' } },
-        { id: 'reply', roundId: 'round', agentSessionId: 'timeline', sequence: 2, runId: 'run', createdAt: '',
-          entry: { kind: 'message', role: 'assistant', content: 'Done' } },
+        { id: 'reply', timelinePosition: { anchorNodeId: 'node' }, roundId: 'round', agentSessionId: 'timeline', sequence: 2, runId: 'run', createdAt: '',
+          entry: { kind: 'message', role: 'assistant', purpose: 'discussion', content: 'Done' } },
       ],
+      connecting: !hasReply,
       swipeControls: { nodeId: 'node', content: swipe },
       onDiscuss: () => { mode = 'discussion' },
     }
     if (!hasReply) props.workEntries!.pop()
-    const render = () => { hooks.cursor = 0; return elements(NarrativeTimeline(props)) }
+    const render = () => {
+      hooks.cursor = 0
+      props.rounds = projectTimelineRounds(props.workEntries ?? [], props.timeline, '尚未选择预设', props.activeRun)
+      return elements(NarrativeTimeline(props))
+    }
     const tree = render()
     const footer = tree.find(element => element.props.createdAt && element.props.actions)!
     expect(elements(footer.props.trailing)).toContain(swipe)
-    expect(elements(footer.props.trailing).some(element => element.props['aria-controls'] === 'communication-round:node')).toBe(true)
+    expect(elements(footer.props.trailing).some(element => element.props['aria-controls'] === 'communication-round:node')).toBe(false)
+    expect(tree.some(element => element.props['aria-controls'] === 'communication-round:node')).toBe(true)
     expect(tree.filter(element => element === swipe)).toHaveLength(1)
     const toggle = () => render().find(element => element.props['aria-controls'] === 'communication-round:node')!
     expect(toggle().props['aria-expanded']).toBe(false)
-    expect(isValidElement(toggle().props.children)).toBe(true)
+    expect(elements(toggle().props.children).some(element => element.props.children === 'Agent 对话')).toBe(true)
     expect(tree.some(element => element.props.children === '正文与过程' || element.props.children === '只看正文')).toBe(false)
     ;(toggle().props.onClick as () => void)()
     expect(toggle().props['aria-expanded']).toBe(true)
@@ -156,6 +174,7 @@ describe('Narrative正文保存', () => {
     const save = vi.fn(() => new Promise<void>((accept, fail) => { resolve = accept; reject = fail }))
     const t = createTranslator('en-US')
     const props: ComponentProps<typeof NarrativeTimeline> = {
+      rounds: [],
       busy: false, emptyTimelineText: '', hasOlder: false,
       getNodeLink: () => '', onEditNode: save, onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t, timelineId: 'timeline',
@@ -164,7 +183,11 @@ describe('Narrative正文保存', () => {
         body: { format: 'loom-markdown.v1', raw: 'Original' }, createdAt: '2026-09-23T00:00:00Z',
       }],
     }
-    const render = () => { hooks.cursor = 0; return elements(NarrativeTimeline(props)) }
+    const render = () => {
+      hooks.cursor = 0
+      props.rounds = projectTimelineRounds(props.workEntries ?? [], props.timeline, '尚未选择预设', props.activeRun)
+      return elements(NarrativeTimeline(props))
+    }
     const edit = render().find(element => element.props.label === t('timeline.editLocal') && element.props.onClick)!
     ;(edit.props.onClick as () => void)()
     let editor = render().find(element => element.props.sourceOnly)!

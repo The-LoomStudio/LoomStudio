@@ -43,31 +43,22 @@ describe('sqlite document store', () => {
     }
   })
 
-  it('upgrades an unversioned existing schema without losing documents', async () => {
+  it('rejects an unsupported document schema version', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'loom-docstore-'))
     const filename = join(dir, 'store.sqlite')
 
     try {
-      const first = createSqliteDocumentStore({ filename })
-      await first.write({
-        id: 'legacy-doc',
-        type: 'example.note',
-        content: { preserved: true },
-        expectedVersion: 'new',
-      })
-      first.close()
       const legacy = new DatabaseSync(filename)
-      legacy.prepare('DELETE FROM schema_migrations WHERE namespace = ?').run('platform.documents')
+      legacy.exec(`
+        CREATE TABLE schema_migrations (namespace TEXT PRIMARY KEY, version INTEGER NOT NULL);
+        INSERT INTO schema_migrations (namespace, version) VALUES ('platform.documents', 1);
+      `)
       legacy.close()
 
-      const migrated = createSqliteDocumentStore({ filename })
-      expect(await migrated.get('legacy-doc')).toMatchObject({ content: { preserved: true } })
-      migrated.close()
-      const inspected = new DatabaseSync(filename)
-      const version = inspected.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('platform.documents') as { version: number }
-      inspected.close()
-
-      expect(version.version).toBe(2)
+      expect(() => createSqliteDocumentStore({ filename })).toThrow(expect.objectContaining({
+        code: 'data.sqlite_schema_unsupported',
+        message: 'SQLite schema platform.documents@1 is not supported; expected 2',
+      }))
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -128,13 +119,21 @@ describe('sqlite document store', () => {
       incomplete.close()
 
       expect(() => createSqliteDocumentStore({ filename }))
-        .toThrow('SQLite table document_revisions is missing required columns: created_by_json')
+        .toThrow('SQLite table changesets is missing required columns: committed_at')
 
       const inspected = new DatabaseSync(filename)
-      const migrations = inspected.prepare('SELECT namespace, version FROM schema_migrations ORDER BY namespace').all()
+      const schemaTable = inspected.prepare("SELECT name FROM sqlite_master WHERE name = 'schema_migrations'").get()
+      const tables = inspected.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
+      const indexes = inspected.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name").all()
       inspected.close()
 
-      expect(migrations).toEqual([{ namespace: 'platform.data-engine', version: 1 }])
+      expect(schemaTable).toBeUndefined()
+      expect(tables).toEqual([
+        { name: 'changesets' },
+        { name: 'document_revisions' },
+        { name: 'documents' },
+      ])
+      expect(indexes).toEqual([])
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -152,8 +151,10 @@ describe('sqlite document store', () => {
       `)
       newer.close()
 
-      expect(() => createSqliteDocumentStore({ filename }))
-        .toThrow('SQLite schema platform.documents@3 is newer than supported version 2')
+      expect(() => createSqliteDocumentStore({ filename })).toThrow(expect.objectContaining({
+        code: 'data.sqlite_schema_unsupported',
+        message: 'SQLite schema platform.documents@3 is not supported; expected 2',
+      }))
 
       const inspected = new DatabaseSync(filename)
       const version = inspected.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('platform.documents') as { version: number }

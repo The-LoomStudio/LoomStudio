@@ -104,32 +104,18 @@ describe('agent store', () => {
       expect((await store.getSession(session.id))?.entryCount).toBe(3)
     } finally { engine.close() }
   })
-  it('renames the version 5 Agent reference column without rebinding or rewriting history', async () => {
-    const { engine, store, actor } = createTestContext()
+  it('rejects unsupported version 5 Agent schemas', async () => {
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-1`,
+      now: () => '2026-08-24T00:00:00.000Z',
+    })
     try {
-      const { session } = await store.createSession({
-        actor, agentPresetId: 'legacy-profile', timelineId: 'timeline-a', title: 'Saved work',
-      })
-      await store.appendEntries({
-        actor, agentSessionId: session.id, expectedEntryCount: 0,
-        entries: [{ runId: 'old-run', entry: { kind: 'message', role: 'user', content: 'Keep history' } }],
-      })
-      const before = await store.getEntryPage({ agentSessionId: session.id })
-      engine.database.exec(`
-        ALTER TABLE agent_sessions RENAME COLUMN agent_preset_id TO agent_profile_id;
-        ALTER TABLE agent_sessions DROP COLUMN summary_policy_json;
-        DROP TABLE agent_summary_tasks;
-        ALTER TABLE agent_sessions DROP COLUMN kind;
-        ALTER TABLE agent_sessions DROP COLUMN narrative_mode;
-        ALTER TABLE agent_transcript_entries DROP COLUMN round_id;
-        ALTER TABLE agent_transcript_entries DROP COLUMN candidate_id;
-        UPDATE schema_migrations SET version = 5 WHERE namespace = 'application.agent';
-      `)
-      const reopened = createAgentStore({ engine })
-      expect(await reopened.getEntryPage({ agentSessionId: session.id })).toEqual(before)
-      expect((await reopened.getSession(session.id))?.agentPresetId).toBe('legacy-profile')
-      expect(engine.database.prepare('SELECT agent_preset_id FROM agent_sessions WHERE id = ?').get(session.id))
-        .toEqual({ agent_preset_id: 'legacy-profile' })
+      engine.database.prepare('INSERT INTO schema_migrations (namespace, version) VALUES (?, ?)').run('application.agent', 5)
+      expect(() => createAgentStore({ engine })).toThrow(expect.objectContaining({
+        code: 'data.sqlite_schema_unsupported',
+        message: 'SQLite schema application.agent@5 is not supported; expected 9',
+      }))
     } finally {
       await engine.close()
     }
@@ -153,31 +139,19 @@ describe('agent store', () => {
     }
   })
 
-  it('repairs a version 3 development schema missing tool invocations', async () => {
+  it('rejects unsupported version 3 Agent schemas', async () => {
     const engine = createSqliteDataEngine({
       filename: ':memory:',
       createId: prefix => `${prefix}-1`,
       now: () => '2026-08-24T00:00:00.000Z',
     })
-    engine.database.exec(`
-      CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, agent_profile_id TEXT NOT NULL, title TEXT, head_entry_id TEXT, entry_count INTEGER NOT NULL DEFAULT 0 CHECK (entry_count >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, tombstoned INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, deleted_by_json TEXT, delete_reason TEXT);
-      CREATE TABLE agent_transcript_entries (id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), parent_entry_id TEXT REFERENCES agent_transcript_entries(id), sequence INTEGER NOT NULL CHECK (sequence > 0), run_id TEXT, entry_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE (agent_session_id, sequence));
-      INSERT INTO schema_migrations (namespace, version) VALUES ('application.agent', 3);
-    `)
-
-    createAgentStore({ engine })
-
-    expect(
-      engine.database
-        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'agent_tool_invocations'")
-        .get(),
-    ).toEqual({ name: 'agent_tool_invocations' })
-    expect(
-      engine.database
-        .prepare("SELECT version FROM schema_migrations WHERE namespace = 'application.agent'")
-        .get(),
-    ).toEqual({ version: 9 })
-    engine.close()
+    try {
+      engine.database.prepare('INSERT INTO schema_migrations (namespace, version) VALUES (?, ?)').run('application.agent', 3)
+      expect(() => createAgentStore({ engine })).toThrow(expect.objectContaining({
+        code: 'data.sqlite_schema_unsupported',
+        message: 'SQLite schema application.agent@3 is not supported; expected 9',
+      }))
+    } finally { engine.close() }
   })
 
   it('creates a session and appends a linear batch with server-assigned sequence', async () => {

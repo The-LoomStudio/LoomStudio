@@ -1,8 +1,8 @@
 import type { DocumentTransaction } from '@loom-studio/document-store'
-import { resolveLoomScriptSettings, resolveTextTransformContributionRule, resolveTextExtractorContribution } from '@loom-studio/shared/loom-scripts'
+import { applyTextRuleUsage, resolveTextTransformContributionRule, resolveTextExtractorContribution } from '@loom-studio/shared/loom-scripts'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { LoomScriptMountTarget } from './loom-script-contracts.js'
-import { scriptTextResourceOrigin } from './loom-script-text-migration.js'
+import { scriptTextResourceOrigin } from './script-text-resources.js'
 import { readLoomScriptRevision, selectEffectiveLoomScriptMounts } from './loom-script-resolution.js'
 import type { TextTransformRuleEntry, TextExtractorEntry, TextRuleOwner, TextTransformDiagnostic } from '../transforms/history-text.js'
 import { isExtensionResourceAvailable, readAvailableExtensionInstallations } from '../runtime/extension-resource-access.js'
@@ -27,24 +27,23 @@ export async function resolveScriptTextContributions(ctx: Pick<ApplicationRuntim
   const extractors: TextExtractorEntry[] = []
   const diagnostics: TextTransformDiagnostic[] = []
   for (const mount of mounts) {
-    const adopted = mount.content.adoptedDocumentVersion ?? mount.content.pinnedDocumentVersion
+    if (!mount.content.enabled) continue
+    const adopted = mount.content.adoptedDocumentVersion!
     const script = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId, adopted)
     if (!script) {
       if (mount.content.enabled) diagnostics.push({ code: 'script.missing', message: `Script revision unavailable: ${mount.content.scriptDocumentId}` })
       continue
     }
     const content = script.content
-    const legacyDefault = mount.content.origin.legacyPresetInheritance === true
     if (content.owner.kind === 'extension' && !isExtensionResourceAvailable({ kind: 'extension-package', packageId: content.owner.packageId, installationId: content.owner.installationId }, installations)) continue
-    const settings = mount.content.adoptedSettings ?? resolveLoomScriptSettings(content.settings ?? [], {})
+    const settings = mount.content.adoptedSettings!
     for (const contribution of content.contributions) {
       if (contribution.kind === 'renderer') continue
       const id = content.textResourceIds?.[contribution.id] ?? `${script.id}:${contribution.id}`
       const enabled = mount.content.enabled
-      if (!enabled && !legacyDefault) continue
       if (contribution.requiresCode) {
         const state = executionStates.get(ctx.documents)?.get(mount.id)
-        if (content.runtime !== 'server' || !state?.active || state.revision !== (mount.content.runtimeRevision ?? mount.version)) {
+        if (content.runtime !== 'server' || !state?.active || state.revision !== mount.content.runtimeRevision) {
           diagnostics.push({ code: 'script.code_dependency_unavailable', ruleId: id, message: content.runtime === 'server'
             ? `Contribution ${id} requires its server script to be active at the adopted revision`
             : `Contribution ${id} depends on browser code, which cannot provide a server text-pipeline dependency; use a server runtime` })
@@ -59,8 +58,9 @@ export async function resolveScriptTextContributions(ctx: Pick<ApplicationRuntim
           createdAt: content.createdAt, updatedAt: content.updatedAt,
         }
         if (contribution.kind === 'text-transform') {
-          const rule = resolveTextTransformContributionRule(contribution, settings)
-          rules.push({ ...rule, ...common, enabled: enabled && rule.enabled, orderIndex: mount.content.orderIndex, localOrder: rule.orderIndex, orderOverridden: mount.content.origin.orderOverride === true, orderGroupExplicit: typeof mount.content.origin.groupOrder === 'number', orderGroupKey: JSON.stringify(content.owner), orderGroup: typeof mount.content.origin.groupOrder === 'number' ? mount.content.origin.groupOrder : mount.content.target.kind === 'preset' ? 0 : mount.content.target.kind === 'card' ? 1 : content.owner.kind === 'extension' ? 2 : 3 })
+          const rule = applyTextRuleUsage(resolveTextTransformContributionRule(contribution, settings), mount.content.ruleUsage?.[contribution.id])
+          rules.push({ ...rule, ...common,
+            ...(rule.loreRefs ? { loreRefs: rule.loreRefs.map(ref => ({ ...ref, nodeId: content.loreNodeReferences?.[ref.nodeId] ?? ref.nodeId, resourceId: content.loreResourceReferences?.[ref.resourceId] ?? ref.resourceId })) } : {}), enabled: enabled && rule.enabled, orderIndex: mount.content.orderIndex, localOrder: rule.orderIndex, orderOverridden: mount.content.origin.orderOverride === true, orderGroupExplicit: typeof mount.content.origin.groupOrder === 'number', orderGroupKey: JSON.stringify(content.owner), orderGroup: typeof mount.content.origin.groupOrder === 'number' ? mount.content.origin.groupOrder : mount.content.target.kind === 'preset' ? 0 : mount.content.target.kind === 'card' ? 1 : content.owner.kind === 'extension' ? 2 : 3 })
         } else {
           const extractor = resolveTextExtractorContribution(contribution, settings)
           extractors.push({ ...extractor, ...common, enabled: enabled && extractor.enabled, orderIndex: mount.content.orderIndex + extractor.orderIndex })

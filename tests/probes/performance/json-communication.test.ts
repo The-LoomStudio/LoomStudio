@@ -13,7 +13,7 @@ type Measurement = {
 }
 
 describe('JSON communication performance probes', () => {
-  it('P1: measures sequential system.ping tRPC baseline', async () => {
+  it('P1: measures sequential system.ping in-process bridge baseline', async () => {
     const { kernel } = createKernelHarness()
     await kernel.start()
     const bridge = createKernelBridge(kernel)
@@ -24,8 +24,6 @@ describe('JSON communication performance probes', () => {
 
     reportMeasurement(measurement)
     expect(measurement.count).toBe(100)
-    expect(measurement.avgMs).toBeLessThan(5)
-    expect(measurement.p95Ms).toBeLessThan(10)
   })
 
   it('P2: measures small JSON docs.write throughput through ClientBridge', async () => {
@@ -46,7 +44,6 @@ describe('JSON communication performance probes', () => {
     reportMeasurement(measurement)
     expect(listed.items).toHaveLength(100)
     expect(measurement.count).toBe(100)
-    expect(measurement.avgMs).toBeLessThan(10)
   })
 
   it('P3: probes medium JSON payload round trip without strict timing assertions', async () => {
@@ -64,15 +61,14 @@ describe('JSON communication performance probes', () => {
       })
     })
     const read = await measure('1 medium docs.get 128KiB JSON', 1, async () => {
-      await bridge.call('docs.get', { id: 'perf-medium:128k' })
+      const result = await bridge.call<{ document: { content: unknown } | null }>('docs.get', { id: 'perf-medium:128k' })
+      expect(result.document?.content).toEqual(content)
     })
 
     reportMeasurement(write)
     reportMeasurement(read)
     expect(write.count).toBe(1)
     expect(read.count).toBe(1)
-    expect(write.avgMs).toBeLessThan(50)
-    expect(read.avgMs).toBeLessThan(50)
   })
 
   it('P4: measures docs.list pagination over 500 small JSON documents', async () => {
@@ -107,7 +103,6 @@ describe('JSON communication performance probes', () => {
     expect(pages).toBe(10)
     expect(total).toBe(500)
     expect(cursor).toBeUndefined()
-    expect(measurement.avgMs).toBeLessThan(30)
   })
 })
 

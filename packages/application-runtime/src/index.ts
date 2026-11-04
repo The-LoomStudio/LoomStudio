@@ -63,7 +63,7 @@ export {
   exportCardArtifact,
   importCardBundle,
   readPromptResourceInputs,
-} from './cards/workspace.js'
+} from './cards/card-bundle.js'
 export {
   isPromptResourceArtifact,
   isCardBundleArtifact,
@@ -71,7 +71,7 @@ export {
   normalizeCardBundleArtifact,
   normalizePromptResourceArtifact,
   normalizePortableExtensionPayloadArtifact,
-} from './cards/workspace-codec.js'
+} from './cards/card-bundle-codec.js'
 export {
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
@@ -231,16 +231,9 @@ export type {
   ImportBundleContent,
   CardBundleArtifact,
   CardBundleImportManifest,
-  PortableExtensionPayloadArtifact,
-  PortableExtensionPayloadContent,
-  PromptResourceNode,
-  PromptResourceContent,
-  PromptResourceArtifact,
-  PromptResourceKind,
   CardBundleSourceArtifactRef,
   CardBundleSourceBinding,
-  PromptResourceCompositionCapabilities,
-} from './cards/workspace-types.js'
+} from './cards/card-bundle-types.js'
 
 export type { WorkspaceTarget, WorkspaceMutation, WorkspaceMutationInput } from './runtime/workspace-runtime.js'
 
@@ -256,3 +249,16 @@ export type { UserBackground, UserBackgroundsContent, UserBackgroundsConfig, Add
 export { officialDeclareNarrativeTool } from './agents/official-tools/index.js'
 export { resolvePackageDependency } from './extensions/package-dependency.js'
 export type { ResolvePackageDependencyInput, ResolvedPackageDependency } from './extensions/package-dependency.js'
+
+export type {
+  PromptResourceKind,
+  PromptResourceContent,
+  PromptResourceArtifact,
+  PromptResourceNode,
+  PromptResourceCompositionCapabilities,
+} from './prompt/prompt-resource-types.js'
+
+export type {
+  PortableExtensionPayloadArtifact,
+  PortableExtensionPayloadContent,
+} from './extensions/portable-payload-types.js'

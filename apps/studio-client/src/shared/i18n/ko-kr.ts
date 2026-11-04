@@ -1,3 +1,5 @@
+import { messages as extensionsFlow } from './ko-kr/extensions-flow.js'
+import { messages as extensionReview } from './ko-kr/extension-review.js'
 import { messages as observation } from './ko-kr/observation.js'
 import { messages as userProfile } from './ko-kr/user-profile.js'
 import { messages as common } from './ko-kr/common.js'
@@ -26,6 +28,8 @@ export const koKR = {
   ...state,
   ...prompt,
   ...extensions,
+  ...extensionsFlow,
+  ...extensionReview,
   ...settings,
   ...textTransforms,
   ...logs,

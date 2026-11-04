@@ -91,7 +91,7 @@ describe('Card directory Apply', () => {
   it('rejects a changed shared Prompt but allows an unchanged shared Prompt', async () => {
     const f = await fixture()
     const other = await f.runtime.createCard({ name: 'Other' })
-    await f.runtime.updateCardPromptResources({ cardId: other.card.id, promptResourceIds: f.card.promptResourceIds! })
+    await f.runtime.updateCardPromptResources({ expectedVersion: (await f.runtime.getCard({ cardId: other.card.id })).card.version, cardId: other.card.id, promptResourceIds: f.card.promptResourceIds! })
     const captured = await f.sync.captureCardDirectoryState({ cardId: f.card.id })
     const changed = structuredClone(captured.artifact)
     changed.contextAssets[0]!.children![0]!.body = 'Shared write'

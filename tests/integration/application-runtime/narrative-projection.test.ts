@@ -2,18 +2,26 @@ import { createAgentStore, createNarrativeStore, createPromptResourceStore } fro
 import { createApplicationRuntime, composeAgentTurnPrompt } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { describe, expect, it } from 'vitest'
+import { createBlobStore } from '@loom-studio/asset-store'
+import { serializeMarkdownTextRule } from '@loom-studio/shared/loom-scripts'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { describe, expect, it, onTestFinished } from 'vitest'
 
 async function fixture(count = 3) {
   let sequence = 0
   const createId = (prefix: string) => `${prefix}-${++sequence}`
   const now = () => '2026-09-24T00:00:00.000Z'
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const rootDirectory = mkdtempSync(join(tmpdir(), 'loom-narrative-projection-'))
+  onTestFinished(() => rmSync(rootDirectory, { recursive: true, force: true }))
+  const blobs = createBlobStore({ engine, rootDirectory, createId, now })
   const narratives = createNarrativeStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
   const runtime = createApplicationRuntime({
     dataEngine: engine, documents: createSqliteDocumentStore({ engine }),
-    narratives, promptResources, agents: createAgentStore({ engine, createId, now }),
+    blobs, narratives, promptResources, agents: createAgentStore({ engine, createId, now }),
   })
   const created = await narratives.createTimeline({
     actor: { kind: 'system', id: 'test' }, stateRevisionId: 'initial',
@@ -40,9 +48,31 @@ describe('shared Narrative projection', () => {
         name: 'Card rule', owner: { kind: 'card' as const, cardId: card.id }, enabled: true, orderIndex: 0,
         matcher: { kind: 'regex' as const, pattern: 'RAW', flags: 'g' },
         effect: { kind: 'replace' as const, replacement: 'OLD' },
-        targets: ['narrative' as const], phases: ['display' as const, 'prompt' as const, 'classify' as const],
+        targets: ['narrative' as const], phases: ['display' as const, 'prompt' as const],
       }
-      const first = await f.runtime.upsertTextTransformRule({ ruleId: 'live-card', rule: draft })
+      const { rule: first } = await f.runtime.upsertTextTransformRule({ ruleId: 'live-card', rule: draft })
+      const { rule: firstClassification } = await f.runtime.upsertTextTransformRule({
+        ruleId: 'live-card-classify', rule: { ...draft, phases: ['classify'] },
+      })
+      // Source edits become active only when their real Script mount adopts the new revision.
+      const updateRule = async (ruleId: string, replacement: string) => {
+        const { rule } = await f.runtime.getTextTransformRule({ ruleId })
+        const { artifact } = await f.runtime.exportLoomScript({ scriptDocumentId: rule.scriptDocumentId! })
+        const { script } = await f.runtime.updateLoomScript({
+          scriptDocumentId: rule.scriptDocumentId!, expectedVersion: rule.version,
+          fileName: artifact.fileName,
+          source: serializeMarkdownTextRule({ ...draft, phases: rule.phases, effect: { kind: 'replace', replacement } }),
+        })
+        const { mounts } = await f.runtime.listLoomScriptMounts({ scriptDocumentId: script.id })
+        for (const mount of mounts) await f.runtime.refreshLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version })
+      }
+      const disableRule = async (scriptDocumentId: string) => {
+        const { mounts } = await f.runtime.listLoomScriptMounts({ scriptDocumentId })
+        for (const mount of mounts) await f.runtime.updateLoomScriptMount({
+          mountId: mount.id, expectedVersion: mount.version, enabled: false,
+          orderIndex: mount.orderIndex, grantedCapabilities: mount.grantedCapabilities,
+        })
+      }
       const created = await f.runtime.createNarrativeTimeline({ cardId: card.id })
       const source = { kind: 'narrative' as const, timelineId: created.timeline.id, branchId: created.branch.id }
       const stateTarget = { scope: 'timeline' as const, timelineId: created.timeline.id, branchId: created.branch.id }
@@ -54,29 +84,31 @@ describe('shared Narrative projection', () => {
         selection: { kind: 'tail', count: 1 }, processing: { phase: 'prompt', presetId: f.preset.id },
       })).text
       expect((await project('display')).entries[0]?.text).toBe('OLD')
-      const saved = await f.runtime.upsertTextTransformRule({
-        ruleId: 'live-card', expectedVersion: first.rule.version,
-        rule: { ...draft, effect: { kind: 'replace', replacement: 'NEW RAW' } },
-      })
+      await updateRule('live-card', 'NEW RAW')
+      await updateRule('live-card-classify', 'NEW RAW')
       expect((await project('display')).entries[0]).toMatchObject({ text: 'NEW RAW', originalText: 'RAW', appliedRuleIds: ['live-card'] })
       expect(await prompt()).toBe('NEW RAW')
       expect((await project('classify')).entries[0]?.text).toBe('NEW RAW')
       const override = await f.runtime.upsertTextPipelineOverride({ source, phase: 'display', disabledRuleIds: ['live-card'], orderedRuleIds: [] })
       expect((await project('display')).entries[0]?.text).toBe('RAW')
       await f.runtime.upsertTextPipelineOverride({ source, phase: 'display', expectedVersion: override.override.version, disabledRuleIds: [], orderedRuleIds: [] })
-      const disabled = await f.runtime.upsertTextTransformRule({
-        ruleId: 'live-card', expectedVersion: saved.rule.version, rule: { ...draft, enabled: false },
-      })
+      await disableRule(first.scriptDocumentId!)
+      await disableRule(firstClassification.scriptDocumentId!)
       expect((await project('display')).entries[0]?.text).toBe('RAW')
       expect(await prompt()).toBe('RAW')
       expect((await project('classify')).entries[0]?.text).toBe('RAW')
-      await f.runtime.deleteTextTransformRule({ ruleId: 'live-card', expectedVersion: disabled.rule.version })
+      for (const ruleId of ['live-card', 'live-card-classify']) {
+        const { rule } = await f.runtime.getTextTransformRule({ ruleId })
+        await f.runtime.deleteTextTransformRule({ ruleId, expectedVersion: rule.version })
+      }
       expect((await project('display')).entries[0]?.text).toBe('RAW')
       expect(await prompt()).toBe('RAW')
       expect((await project('classify')).entries[0]?.text).toBe('RAW')
-      await f.runtime.upsertTextTransformRule({
-        ruleId: 'new-card-rule', rule: { ...draft, effect: { kind: 'replace', replacement: 'ADDED' } },
-      })
+      for (const [ruleId, phases] of [['new-card-rule', draft.phases], ['new-card-classify', ['classify']]] as const) {
+        await f.runtime.upsertTextTransformRule({
+          ruleId, rule: { ...draft, phases: [...phases], effect: { kind: 'replace', replacement: 'ADDED' } },
+        })
+      }
       expect((await project('display')).entries[0]?.text).toBe('ADDED')
       expect(await prompt()).toBe('ADDED')
       expect((await project('classify')).entries[0]?.text).toBe('ADDED')
@@ -151,7 +183,7 @@ describe('shared Narrative projection', () => {
         historyRules: { narrative: ['start', 'finish'].map(id => rules.find(rule => rule.id === id)!), session: [] },
       })
       const narrativeText = prompt.messages.filter(message =>
-        'fragmentIds' in message && (message.fragmentIds as string[]).some(id => id.startsWith('runtime.narrative:')),
+        'fragmentIds' in message && (message.fragmentIds as string[]).some(id => id === `runtime.timeline:${f.timeline.id}:text`),
       ).map(message => message.content).join('\n\n')
       expect(narrativeText).toBe(processed.text)
       expect((await f.runtime.listAgentSessions()).sessions).toEqual([])

@@ -66,7 +66,7 @@ describe('Agent Preset dangling references', () => {
     try {
       const profile = await createPreset()
       const mounts = [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }]
-      await runtime.replacePresetToolMounts({ presetId: profile.id, mounts })
+      await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: profile.id })).mounts.map(mount => mount.id), presetId: profile.id, mounts })
       agentTools.replaceDefinitions([])
       const { agentPreset: renamed } = await runtime.updateAgentPreset({
         agentPresetId: profile.id, expectedVersion: profile.version, name: 'Renamed',
@@ -77,19 +77,19 @@ describe('Agent Preset dangling references', () => {
       })
       expect(updated.delivery).toBe('complete')
       expect((await runtime.listPresetToolMounts({ presetId: profile.id })).mounts).toMatchObject(mounts)
-      await expect(runtime.replacePresetToolMounts({ presetId: profile.id, mounts }))
+      await expect(runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: profile.id })).mounts.map(mount => mount.id), presetId: profile.id, mounts }))
         .rejects.toThrow('not registered')
-      await expect(runtime.replacePresetToolMounts({
+      await expect(runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: profile.id })).mounts.map(mount => mount.id),
         presetId: profile.id, mounts: [{ toolId: 'missing/tool', orderIndex: 0, defaultEnabled: true }],
       }))
         .rejects.toThrow('not registered')
       expect((await runtime.getAgentPreset({ agentPresetId: profile.id })).agentPreset).toEqual(updated)
       agentTools.replaceDefinitions([tool])
-      const { mounts: replaced } = await runtime.replacePresetToolMounts({
+      const { mounts: replaced } = await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: profile.id })).mounts.map(mount => mount.id),
         presetId: profile.id, mounts: [{ ...mounts[0]!, defaultEnabled: false }],
       })
       expect(replaced).toMatchObject([{ toolId: tool.id, defaultEnabled: false }])
-      const { mounts: cleared } = await runtime.replacePresetToolMounts({ presetId: profile.id, mounts: [] })
+      const { mounts: cleared } = await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: profile.id })).mounts.map(mount => mount.id), presetId: profile.id, mounts: [] })
       expect(cleared).toEqual([])
     } finally { await engine.close() }
   })

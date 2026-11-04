@@ -134,7 +134,7 @@ describe('Published Narrative context', () => {
     let f = await fixture(filename)
     try {
       const { resource: preset } = await f.runtime.createPromptResource({ resourceKind: 'preset', name: 'Writer' })
-      await f.runtime.replacePresetToolMounts({
+      await f.runtime.replacePresetToolMounts({ expectedMountIds: (await f.runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id),
         presetId: preset.id, mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }],
       })
       const { providerProfile } = await f.runtime.createProviderProfile({

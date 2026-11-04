@@ -1,6 +1,6 @@
 # `@loom-studio/shared`
 
-本包共享无业务所有权的结构化身份、引用和挂载合同；Card/Extension 安装身份及 Agent Preset 生命周期由 Application 与 Extension Host 各自负责，不在 `shared` 建立通用资源注册表。直接依赖 `zod` 是为了定义可跨层复用的边界 Schema；领域归属、目标存在性和持久化仍由调用方负责。
+本包共享跨端的结构化身份、引用、挂载合同及纯校验规则，不拥有业务对象的持久化和执行生命周期；Card/Extension 安装身份及 Agent Preset 生命周期由 Application 与 Extension Host 各自负责，不在 `shared` 建立通用资源注册表。直接依赖 `zod` 是为了定义可跨层复用的边界 Schema；领域归属、目标存在性和持久化仍由调用方负责。
 
 > **状态**：Active Package Guide / Current Source Is Authority
 

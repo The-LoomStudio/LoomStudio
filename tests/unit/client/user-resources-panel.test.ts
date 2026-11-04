@@ -21,7 +21,7 @@ describe('User resources navigation and tree model', () => {
     expect(readStudioRoute('/studio/user')).toEqual({ panel: 'user' })
   })
 
-  it('builds tree nodes correctly and indexes resource by node id', () => {
+  it('lists resource roots and indexes only the rows consumed by the panel', () => {
     const presetResource: PromptResource = {
       id: 'res-preset-1',
       version: 1,
@@ -74,7 +74,7 @@ describe('User resources navigation and tree model', () => {
     expect(presetGroup?.children).toHaveLength(1)
     expect(presetGroup?.children?.[0].id).toBe('node-preset-root')
     expect(presetGroup?.children?.[0].label).toBe('Custom Preset')
-    expect(presetGroup?.children?.[0].children?.[0].id).toBe('child-1')
+    expect(presetGroup?.children?.[0].children).toBeUndefined()
 
     // Lore group
     const settingGroup = nodes.find(n => n.id === 'user:lore')
@@ -95,7 +95,7 @@ describe('User resources navigation and tree model', () => {
 
     // Verify lookup index by node id
     expect(resourcesByNode.get('node-preset-root')).toBe(presetResource)
-    expect(resourcesByNode.get('child-1')).toBe(presetResource)
+    expect(resourcesByNode.has('child-1')).toBe(false)
     expect(resourcesByNode.get('node-lore-root')).toBe(loreResource)
     expect(resourcesByNode.get('node-ext-root')).toBeUndefined()
   })

@@ -84,7 +84,7 @@ Overlay 不直接压缩 Column。需要避免末尾内容、焦点目标或滚�
 
 ## 5. Narrative 默认 Placement
 
-Studio Shell 从 Chat Composer 外框和未展开 Agent 时的 Composer Base 读取三个实时锚点：Narrative 左边缘、Narrative 右边缘和 Composer Base 顶边。默认 Reference Window 使用锚点计算几何，不再通过固定 `vw`、输入框估算高度或硬编码像素逼近正文。
+Studio Shell 从 Chat Composer 外框读取 Narrative 左右两个实时锚点，供默认 Reference Window 计算水平范围。Composer Base 顶边没有布局消费者，已停止测量和发布；窗口高度由 Shell 现有可用高度规则管理。
 
 默认 Placement 分为：
 
@@ -93,7 +93,7 @@ Studio Shell 从 Chat Composer 外框和未展开 Agent 时的 Composer Base 读
 | `beside-narrative` | 屏幕左边缘到 Narrative 左边缘 | Model、Character、Lore |
 | `cover-narrative` | 屏幕左边缘到 Narrative 右边缘 | Preset、Resource、Inspector、Logs |
 
-两者的垂直范围都是 Window 顶部间距到 Composer Base 顶边。Agent 展开不改变该底部锚点。用户显式 Resize 后保存的 Window Size 优先于默认 Placement；Immersive Mode 继续覆盖 Reference Placement。
+两者默认高度沿用 Shell 的 `calc(100% - 50px)` 规则，不依赖 Composer Base 顶边。用户显式 Resize 后保存的 Window Size 优先于默认 Placement；Immersive Mode 继续覆盖 Reference Placement。
 
 Placement 只定义默认展开几何，不定义用户缩放下限。所有 Reference Window 共用 `--loom-window-min-width`，当前默认值为 `240px`；Model、Character、Lore、Preset、Resource、Inspector 和 Logs 都可以被用户缩到 Narrative 左边缘以内。内容是否仍适合窄宽度，由 Window 内的 Column 组合和业务 Panel 自己处理，不允许用 Placement 类型阻止缩放。
 

@@ -94,13 +94,7 @@ describe('sqlite data engine', () => {
 
   it('commits one journal fact after a successful transaction without storing entity content', async () => {
     const engine = createTestEngine()
-    engine.migrate({
-      namespace: 'test.notes',
-      migrations: [{
-        version: 1,
-        migrate: database => database.exec('CREATE TABLE test_notes (id TEXT PRIMARY KEY, content TEXT NOT NULL)'),
-      }],
-    })
+    engine.initializeSchema({ namespace: 'test.notes', version: 1, initialize: database => database.exec('CREATE TABLE test_notes (id TEXT PRIMARY KEY, content TEXT NOT NULL)') })
 
     const observed = vi.fn()
     engine.subscribeCommits(observed)
@@ -133,13 +127,7 @@ describe('sqlite data engine', () => {
 
   it('rolls back failed and empty transactions without notifying observers', async () => {
     const engine = createTestEngine()
-    engine.migrate({
-      namespace: 'test.notes',
-      migrations: [{
-        version: 1,
-        migrate: database => database.exec('CREATE TABLE test_notes (id TEXT PRIMARY KEY)'),
-      }],
-    })
+    engine.initializeSchema({ namespace: 'test.notes', version: 1, initialize: database => database.exec('CREATE TABLE test_notes (id TEXT PRIMARY KEY)') })
     const observed = vi.fn()
     engine.subscribeCommits(observed)
 
@@ -177,61 +165,28 @@ describe('sqlite data engine', () => {
     engine.close()
   })
 
-  it('keeps migration versions namespaced and rejects gaps, newer schemas, and failed upgrades', () => {
+  it('initializes the current namespaced schema once and rejects mismatched versions', async () => {
     const engine = createTestEngine()
-    engine.migrate({
-      namespace: 'test.valid',
-      migrations: [{ version: 1, migrate: database => database.exec('CREATE TABLE valid_v1 (id TEXT)') }],
-    })
-
-    expect(() => engine.migrate({
-      namespace: 'test.gap',
-      migrations: [{ version: 2, migrate: () => undefined }],
-    })).toThrow('Missing SQLite migration for test.gap after version 0')
-
-    engine.database.prepare('INSERT INTO schema_migrations (namespace, version) VALUES (?, ?)').run('test.newer', 2)
-    expect(() => engine.migrate({
-      namespace: 'test.newer',
-      migrations: [{ version: 1, migrate: () => undefined }],
-    })).toThrow('SQLite schema test.newer@2 is newer than supported version 1')
-
-    expect(() => engine.migrate({
-      namespace: 'test.valid',
-      migrations: [
-        { version: 1, migrate: () => undefined },
-        {
-          version: 2,
-          migrate: database => {
-            database.exec('CREATE TABLE rolled_back_v2 (id TEXT)')
-            throw new Error('migration failed')
-          },
-        },
-      ],
-    })).toThrow('migration failed')
-
-    const versions = engine.database
-      .prepare("SELECT namespace, version FROM schema_migrations WHERE namespace LIKE 'test.%' ORDER BY namespace")
-      .all()
-    const rolledBackTable = engine.database
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'rolled_back_v2'")
-      .get()
-    expect(versions).toEqual([
-      { namespace: 'test.newer', version: 2 },
-      { namespace: 'test.valid', version: 1 },
-    ])
-    expect(rolledBackTable).toBeUndefined()
-    engine.close()
+    const initialize = vi.fn(database => database.exec('CREATE TABLE current_rows (id TEXT)'))
+    try {
+      engine.initializeSchema({ namespace: 'test.current', version: 9, initialize })
+      engine.initializeSchema({ namespace: 'test.current', version: 9, initialize })
+      expect(initialize).toHaveBeenCalledOnce()
+      expect(() => engine.initializeSchema({ namespace: 'test.current', version: 1, initialize })).toThrow('not supported')
+      expect(() => engine.initializeSchema({ namespace: 'test.current', version: 10, initialize })).toThrow('not supported')
+      expect(() => engine.initializeSchema({ namespace: 'test.failed', version: 3, initialize: db => {
+        db.exec('CREATE TABLE rolled_back (id TEXT)')
+        throw new Error('initialization failed')
+      } })).toThrow('initialization failed')
+      expect(engine.database.prepare("SELECT name FROM sqlite_master WHERE name = 'rolled_back'").get()).toBeUndefined()
+      expect(engine.database.prepare("SELECT version FROM schema_migrations WHERE namespace = 'test.failed'").get()).toBeUndefined()
+      expect(engine.database.prepare("SELECT version FROM schema_migrations WHERE namespace = 'test.current'").get()).toEqual({ version: 9 })
+    } finally { await engine.close() }
   })
 
   it('rejects reentrant calls to read and transact inside an active transaction', async () => {
     const engine = createTestEngine()
-    engine.migrate({
-      namespace: 'test.reentrancy',
-      migrations: [{
-        version: 1,
-        migrate: database => database.exec('CREATE TABLE test_reentrancy (id TEXT PRIMARY KEY)'),
-      }],
-    })
+    engine.initializeSchema({ namespace: 'test.reentrancy', version: 1, initialize: database => database.exec('CREATE TABLE test_reentrancy (id TEXT PRIMARY KEY)') })
 
     await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => {
       await engine.read(database => database.prepare('SELECT 1').get())
@@ -250,7 +205,7 @@ describe('sqlite data engine', () => {
     const engine = createTestEngine()
     engine.close()
 
-    expect(() => engine.migrate({ namespace: 'test.closed', migrations: [] })).toThrowError(
+    expect(() => engine.initializeSchema({ namespace: 'test.closed', version: 1, initialize: () => undefined })).toThrowError(
       expect.objectContaining({ code: 'data.engine_closed' }),
     )
     await expect(engine.read(database => database.prepare('SELECT 1').get())).rejects.toMatchObject({
@@ -263,13 +218,7 @@ describe('sqlite data engine', () => {
 
   it('drains an active operation before closing the database', async () => {
     const engine = createTestEngine()
-    engine.migrate({
-      namespace: 'test.drain',
-      migrations: [{
-        version: 1,
-        migrate: database => database.exec('CREATE TABLE test_drain (id TEXT PRIMARY KEY)'),
-      }],
-    })
+    engine.initializeSchema({ namespace: 'test.drain', version: 1, initialize: database => database.exec('CREATE TABLE test_drain (id TEXT PRIMARY KEY)') })
     let release!: () => void
     const entered = new Promise<void>(resolve => {
       release = resolve

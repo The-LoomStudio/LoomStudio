@@ -21,7 +21,7 @@ const totalsSql = `COUNT(*) AS requests, COUNT(usage_json) AS reported, COALESCE
   COALESCE(SUM(json_extract(usage_json, '$.reasoningTokens')), 0) AS reasoning`
 
 export function createStatisticsStore(engine: SqliteDataEngine, now: () => string, onError?: (error: unknown) => void) {
-  engine.migrate({ namespace: 'application.statistics', migrations: [{ version: 1, migrate(db) {
+  engine.initializeSchema({ namespace: 'application.statistics', version: 1, initialize(db) {
     db.exec(`CREATE TABLE statistics_metadata (id INTEGER PRIMARY KEY CHECK(id = 1), started_at TEXT NOT NULL);
       CREATE TABLE usage_requests (id TEXT PRIMARY KEY, started_at TEXT NOT NULL, ended_at TEXT,
         provider_profile_id TEXT NOT NULL, provider_id TEXT NOT NULL, provider_name TEXT NOT NULL, model_id TEXT, capability_id TEXT,
@@ -31,7 +31,7 @@ export function createStatisticsStore(engine: SqliteDataEngine, now: () => strin
       CREATE TABLE play_interactions (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, session_id TEXT, timeline_id TEXT, card_id TEXT, kind TEXT NOT NULL);
       CREATE INDEX play_interactions_time ON play_interactions(created_at, id);`)
     db.prepare('INSERT INTO statistics_metadata VALUES (1, ?)').run(now())
-  } }] })
+  } })
   const formatters = new Map<string, Intl.DateTimeFormat>()
   engine.database.function('statistics_date', (date, zone) => {
     const timeZone = String(zone)

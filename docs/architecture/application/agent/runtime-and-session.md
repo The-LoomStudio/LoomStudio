@@ -123,7 +123,7 @@ Run 状态记录中的版本化 `recovery` 保存原请求、实际 Branch、Pro
 
 一轮包含扮演输入及下一次扮演前的所有 Run、指导和修订；Swipe 切换整段采用位置，同时恢复 State / Workspace。旧楼层 Fork 共享既有工作前缀。辅助执行携带固定来源与采用游标；候选或内容版本变化后拒绝过期写入。辅助会话的有效工作历史和工作摘要同样按来源过滤，原始事实保留。
 
-剧情总结和工作总结独立。特殊 Session 的工作缓冲按完整轮次保留，普通副 Session 沿用原正文楼层映射；退休边界与并发用全局计数分开。`loom-timeline-archive.v2` 保存所有根会话事实（含旁支）、采用 Heads、候选和恢复引用；导入仅重映射宿主引用，不执行工具，v1 仍可导入基本正文。旧开发故事升级只建立正文消息引用，不补造旧协作历史。
+剧情总结和工作总结独立。特殊 Session 的工作缓冲按完整轮次保留，普通副 Session 沿用原正文楼层映射；退休边界与并发用全局计数分开。`loom-timeline-archive.v2` 保存所有根会话事实（含旁支）、采用 Heads、候选和恢复引用；必需的 `runtimeContext`、Narrative Node `kind` 与 `work-summary.boundary` 均由导入校验。导入只重映射宿主引用，不执行工具；当前解析器只接受 Archive v2，不提供 v1 格式转换。
 
 ## 7. Narrative Sampling（叙事采样读取）
 
@@ -152,3 +152,5 @@ Session 恢复先查询服务端 Run 状态，再决定重新观察或显示暂�
 Studio 三个 Run 发送入口为每次提交生成 `requestId`；确认失败后，同一 Session 中相同请求的显式重试沿用该 ID，确认成功后下一次发送生成新 ID。服务端以其确定初始 Run 身份，校验规范化请求摘要；同 ID、不同参数明确拒绝。
 
 存活 Run 由内存记录去重；重启或记录回收后，使用已有 Session/Run 索引查询首个持久检查点中的发送摘要，不扫描整个 Transcript，不重放工具。没有保存检查点的准备阶段失败不等同于已有可恢复 Run。找回停止进程的 Run 后通过已有状态/Transcript 恢复，不自动续跑模型。恢复产生的 continuation 仍使用新的 Run ID。
+
+Timeline/Card级联删除成功提交后，按AgentStore归属取消并forget所有被删除Session的临时摘要任务；删除回滚保留任务。晚到审计不会重新创建已删除Session。持久恢复中的partial引用指向实际assistant partial，reasoning条目不占用该ID；执行准备期与后续运行检查使用同一AgentStore执行登记。

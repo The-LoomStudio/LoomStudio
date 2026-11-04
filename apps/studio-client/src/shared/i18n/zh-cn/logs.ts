@@ -1,4 +1,11 @@
 export const messages = {
+  "logs.extraFilters": "附加筛选",
+  "logs.clearExtraFilters": "清除附加筛选",
+  "logs.columnTime": "时间",
+  "logs.columnMessage": "事件内容",
+  "logs.columnMetrics": "状态 / 用量 / 耗时",
+  "logs.columnActions": "操作",
+
   'logs.title': '系统日志',
   'logs.ref.card': '角色',
   'logs.ref.timeline': '时间线',

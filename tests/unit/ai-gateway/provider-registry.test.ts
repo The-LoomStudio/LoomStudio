@@ -9,14 +9,14 @@ describe('official provider adapter registry', () => {
       return Response.json({ data: [{ id: ' model-a ' }, { id: 'model-a' }] })
     }) as typeof fetch
     const registry = createOfficialProviderAdapterRegistry()
-    await expect(registry.listModels('openai-compatible', {
+    await expect(registry.listModels('official.openai-compatible', {
       config: { baseUrl: 'https://example.test/v1' }, credential: { apiKey: ' key ' }, fetch: transport,
     })).resolves.toEqual(['model-a'])
     expect(requests).toEqual([{ url: 'https://example.test/v1/models', authorization: 'Bearer key' }])
-    await expect(registry.listModels('openai-compatible', {
+    await expect(registry.listModels('official.openai-compatible', {
       config: { baseUrl: 'not-a-url' }, credential: { apiKey: 'key' }, fetch: transport,
     })).rejects.toThrow()
-    await expect(registry.listModels('openai-compatible', {
+    await expect(registry.listModels('official.openai-compatible', {
       config: {}, credential: { apiKey: ' ' }, fetch: transport,
     })).rejects.toThrow()
     expect(requests).toHaveLength(1)
@@ -33,6 +33,7 @@ describe('official provider adapter registry', () => {
       credential: { apiKey: 'account-key' },
     })
     expect(resolved).toMatchObject({ provider: { kind, apiKey: 'account-key' }, capability: { streaming: true } })
+    expect(() => createOfficialProviderAdapterRegistry().resolve(kind, { config: {}, credential: { apiKey: 'account-key' } })).toThrow('Unsupported provider extension')
   })
 
   it('validates provider-owned account and credential schemas', () => {
@@ -48,7 +49,7 @@ describe('official provider adapter registry', () => {
 
   it('uses one adapter for multiple provider accounts without sharing credentials', () => {
     const registry = createOfficialProviderAdapterRegistry()
-    const first = registry.resolve('openai-compatible', {
+    const first = registry.resolve('official.openai-compatible', {
       config: { baseUrl: 'https://first.test/v1' },
       credential: { apiKey: 'first-key' },
     })
@@ -63,7 +64,7 @@ describe('official provider adapter registry', () => {
 
   it('keeps fake as a credential-free built-in adapter', () => {
     const registry = createOfficialProviderAdapterRegistry()
-    expect(registry.resolve('fake', { config: {} })).toMatchObject({
+    expect(registry.resolve('official.fake', { config: {} })).toMatchObject({
       provider: { kind: 'fake' },
       capability: { streaming: false },
     })

@@ -19,7 +19,6 @@ describe('studio window header contributions', () => {
       activePanel: 'model',
       actionsTargetRef: () => {},
       assetWorkspaceId: 'workspace',
-      onPanelHistory: () => {},
       t: key => key,
     }))
 

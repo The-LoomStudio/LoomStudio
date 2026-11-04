@@ -33,7 +33,7 @@
 
 Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
-- `createBlobStore(options)`：创建内容寻址字节存储；源码位于 `src/blobs/`，仍使用 `platform.blob-store` migration namespace。
+- `createBlobStore(options)`：创建内容寻址字节存储；源码位于 `src/blobs/`，仍使用 `platform.blob-store` schema namespace。
 - `createAssetStore(options)`：创建资产管理实例（需注入 `engine`、`blobs`、`createId` 与 `now`）；
 - 核心操作方法：
   - `preserveSourceArtifact()`、`getSourceArtifact()`；

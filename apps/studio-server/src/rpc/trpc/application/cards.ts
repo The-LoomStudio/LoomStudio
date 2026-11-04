@@ -148,6 +148,7 @@ export const cardsProcedures = {
   'updateCardPromptResources': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['updateCardPromptResources']>[0] => {
     return {
       cardId: readString(params, 'cardId'),
+      expectedVersion: readNumber(params, 'expectedVersion'),
       promptResourceIds: readStringArray(params, 'promptResourceIds'),
       ...(isRecord(params) && params.externalPromptResourceIds !== undefined ? {
         externalPromptResourceIds: readStringArray(params, 'externalPromptResourceIds'),

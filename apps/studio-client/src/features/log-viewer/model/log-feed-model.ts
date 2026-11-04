@@ -14,8 +14,13 @@ export async function readLogPages(list: StudioApi['logs']['list'], initialCurso
   // ponytail: 防止持续高速写入时刷新永不结束；日志缓冲区当前最多 5000 条，20 页留有一倍余量。
   for (let pageNumber = 0; pageNumber < 20; pageNumber += 1) {
     const page: LogPage = await list({ cursor, limit: 500 })
+    if (page.gap?.reason === 'reset') {
+      items.length = 0
+      gap = page.gap
+    } else {
+      gap ??= page.gap
+    }
     items.push(...page.items)
-    gap ??= page.gap
     if (!page.hasMore) return { items, cursor: page.cursor, gap, truncated: false }
     if (page.cursor === cursor) throw new Error('Log pagination cursor did not advance')
     cursor = page.cursor

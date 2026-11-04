@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
-import { assertDevelopmentDataReady, developmentDataEnvironment } from '../lib/development-data-paths.mjs'
+import { developmentDataEnvironment } from '../lib/development-data-paths.mjs'
 
 const target = process.argv[2]
 if (target !== 'server' && target !== 'client') {
@@ -9,7 +9,6 @@ if (target !== 'server' && target !== 'client') {
 }
 
 const repositoryRoot = resolve(import.meta.dirname, '../..')
-if (target === 'server') assertDevelopmentDataReady(repositoryRoot)
 const developmentEnvironment = { ...developmentDataEnvironment(repositoryRoot), NODE_ENV: 'development' }
 const initialBuild = spawnSync('pnpm', ['run', 'build:packages'], {
   cwd: repositoryRoot,

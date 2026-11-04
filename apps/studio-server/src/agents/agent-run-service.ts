@@ -13,9 +13,7 @@ type AgentRun = {
   eventBytes: number
   firstCursor: number
   nextCursor: number
-  partialText: string
-  partialReasoning: string
-  partialToolInputs: Extract<AgentRunEvent, { type: 'tool-input-delta' }>[]
+  partialEvents: Extract<AgentRunEvent, { type: 'text-delta' | 'reasoning-delta' | 'tool-input-delta' }>[]
   sessionId: string
   pendingCompletion?: Extract<AgentRunEvent, { type: 'completed' }>
   replayTimer?: ReturnType<typeof setTimeout>
@@ -43,9 +41,7 @@ type AgentRunSubscription = {
   done: boolean
   state: AgentRun['state']
   replayExpired?: boolean
-  partialText?: string
-  partialReasoning?: string
-  partialToolInputs?: Extract<AgentRunEvent, { type: 'tool-input-delta' }>[]
+  partialEvents?: AgentRun['partialEvents']
   pendingApprovals?: Extract<AgentRunEvent, { type: 'mutation-approval-requested' | 'history-read-approval-requested' }>[]
 }
 
@@ -202,11 +198,11 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
             if (state.state === 'running' || state.state === 'created') {
               const inspected = await runtime.inspectAgentRunState({ agentSessionId: sessionId, runId })
               if (inspected.state === 'running') throw new Error('Agent Run is executing in another process; reconnect to its owner')
-              return { events: [], nextCursor: cursor, done: true, state: inspected.state, ...(inspected.reason ? { reason: inspected.reason } : {}), replayExpired: true, partialText: '', pendingApprovals: [] }
+              return { events: [], nextCursor: cursor, done: true, state: inspected.state, ...(inspected.reason ? { reason: inspected.reason } : {}), replayExpired: true, partialEvents: [], pendingApprovals: [] }
             }
             const terminal = state.state === 'completed' ? 'completed' : state.state === 'suspended' ? 'suspended'
               : state.state === 'aborted' || state.state === 'discarded' ? 'cancelled' : 'failed'
-            return { events: [], nextCursor: cursor, done: true, state: terminal, ...(state.reason ? { reason: state.reason } : {}), replayExpired: true, partialText: '', pendingApprovals: [] }
+            return { events: [], nextCursor: cursor, done: true, state: terminal, ...(state.reason ? { reason: state.reason } : {}), replayExpired: true, partialEvents: [], pendingApprovals: [] }
           }
           pageCursor = page.nextCursor
         } while (pageCursor)
@@ -226,9 +222,7 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         pendingApprovals: [...run.mutationApprovals.values()].map(pending => pending.event),
         ...(replayExpired ? {
           replayExpired: true,
-          partialText: run.partialText,
-          partialReasoning: run.partialReasoning,
-          partialToolInputs: run.partialToolInputs.map(input => ({ ...input })),
+          partialEvents: run.partialEvents.map(event => ({ ...event })),
         } : {}),
       }
     },
@@ -371,8 +365,7 @@ function startAgentRun(
     id, createdAt: timestamp, updatedAt: timestamp, controller, request, sourceRunId, sessionId: request.agentSessionId,
     receivedInterjections: Boolean(request.interjectionRequestId),
     ...(continuation ? { checkpoint: continuation } : {}),
-    events: [], eventSizes: [], eventBytes: 0, firstCursor: 0, nextCursor: 0, partialText: '', partialReasoning: '',
-    partialToolInputs: [], state: 'running', promise: Promise.resolve(), mutationApprovals: new Map(),
+    events: [], eventSizes: [], eventBytes: 0, firstCursor: 0, nextCursor: 0, partialEvents: [], state: 'running', promise: Promise.resolve(), mutationApprovals: new Map(),
     ...(request.requestId ? { sendRequestDigest: continuation?.recovery?.sendRequestDigest ?? source?.sendRequestDigest ?? sendRequestDigest(request) } : {}),
   }
   const transferCheckpoint = () => {
@@ -385,21 +378,16 @@ function startAgentRun(
     run.updatedAt = new Date().toISOString()
     if (event.type === 'failed') run.reason = event.error.message
     if (event.type === 'suspended' || event.type === 'cancelled') run.reason = event.reason
-    if (event.type === 'text-delta') run.partialText += event.delta
-    if (event.type === 'reasoning-delta') run.partialReasoning += event.delta
-    if (event.type === 'tool-input-delta') {
-      const existing = run.partialToolInputs.find(input => input.providerRunId === event.providerRunId && input.toolCallId === event.toolCallId)
+    if (event.type === 'text-delta' || event.type === 'reasoning-delta' || event.type === 'tool-input-delta') {
+      const existing = run.partialEvents.find(item => item.type === event.type && item.streamId === event.streamId)
       if (existing) {
         existing.delta += event.delta
-        if (event.toolName !== undefined) existing.toolName = event.toolName
-      } else run.partialToolInputs.push({ ...event })
+        if (existing.type === 'tool-input-delta' && event.type === 'tool-input-delta' && event.toolName !== undefined) existing.toolName = event.toolName
+      } else run.partialEvents.push({ ...event })
     }
-    if (event.type === 'transcript-appended' && event.entries.some(entry => entry.entry.kind === 'reasoning' && entry.entry.source === 'provider-native')) run.partialReasoning = ''
-    if (event.type === 'transcript-appended' && event.entries.some(entry =>
-      entry.entry.kind === 'message' && entry.entry.role === 'assistant' || entry.entry.kind === 'tool-invocation',
-    )) {
-      run.partialText = ''
-      run.partialToolInputs = []
+    if (event.type === 'transcript-appended') {
+      const committed = new Set(event.entries.flatMap(item => item.entry.streamId ? [item.entry.streamId] : []))
+      run.partialEvents = run.partialEvents.filter(item => !committed.has(item.streamId!))
     }
     if (event.type === 'transcript-appended' && event.entries.some(entry =>
       entry.entry.kind === 'run-state' && entry.entry.state === 'running',
@@ -490,21 +478,26 @@ function startAgentRun(
   })().catch(error => {
     for (const pending of run.mutationApprovals.values()) pending.reject(new Error('Agent run ended before mutation approval.'))
     run.mutationApprovals.clear()
-    const suspended = controller.signal.reason === 'user-pause' || Boolean(run.checkpoint && run.checkpoint !== continuation)
-    run.state = suspended ? 'suspended' : controller.signal.aborted ? 'cancelled' : 'failed'
+    const ownerDeleted = error instanceof Error && 'code' in error && error.code === 'agent.session_deleted'
+    if (ownerDeleted) {
+      transferCheckpoint()
+      run.abandoned = true
+      if (source) source.abandoned = true
+    }
+    const suspended = !ownerDeleted && (controller.signal.reason === 'user-pause' || Boolean(run.checkpoint && run.checkpoint !== continuation))
+    const cancelled = ownerDeleted || controller.signal.aborted
+    run.state = suspended ? 'suspended' : cancelled ? 'cancelled' : 'failed'
     if (source?.checkpoint && source.continuationRunId === run.id) source.continuationRunId = undefined
     const reason = controller.signal.reason === 'user-pause' ? 'user-pause' : error instanceof Error ? error.message : String(error)
     emit(suspended
       ? { type: 'suspended', runId: id, reason }
-      : controller.signal.aborted
+      : cancelled
         ? { type: 'cancelled', runId: id, reason }
         : { type: 'failed', runId: id, error: { name: error instanceof Error ? error.name : 'UnknownError', message: reason } })
   }).finally(() => {
     run.controller = undefined
     run.promise = undefined
-    run.partialText = ''
-    run.partialReasoning = ''
-    run.partialToolInputs = []
+    run.partialEvents = []
     const retainedColdCheckpoint = !source && continuation !== undefined && run.checkpoint === continuation
     if (run.state !== 'suspended' && !retainedColdCheckpoint || !run.checkpoint && source?.checkpoint) {
       run.request = undefined
@@ -564,7 +557,7 @@ function clearRunReplay(run: AgentRun): void {
   run.eventSizes = []
   run.eventBytes = 0
   run.firstCursor = run.nextCursor
-  if (run.state !== 'running') run.partialText = ''
+  if (run.state !== 'running') run.partialEvents = []
 }
 
 function requireAgentRun(runs: Map<string, AgentRun>, runId: string): AgentRun {

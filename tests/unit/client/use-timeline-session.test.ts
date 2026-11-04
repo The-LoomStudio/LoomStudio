@@ -5,11 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentSession, AgentTranscriptEntry, NarrativeBranch, NarrativeNode, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { useNarrativeRuntime } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
+import { useTimelineSession } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-timeline-session.js'
+import type { DataOperation } from '../../../apps/studio-client/src/shared/api/data-commit-events.js'
 
 const commitRefresh = vi.hoisted(() => new Set<() => void>())
-vi.mock('../../../apps/studio-client/src/shared/api/data-commit-events.js', () => ({ subscribeDataCommits: (_operations: unknown, refresh: () => void) => {
+const commitOperations = vi.hoisted(() => new Set<(operations: DataOperation[]) => void>())
+vi.mock('../../../apps/studio-client/src/shared/api/data-commit-events.js', () => ({ subscribeDataCommits: (operations: (operations: DataOperation[]) => void, refresh: () => void) => {
   commitRefresh.add(refresh)
-  return () => { commitRefresh.delete(refresh) }
+  commitOperations.add(operations)
+  return () => { commitRefresh.delete(refresh); commitOperations.delete(operations) }
 } }))
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true) })
 const roots: ReturnType<typeof createRoot>[] = []
@@ -43,7 +47,7 @@ async function mount(options: { preset?: string; suspended?: boolean; entries?: 
       create: vi.fn(),
       update: vi.fn(async (input: { agentPresetId?: string; narrativeMode?: 'declared' | 'automatic' }) => { session = { ...session, ...input }; return { session } }),
       submitInterjection: vi.fn<StudioApi['agentSessions']['submitInterjection']>(async request => {
-        const entry: AgentTranscriptEntry = { id: request.requestId, agentSessionId: request.agentSessionId, sequence: entries.length + 1, createdAt: '', entry: { kind: 'user-interjection', requestId: request.requestId, content: request.input, mode: request.mode, narrativeTarget: request.narrativeTarget, attachments: request.attachments } }
+        const entry: Awaited<ReturnType<StudioApi['agentSessions']['submitInterjection']>>['entry'] = { id: request.requestId, agentSessionId: request.agentSessionId, sequence: entries.length + 1, createdAt: '', entry: { kind: 'user-interjection', requestId: request.requestId, content: request.input, mode: request.mode, narrativeTarget: request.narrativeTarget, attachments: request.attachments } }
         entries = [...entries, entry]
         return { entry, pending: true, ...(runState === 'suspended' ? {} : { runId: 'run' }) }
       }),
@@ -69,6 +73,50 @@ async function mount(options: { preset?: string; suspended?: boolean; entries?: 
 }
 
 describe('Timeline root Session contracts', () => {
+  it('shares the startup read with first connection but rereads after reconnects and commits', async () => {
+    type Page = Awaited<ReturnType<StudioApi['agentSessions']['getTranscript']>>
+    const reads: Array<{ id: string; resolve: (page: Page) => void }> = []
+    const getTranscript = vi.fn<StudioApi['agentSessions']['getTranscript']>(input => {
+      const pending = Promise.withResolvers<Page>()
+      reads.push({ id: input.agentSessionId, resolve: pending.resolve })
+      return pending.promise
+    })
+    const api = { agentSessions: { getTranscript } } as unknown as StudioApi
+    let timelineId = 'timeline'
+    let current!: ReturnType<typeof useTimelineSession>
+    function Harness() {
+      current = useTimelineSession(api, timelineId, 'branch', async action => { await action(); return true }, async () => {})
+      return null
+    }
+    const root = createRoot(document.createElement('div'))
+    roots.push(root)
+    await act(async () => root.render(createElement(Harness)))
+    expect(getTranscript).toHaveBeenCalledTimes(1)
+    const connected = [...commitRefresh][0]!
+    await act(async () => connected())
+    expect(getTranscript).toHaveBeenCalledTimes(1)
+    const finish = async (index: number, title: string) => {
+      const read = reads[index]!
+      await act(async () => read.resolve({ session: { id: read.id, kind: 'timeline', timelineId: read.id, title, entryCount: 0, createdAt: '', updatedAt: '' }, entries: [] }))
+    }
+    await finish(0, 'initial')
+    await act(async () => connected())
+    expect(getTranscript).toHaveBeenCalledTimes(2)
+    await act(async () => [...commitOperations][0]!([{ entityId: 'timeline', entityType: 'agent.session' }]))
+    expect(getTranscript).toHaveBeenCalledTimes(3)
+    await finish(2, 'committed')
+    await finish(1, 'before commit')
+    expect(current.session?.title).toBe('committed')
+
+    await act(async () => connected())
+    timelineId = 'other-timeline'
+    await act(async () => root.render(createElement(Harness)))
+    expect(getTranscript).toHaveBeenCalledTimes(5)
+    await finish(4, 'other source')
+    await finish(3, 'old source')
+    expect(current.session).toMatchObject({ id: 'other-timeline', title: 'other source' })
+  })
+
   it.each([false, true])('retries an edited latest discussion without appending a roleplay input (suspended=%s)', async suspended => {
     const entries: AgentTranscriptEntry[] = [
       { id: 'guide', agentSessionId: 'timeline', sequence: 1, runId: 'run', createdAt: '', entry: { kind: 'message', role: 'user', content: 'Old guidance' } },

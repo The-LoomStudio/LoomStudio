@@ -29,14 +29,10 @@ export type SqliteDataEngineOptions = {
   now(): string
 }
 
-export type SqliteMigration = {
-  version: number
-  migrate(database: DatabaseSync): void
-}
-
-export type SqliteMigrationSet = {
+export type SqliteSchema = {
   namespace: string
-  migrations: SqliteMigration[]
+  version: number
+  initialize(database: DatabaseSync): void
 }
 
 export type DataTransactionInput = {
@@ -61,7 +57,7 @@ export type SqliteDataTransaction = {
 
 export type SqliteDataEngine = {
   readonly database: DatabaseSync
-  migrate(set: SqliteMigrationSet): void
+  initializeSchema(schema: SqliteSchema): void
   read<T>(operation: (database: DatabaseSync) => Promise<T> | T): Promise<T>
   /** Runs nested store reads on one SQLite snapshot; writes inside the callback are forbidden. */
   readSnapshot<T>(operation: () => Promise<T>): Promise<T>
@@ -126,10 +122,10 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
 
   return {
     database,
-    migrate: set => {
+    initializeSchema: schema => {
       assertOpen()
       assertNonReentrant()
-      migrateNamespace(database, set)
+      initializeNamespace(database, schema)
     },
     read: async operation => {
       if (activeSnapshotContext.getStore()?.active) return operation(database)
@@ -241,10 +237,10 @@ function initializeCoreSchema(database: DatabaseSync): void {
       );
     `)
     const changesetColumns = readTableColumns(database, 'changesets')
-    ensureOptionalColumn(database, 'changesets', changesetColumns, 'committed_at', 'TEXT')
     ensureRequiredColumns('changesets', changesetColumns, [
       'id',
       'created_at',
+      'committed_at',
       'created_by_json',
       'reason',
       'correlation_id',
@@ -267,44 +263,23 @@ function initializeCoreSchema(database: DatabaseSync): void {
   }
 }
 
-function migrateNamespace(database: DatabaseSync, set: SqliteMigrationSet): void {
-  const migrations = [...set.migrations].sort((left, right) => left.version - right.version)
-  const supportedVersion = migrations.at(-1)?.version ?? 0
-  const currentVersion = readMigrationVersion(database, set.namespace)
-
-  if (currentVersion > supportedVersion) {
+function initializeNamespace(database: DatabaseSync, schema: SqliteSchema): void {
+  const currentVersion = readMigrationVersion(database, schema.namespace)
+  if (currentVersion === schema.version) return
+  if (currentVersion !== 0) {
     throw new DataEngineError(
-      'data.sqlite_schema_newer',
-      `SQLite schema ${set.namespace}@${currentVersion} is newer than supported version ${supportedVersion}`,
+      'data.sqlite_schema_unsupported',
+      `SQLite schema ${schema.namespace}@${currentVersion} is not supported; expected ${schema.version}`,
     )
   }
-
-  if (currentVersion === supportedVersion) return
-
-  database.exec('PRAGMA foreign_keys = OFF')
-  database.exec('PRAGMA legacy_alter_table = ON')
   database.exec('BEGIN IMMEDIATE')
   try {
-    let migratedVersion = currentVersion
-    for (const migration of migrations) {
-      if (migration.version <= migratedVersion) continue
-      if (migration.version !== migratedVersion + 1) {
-        throw new DataEngineError(
-          'data.sqlite_migration_gap',
-          `Missing SQLite migration for ${set.namespace} after version ${migratedVersion}`,
-        )
-      }
-      migration.migrate(database)
-      writeMigrationVersion(database, set.namespace, migration.version)
-      migratedVersion = migration.version
-    }
+    schema.initialize(database)
+    writeMigrationVersion(database, schema.namespace, schema.version)
     database.exec('COMMIT')
   } catch (error) {
     database.exec('ROLLBACK')
     throw error
-  } finally {
-    database.exec('PRAGMA legacy_alter_table = OFF')
-    database.exec('PRAGMA foreign_keys = ON')
   }
 }
 
@@ -346,12 +321,5 @@ function ensureRequiredColumns(table: string, available: Set<string>, required: 
   const missing = required.filter(column => !available.has(column))
   if (missing.length > 0) {
     throw new DataEngineError('data.sqlite_schema_invalid', `SQLite table ${table} is missing required columns: ${missing.join(', ')}`)
-  }
-}
-
-function ensureOptionalColumn(database: DatabaseSync, table: string, available: Set<string>, column: string, definition: string): void {
-  if (!available.has(column)) {
-    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
-    available.add(column)
   }
 }

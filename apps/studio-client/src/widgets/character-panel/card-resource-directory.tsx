@@ -8,7 +8,6 @@ import { FileTree } from '../../shared/ui/file-tree/file-tree.js'
 import { ContextAssetEditor } from '../../features/prompt-resources/ui/context-asset-workbench.js'
 import { TokenSnapshotControl, TokenSnapshotSummary } from '../../features/prompt-resources/ui/resource-token-summary.js'
 import { useResourceTokenSnapshot } from '../../features/prompt-resources/model/use-resource-token-snapshot.js'
-import { RuleEditorFields } from '../../features/text-transforms/ui/rule-editor-fields.js'
 import { LoomScriptSourceFields } from '../../features/loom-scripts/ui/loom-script-source-fields.js'
 import { MacroEntryDetail } from '../../features/state-variables/ui/macro-entry-detail.js'
 import { objectToYaml, yamlToObject } from '../../features/state-variables/model/state-variable-editor.js'
@@ -75,6 +74,8 @@ export function CardResourceDirectory(props: {
   const { ownedLore, ownedPresets, references, extensionResources } = classifyCardPromptResources(current, props.resources)
   const ownRules = rules.data?.rules ?? []
   const ownScripts = scripts.data?.scripts ?? []
+  const selectedRule = location.folder === 'rules' ? ownRules.find(rule => rule.id === location.item) : undefined
+  const ruleScript = selectedRule?.scriptDocumentId ? ownScripts.find(script => script.id === selectedRule.scriptDocumentId) : undefined
   const stateDefinitions = definitions.data?.definitions ?? []
   const installs = extensions.data?.items ?? []
   const groups: CardResourceGroup[] = [
@@ -207,17 +208,20 @@ export function CardResourceDirectory(props: {
             ])
             await props.onRefreshCards?.()
           }} t={t} /> : null}
-    {location.item && location.folder === 'rules' && ownRules.find(item => item.id === location.item)
-      ? <CardRuleEditor key={`${cardId}:${location.item}`} rule={ownRules.find(item => item.id === location.item)!}
-          onSave={async (rule, expectedVersion, onCommitted) => {
-            const result = await api.textTransforms.upsertRule({ ruleId: location.item!, expectedVersion, rule })
-            onCommitted(result.rule.version)
-            await queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'rules'] })
-          }} t={t} /> : null}
+    {selectedRule ? <div className={styles.directoryDetail}>
+      <h3>{selectedRule.name}</h3>
+      <p>此规则由脚本声明，请在完整脚本中编辑。</p>
+      <dl>
+        <dt>正则表达式</dt><dd><code>{selectedRule.matcher.pattern}</code></dd>
+        <dt>标志</dt><dd>{selectedRule.matcher.flags || '—'}</dd>
+        <dt>处理阶段</dt><dd>{selectedRule.phases.join(' · ')}</dd>
+      </dl>
+      <button type="button" disabled={!ruleScript} onClick={() => navigate({ folder: 'scripts', item: ruleScript!.id })}>编辑完整脚本</button>
+    </div> : null}
     {location.item && location.folder === 'scripts' && ownScripts.find(item => item.id === location.item)
       ? <CardScriptEditor key={`${cardId}:${location.item}`} api={api.loomScripts} endpoint={endpoint}
           script={ownScripts.find(item => item.id === location.item)!} t={t}
-          onSaved={() => queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, 'scripts'] })} /> : null}
+          onSaved={() => Promise.all(['scripts', 'rules'].map(kind => queryClient.invalidateQueries({ queryKey: ['card-resource-directory', endpoint, cardId, kind] })))} /> : null}
     {location.item && location.folder === 'macros' && current?.macros?.[location.item] !== undefined
       ? <CardMacroEditor key={`${cardId}:${location.item}`} card={current} name={location.item}
           onSave={async (name, value, expectedVersion, onCommitted) => {
@@ -371,34 +375,8 @@ function CardExtensionConfig(props: {
   return <div className={styles.directoryDetail}>
     <h3>{props.installation.displayName}</h3>
     {settings.length ? <ExtensionSettingsForm api={props.api} configRevision={0}
-      packageId={props.installation.packageId} scopeContext={{ cardId: props.cardId }}
+      packageId={props.installation.packageId} target={{ kind: 'card', cardId: props.cardId }} scopeContext={{ cardId: props.cardId }}
       settings={settings} t={props.t} /> : <p>{props.t('renderer.settings')}</p>}
-  </div>
-}
-
-function CardRuleEditor(props: {
-  rule: Awaited<ReturnType<StudioApi['textTransforms']['listRules']>>['rules'][number]
-  onSave(rule: Parameters<StudioApi['textTransforms']['upsertRule']>[0]['rule'], version: number, onCommitted: (version: number) => void): Promise<void>
-  t: Translator
-}) {
-  const [draft, setDraft] = useState<Parameters<typeof RuleEditorFields>[0]['value']>(() => ({
-    name: props.rule.name, owner: props.rule.owner, enabled: props.rule.enabled,
-    orderIndex: props.rule.orderIndex, matcher: props.rule.matcher, effect: props.rule.effect,
-    targets: props.rule.targets, phases: props.rule.phases, range: props.rule.range,
-  }))
-  const [baseVersion, setBaseVersion] = useState(props.rule.version)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  return <div className={styles.directoryEditor}>
-    <RuleEditorFields value={draft} disabled={saving} onChange={setDraft} t={props.t} />
-    {error ? <p role="alert" className={styles.error}>{error}</p> : null}
-    <button type="button" disabled={saving} onClick={() => {
-      setSaving(true)
-      setError('')
-      void props.onSave({ ...draft, orderIndex: draft.orderIndex ?? props.rule.orderIndex }, baseVersion, setBaseVersion)
-        .catch(cause => setError(cause instanceof Error ? cause.message : String(cause)))
-        .finally(() => setSaving(false))
-    }}>{props.t('textTransform.save')}</button>
   </div>
 }
 

@@ -8,11 +8,12 @@ import { validateStateContribution } from '../state/state-contribution.js'
 import { validateStateDefinitionDraft, validateStateValue } from '../state/state-definition.js'
 import { assertAuthorPlayerState, createPlayerStateContribution } from '../profiles/player-state.js'
 import { isDeepStrictEqual } from 'node:util'
+import { parseAgentRunMaterialBaseline } from '../agents/run-recovery.js'
 
 export type TimelineArchive = {
-  format: 'loom-timeline-archive.v1' | 'loom-timeline-archive.v2'
+  format: 'loom-timeline-archive.v2'
   exportedAt: string
-  agent?: { session: AgentSession; entries: AgentTranscriptEntry[]; swipeGroups: NarrativeSwipeGroup[] }
+  agent: { session: AgentSession; entries: AgentTranscriptEntry[]; swipeGroups: NarrativeSwipeGroup[] }
   timeline: NarrativeTimeline
   branches: NarrativeBranch[]
   nodes: NarrativeNode[]
@@ -21,10 +22,10 @@ export type TimelineArchive = {
     scope: StateScope
     revisions: StateRevision[]
   }
-  workspace?: { revisions: WorkspaceRevision[]; blobs: Array<{ id: string; base64: string; mediaType?: string }> }
+  workspace: { revisions: WorkspaceRevision[]; blobs: Array<{ id: string; base64: string; mediaType?: string }> }
   participants: TimelineArchiveDataBlock[]
   macroConfigurations?: Array<{ presetId: string; macroSelections: MacroSelectionMap }>
-  runtimeContext?: TimelineRuntimeContextContent
+  runtimeContext: TimelineRuntimeContextContent
 }
 
 export function serializeTimelineArchive(archive: TimelineArchive): string {
@@ -44,7 +45,7 @@ export function parseTimelineArchive(source: string): TimelineArchive {
 }
 
 function validateTimelineArchive(value: unknown): asserts value is TimelineArchive {
-  if (!isRecord(value) || !['loom-timeline-archive.v1', 'loom-timeline-archive.v2'].includes(String(value.format))) {
+  if (!isRecord(value) || value.format !== 'loom-timeline-archive.v2') {
     throw new Error('Unsupported Timeline archive format')
   }
   if (!isRecord(value.timeline) || !Array.isArray(value.branches) || !Array.isArray(value.nodes)
@@ -82,7 +83,6 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
   }
   for (const node of value.nodes) {
     if (!isRecord(node)) throw new Error('Invalid Timeline archive node')
-    if (node.kind === undefined) node.kind = 'narrative'
     if (node.kind !== 'user-input' && node.kind !== 'narrative') throw new Error('Invalid Timeline archive node kind')
     identifier(node.id)
     identifier(node.timelineId)
@@ -108,8 +108,9 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
     }
   }
   const archive = value as unknown as TimelineArchive
-  if (value.runtimeContext !== undefined) validateRuntimeContext(archive)
-  if (archive.format === 'loom-timeline-archive.v2') validateAgentArchive(archive)
+  validateRuntimeContext(archive)
+  validateAgentArchive(archive)
+  if (!archive.workspace) throw new Error('Timeline archive Workspace block is missing')
   if (value.macroConfigurations !== undefined) {
     if (!Array.isArray(value.macroConfigurations)) throw new Error('Invalid archived macro configurations')
     const presets = new Set<string>()
@@ -147,7 +148,6 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
     for (const [id, node] of remaining) {
       if (node.parentNodeId && !floors.has(node.parentNodeId)) continue
       const parent = node.parentNodeId ? floors.get(node.parentNodeId)! : 0
-      if (node.floor === undefined) node.floor = parent + 1 // Older v1 archives had no persistent floors.
       if (!Number.isSafeInteger(node.floor) || node.floor <= parent) throw new Error('Invalid archived Narrative floor')
       floors.set(id, node.floor); remaining.delete(id)
     }
@@ -214,7 +214,6 @@ function validateRuntimeContext(archive: TimelineArchive): void {
     throw new Error('Invalid Timeline archive runtime context')
   }
   identifier(context.sourceCardId)
-  textValue(context.fallbackUserName)
   if (context.cardName !== undefined) textValue(context.cardName)
   timestamp(context.createdAt)
   validateStateContribution({ id: 'archive.entities', entityTypes: context.stateEntityTypes,
@@ -438,7 +437,19 @@ function validateAgentArchive(archive: TimelineArchive) {
     if (entry.parentEntryId && entries.get(entry.parentEntryId)!.sequence >= entry.sequence) throw new Error('Invalid archived Entry parent order')
     if (entry.entry.kind === 'message') {
       reference(entry.entry.continuesEntryId)
+      if (entry.entry.editBaseline !== undefined) parseAgentRunMaterialBaseline(entry.entry.editBaseline)
 
+    }
+    if (entry.entry.kind === 'run-state' && entry.entry.recovery) {
+      const recovery = entry.entry.recovery
+      if (recovery.materialBaseline !== undefined) parseAgentRunMaterialBaseline(recovery.materialBaseline)
+    }
+    if (entry.entry.kind === 'work-summary') {
+      const boundary = entry.entry.boundary
+      if (!isRecord(boundary) || !Number.isSafeInteger(boundary.sourceThroughSequence)
+        || !Number.isSafeInteger(boundary.retiredThroughSequence) || boundary.retiredThroughSequence < 0
+        || boundary.sourceThroughSequence < boundary.retiredThroughSequence || boundary.sourceThroughSequence >= entry.sequence)
+        throw new Error('Invalid archived summary boundary')
     }
   }
   for (const node of archive.nodes) {

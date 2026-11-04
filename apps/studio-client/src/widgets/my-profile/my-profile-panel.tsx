@@ -17,7 +17,7 @@ function ProfileEditor(props: Props) {
     if (props.active && !wasActive.current) void controller.revalidate()
     wasActive.current = props.active
   }, [props.active])
-  return <MyProfile t={props.t} resources={props.resources}
+  return <MyProfile active={props.active} t={props.t} resources={props.resources}
     currentStory={props.currentStory ? { ...props.currentStory, onOpen: async () => {
       if (await controller.commit()) props.currentStory?.onOpen()
     } } : undefined}

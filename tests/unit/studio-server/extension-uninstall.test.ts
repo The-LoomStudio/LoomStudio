@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createExtensionHost, type ExtensionHost, type ExtensionRpcRegistration } from '@loom-studio/extension-host'
+import { createExtensionHost, type ExtensionHost, type ExtensionHostOptions, type ExtensionRpcRegistration } from '@loom-studio/extension-host'
 import { extensionInstallationId, type ExtensionInstallationTarget, type ListExtensionInstallationsResult } from '@loom-studio/application-runtime'
+import { createEventBus } from '@loom-studio/kernel'
+import { registerBuiltinEventDefinitions } from '../../../packages/kernel/src/events.js'
 import type { ManagedExtensionModule } from '@loom-studio/kernel'
 import { zipSync } from 'fflate'
-import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { createServerExtensionManager } from '../../../apps/studio-server/src/extensions/extension-manager.js'
 import { createExtensionStateStore } from '../../../apps/studio-server/src/extensions/extension-state-store.js'
 
@@ -62,7 +64,7 @@ export function activate(ctx) {
   return { root, sourceDirectory, devLinksFile, stateFile: join(root, 'state.json') }
 }
 
-function createRuntime(paths: Awaited<ReturnType<typeof createFixture>>, cardArchive?: { packageId: string; version: string; archiveBase64: string }) {
+function createRuntime(paths: Awaited<ReturnType<typeof createFixture>>, cardArchive?: { packageId: string; version: string; archiveBase64: string }, managerOverrides: Partial<Parameters<typeof createServerExtensionManager>[0]> = {}, hostOverrides: Partial<ExtensionHostOptions> = {}) {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const stateStore = createExtensionStateStore({ filename: paths.stateFile, now: () => '2026-09-22T00:00:00.000Z' })
   const registrations = new Map<string, ExtensionRpcRegistration>()
@@ -82,6 +84,7 @@ function createRuntime(paths: Awaited<ReturnType<typeof createFixture>>, cardArc
       registrations.set(name, registration)
       return registration
     },
+    ...hostOverrides,
   })
   hosts.push(host)
   const installations: ListExtensionInstallationsResult['installations'] = []
@@ -108,13 +111,18 @@ function createRuntime(paths: Awaited<ReturnType<typeof createFixture>>, cardArc
       }
       return { installationId: 'fixture-installation', promptResources: [], agentTools: [], transformRules: [], textExtractors: [] }
     },
-    removePackageResources: async input => {
-      if (input.uninstall && input.target) {
+    previewPackageResources: async () => { throw new Error('Unused preview') },
+    uninstallInstallation: async input => {
+      if (input.target) {
         const index = installations.findIndex(installation => installation.id === extensionInstallationId(input.packageId, input.target!))
         if (index >= 0) installations.splice(index, 1)
       }
+      return {}
+    },
+    removePackageResources: async input => {
       return { packageId: input.packageId, promptResourceIds: [], agentToolIds: [], textTransformRuleIds: [], textExtractorIds: [], detachedReferences: { cards: 0, timelines: 0, presetToolMounts: 0 } }
     },
+    ...managerOverrides,
   })
   return { host, manager, stateStore, registrations, diagnostics, installations }
 }
@@ -192,7 +200,7 @@ describe('Extension Package uninstall failure recovery', () => {
       }])
     }
     await expect(runtime.manager.uninstallPackage(packageId, '1.0.0')).resolves.toEqual({
-      packageId, version: '1.0.0', removed: true,
+      packageId, version: '1.0.0', removed: true, resourcesRetained: true,
     })
     expect(runtime.manager.listPackages()).toEqual([])
     expect(runtime.host.list()).toEqual([])
@@ -360,4 +368,78 @@ describe('Extension module catalog reload identity', () => {
     for (const moduleId of Object.keys(before)) expect(after[moduleId]).not.toBe(before[moduleId])
     expect(listedReloadIds(manager)).toEqual(after)
   })
+})
+
+
+it('previews Global and pending Card archive materials and forwards the reviewed fingerprint on updates', async () => {
+  const paths = await createFixture({ healthy: true })
+  const manifest = JSON.parse(await readFile(join(paths.sourceDirectory, 'manifest.json'), 'utf8'))
+  manifest.contributes = { loomScripts: [{ id: 'script', source: './script.loom.js' }] }
+  await writeFile(join(paths.sourceDirectory, 'manifest.json'), JSON.stringify(manifest))
+  await writeFile(join(paths.sourceDirectory, 'script.loom.js'), '// Global script')
+  const archive = (version: string, source: string) => ({ packageId, version, archiveBase64: Buffer.from(zipSync({
+    'manifest.json': Buffer.from(JSON.stringify({ ...manifest, version })),
+    'index.mjs': Buffer.from('export function activate() {}'), 'script.loom.js': Buffer.from(source),
+  })).toString('base64') })
+  const oldArchive = archive('1.0.0', '// installed Card script')
+  let installedArchive = oldArchive
+  let pendingArchive = oldArchive
+  const reads: Array<string | undefined> = []
+  const imports: Array<Parameters<Parameters<typeof createServerExtensionManager>[0]['importPackageResources']>[0]> = []
+  const previews: Array<Parameters<Parameters<typeof createServerExtensionManager>[0]['previewPackageResources']>[0]> = []
+  const { manager, installations } = createRuntime(paths, oldArchive, {
+    readCardPackage: async input => { reads.push(input.source); return { cardVersion: 1, archive: input.source === 'installed' ? installedArchive : pendingArchive } },
+    previewPackageResources: async input => {
+      previews.push(input)
+      return { packageId, installationId: extensionInstallationId(packageId, input.target ?? { kind: 'global' }), packageVersion: input.packageVersion, expectedInstallationVersion: input.update.expectedInstallationVersion, fingerprint: 'reviewed', items: [], warnings: [] }
+    },
+    importPackageResources: async input => { imports.push(input); if (input.target?.kind === 'card' && input.update) installedArchive = pendingArchive; return { installationId: 'fixture-installation', promptResources: [], agentTools: [], transformRules: [], textExtractors: [] } },
+  })
+  await manager.initialize()
+  const globalPreview = await manager.previewPackageResources({ packageId, packageVersion: '1.0.0', expectedInstallationVersion: 1 })
+  expect(previews.at(-1)?.loomScripts?.[0]?.source).toBe('// Global script')
+  await manager.updatePackageResources({ packageId, packageVersion: '1.0.0', expectedInstallationVersion: 1, expectedPreviewFingerprint: globalPreview.fingerprint })
+  expect(imports.at(-1)?.update).toEqual({ expectedInstallationVersion: 1, expectedPreviewFingerprint: 'reviewed' })
+  const target = { kind: 'card' as const, cardId: 'A' }
+  await manager.installCardPackage({ cardId: 'A', packageId, expectedCardVersion: 1 })
+  installations.push({ id: extensionInstallationId(packageId, target), version: 1, packageId, packageVersion: '1.0.0', target, archiveBlobId: 'fixture', createdAt: '', updatedAt: '' })
+  pendingArchive = archive('2.0.0', '// pending Card script')
+  reads.length = 0
+  const cardPreview = await manager.previewPackageResources({ packageId, packageVersion: '2.0.0', expectedInstallationVersion: 1, target, expectedCardVersion: 1 })
+  expect(reads).toEqual([undefined])
+  expect(previews.at(-1)).toMatchObject({ packageVersion: '2.0.0', target, expectedCardVersion: 1, loomScripts: [{ source: '// pending Card script' }] })
+  await manager.updateCardPackage({ cardId: 'A', packageId, expectedCardVersion: 1, packageVersion: '2.0.0', expectedInstallationVersion: 1, expectedPreviewFingerprint: cardPreview.fingerprint })
+  expect(imports.at(-1)).toMatchObject({ packageVersion: '2.0.0', target, update: { expectedInstallationVersion: 1, expectedPreviewFingerprint: 'reviewed' }, loomScripts: [{ source: '// pending Card script' }] })
+})
+
+it('revokes event grants through Manager reload, disposing old callbacks and denying the new instance', async () => {
+  const paths = await createFixture({ healthy: true })
+  await writeFile(join(paths.sourceDirectory, 'index.mjs'), `
+export function activate(ctx) {
+  let subscriptionError
+  try { ctx.events.subscribe(['state.changed'], () => ctx.rpc.call('observed', {})) }
+  catch (error) { subscriptionError = error.message }
+  ctx.rpc.register('example.uninstall.' + ctx.extension.moduleId + '.status', () => ({ subscriptionError }))
+}
+`)
+  const events = createEventBus()
+  registerBuiltinEventDefinitions(events)
+  const observed = vi.fn(async () => null)
+  const { manager, registrations, stateStore } = createRuntime(paths, undefined, {}, {
+    subscribeEvents: (patterns, handler, subscriber) => events.subscribe(patterns, handler, { subscriber }), callRpc: observed,
+  })
+  await manager.initialize()
+  await manager.enableModule(packageId, 'second', { eventCapabilities: ['state'] })
+  const emit = () => events.emit('state.changed', { target: { scope: 'global' }, revisionId: 'r', changesetId: 'c', paths: ['x'] })
+  emit()
+  await vi.waitFor(() => expect(observed).toHaveBeenCalledTimes(1))
+  const oldInstance = registrations.get(packageId + '.second.status')!.ownerInstanceId
+  await manager.enableModule(packageId, 'second', { eventCapabilities: [] })
+  expect(stateStore.get(packageId, 'second')?.grantedEventCapabilities).toEqual([])
+  const current = registrations.get(packageId + '.second.status')!
+  expect(current.ownerInstanceId).not.toBe(oldInstance)
+  expect(await current.handler({}, { packageId, moduleId: 'second', instanceId: current.ownerInstanceId! })).toMatchObject({ subscriptionError: expect.any(String) })
+  emit()
+  await new Promise(resolve => setImmediate(resolve))
+  expect(observed).toHaveBeenCalledTimes(1)
 })

@@ -7,6 +7,7 @@ import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/in
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], cleanups: [] as (() => void)[] }))
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
+  useContext: () => true,
   useState: (initial: unknown) => {
     const index = hooks.cursor++
     if (!(index in hooks.values)) hooks.values[index] = initial
@@ -19,7 +20,10 @@ vi.mock('react', async importOriginal => ({
     if (!(index in hooks.values)) hooks.values[index] = { current: initial }
     return hooks.values[index]
   },
-  useEffect: (effect: () => (() => void)) => { hooks.cleanups.push(effect()) },
+  useEffect: (effect: () => (() => void) | void) => {
+    const cleanup = effect()
+    if (cleanup) hooks.cleanups.push(cleanup)
+  },
 }))
 vi.mock('../../../apps/studio-client/src/shared/hooks/use-restorable-scroll.js', () => ({
   useRestorableScroll: () => ({ ref: { current: null }, attach() {}, onScroll() {} }),
@@ -59,6 +63,21 @@ function fixture() {
 }
 
 describe('Context Asset explorer action outcomes', () => {
+  it('opens a live read-only anchor projection only from a Lore resource root', () => {
+    const state = fixture()
+    const root = { id: 'lore-root', kind: 'folder' as const, category: 'lore-root', label: 'Lore', children: [
+      { id: 'nested', kind: 'folder' as const, label: 'Nested' },
+    ] }
+    state.props.displayNodes = [root]
+    const getActions = state.tree().props.getActions as (node: unknown) => Array<{ id: string; onSelect(): void }>
+    expect(getActions(root.children[0]).some(action => action.id === 'viewAnchors')).toBe(false)
+    getActions(root).find(action => action.id === 'viewAnchors')!.onSelect()
+    expect(state.render().find(element => 'root' in element.props)?.props.root).toBe(root)
+    const updated = { ...root, label: 'Renamed' }
+    state.props.displayNodes = [updated]
+    expect(state.render().find(element => 'root' in element.props)?.props.root).toBe(updated)
+  })
+
   it('uses preset-root display nodes to expose Message and history actions instead of text actions', () => {
     const state = fixture()
     state.props.displayNodes = [{ id: 'root', kind: 'folder', category: 'preset-root', label: 'Preset', children: [] }]
@@ -125,6 +144,51 @@ describe('Context Asset explorer action outcomes', () => {
     await (state.tree().props.onEditCommit as (id: string, label: string) => Promise<void>)('root', 'New title')
     expect(state.props.onRenameNode).toHaveBeenCalledWith('root', 'New title')
     expect(state.tree().props.editingId).toBe('root')
+  })
+
+  it.each(['add', 'duplicate', 'delete'])('finishes %s without stealing a newer selection', async actionName => {
+    const state = fixture()
+    const pending = Promise.withResolvers<string | undefined>()
+    const operation = vi.fn(() => pending.promise)
+    if (actionName === 'add') state.props.onAddNode = operation
+    else if (actionName === 'duplicate') state.props.onDuplicateNode = operation
+    else state.props.onDeleteNode = operation
+    const action = state.action(actionName)
+    state.props.selectedId = 'new-selection'
+    state.render()
+    pending.resolve('operation-result')
+    await action
+    expect(operation).toHaveBeenCalledOnce()
+    expect(state.props.onSelectId).not.toHaveBeenCalled()
+    expect(state.tree().props.editingId).toBeUndefined()
+  })
+
+  it.each(['workspace', 'scope', 'reveal', 'inactive', 'selection-return'])('does not select a late result after %s changes', async change => {
+    const state = fixture()
+    const pending = Promise.withResolvers<string | undefined>()
+    state.props.onAddNode = () => pending.promise
+    const action = state.action('add')
+    if (change === 'workspace') state.props.workspaceId = 'other'
+    else if (change === 'scope') state.props.scrollKey = 'other-scope'
+    else if (change === 'reveal') state.props.revealId = 'other-target'
+    else if (change === 'inactive') state.props.active = false
+    else state.props.selectedId = 'other'
+    state.render()
+    if (change === 'selection-return') {
+      state.props.selectedId = 'root'
+      state.render()
+    }
+    pending.resolve('created')
+    await action
+    expect(state.props.onSelectId).not.toHaveBeenCalled()
+  })
+
+  it('selects and starts naming a created node while its context is unchanged', async () => {
+    const state = fixture()
+    state.props.onAddNode = async () => 'created'
+    await state.action('add')
+    expect(state.props.onSelectId).toHaveBeenCalledExactlyOnceWith('created')
+    expect(state.tree().props.editingId).toBe('created')
   })
 
   it('does not select a created node after its source workspace unmounts', async () => {

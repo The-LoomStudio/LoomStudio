@@ -5,7 +5,7 @@ import { expect, it } from 'vitest'
 import type { CardDirectoryCatalog, CardDirectoryPreview, OpenCardDirectoryResult } from '@loom-studio/shared'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
 import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
-import { defaultCardPng, encodeCardPng } from '../../../apps/studio-server/src/codecs/card-png.js'
+import { defaultCardPng, encodeCardBundlePng } from '../../../apps/studio-server/src/codecs/card-png.js'
 import { encodeCardBundleZip } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
 import { authenticatedFetch, callRpc } from './helpers.js'
 
@@ -57,9 +57,9 @@ it('connects archive import, live directory media, in-place Apply and copied-fol
     })()
     const eventTimeout = setTimeout(() => eventsAbort.abort(), 5_000)
     const replacement = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXf8AAAAASUVORK5CYII=', 'base64')
-    await writeFile(join(directory, manifest.media.avatar), encodeCardPng(replacement, {
+    await writeFile(join(directory, manifest.media.avatar), encodeCardBundlePng(replacement, encodeCardBundleZip({ artifact: {
       schemaVersion: 4, artifactId: 'embedded-payload', displayName: 'Not imported', card: { name: 'Not imported' }, contextAssets: [],
-    }))
+    }, avatar: { bytes: replacement, mediaType: 'image/png' } })))
     try { await notification } finally { clearTimeout(eventTimeout); await reader.cancel() }
     const changedImage = await authenticatedFetch(port, imageUrl, { headers: { 'if-none-match': firstEtag! } })
     expect(changedImage.status).toBe(200)

@@ -47,6 +47,19 @@ describe('Secret Store', () => {
     engine.close()
   })
 
+  it('rejects deletion registration from another Engine', async () => {
+    const engine = createEngine()
+    const other = createEngine()
+    const store = createSecretStore({ engine, backend: createMemorySecretBackend(), createId: createIds(),
+      now: () => '2026-08-15T00:00:00.000Z', authorizeUse: () => true })
+    try {
+      const created = await store.create({ actor, owner, purpose: 'credential', plaintext: secret('value') })
+      await expect(other.transact({ actor }, async tx => store.registerDelete(tx, { ref: created.metadata.ref, owner })))
+        .rejects.toMatchObject({ code: 'secret.engine_mismatch' })
+      expect(await store.getMetadata(created.metadata.ref)).toMatchObject({ state: 'active' })
+    } finally { await engine.close(); await other.close() }
+  })
+
   it('keeps a replacement active while retrying cleanup of the old backend value', async () => {
     const engine = createEngine()
     const backend = createFlakyDeleteBackend()

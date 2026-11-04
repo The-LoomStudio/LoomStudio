@@ -77,3 +77,47 @@ it('shares transport, synchronizes late subscribers and retires only the last su
   expect(late).not.toHaveBeenCalled()
   stop()
 })
+
+it('reassembles interleaved commits and refreshes instead of delivering incomplete batches', () => {
+  vi.stubGlobal('EventSource', TestEventSource)
+  const commit = vi.fn(), refresh = vi.fn()
+  const stop = subscribeDataCommits(commit, refresh)
+  const stream = TestEventSource.instances[0]!
+  const send = (id: string, index: number, count = 2) => stream.emit('data.changed', JSON.stringify({ payload: {
+    changesetId: id, chunk: { index, count }, operations: [{ entityType: 'test', entityId: `${id}-${index}` }],
+  } }))
+  send('a', 0); send('b', 0); send('a', 1); send('b', 1)
+  expect(commit.mock.calls.map(call => call[0].map((op: { entityId: string }) => op.entityId))).toEqual([['a-0', 'a-1'], ['b-0', 'b-1']])
+  send('late', 1)
+  expect(refresh).toHaveBeenCalledOnce()
+  send('gap', 0, 3); send('gap', 2, 3)
+  expect(refresh).toHaveBeenCalledTimes(2)
+  send('duplicate', 0); send('duplicate', 0)
+  expect(refresh).toHaveBeenCalledTimes(3)
+  send('disconnect', 0); stream.emit('error')
+  expect(refresh).toHaveBeenCalledTimes(4)
+  send('ok', 0); send('ok', 1)
+  expect(commit).toHaveBeenCalledTimes(3)
+  stop()
+})
+
+it('bounds pending bytes and expires missing tails without reading on unmount', () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('EventSource', TestEventSource)
+  const commit = vi.fn(), refresh = vi.fn()
+  const stop = subscribeDataCommits(commit, refresh)
+  const stream = TestEventSource.instances[0]!
+  const send = (id: string, index: number, entityId = id) => stream.emit('data.changed', JSON.stringify({ payload: {
+    changesetId: id, chunk: { index, count: 2 }, operations: [{ entityType: 'test', entityId }],
+  } }))
+  send('large', 0, 'x'.repeat(4 * 1024 * 1024)); send('large', 1)
+  expect(refresh).toHaveBeenCalledOnce()
+  send('missing', 0)
+  vi.advanceTimersByTime(10_000)
+  expect(refresh).toHaveBeenCalledTimes(2)
+  send('unmount', 0); stop()
+  vi.advanceTimersByTime(10_000)
+  expect(refresh).toHaveBeenCalledTimes(2)
+  expect(commit).not.toHaveBeenCalled()
+  vi.useRealTimers()
+})

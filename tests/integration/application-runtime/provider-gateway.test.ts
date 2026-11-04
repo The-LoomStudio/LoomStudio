@@ -107,9 +107,53 @@ describe('application runtime Provider Profile integration', () => {
       expect((await fixture.documents.get(providerProfile.id))?.content).toMatchObject({ tokenMultipliers: { a: 0.6 } })
       await expect(fixture.runtime.updateProviderProfile(input)).rejects.toThrow()
       await expect(fixture.runtime.updateProviderProfile({ ...input, expectedVersion: updated.version, tokenMultipliers: { a: 0 } })).rejects.toThrow('positive')
-      await expect(fixture.runtime.updateProviderProfile({ providerProfileId: providerProfile.id, tokenMultipliers: { b: 1 } })).rejects.toThrow('expectedVersion')
+      await expect(fixture.runtime.updateProviderProfile({ providerProfileId: providerProfile.id, expectedVersion: undefined as unknown as number, tokenMultipliers: { b: 1 } })).rejects.toThrow('expectedVersion')
       expect((await fixture.runtime.getProviderProfile({ providerProfileId: providerProfile.id })).providerProfile.tokenMultipliers).toEqual({ a: 0.6 })
     } finally { fixture.close() }
+  })
+
+  it('rejects stale model snapshots and preserves a failed connection save', async () => {
+    const f = createRuntimeFixture()
+    try {
+      const { providerProfile: original } = await f.runtime.createProviderProfile({
+        providerExtensionId: 'official.openai-compatible', displayName: 'Old',
+        config: { baseUrl: 'https://old.test/v1' }, enabledModelIds: ['a'], credential: { apiKey: 'old-key' },
+      })
+      const { providerProfile: added } = await f.runtime.updateProviderProfile({
+        providerProfileId: original.id, expectedVersion: original.version, enabledModelIds: ['a', 'b'],
+      })
+      await expect(f.runtime.updateProviderProfile({
+        providerProfileId: original.id, expectedVersion: original.version, enabledModelIds: [],
+      })).rejects.toThrow()
+      const oldDocument = await f.documents.get(original.id)
+      const remove = vi.spyOn(f.secrets, 'delete')
+      const write = vi.spyOn(f.documents, 'write').mockRejectedValueOnce(new Error('Profile write failed'))
+      await expect(f.runtime.updateProviderProfile({
+        providerProfileId: original.id, expectedVersion: added.version, displayName: 'New',
+        config: { baseUrl: 'https://new.test/v1' }, credential: { apiKey: 'new-key' },
+      })).rejects.toThrow('Profile write failed')
+      write.mockRestore()
+      expect(await f.documents.get(original.id)).toEqual(oldDocument)
+      expect(remove).toHaveBeenCalledOnce()
+      const createSecret = vi.spyOn(f.secrets, 'create').mockRejectedValueOnce(new Error('Secret write failed'))
+      await expect(f.runtime.updateProviderProfile({
+        providerProfileId: original.id, expectedVersion: added.version,
+        config: { baseUrl: 'https://new.test/v1' }, credential: { apiKey: 'new-key' },
+      })).rejects.toThrow('Secret write failed')
+      createSecret.mockRestore()
+      expect(await f.documents.get(original.id)).toEqual(oldDocument)
+      remove.mockRejectedValueOnce(new Error('Cleanup failed'))
+      const { providerProfile: saved, credentialCleanupFailed } = await f.runtime.updateProviderProfile({
+        providerProfileId: original.id, expectedVersion: added.version, displayName: 'New',
+        config: { baseUrl: 'https://new.test/v1' }, credential: { apiKey: 'new-key' },
+      })
+      expect(credentialCleanupFailed).toBe(true)
+      expect(saved).toMatchObject({ displayName: 'New', enabledModelIds: ['a', 'b'], credential: { configured: true } })
+      expect(JSON.stringify(saved)).not.toContain('new-key')
+      const committed = await f.documents.get(original.id)
+      await f.runtime.updateProviderProfile({ providerProfileId: original.id, expectedVersion: saved.version, displayName: 'Renamed' })
+      expect((await f.documents.get(original.id))?.content).toMatchObject({ secretRef: (committed?.content as { secretRef: string }).secretRef })
+    } finally { f.close() }
   })
 
   it('stores enabled models in the Provider Profile and exposes only credential status', async () => {
@@ -148,6 +192,44 @@ describe('application runtime Provider Profile integration', () => {
     fixture.close()
   })
 
+  it('rolls back Profile deletion when credential cleanup intent cannot be queued', async () => {
+    const f = createRuntimeFixture()
+    try {
+      const { providerProfile } = await f.runtime.createProviderProfile({
+        providerExtensionId: 'official.openai-compatible', displayName: 'Atomic deletion', credential: { apiKey: 'test-only' },
+      })
+      const stored = await f.documents.get(providerProfile.id)
+      const ref = (stored!.content as { secretRef: `secret:${string}` }).secretRef
+      f.engine.database.exec(`CREATE TRIGGER fail_cleanup_intent BEFORE INSERT ON secret_backend_cleanup
+        BEGIN SELECT RAISE(ABORT, 'cleanup intent failed'); END`)
+      await expect(f.runtime.deleteProviderProfile({ providerProfileId: providerProfile.id })).rejects.toThrow('cleanup intent failed')
+      expect(await f.documents.get(providerProfile.id)).toEqual(stored)
+      expect(await f.secrets.getMetadata(ref)).toMatchObject({ state: 'active' })
+      expect(f.engine.database.prepare('SELECT * FROM secret_backend_cleanup').all()).toEqual([])
+    } finally { await f.close() }
+  })
+
+  it('returns committed deletion with pending credential cleanup and retries it', async () => {
+    const backend = createMemorySecretBackend()
+    const remove = vi.spyOn(backend, 'delete').mockRejectedValueOnce(new Error('backend unavailable'))
+    const f = createRuntimeFixture(backend)
+    try {
+      const { providerProfile } = await f.runtime.createProviderProfile({
+        providerExtensionId: 'official.openai-compatible', displayName: 'Pending deletion', credential: { apiKey: 'test-only' },
+      })
+      const stored = await f.documents.get(providerProfile.id)
+      const ref = (stored!.content as { secretRef: `secret:${string}` }).secretRef
+      await expect(f.runtime.deleteProviderProfile({ providerProfileId: providerProfile.id }))
+        .resolves.toEqual({ deleted: true, credentialCleanupPending: true })
+      expect(await f.documents.get(providerProfile.id)).toBeNull()
+      expect(await f.secrets.getMetadata(ref)).toMatchObject({ state: 'pending-delete' })
+      expect(f.engine.database.prepare('SELECT * FROM secret_backend_cleanup').all()).toHaveLength(1)
+      await expect(f.secrets.retryPendingCleanup({ actor: { kind: 'system', id: 'retry' } })).resolves.toBe(1)
+      expect(await f.secrets.getMetadata(ref)).toBeUndefined()
+      expect(remove).toHaveBeenCalledTimes(2)
+    } finally { await f.close() }
+  })
+
   it('validates Provider Profile config and credentials through the adapter registry', async () => {
     const fixture = createRuntimeFixture()
     await expect(fixture.runtime.createProviderProfile({
@@ -161,12 +243,12 @@ describe('application runtime Provider Profile integration', () => {
       credential: { apiKey: '' },
     })).rejects.toThrow()
     await expect(fixture.runtime.createProviderProfile({
-      providerExtensionId: 'anthropic',
+      providerExtensionId: 'official.anthropic',
       displayName: 'Anthropic account',
       config: { baseUrl: 'https://anthropic.test/v1' },
       credential: { apiKey: 'account-key' },
     })).resolves.toMatchObject({
-      providerProfile: { providerExtensionId: 'anthropic', credential: { configured: true } },
+      providerProfile: { providerExtensionId: 'official.anthropic', credential: { configured: true } },
     })
     fixture.close()
   })
@@ -219,6 +301,7 @@ describe('application runtime Provider Profile integration', () => {
     expect(created.providerProfile.enabledModelIds).toEqual([officialFakeModelId])
     await fixture.runtime.updateProviderProfile({
       providerProfileId: created.providerProfile.id,
+      expectedVersion: created.providerProfile.version,
       enabledModelIds: [],
     })
 
@@ -487,7 +570,7 @@ describe('application runtime Provider Profile integration', () => {
   })
 })
 
-function createRuntimeFixture() {
+function createRuntimeFixture(backend = createMemorySecretBackend()) {
   let nextId = 0
   const engine = createSqliteDataEngine({
     filename: ':memory:',
@@ -498,7 +581,7 @@ function createRuntimeFixture() {
   const promptResources = createPromptResourceStore({ engine })
   const secrets = createSecretStore({
     engine,
-    backend: createMemorySecretBackend(),
+    backend,
     createId: prefix => `${prefix}-${++nextId}`,
     now: () => '2026-08-15T00:00:00.000Z',
     authorizeUse: (_metadata, context) => context.caller === 'application.ai-gateway',

@@ -140,7 +140,7 @@ function platformEvent(
   return {
     name,
     owner: { kind: 'kernel' },
-    version: 1,
+    version: ['data.changed', 'docs.changed', 'docs.rollback.completed'].includes(name) ? 2 : 1,
     visibility,
     capability,
     summary,

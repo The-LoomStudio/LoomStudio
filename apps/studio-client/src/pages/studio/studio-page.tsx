@@ -1,9 +1,10 @@
+import { mobileHaptic } from '../../shared/ui/mobile-haptics.js'
 import { mobileMotionDuration, mobileMotionEasing } from '@loom-studio/ui'
 import { useMobileNavigationGestures } from './use-mobile-navigation-gestures.js'
 import { useMobileReadingChrome } from './use-mobile-reading-chrome.js'
 import { styleMotion } from '../../features/themes/model/style-motion.js'
 import { useWallpaper } from './use-wallpaper.js'
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { AlignLeft, ArrowLeft, ArrowRight, PanelLeft, PanelLeftClose, Search, X } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { StudioPanelRight } from './studio-panel-right.js'
@@ -63,6 +64,7 @@ export function StudioPage(props: StudioPageProps) {
   const stageRef = useRef<HTMLElement>(null)
   const dockRef = useRef<HTMLElement>(null)
   const mobileSidebarRef = useRef<HTMLElement>(null)
+  const workspaceToggleRef = useRef<HTMLButtonElement>(null)
   const agentPanelToggleRef = useRef<HTMLButtonElement>(null)
   useStudioLayoutAnchors(stageRef)
   const { currentWallpaper, previousWallpaper } = useWallpaper(props.wallpaperUrl)
@@ -116,6 +118,19 @@ export function StudioPage(props: StudioPageProps) {
     if (backdropRef.current) backdropRef.current.style.opacity = String(progress)
   }, [mobileDrawerProgress, mobileDrawerOpen, activePanel])
   useEffect(() => () => { drawerAnimationRef.current?.cancel(); drawerBackdropAnimationRef.current?.cancel() }, [])
+  const closeMobileDrawer = useCallback(() => {
+    if (mobileSidebarRef.current?.contains(document.activeElement)) workspaceToggleRef.current?.focus()
+    drawerAnimationRef.current?.cancel()
+    drawerBackdropAnimationRef.current?.cancel()
+    drawerAnimationRef.current = undefined
+    drawerBackdropAnimationRef.current = undefined
+    drawerProgressRef.current = null
+    setMobileDrawerProgress(null)
+    setMobileDrawerOpen(false)
+  }, [])
+  useLayoutEffect(() => {
+    if (!isMobile) closeMobileDrawer()
+  }, [isMobile, closeMobileDrawer])
   const [railHidden, setRailHidden] = useState(false)
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -128,18 +143,14 @@ export function StudioPage(props: StudioPageProps) {
   useLayoutEffect(() => {
     if (activePanel !== null) {
       // Commit the workspace before retiring its full navigation surface.
-      drawerAnimationRef.current?.cancel()
-      drawerBackdropAnimationRef.current?.cancel()
-      drawerProgressRef.current = null
-      setMobileDrawerOpen(false)
-      setMobileDrawerProgress(null)
+      closeMobileDrawer()
       displayedPanelRef.current = activePanel
       setDisplayedPanel(activePanel)
       setPanelMotion('idle')
     } else if (displayedPanelRef.current !== null) {
       setPanelMotion('closing')
     }
-  }, [activePanel])
+  }, [activePanel, closeMobileDrawer])
 
   useLayoutEffect(() => {
     const element = panelVisualRef.current
@@ -217,12 +228,7 @@ export function StudioPage(props: StudioPageProps) {
     || mobileDrawerOpen || mobileDrawerProgress !== null || isAgentPanelOpen || assetMetadataOpen
   const returnToReading = () => {
     void props.navigation.returnToReading()
-    drawerAnimationRef.current?.cancel()
-    drawerBackdropAnimationRef.current?.cancel()
-    drawerAnimationRef.current = undefined
-    drawerProgressRef.current = null
-    setMobileDrawerProgress(null)
-    setMobileDrawerOpen(false)
+    closeMobileDrawer()
     setAssetMetadataOpen(false)
     setDockHovered(false)
     closeDock()
@@ -230,6 +236,7 @@ export function StudioPage(props: StudioPageProps) {
   }
 
   const showMobileNavigation = () => {
+    if (!mobileDrawerOpen) mobileHaptic()
     setMobileDrawerOpen(true)
   }
   useMobileNavigationGestures(isMobile, showMobileNavigation, {
@@ -253,6 +260,7 @@ export function StudioPage(props: StudioPageProps) {
     onEnd: (open, velocity = 0) => {
       const dock = mobileSidebarRef.current
       const finish = () => {
+        if (open && !mobileDrawerOpen) mobileHaptic()
         drawerProgressRef.current = null
         setMobileDrawerOpen(open)
         setMobileDrawerProgress(null)
@@ -282,7 +290,9 @@ export function StudioPage(props: StudioPageProps) {
 
   const handleToggleWorkspace = () => {
     if (isMobile) {
-      setMobileDrawerOpen(prev => !prev)
+      if (!mobileDrawerOpen) mobileHaptic()
+      if (mobileDrawerOpen) closeMobileDrawer()
+      else setMobileDrawerOpen(true)
     } else {
       if (activePanel !== null) {
         closePanel()
@@ -359,7 +369,8 @@ export function StudioPage(props: StudioPageProps) {
         return
       }
 
-      if (dockRef.current?.contains(target)) {
+      if (dockRef.current?.contains(target) || mobileSidebarRef.current?.contains(target)
+        || document.getElementById('studio-panel-right')?.contains(target)) {
         pointerDownOutsideRef.current = false
         return
       }
@@ -387,7 +398,8 @@ export function StudioPage(props: StudioPageProps) {
       const target = event.target as Node | null
       if (!target) return
 
-      if (dockRef.current?.contains(target)) return
+      if (dockRef.current?.contains(target) || mobileSidebarRef.current?.contains(target)
+        || document.getElementById('studio-panel-right')?.contains(target)) return
       if (
         (target as Element).closest?.(
           '[data-radix-portal], [role="menu"], [role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [data-radix-context-menu-content], [data-radix-dropdown-menu-content]'
@@ -413,6 +425,8 @@ export function StudioPage(props: StudioPageProps) {
   }, [activePanel, dockPinned, isImmersive, windowResize.resizing, closePanel])
 
   useStudioShortcuts({
+    mobileDrawerOpen: mobileDrawerOpen || mobileDrawerProgress !== null,
+    closeMobileDrawer,
     activePanel,
     assetMetadataOpen,
     busy: props.busy,
@@ -491,11 +505,12 @@ export function StudioPage(props: StudioPageProps) {
         t={props.t}
         preloadPanel={props.preloadPanel}
         onOpenDashboard={() => {
-          setMobileDrawerOpen(false)
+          closeMobileDrawer()
           props.onOpenDashboard()
         }}
         togglePanel={panel => {
-          if (isMobile && activePanel === panel) { setMobileDrawerOpen(false); return }
+          if (isMobile && activePanel === panel) { closeMobileDrawer(); return }
+          if (activePanel !== panel && props.navigation.route.tool !== panel) mobileHaptic()
           togglePanel(panel)
         }}
       />
@@ -524,11 +539,6 @@ export function StudioPage(props: StudioPageProps) {
         )}
         main={props.panelHeaderMain?.[displayedPanel]}
         t={props.t}
-        onPanelHistory={direction => {
-          requestedHistoryDirection.current = direction
-          if (direction === 'back') void props.navigation.goBack()
-          else void props.navigation.goForward()
-        }}
       /> : null}
       <StudioPanelHost activePanel={displayedPanel} panels={props.panels} />
     </div>
@@ -569,12 +579,15 @@ export function StudioPage(props: StudioPageProps) {
           <div className={styles.stageHeaderStart}>
           <div className={styles.stageHeaderLeft}>
             <button
-              aria-label={isWorkspaceOpen ? props.t('rail.closePanel') : props.t('rail.label')}
+              ref={workspaceToggleRef}
+              aria-label={isMobile ? props.t('rail.label') : isWorkspaceOpen ? props.t('rail.closePanel') : props.t('rail.label')}
+              aria-expanded={isMobile ? mobileDrawerOpen || mobileDrawerProgress !== null : undefined}
+              aria-controls={isMobile ? 'studio-mobile-navigation' : undefined}
               className={[
                 styles.stageHeaderButton,
                 isWorkspaceOpen ? styles.stageHeaderButtonActive : '',
               ].filter(Boolean).join(' ')}
-              title={isWorkspaceOpen ? props.t('rail.closePanel') : props.t('rail.label')}
+              title={isMobile ? props.t('rail.label') : isWorkspaceOpen ? props.t('rail.closePanel') : props.t('rail.label')}
               type="button"
               onClick={handleToggleWorkspace}
               onMouseEnter={handleMouseEnter}
@@ -650,9 +663,7 @@ export function StudioPage(props: StudioPageProps) {
             className={styles.mobileBackdrop}
             style={{ opacity: mobileDrawerProgress ?? (mobileDrawerOpen ? 1 : 0), transition: mobileDrawerProgress !== null ? 'none' : 'opacity 220ms ease' }}
             aria-hidden="true"
-            onClick={() => {
-              setMobileDrawerOpen(false)
-            }}
+            onClick={closeMobileDrawer}
           />
         ) : null}
 
@@ -695,7 +706,7 @@ export function StudioPage(props: StudioPageProps) {
           ) : null}
         </aside>
         </StudioWindowHeaderProvider>
-        {isMobile ? <aside ref={mobileSidebarRef} className={styles.mobileSidebar}
+        {isMobile ? <aside id="studio-mobile-navigation" ref={mobileSidebarRef} className={styles.mobileSidebar}
           data-mobile-drawer="true" data-open={mobileDrawerOpen || mobileDrawerProgress !== null}
           data-mobile-drawer-dragging={mobileDrawerProgress !== null ? 'true' : undefined}
           aria-hidden={!mobileDrawerOpen && mobileDrawerProgress === null} inert={!mobileDrawerOpen && mobileDrawerProgress === null}>

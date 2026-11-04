@@ -1,6 +1,13 @@
 import type { messages as zhCN } from '../zh-cn/logs.js'
 
 export const messages = {
+  "logs.extraFilters": "Additional filters",
+  "logs.clearExtraFilters": "Clear additional filters",
+  "logs.columnTime": "Time",
+  "logs.columnMessage": "Event message",
+  "logs.columnMetrics": "Status / Usage / Duration",
+  "logs.columnActions": "Actions",
+
   'logs.title': 'System Logs',
   'logs.ref.card': 'Character',
   'logs.ref.timeline': 'Timeline',

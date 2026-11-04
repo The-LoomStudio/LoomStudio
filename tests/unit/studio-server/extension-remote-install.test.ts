@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { zipSync } from 'fflate'
@@ -80,6 +80,8 @@ async function manager(configure?: (root: string) => Promise<Partial<Parameters<
     installedDirectory: join(root, 'app', 'extensions'), devLinksFile: join(root, 'data', 'dev-links.json'),
     officialSetupFile: join(root, 'data', 'setup.json'), deleteData,
     readCardPackage: async () => { throw new Error('Unused') }, listInstallations,
+    uninstallInstallation: async () => ({}),
+    previewPackageResources: async () => { throw new Error('Unused preview') },
     importPackageResources, removePackageResources: async () => ({ packageId: 'fixture-package', promptResourceIds: [], agentToolIds: [], textTransformRuleIds: [], textExtractorIds: [], detachedReferences: { cards: 0, timelines: 0, presetToolMounts: 0 } }),
     ...await configure?.(root),
   }
@@ -291,7 +293,7 @@ describe('remote extension install lifecycle', () => {
     const { result } = await install(runtime, source)
     expect(result).toMatchObject({
       installed: [{ packageId: 'test.resources', version: '1.0.0' }],
-      failed: { packageId: 'test.resources', message: expect.stringContaining('resource import failed') },
+      failed: { packageId: 'test.resources', message: expect.stringContaining('import-resources failed'), stage: 'import-resources', codeCommitted: true },
     })
     expect(runtime.listPackages()).toHaveLength(1)
     expect(await readFile(join(root, 'app/extensions/test.resources/manifest.json'), 'utf8')).toContain('test.resources')
@@ -500,4 +502,86 @@ it('discovers official packages in place, refreshes file revisions on restart an
   expect(conflicted.listPackages().find(item => item.packageId === packageId)).toMatchObject({ available: false, sourceKinds: ['repository', 'installed'] })
   expect(f.diagnostics.list().some(item => item.code === 'extension.package_source_conflict' && item.packageId === packageId)).toBe(true)
   expect(await readFile(join(directory, 'paper.css'), 'utf8')).toContain('blue')
+})
+
+it.each(['disable-old-modules', 'dispose-old-modules', 'backup-old-code'])('restores old desired state and code after %s fails', async stage => {
+  const { runtime, state, host, root } = await manager()
+  const source = fixture('test.early-failure')
+  fixtures.get(source.url)!.manifest.modules!.push({ id: 'second', runtime: 'server', entry: './index.mjs', capabilities: {} })
+  await install(runtime, source)
+  await runtime.enableModule('test.early-failure', 'server')
+  await runtime.enableModule('test.early-failure', 'second')
+  const desired = ['server', 'second'].map(id => state.get('test.early-failure', id))
+  fixture('test.early-failure', '2.0.0')
+  const preview = await runtime.previewRemoteChange!({ packageId: 'test.early-failure' }) as { token: string }
+  if (stage === 'disable-old-modules') {
+    const set = state.set.bind(state)
+    let count = 0
+    vi.spyOn(state, 'set').mockImplementation(async (...args) => {
+      if (++count === 2) throw new Error('Second state write failed')
+      return set(...args)
+    })
+  } else if (stage === 'dispose-old-modules') {
+    vi.mocked(host.dispose).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Dispose failed'))
+  } else {
+    const fs = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    vi.mocked(rename).mockImplementation(async (from, to) => {
+      if (from === join(root, 'app/extensions/test.early-failure')) throw new Error('Backup failed')
+      return fs.rename(from, to)
+    })
+  }
+  vi.mocked(host.activate).mockClear()
+  expect(await runtime.commitRemoteInstall!(preview.token)).toMatchObject({ installed: [], failed: { stage, codeCommitted: false } })
+  expect(['server', 'second'].map(id => state.get('test.early-failure', id))).toEqual(desired)
+  expect(JSON.parse(await readFile(join(root, 'app/extensions/test.early-failure/manifest.json'), 'utf8')).version).toBe('1.0.0')
+  expect(runtime.listPackages()[0]?.version).toBe('1.0.0')
+  expect(host.activate).toHaveBeenCalledTimes(stage === 'disable-old-modules' ? 0 : 2)
+})
+
+it('retains the original stage and explicit recovery failure when desired restoration fails', async () => {
+  const { runtime, state } = await manager()
+  const source = fixture('test.failed-compensation')
+  await install(runtime, source)
+  await runtime.enableModule('test.failed-compensation', 'server')
+  fixture('test.failed-compensation', '2.0.0')
+  const preview = await runtime.previewRemoteChange!({ packageId: 'test.failed-compensation' }) as { token: string }
+  vi.spyOn(state, 'set').mockRejectedValue(new Error('State unavailable'))
+  const result = await runtime.commitRemoteInstall!(preview.token) as { failed: { recovery: { recordPath: string } } }
+  expect(result).toMatchObject({ installed: [], failed: { stage: 'disable-old-modules', codeCommitted: false } })
+  expect(JSON.parse(await readFile(result.failed.recovery.recordPath, 'utf8'))).toMatchObject({
+    failedStage: 'disable-old-modules', recoveryStage: 'restore-old-desired', desired: { server: { enabled: true } },
+  })
+})
+
+
+it('lists orphaned, damaged and escaped recovery records without changing disk', async () => {
+  const { runtime, root } = await manager()
+  const installed = join(root, 'app/extensions')
+  const history = join(installed, '.history')
+  expect(await runtime.listRecoveryRecords()).toEqual({ records: [] })
+  await mkdir(history, { recursive: true })
+  const record = { version: 1, packageId: 'missing.package', fromVersion: '1', toVersion: '2', failedStage: 'replace-code', backupDirectory: join(history, 'old'), historyDirectory: join(history, 'missing.package'), destination: join(installed, 'missing.package') }
+  await writeFile(join(history, 'orphan.recovery.json'), JSON.stringify(record))
+  await writeFile(join(history, 'broken.recovery.json'), '{')
+  await symlink(root, join(installed, 'escape'))
+  await writeFile(join(history, 'escape.recovery.json'), JSON.stringify({ ...record, destination: join(installed, 'escape/outside') }))
+  const { records } = await runtime.listRecoveryRecords()
+  expect(records.find(item => item.id === 'orphan')).toMatchObject({ valid: true, packageId: 'missing.package', stage: 'replace-code' })
+  expect(records.find(item => item.id === 'broken')).toMatchObject({ valid: false, message: expect.any(String) })
+  expect(records.find(item => item.id === 'escape')).toMatchObject({ valid: false, message: expect.stringContaining('escapes') })
+  expect(await readFile(join(history, 'broken.recovery.json'), 'utf8')).toBe('{')
+})
+
+it('continues accepted module batches after partial failure and reuses capability validation', async () => {
+  const { runtime } = await manager()
+  await install(runtime, fixture('test.batch'))
+  const { batchId } = await runtime.startModuleBatch({ packageId: 'test.batch', enabled: true, modules: [
+    { moduleId: 'missing' }, { moduleId: 'server', grants: { assetCapabilities: ['assets.read'] } },
+  ] })
+  await vi.waitFor(() => expect(runtime.getModuleBatch(batchId).state).toBe('completed'))
+  expect(runtime.getModuleBatch(batchId).results.map(item => item.status)).toEqual(['failed', 'failed'])
+  const next = await runtime.startModuleBatch({ packageId: 'test.batch', enabled: true, modules: [{ moduleId: 'missing' }, { moduleId: 'server' }] })
+  await vi.waitFor(() => expect(runtime.getModuleBatch(next.batchId).state).toBe('completed'))
+  expect(runtime.getModuleBatch(next.batchId).results.map(item => item.status)).toEqual(['failed', 'completed'])
+  await expect(runtime.startModuleBatch({ packageId: 'test.batch', enabled: true, modules: [{ moduleId: 'server' }, { moduleId: 'server' }] })).rejects.toThrow('unique')
 })

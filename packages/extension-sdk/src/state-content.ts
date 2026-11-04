@@ -6,8 +6,6 @@ export type ExtensionStateContentHandler = {
   contributionId: string
   /** JSON Pointer to the adopted contribution's data. The handler cannot replace the State root. */
   path: string
-  /** Older persisted locations, used only when the current path is absent. Does not migrate history. */
-  legacyPaths?: string[]
   process(input: {
     text: string
     value: JsonObject

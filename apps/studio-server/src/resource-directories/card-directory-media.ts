@@ -30,7 +30,7 @@ export function createCardDirectoryMedia(options: { dataRoot: string; logger?: L
       const manifestBytes = await readOptional(directory, 'manifest.json', 4 * 1024 * 1024)
       if (!manifestBytes) throw new Error('Card directory manifest is missing')
       const manifest = JSON.parse(manifestBytes.toString('utf8'))
-      if (manifest.schema !== 'loom.cardBundle.zip.v1' && manifest.schema !== 'loom.cardBundle.zip.v2') throw new Error('Invalid Card directory manifest')
+      if (manifest.schema !== 'loom.cardBundle.zip.v2') throw new Error('Invalid Card directory manifest')
       const path = manifest.media?.[kind]
       if (path === undefined) return undefined
       if (typeof path !== 'string') throw new Error('Invalid Card directory media path')

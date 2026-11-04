@@ -2,14 +2,24 @@ import { parse, parseFragment, type DefaultTreeAdapterMap } from 'parse5'
 import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
-import type { RootContent } from 'mdast'
+import type { Root, RootContent } from 'mdast'
+import { mapOutsideMarkdownCode } from '../../../shared/ui/markdown-content/markdown-content-model.js'
 
 export type MessageSegment = { kind: 'markdown' | 'fragment' | 'document' | 'pending'; value: string; start: number }
 const markdownParser = unified().use(remarkParse).use(remarkGfm)
 const htmlTags = new Set('html head body div span p details summary small b strong i em u s del ins sub sup br hr pre code blockquote ul ol li dl dt dd table thead tbody tfoot tr td th caption section article header footer main aside nav h1 h2 h3 h4 h5 h6 a img button input label select option textarea form script style link meta title svg figure figcaption audio video canvas'.split(' '))
 type HtmlNode = DefaultTreeAdapterMap['node']
 
-function normalizeWrappedFences(source: string): string {
+function normalizeWrappedFences(source: string, tree: Root): string {
+  if (!source.includes('<')) return source
+  return mapOutsideMarkdownCode(source, (text, start) => {
+    // A slice after inline code must not turn the middle of a line into /^/.
+    const prefix = start > 0 && source[start - 1] !== '\n' ? '\u0000' : ''
+    return normalizeWrappedText(prefix + text).slice(prefix.length)
+  }, tree)
+}
+
+function normalizeWrappedText(source: string): string {
   // 1. Separate inline custom tags that immediately touch a code fence: e.g. <opening> ```html or ``` </opening>
   let res = source.replace(/(<([a-zA-Z][\w-]*)\b[^>]*>)[ \t]*(`{3,}|~{3,})html/gi, (match, openTag, tagName, fence) => {
     if (!htmlTags.has(tagName.toLowerCase())) {
@@ -37,8 +47,9 @@ function normalizeWrappedFences(source: string): string {
 }
 
 export function parseMessageSegments(source: string, streaming = false): MessageSegment[] {
-  const normalized = normalizeWrappedFences(source)
-  const tree = markdownParser.parse(normalized)
+  const originalTree = markdownParser.parse(source)
+  const normalized = normalizeWrappedFences(source, originalTree)
+  const tree = normalized === source ? originalTree : markdownParser.parse(normalized)
   const parts: MessageSegment[] = []
   let cursor = 0
   function append(kind: MessageSegment['kind'], start: number, end: number, value = normalized.slice(start, end)) {

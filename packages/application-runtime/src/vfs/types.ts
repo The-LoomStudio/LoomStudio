@@ -25,6 +25,7 @@ export type VfsReadObservation = {
 }
 
 export type VfsMutationPreview = {
+  authorScope?: 'mounted' | 'global'
   action: 'replace' | 'patch' | 'move' | 'delete' | 'create' | 'copy' | 'author-mode'
   path: string
   kind: 'prompt-resource' | 'state' | 'narrative' | 'workspace'

@@ -14,6 +14,7 @@ async function fixture(standalone = false) {
   const agents = createAgentStore({ engine, ...clock })
   const narratives = createNarrativeStore({ engine, ...clock })
   const requests: GatewayInvokeChatInput[] = []
+  let summarySignal: AbortSignal | undefined
   let writes = 0
   let step = 0
   let summaryText = 'PRIVATE_HANDOFF'
@@ -34,6 +35,7 @@ async function fixture(standalone = false) {
     gateway: { invokeChat: async input => {
       requests.push(structuredClone({ ...input, context: undefined, abortSignal: undefined, onEvent: undefined }))
       if (input.request.metadata?.purpose === 'session-summary') {
+        summarySignal = input.abortSignal
         await summaryGate
         input.abortSignal?.throwIfAborted()
         return { provider: 'test', model: 'test', text: '', finishReason: 'tool_call', message: { role: 'assistant', tool_calls: [{
@@ -49,7 +51,7 @@ async function fixture(standalone = false) {
   await runtime.initialize()
   const preset = (await runtime.createPromptResource({ resourceKind: 'preset', name: 'Writer' })).resource
   const provider = (await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test'] })).providerProfile
-  await runtime.replacePresetToolMounts({ presetId: preset.id, mounts: standalone ? [] : [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }] })
+  await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id), presetId: preset.id, mounts: standalone ? [] : [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }] })
   await runtime.updateAgentPreset({ agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version, model: { providerProfileId: provider.id, modelId: 'test' } })
   const card = (await runtime.createCard({ name: 'Story', opening: '' })).card
   const created = standalone ? undefined : await runtime.createNarrativeTimeline({ cardId: card.id, openingContent: '' })
@@ -60,7 +62,8 @@ async function fixture(standalone = false) {
     const node = target ? (await runtime.appendNarrativeInput({ ...target, nodeId: clock.createId('input'), content: text, expectedHeadNodeId: branch?.headNodeId ?? null })).node : undefined
     return runtime.invokeAgentTurn({ agentSessionId: session.id, input: text, ...(target && node ? { narrativeTarget: { ...target, inputNodeId: node.id } } : {}) })
   }
-  return { engine, agents, narratives, runtime, session, target, turn, requests,
+  return { engine, agents, narratives, runtime, session, target, card, turn, requests,
+    summarySignal: () => summarySignal,
     configure(options: { summaryMode?: 'replace' | 'patch'; summaryText?: string; holdSummary?: boolean; afterWrite?: () => Promise<void> }) {
       summaryText = options.summaryText ?? summaryText
       summaryMode = options.summaryMode ?? summaryMode
@@ -71,6 +74,33 @@ async function fixture(standalone = false) {
 }
 
 describe('Session summary lifecycle', () => {
+  it.each(['timeline', 'card'] as const)('forgets background summaries only after successful %s cascade deletion', async kind => {
+    const f = await fixture()
+    try {
+      await f.runtime.updateAgentSession({ agentSessionId: f.session.id, summaryPolicy: { ...defaultSessionSummaryPolicy, triggerFloors: 2, asynchronous: true } })
+      await f.turn('FIRST')
+      f.configure({ holdSummary: true })
+      await f.turn('SECOND')
+      await vi.waitFor(() => expect(f.summarySignal()).toBeDefined())
+      const remove = () => kind === 'timeline'
+        ? f.runtime.deleteNarrativeTimeline({ timelineId: f.target!.timelineId })
+        : f.runtime.deleteCard({ cardId: f.card.id, includePlayData: true })
+      const failure = vi.spyOn(f.engine, 'transact').mockImplementationOnce(async () => { throw new Error('Deletion blocked') })
+      await expect(remove()).rejects.toThrow('Deletion blocked')
+      failure.mockRestore()
+      expect(f.summarySignal()!.aborted).toBe(false)
+      expect(f.runtime.getAgentSessionSummaryStatus({ agentSessionId: f.session.id }).state).toBe('preparing')
+      expect(await f.agents.getSession(f.session.id)).toBeTruthy()
+      await remove()
+      expect(f.summarySignal()!.aborted).toBe(true)
+      expect(f.runtime.getAgentSessionSummaryStatus({ agentSessionId: f.session.id }).state).toBe('idle')
+      f.release()
+      await new Promise(resolve => setImmediate(resolve))
+      expect(f.runtime.getAgentSessionSummaryStatus({ agentSessionId: f.session.id }).state).toBe('idle')
+      expect(await f.agents.getSession(f.session.id)).toBeNull()
+    } finally { f.release(); f.engine.close() }
+  })
+
   it('keeps receipts outside a running summary and waits before invoking their response', async () => {
     const f = await fixture(true)
     try {

@@ -1,3 +1,4 @@
+import { loreReferenceSchema } from '@loom-studio/shared/loom-scripts'
 import type { ToolContentPlacement } from '@loom-studio/shared/tool-mounts'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import {
@@ -51,6 +52,7 @@ export type ToolDefinition = {
   description: string
   input: ToolInputDefinition
   prompt?: {
+    loreRefs?: import('@loom-studio/shared/loom-scripts').LoreReference[]
     parameterDescriptions?: Record<string, string>
     guidance?: string
     activation?: PromptActivation
@@ -143,6 +145,7 @@ export type ToolExecutionScope = {
   workspace?: import('../vfs/resource-filesystem.js').ResourceVfsOptions['workspace']
   resourceVfs?: ResourceVfs
   vfsResourceIds?: readonly string[]
+  globalResourceCatalog?: NonNullable<import('../vfs/resource-filesystem.js').ResourceVfsOptions['resources']>['globalCatalog']
   sessionFiles?: () => Promise<VfsTextAttachment[]>
   vfsAttachments?: () => Promise<VfsTextAttachment[]>
   approveMutation?: (preview: VfsMutationPreview, signal: AbortSignal) => Promise<VfsMutationDecision>
@@ -520,6 +523,7 @@ function validateDefinition(tool: ToolDefinition): ToolDefinition {
   if (!isNonEmptyString(tool.description))
     throw new Error(`Agent tool description cannot be empty: ${tool.id}`)
   if (tool.prompt) {
+    if (tool.prompt.loreRefs) for (const reference of tool.prompt.loreRefs) loreReferenceSchema.parse(reference)
     if (
       tool.prompt.activation !== undefined &&
       !isPromptActivation(tool.prompt.activation)

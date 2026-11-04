@@ -94,8 +94,9 @@ describe('application runtime card bundle integration', () => {
 
     expect(createdEntry?.capabilities).toMatchObject({
       targetAnchorId: '@chat.system',
-      localDepth: 10,
     })
+
+    expect(createdEntry?.capabilities).not.toHaveProperty('localDepth')
 
     const duplicated = await runtime.duplicatePromptResource({ resourceId: created.resource.id })
     expect(duplicated.resource.rootNode.id).not.toBe(created.resource.rootNode.id)
@@ -112,13 +113,13 @@ describe('application runtime card bundle integration', () => {
     const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Guide Preset' })
     const setting = await runtime.createPromptResource({ resourceKind: 'lore', name: 'Guide Knowledge' })
 
-    const updated = await runtime.replaceLoreMounts({
+    const updated = await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.resource.id } })).mounts.map(mount => mount.id),
       source: { kind: 'preset', id: preset.resource.id },
       loreResourceIds: [setting.resource.id],
     })
 
     expect(updated.mounts).toMatchObject([{ loreResourceId: setting.resource.id }])
-    await expect(runtime.replaceLoreMounts({
+    await expect(runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.resource.id } })).mounts.map(mount => mount.id),
       source: { kind: 'preset', id: preset.resource.id },
       loreResourceIds: [preset.resource.id],
     })).rejects.toThrow('can only link Lore resources')
@@ -427,7 +428,7 @@ describe('application runtime card bundle integration', () => {
       },
     })
     const card = await runtime.createCard({ name: 'Cascaded Card' })
-    await runtime.updateCardPromptResources({
+    await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: card.card.id })).card.version,
       cardId: card.card.id,
       promptResourceIds: [resource.resource.id],
     })
@@ -493,12 +494,21 @@ describe('application runtime card bundle integration', () => {
     expect(exported.card.description).toBe('Current canonical description')
   })
 
+  it('rejects stale Card resource bindings without removing a newer binding', async () => {
+    const { runtime } = createTestRuntime()
+    const { card } = await runtime.createCard({ name: 'Concurrent bindings' })
+    const { resource } = await runtime.createPromptResource({ name: 'Lore', resourceKind: 'lore' })
+    await runtime.updateCardPromptResources({ cardId: card.id, expectedVersion: card.version, promptResourceIds: [resource.id] })
+    await expect(runtime.updateCardPromptResources({ cardId: card.id, expectedVersion: card.version, promptResourceIds: [] })).rejects.toThrow()
+    expect((await runtime.getCard({ cardId: card.id })).card.promptResourceIds).toEqual([resource.id])
+  })
+
   it('rejects invalid manifest references and keeps shared resources after deleting a card', async () => {
     const { runtime, documents } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
     const resourceId = imported.card.promptResourceIds![0]!
     const secondCard = await runtime.createCard({ name: 'Shared resource card' })
-    await runtime.updateCardPromptResources({ cardId: secondCard.card.id, promptResourceIds: [resourceId] })
+    await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: secondCard.card.id })).card.version, cardId: secondCard.card.id, promptResourceIds: [resourceId] })
     const wrongType = await documents.write({
       id: 'not-a-prompt-resource',
       type: 'example.note',
@@ -506,15 +516,15 @@ describe('application runtime card bundle integration', () => {
       expectedVersion: 'new',
     })
 
-    await expect(runtime.updateCardPromptResources({
+    await expect(runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: secondCard.card.id })).card.version,
       cardId: secondCard.card.id,
       promptResourceIds: [resourceId, resourceId],
     })).rejects.toThrow('Duplicate prompt resource id')
-    await expect(runtime.updateCardPromptResources({
+    await expect(runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: secondCard.card.id })).card.version,
       cardId: secondCard.card.id,
       promptResourceIds: ['missing-resource'],
     })).rejects.toThrow('Prompt resource not found: missing-resource')
-    await expect(runtime.updateCardPromptResources({
+    await expect(runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: secondCard.card.id })).card.version,
       cardId: secondCard.card.id,
       promptResourceIds: [wrongType.documents[0]!.id],
     })).rejects.toThrow('Prompt resource not found')
@@ -531,7 +541,6 @@ describe('application runtime card bundle integration', () => {
 
 async function readLoomCityArtifact(): Promise<CardBundleArtifact> {
   const artifact = JSON.parse(await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8'))
-  artifact.card.opening = { content: artifact.card.opening.entries[0].content }
   return artifact as CardBundleArtifact
 }
 

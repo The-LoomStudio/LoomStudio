@@ -1,11 +1,12 @@
-import { isLoomScriptFileName, loomScriptMediaType, resolveLoomScriptSettings, type LoomScriptSettings, type CreateLoomScriptMountInput, type UpdateLoomScriptMountInput, type ListLoomScriptMountsInput } from '@loom-studio/shared/loom-scripts'
+import { listScriptConfigs, writeScriptConfig, type ScriptConfigQuery, type ScriptConfigWrite } from '../scripts/script-config.js'
+import { applyTextRuleUsage, resolveTextTransformContributionRule, textRuleUsagesSchema, isLoomScriptFileName, loomScriptMediaType, resolveLoomScriptSettings, type LoomScriptSettings, type InitialLoomScriptMountInput, type CreateLoomScriptMountInput, type UpdateLoomScriptMountInput, type ListLoomScriptMountsInput } from '@loom-studio/shared/loom-scripts'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import { executeBlobDocumentMutation, executeDocumentMutation } from '../foundation/mutation.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
 import { readLoomScriptInstallation, readLoomScriptRevision, resolveLoomScriptRendererMounts } from '../scripts/loom-script-resolution.js'
-import { requireNarratives } from './context.js'
+import { narrativeWriteContext, requireDocumentParticipant, requireNarratives } from './context.js'
 import type {
   LoomScriptArtifact,
   LoomScriptContent,
@@ -15,22 +16,7 @@ import type {
 } from '../scripts/loom-script-contracts.js'
 import type { RuntimeRequestContext } from '../types.js'
 
-type LoomScriptsRuntimeContext = Pick<ApplicationRuntimeContext, 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now'>
-
-/** Freeze pre-existing enabled mounts before any runtime starts or new source is saved. */
-export async function initializeLoomScriptAdoptions(ctx: Pick<LoomScriptsRuntimeContext, 'documents' | 'now'>): Promise<void> {
-  const mounts = await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount)
-  for (const mount of mounts) {
-    if (!mount.content.enabled || (mount.content.adoptedDocumentVersion !== undefined && mount.content.adoptedSettings !== undefined && mount.content.runtimeRevision !== undefined)) continue
-    const script = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId, mount.content.adoptedDocumentVersion ?? mount.content.pinnedDocumentVersion)
-    if (!script) continue
-    await ctx.documents.write({
-      id: mount.id, type: applicationDocumentTypes.loomScriptMount, expectedVersion: mount.version,
-      content: { ...mount.content, adoptedDocumentVersion: script.version, adoptedSettings: mount.content.adoptedSettings ?? resolveLoomScriptSettings(script.content.settings ?? [], mount.content.settings ?? {}), runtimeRevision: mount.content.runtimeRevision ?? mount.version, updatedAt: ctx.now() },
-      actor: { kind: 'system', id: 'loom-script' }, reason: 'application.initializeLoomScriptAdoptions',
-    })
-  }
-}
+type LoomScriptsRuntimeContext = Pick<ApplicationRuntimeContext, 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'agents' | 'now'>
 
 export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) {
   return {
@@ -38,6 +24,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
       owner: LoomScriptOwner
       fileName: string
       source: string
+      mount?: InitialLoomScriptMountInput
     }, requestContext?: RuntimeRequestContext) => {
       assertFileName(input.fileName)
       const metadata = parseLoomScriptSource(input.source)
@@ -66,6 +53,21 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
             } : {}),
             expectedVersion: 'new',
           })
+          if (input.mount) {
+            const rule = metadata.contributions.find(item => item.kind === 'text-transform')
+            await writeDocument<LoomScriptMountContent>(documents, {
+              id: ctx.createId('loom-script-mount'),
+              type: applicationDocumentTypes.loomScriptMount,
+              content: {
+                target: structuredClone(input.mount.target), scriptDocumentId: document.id,
+                enabled: false,
+                orderIndex: input.mount.orderIndex ?? (rule?.kind === 'text-transform' ? resolveTextTransformContributionRule(rule, resolveLoomScriptSettings(metadata.settings)).orderIndex : undefined) ?? 0,
+                grantedCapabilities: [], settings: {}, runtimeRevision: 0, origin: {},
+                createdAt: timestamp, updatedAt: timestamp,
+              },
+              expectedVersion: 'new',
+            })
+          }
           return toVersioned(document)
         },
       )
@@ -96,6 +98,8 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
             content: {
               owner: structuredClone(existing.content.owner),
               ...metadata,
+              ...(existing.content.loreResourceReferences ? { loreResourceReferences: structuredClone(existing.content.loreResourceReferences) } : {}),
+              ...(existing.content.loreNodeReferences ? { loreNodeReferences: structuredClone(existing.content.loreNodeReferences) } : {}),
               ...(existing.content.textResourceIds ? { textResourceIds: structuredClone(existing.content.textResourceIds) } : {}),
               ...(existing.content.textResourceOwner ? { textResourceOwner: structuredClone(existing.content.textResourceOwner) } : {}),
               ...(existing.content.textResourceOrigin ? { textResourceOrigin: structuredClone(existing.content.textResourceOrigin) } : {}),
@@ -151,8 +155,8 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
                 ...(mount?.content ?? { target, scriptDocumentId: id, enabled: false, grantedCapabilities: [], settings: {}, runtimeRevision: 0, createdAt: timestamp }),
                 orderIndex, updatedAt: timestamp,
                 origin: { ...mount?.content.origin, orderOverride: true, ...(group.groupOrder !== undefined ? { groupOrder: group.groupOrder } : {}) },
-                // Moving an old mount must not use its new document version to restart code.
-                runtimeRevision: mount?.content.runtimeRevision ?? mount?.version ?? 0,
+                // Reordering does not restart a running Script.
+                runtimeRevision: mount?.content.runtimeRevision ?? 0,
               },
             })
           }
@@ -160,6 +164,14 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         return true as const
       })
       return { reordered: result.value, mutation: result.mutation }
+    },
+
+    getLoomScriptSummary: async (input: { scriptDocumentId: string }) => {
+      const document = await ctx.documents.get(input.scriptDocumentId)
+      if (!document) return { script: null }
+      if (document.type !== applicationDocumentTypes.loomScript) throw new Error(`Unexpected document type for ${input.scriptDocumentId}: ${document.type}`)
+      const content = document.content as LoomScriptContent
+      return { script: { id: document.id, contributionKinds: content.contributions.map(contribution => contribution.kind) } }
     },
 
     getLoomScript: async (input: { scriptDocumentId: string }) => ({
@@ -223,8 +235,8 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         const script = await readDocument<LoomScriptContent>(documents, existing.content.scriptDocumentId, applicationDocumentTypes.loomScript)
         if (script.content.owner.kind === 'extension' && input.pinnedDocumentVersion !== undefined) throw new Error('Installed Loom Scripts follow package updates and cannot pin an old revision')
         const adoptedVersion = existing.content.enabled
-          ? existing.content.adoptedDocumentVersion ?? input.pinnedDocumentVersion ?? script.version
-          : input.pinnedDocumentVersion ?? script.version
+          ? existing.content.adoptedDocumentVersion!
+          : input.pinnedDocumentVersion ?? existing.content.pinnedDocumentVersion ?? script.version
         const adopted = await readLoomScriptRevision(documents, script.id, adoptedVersion)
         if (!adopted) throw new Error(`Loom Script revision unavailable: ${script.id}@${adoptedVersion}`)
         // Allow grants for the saved replacement while retaining the running revision's permissions.
@@ -233,21 +245,27 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
           || input.grantedCapabilities.some(capability => !requested.has(capability))) {
           throw new Error('Loom Script Mount grants must be unique requested capabilities')
         }
-        const configured = await readLoomScriptRevision(documents, script.id, input.pinnedDocumentVersion ?? script.version)
+        const configured = await readLoomScriptRevision(documents, script.id, input.pinnedDocumentVersion ?? existing.content.pinnedDocumentVersion ?? script.version)
         if (!configured) throw new Error(`Loom Script revision unavailable: ${script.id}@${input.pinnedDocumentVersion}`)
         if (input.settings !== undefined) resolveLoomScriptSettings(configured.content.settings ?? [], input.settings)
+        if (input.ruleUsage !== undefined) {
+          textRuleUsagesSchema.parse(input.ruleUsage)
+          const defaults = existing.content.enabled ? existing.content.adoptedSettings! : resolveLoomScriptSettings(adopted.content.settings ?? [], {})
+          for (const [id, usage] of Object.entries(input.ruleUsage)) {
+            const contribution = adopted.content.contributions.find(item => item.kind === 'text-transform' && item.id === id)
+            if (!contribution || contribution.kind !== 'text-transform') throw new Error(`Unknown text rule: ${id}`)
+            applyTextRuleUsage(resolveTextTransformContributionRule(contribution, defaults), usage)
+          }
+        }
         if (input.enabled) assertRuntimeTrust(adopted.content, input.grantedCapabilities)
         const settings = input.settings ?? existing.content.settings ?? {}
         const activating = input.enabled && !existing.content.enabled
         const runtimeChanged = input.enabled !== existing.content.enabled
           || JSON.stringify([...input.grantedCapabilities].sort()) !== JSON.stringify([...existing.content.grantedCapabilities].sort())
-        const runtimeRevision = (existing.content.runtimeRevision ?? existing.version) + (runtimeChanged ? 1 : 0)
-        const origin = structuredClone(existing.content.origin)
-        if (input.enabled !== existing.content.enabled) delete origin.legacyPresetInheritance
-        const adoptedSettings = activating
+        const runtimeRevision = existing.content.runtimeRevision + (runtimeChanged ? 1 : 0)
+        const adoptedSettings = (activating || input.enabled && adopted.content.runtime === 'declarative' && input.settings !== undefined)
           ? await adoptSettings(documents, existing.content, adopted.content, settings)
-          : existing.content.adoptedSettings ?? (existing.content.enabled
-            ? resolveLoomScriptSettings(adopted.content.settings ?? [], existing.content.settings ?? {}) : undefined)
+          : existing.content.adoptedSettings
         const mount = await writeDocument<LoomScriptMountContent>(documents, {
           id: existing.id,
           type: applicationDocumentTypes.loomScriptMount,
@@ -259,7 +277,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
             ...(input.pinnedDocumentVersion !== undefined ? { pinnedDocumentVersion: input.pinnedDocumentVersion } : {}),
             grantedCapabilities: [...input.grantedCapabilities],
             settings: structuredClone(settings),
-            origin,
+            ...(input.ruleUsage !== undefined ? { ruleUsage: structuredClone(input.ruleUsage) } : {}),
             ...(adoptedSettings !== undefined ? { adoptedSettings } : {}),
             runtimeRevision,
             updatedAt: ctx.now(),
@@ -285,7 +303,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         const mount = await writeDocument<LoomScriptMountContent>(documents, {
           id: existing.id,
           type: applicationDocumentTypes.loomScriptMount,
-          content: { ...existing.content, adoptedDocumentVersion: adoptedVersion, adoptedSettings, runtimeRevision: (existing.content.runtimeRevision ?? existing.version) + 1, updatedAt: ctx.now() },
+          content: { ...existing.content, adoptedDocumentVersion: adoptedVersion, adoptedSettings, runtimeRevision: existing.content.runtimeRevision + 1, updatedAt: ctx.now() },
           expectedVersion: input.expectedVersion,
         })
         return toVersioned(mount)
@@ -302,19 +320,36 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
       return { deleted: result.value, mutation: result.mutation }
     },
 
+    listLoomScriptConfigs: (input: ScriptConfigQuery) => listScriptConfigs(ctx, input),
+    upsertLoomScriptConfig: async (input: ScriptConfigWrite, requestContext?: RuntimeRequestContext) => {
+      const result = await ctx.dataEngine.transact(
+        narrativeWriteContext(requestContext, 'application.upsertLoomScriptConfig'),
+        dataTx => requireDocumentParticipant(ctx).participateTransaction(dataTx,
+          documents => writeScriptConfig(ctx, documents, input, dataTx)),
+      )
+      return result.value.value
+    },
+
     getLoomScriptSettings: async (input: { mountId: string }) => {
       const mount = await readDocument<LoomScriptMountContent>(ctx.documents, input.mountId, applicationDocumentTypes.loomScriptMount)
       const script = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId, mount.content.pinnedDocumentVersion)
       if (!script) throw new Error(`Loom Script revision unavailable: ${mount.content.scriptDocumentId}`)
+      const adopted = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId, mount.content.enabled ? mount.content.adoptedDocumentVersion! : mount.content.pinnedDocumentVersion)
+      if (!adopted) throw new Error('Adopted Script revision unavailable')
+      const ruleDefaults = adopted.content.contributions.flatMap(contribution => contribution.kind === 'text-transform'
+        ? [{ id: contribution.id, rule: resolveTextTransformContributionRule(contribution, mount.content.enabled ? mount.content.adoptedSettings! : resolveLoomScriptSettings(adopted.content.settings ?? [], {})) }] : [])
       const saved = structuredClone(mount.content.settings ?? {})
       let effective: LoomScriptSettings | undefined
       let validationError: string | undefined
       const inherited = await readInheritedSettings(ctx.documents, mount.content, script.content)
       try { effective = resolveLoomScriptSettings(script.content.settings ?? [], { ...inherited, ...saved }) }
       catch (cause) { validationError = cause instanceof Error ? cause.message : String(cause) }
+      for (const item of ruleDefaults) if (item.rule.loreRefs) item.rule.loreRefs = item.rule.loreRefs.map(ref => ({ ...ref,
+        nodeId: adopted.content.loreNodeReferences?.[ref.nodeId] ?? ref.nodeId, resourceId: adopted.content.loreResourceReferences?.[ref.resourceId] ?? ref.resourceId }))
       return {
+        ruleDefaults,
         definitions: structuredClone(script.content.settings ?? []), saved,
-        adopted: structuredClone(mount.content.adoptedSettings ?? {}),
+        adopted: structuredClone(mount.content.enabled ? mount.content.adoptedSettings! : mount.content.adoptedSettings ?? {}),
         inherited, effective, validationError, documentVersion: script.version,
         adoptedDocumentVersion: mount.content.adoptedDocumentVersion,
       }

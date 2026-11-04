@@ -17,6 +17,7 @@
 - [`testing.md`](testing.md) — 测试分类与准则
 - [`code-review.md`](code-review.md) — PR 与审查边界
 - [`audit-workflow.md`](audit-workflow.md) — 系统审计的可选阅读入口：流程、证据和精简/修复顺序；按需进入[前端专项](audit-frontend.md)与[后端专项](audit-backend.md)
+- [`frontend-cdp-diagnostics.md`](frontend-cdp-diagnostics.md) — CDP / Console 实战：接入、短探针、React / Query / Worker、Network、误判反证与清理；随审计更新
 - [`ui-design.md`](ui-design.md) — UI 开发准则与 CSS 架构
 - [`contributing.md`](contributing.md) — 贡献指南总览
 - [`i18n.md`](i18n.md) — 国际化流程

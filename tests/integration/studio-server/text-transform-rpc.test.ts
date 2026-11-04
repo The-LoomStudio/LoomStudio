@@ -3,6 +3,60 @@ import { parseLoomScriptSource, serializeLoomScriptMetadata } from '@loom-studio
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('Studio Server text transform RPC', () => {
+  it('lists only catalog metadata, filters owners and preserves full definition endpoints', async () => {
+    await withStudioServer(async port => {
+      const rule = {
+        name: 'Catalog rule', owner: { kind: 'workspace' }, enabled: false, orderIndex: 0,
+        description: 'Full description', matcher: { kind: 'regex', pattern: 'raw', flags: 'g' },
+        effect: { kind: 'replace', replacement: 'display' }, targets: ['narrative'], phases: ['display'],
+      }
+      await callRpc(port, 'application.upsertTextTransformRule', { ruleId: 'catalog-rule', rule })
+      await callRpc(port, 'application.upsertTextTransformRule', {
+        ruleId: 'other-rule', rule: { ...rule, owner: { kind: 'card', cardId: 'other-card' } },
+      })
+      await expect(callRpc(port, 'application.listTextTransformRuleSummaries', { owner: { kind: 'workspace' } }))
+        .resolves.toEqual({ rules: [{ id: 'catalog-rule', name: rule.name, owner: rule.owner, enabled: false }] })
+      const all = await callRpc<{ rules: Array<{ id: string }> }>(port, 'application.listTextTransformRuleSummaries', {})
+      expect(all.rules.map(item => item.id).sort()).toEqual(['catalog-rule', 'other-rule'])
+      await expect(callRpc(port, 'application.listTextTransformRuleSummaries', { owner: { kind: 'card', cardId: 'missing' } }))
+        .resolves.toEqual({ rules: [] })
+      await expect(callRpc(port, 'application.listTextTransformRuleSummaries', { owner: { kind: 'unknown' } })).rejects.toThrow()
+      await expect(callRpc(port, 'application.listTextTransformRuleSummaries', { owner: { kind: 'card' } })).rejects.toThrow()
+      await expect(callRpc(port, 'application.listTextTransformRules', { owner: { kind: 'workspace' } }))
+        .resolves.toMatchObject({ rules: [{ id: 'catalog-rule', matcher: rule.matcher, effect: rule.effect, description: rule.description }] })
+      const { rule: savedRule } = await callRpc<{ rule: { scriptDocumentId: string } }>(port, 'application.getTextTransformRule', { ruleId: 'catalog-rule' })
+      await expect(callRpc(port, 'application.getLoomScriptSummary', { scriptDocumentId: savedRule.scriptDocumentId }))
+        .resolves.toEqual({ script: { id: savedRule.scriptDocumentId, contributionKinds: ['text-transform'] } })
+      await expect(callRpc(port, 'application.getLoomScriptSummary', { scriptDocumentId: 'missing' }))
+        .resolves.toEqual({ script: null })
+      await callRpc(port, 'docs.write', {
+        id: 'catalog-tool', type: 'airp.agentTool', expectedVersion: 'new',
+        content: { owner: { kind: 'workspace' }, name: 'Catalog tool', description: 'Full tool description',
+          input: { type: 'object', properties: { text: { type: 'string' } } }, createdAt: '', updatedAt: '' },
+      })
+      await expect(callRpc(port, 'application.getAgentToolSummary', { toolId: 'catalog-tool' }))
+        .resolves.toEqual({ tool: { id: 'catalog-tool' } })
+      await expect(callRpc(port, 'application.getAgentToolSummary', { toolId: 'missing' }))
+        .resolves.toEqual({ tool: null })
+      await expect(callRpc(port, 'application.getLoomScriptSummary', { scriptDocumentId: 'catalog-tool' }))
+        .rejects.toThrow('Unexpected document type')
+      const origin = { kind: 'extension-package', packageId: 'catalog-package', packageVersion: '1.0.0',
+        contributionId: 'extractor', installationId: 'installation' }
+      const extractor = {
+        name: 'Catalog extractor', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0,
+        targets: ['narrative'], matcher: { kind: 'regex', pattern: '(raw)', flags: 'g', contentGroup: 1 },
+        strategy: 'latest-valid', parser: 'text', outputSchema: { type: 'string' }, origin,
+      }
+      await callRpc(port, 'application.upsertTextExtractor', { extractorId: 'catalog-extractor', extractor })
+      await expect(callRpc(port, 'application.listTextExtractorSummaries', {})).resolves.toEqual({ extractors: [
+        { id: 'catalog-extractor', name: extractor.name, owner: extractor.owner, enabled: true, origin },
+      ] })
+      await expect(callRpc(port, 'application.listTextExtractors', {})).resolves.toMatchObject({ extractors: [
+        { id: 'catalog-extractor', matcher: extractor.matcher, parser: extractor.parser, outputSchema: extractor.outputSchema },
+      ] })
+    })
+  })
+
   it('round-trips owner, definition IDs and projection IDs with empty subsets and validated parameters', async () => {
     await withStudioServer(async port => {
       const { card } = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'Subset' })

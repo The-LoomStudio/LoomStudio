@@ -2,7 +2,8 @@ import { isValidElement, type ComponentProps, type ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-build-context.js'
 import { buildPresetToolProjection } from '../../../apps/studio-client/src/features/prompt-resources/model/preset-tool-projection.js'
-import { PresetArrangementWorkbench as PresetWorkbench } from '../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.js'
+import { PresetWorkbench } from '../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.js'
+import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 import { ContextWorkbench } from '../../../apps/studio-client/src/widgets/context-workbench/context-workbench.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { AgentToolDefinition, PresetToolMount, PromptResource, LoreMount } from '../../../apps/studio-client/src/entities/index.js'
@@ -12,6 +13,10 @@ const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [
 vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-resource-token-snapshot.js', () => ({
   useResourceTokenSnapshot: () => ({ pending: false, refresh: vi.fn() }),
 }))
+vi.mock('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon.js', async original => ({
+  ...await original<typeof import('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon.js')>(),
+  useExtensionIdentities: () => [],
+}))
 vi.mock('react', async original => ({
   ...await original<typeof import('react')>(),
   useRef: (initial: unknown) => {
@@ -20,6 +25,7 @@ vi.mock('react', async original => ({
     return hooks.values[index]
   },
   useId: () => 'test-id',
+  useCallback: (callback: unknown) => callback,
   useMemo: (fn: () => unknown) => fn(),
   useState: (initial: unknown) => {
     const index = hooks.cursor++
@@ -38,7 +44,7 @@ vi.mock('react', async original => ({
 vi.mock('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js', async original => {
   const actual = await original<typeof import('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js')>()
   return { ...actual, useStudioLayoutStore: Object.assign(
-    (selector: (state: unknown) => unknown) => selector({ ...actual.useStudioLayoutStore.getState(), presetView: 'tools' }),
+    (selector: (state: unknown) => unknown) => selector(actual.useStudioLayoutStore.getState()),
     { getState: actual.useStudioLayoutStore.getState },
   ) }
 })
@@ -80,13 +86,6 @@ function child(tree: unknown, name: string): Element {
 }
 function renderElement(element: Element) {
   return (element.type as (props: Record<string, unknown>) => unknown)(element.props)
-}
-function selectTool(tree: unknown, id: string) {
-  const directory = child(tree, 'FileTree')
-  const nodes = directory.props.nodes as FileTreeNode[]
-  const node = nodes.flatMap(node => [node, ...(node.children ?? [])]).find(node => node.id === id)
-  expect(node).toBeDefined()
-  ;(directory.props.onSelect as (node: FileTreeNode) => void)(node!)
 }
 function click(tree: unknown, label: string) {
   const button = elements(tree).find(item => item.type === 'button' && text(item) === label)
@@ -163,61 +162,37 @@ describe('missing context projections', () => {
     })).toEqual({ resources: [], unavailableResourceIds: ['gone'] })
   })
 
-  it('shows unavailable Tool IDs and removes their mounts only on an explicit action', async () => {
-    const props = common() as unknown as ComponentProps<typeof PresetWorkbench>
+  function toolConfiguration() {
+    const props = { ...common(), active: true } as unknown as ComponentProps<typeof PresetWorkbench>
     const root = instance(() => PresetWorkbench(props))
-    root()
-    let tree = root()
-    let explorer = child(tree, 'PresetToolExplorer')
-    const renderExplorer = instance(() => renderElement(explorer))
-    const groups = child(renderExplorer(), 'FileTree').props.nodes as FileTreeNode[]
-    expect(groups.find(node => node.id === 'unavailable-tools')?.children).toMatchObject([
-      { id: 'missing-tool', label: t('preset.tools.unavailable', { id: 'missing-tool' }) },
-      { id: 'disabled-missing', label: t('preset.tools.unavailable', { id: 'disabled-missing' }) },
-    ])
-    selectTool(renderExplorer(), 'missing-tool')
-    tree = root()
-    const detail = child(tree, 'PresetToolDetail')
-    const renderDetail = instance(() => renderElement(detail))
-    const missingDetail = child(renderDetail(), 'UnavailableToolDetail')
-    const renderMissing = instance(() => renderElement(missingDetail))
-    const missingTree = renderMissing()
-    expect(elements(missingTree).some(item => item.type === 'input' || item.type === 'textarea')).toBe(false)
-    expect(text(missingTree)).toContain('"toolId": "missing-tool"')
+    const catalog = child(root(), 'PresetLibraryCatalog')
+    ;(catalog.props.onConfigure as (id: string) => void)('preset')
+    const overview = child(root(), 'AgentPresetOverview')
+    const renderOverview = instance(() => renderElement(overview))
+    const directory = elements(renderOverview()).find(item => item.props.ariaLabel === '工具来源目录')!
+    const flatten = (nodes: FileTreeNode[]): FileTreeNode[] => nodes.flatMap(node => [node, ...flatten(node.children ?? [])])
+    const unavailable = flatten(directory.props.nodes as FileTreeNode[]).filter(node => node.id.startsWith('unavailable:'))
+    const actions = (directory.props.getBatchActions as (nodes: FileTreeNode[]) => Array<{ id: string; run(nodes: FileTreeNode[]): Promise<void> }>)(unavailable)
+    const remove = actions.find(action => action.id === 'remove')!
+    return { props, root, unavailable, remove }
+  }
+
+  it('shows unavailable Tool IDs and removes their mounts only on an explicit action', async () => {
+    const { props, unavailable, remove } = toolConfiguration()
+    expect(unavailable.map(node => node.label)).toEqual(['missing-tool', 'disabled-missing'].map(id => t('preset.tools.unavailable', { id })))
     expect(props.onReplaceToolMounts).not.toHaveBeenCalled()
-    click(missingTree, t('preset.tools.removeUnavailable'))
-    await Promise.resolve()
+    await remove.run(unavailable)
     expect(props.onReplaceToolMounts).toHaveBeenCalledExactlyOnceWith('preset', [{
       toolId: 'available', orderIndex: 3, defaultEnabled: true, provider: { order: 9 },
-    }])
+    }], ['mount:available', 'mount:missing-tool', 'mount:disabled-missing'])
     expect(props.toolMounts.map(item => item.toolId)).toEqual(['available', 'missing-tool', 'disabled-missing'])
-
-    explorer = child(root(), 'PresetToolExplorer')
-    selectTool(renderExplorer(), 'available')
-    root()
-    props.tools = []
-    root()
-    const afterDisappearance = root()
-    expect(child(afterDisappearance, 'PresetToolExplorer').props.selectedToolId).toBe('available')
-    props.tools = [availableTool]
-    const restored = root()
-    expect(child(restored, 'PresetToolDetail').props.tool).toEqual(availableTool)
-    expect(props.onReplaceToolMounts).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps unavailable Tool detail and reports a failed removal without changing mounts', async () => {
-    const props = common() as unknown as ComponentProps<typeof PresetWorkbench>
+  it('keeps unavailable Tool mounts and reports a failed removal in the configuration host', async () => {
+    const { props, root, unavailable, remove } = toolConfiguration()
     vi.mocked(props.onReplaceToolMounts).mockRejectedValue(new Error('Save failed'))
-    const root = instance(() => PresetWorkbench(props))
-    root()
-    const explorer = child(root(), 'PresetToolExplorer')
-    selectTool(instance(() => renderElement(explorer))(), 'missing-tool')
-    const detail = child(root(), 'PresetToolDetail')
-    const missing = child(instance(() => renderElement(detail))(), 'UnavailableToolDetail')
-    const renderMissing = instance(() => renderElement(missing))
-    click(renderMissing(), t('preset.tools.removeUnavailable'))
-    await Promise.resolve()
-    expect(elements(renderMissing()).find(item => item.props.role === 'alert')?.props.children).toBe('Save failed')
+    await expect(remove.run(unavailable)).rejects.toThrow('Save failed')
+    expect(elements(root()).find(item => item.props.role === 'alert')?.props.children).toBe('Save failed')
     expect(props.toolMounts).toHaveLength(3)
   })
 
@@ -228,7 +203,7 @@ describe('missing context projections', () => {
     const onSelectResource = vi.fn()
     const props = {
       ...common(), resources: [preset, setting, sibling, outside, second],
-      card: { id: 'card', promptResourceIds: ['lore', 'sibling'] }, routeResourceId: 'lore', routeAssetId: 'lore-root',
+      card: { id: 'card', version: 1, promptResourceIds: ['lore', 'sibling'] }, routeResourceId: 'lore', routeAssetId: 'lore-root',
       onSelectResource,
     } as unknown as ComponentProps<typeof ContextWorkbench>
     const root = instance(() => ContextWorkbench(props))
@@ -249,10 +224,42 @@ describe('missing context projections', () => {
     expect(props.card?.promptResourceIds).toEqual(['lore', 'sibling'])
   })
 
+  it.each(['current', 'global'] as const)('clears the actionable selection when the %s Lore scope becomes empty', scope => {
+    useStudioLayoutStore.getState().setViewPreference('lore.scope', scope)
+    const props = {
+      ...common(), workspaceId: `empty-lore-${scope}`,
+      card: { id: 'card', version: 1, promptResourceIds: ['lore'] }, loreMounts: [loreMount('lore')],
+    } as unknown as ComponentProps<typeof ContextWorkbench>
+    const root = instance(() => ContextWorkbench(props))
+    expect(child(root(), 'PromptResourceToolbar').props.selectedResourceId).toBe('lore')
+    props.card = { ...props.card!, promptResourceIds: [] }
+    props.loreMounts = []
+    const empty = root()
+    expect(child(empty, 'ContextAssetExplorer').props.displayNodes).toEqual([])
+    expect(child(empty, 'ContextAssetExplorer').props.selectedId).toBeUndefined()
+    expect(child(empty, 'ContextAssetEditor').props.node).toBeUndefined()
+    expect(child(empty, 'PromptResourceToolbar').props.resources).toEqual([])
+    expect(child(empty, 'PromptResourceToolbar').props.selectedResourceId).toBeUndefined()
+    expect(useStudioLayoutStore.getState().assetLayouts.resources.views[props.workspaceId]?.selectedId).toBeUndefined()
+    useStudioLayoutStore.getState().setViewPreference('lore.scope', 'current')
+  })
+
+  it('keeps an explicit temporary Lore target actionable in an otherwise empty scope', () => {
+    useStudioLayoutStore.getState().setViewPreference('lore.scope', 'current')
+    const props = {
+      ...common(), card: { id: 'card', version: 1, promptResourceIds: [] },
+      routeResourceId: 'lore', routeAssetId: 'lore-root',
+    } as unknown as ComponentProps<typeof ContextWorkbench>
+    const tree = instance(() => ContextWorkbench(props))()
+    expect(child(tree, 'PromptResourceToolbar').props.resources).toEqual([setting])
+    expect(child(tree, 'PromptResourceToolbar').props.selectedResourceId).toBe('lore')
+    expect(child(tree, 'ContextAssetEditor').props.node).toMatchObject({ id: 'lore-root' })
+  })
+
   it('keeps missing Card bindings visible and does not substitute the resource library', async () => {
     const props = {
-      ...common(), view: 'settings', onViewChange: vi.fn(),
-      card: { id: 'card', promptResourceIds: ['gone', 'also-gone'] },
+      ...common(),
+      card: { id: 'card', version: 1, promptResourceIds: ['gone', 'also-gone'] },
     } as unknown as ComponentProps<typeof ContextWorkbench>
     const root = instance(() => ContextWorkbench(props))
     let tree = root()
@@ -270,15 +277,15 @@ describe('missing context projections', () => {
     expect(props.onReplaceCardResources).not.toHaveBeenCalled()
     click(dialogTree, t('context.bindings.removeUnavailable'))
     await Promise.resolve()
-    expect(props.onReplaceCardResources).toHaveBeenCalledExactlyOnceWith('card', [])
+    expect(props.onReplaceCardResources).toHaveBeenCalledExactlyOnceWith('card', [], 1)
     expect(props.card?.promptResourceIds).toEqual(['gone', 'also-gone'])
   })
 
   it('preserves valid Setting and non-Setting Card references during explicit unavailable removal', async () => {
     const props = {
-      ...common(), view: 'settings', onViewChange: vi.fn(),
+      ...common(),
       resources: [setting, { ...setting, id: 'logic', resourceKind: 'logic' }],
-      card: { id: 'card', promptResourceIds: ['gone', 'lore', 'logic'] },
+      card: { id: 'card', version: 1, promptResourceIds: ['gone', 'lore', 'logic'] },
     } as unknown as ComponentProps<typeof ContextWorkbench>
     const root = instance(() => ContextWorkbench(props))
     const tree = root()
@@ -288,14 +295,14 @@ describe('missing context projections', () => {
     const dialog = child(tree, 'ResourceBindingDialog')
     click(instance(() => renderElement(dialog))(), t('context.bindings.removeUnavailable'))
     await Promise.resolve()
-    expect(props.onReplaceCardResources).toHaveBeenCalledExactlyOnceWith('card', ['lore', 'logic'])
+    expect(props.onReplaceCardResources).toHaveBeenCalledExactlyOnceWith('card', ['lore', 'logic'], 1)
     expect(props.card?.promptResourceIds).toEqual(['gone', 'lore', 'logic'])
   })
 
   it('reports failed Card binding removal and retains the missing IDs', async () => {
     const props = {
-      ...common(), view: 'settings', onViewChange: vi.fn(),
-      card: { id: 'card', promptResourceIds: ['gone', 'lore'] },
+      ...common(),
+      card: { id: 'card', version: 1, promptResourceIds: ['gone', 'lore'] },
     } as unknown as ComponentProps<typeof ContextWorkbench>
     vi.mocked(props.onReplaceCardResources).mockRejectedValue(new Error('Binding conflict'))
     const tree = instance(() => ContextWorkbench(props))()

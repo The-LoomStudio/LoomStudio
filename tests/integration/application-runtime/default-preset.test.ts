@@ -7,7 +7,7 @@ import type { AiGatewayRequest } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, composeAgentTurnPrompt, createPromptProcessorRegistry, type ToolDefinition } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import type { PromptResourceNode } from '../../../packages/application-runtime/src/cards/workspace-types.js'
+import type { PromptResourceNode } from '../../../packages/application-runtime/src/prompt/prompt-resource-types.js'
 import type { PromptActivation } from '../../../packages/application-runtime/src/prompt/prompt-activation.js'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { playerEntity, playerProfilePath, playerProfileTemplateId } from '@loom-studio/shared'
@@ -87,7 +87,7 @@ describe('bundled default preset', () => {
         resourceId: lore.id, targetAssetId: lore.rootNode.id, position: 'inside',
         asset: { id: 'user-context', kind: 'entry', label: 'User context', body: '{{User}} is her brother.', capabilities: { targetAnchorId: '@user.context' } },
       })
-      await runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.id }, loreResourceIds: [lore.id] })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: preset.id }, loreResourceIds: [lore.id] })
       const { providerProfile } = await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test-model'] })
       await runtime.updateAgentPreset({ agentPresetId: preset.id, name: 'Writer', expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version, model: { providerProfileId: providerProfile.id, modelId: 'test-model' } })
       const { card } = await runtime.createCard({ name: 'Story', userName: 'CARD_AUTHOR', opening: '{{User}} enters.' })
@@ -161,14 +161,9 @@ describe('bundled default preset', () => {
       const importedTarget = { ...target, timelineId: imported.timelineId, branchId: imported.idMap.branchIds[fork.branch.id]! }
       expect((await runtime.getStateSnapshot({ target: importedTarget })).playerProfile?.name).toBe('Forked')
       expect((await runtime.inspectMacros({ timelineTarget: importedTarget })).macroInspection.entries.find(entry => entry.name === 'user')?.value).toBe('Forked')
-      const legacyArchive = structuredClone(archive)
-      delete legacyArchive.runtimeContext
-      for (const revision of legacyArchive.state.revisions) delete revision.snapshot.$loom
-      const legacy = await runtime.importTimelineArchive({ source: JSON.stringify(legacyArchive) })
-      const legacyTarget = { ...target, timelineId: legacy.timelineId, branchId: legacy.idMap.branchIds[story.branch.id]! }
-      await runtime.createUserProfile({ expectedVersion: 0, name: 'Global', description: 'Legacy profile' })
-      expect((await runtime.getStateSnapshot({ target: legacyTarget })).playerProfile).toBeUndefined()
-      expect((await runtime.inspectMacros({ timelineTarget: legacyTarget })).macroInspection.entries.find(entry => entry.name === 'user')?.value).toBe('Global')
+      const { runtimeContext: _runtimeContext, ...missingContextArchive } = archive
+      await expect(runtime.importTimelineArchive({ source: JSON.stringify(missingContextArchive) }))
+        .rejects.toThrow('runtime context')
     } finally { engine.close() }
   })
 
@@ -360,7 +355,7 @@ describe('bundled default preset', () => {
     const { engine, runtime, calls } = createFixture(tools)
     try {
       const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Default Copy' })
-      await runtime.replacePresetToolMounts({
+      await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id),
         presetId: preset.id,
         mounts: tools.map((tool, index) => ({ toolId: tool.id, orderIndex: index, defaultEnabled: true })),
       })
@@ -374,7 +369,7 @@ describe('bundled default preset', () => {
           asset: { id, kind: 'entry', label: id, body: id, capabilities: { targetAnchorId: anchor, activation } },
         })
       }
-      await runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.id }, loreResourceIds: [setting.id] })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: preset.id }, loreResourceIds: [setting.id] })
       const { card } = await runtime.createCard({ name: 'Story', opening: 'NARRATIVE_RAW' })
       const { timeline } = await runtime.createNarrativeTimeline({ cardId: card.id })
       await runtime.upsertTextTransformRule({
@@ -443,6 +438,25 @@ describe('bundled default preset', () => {
     } finally {
       engine.close()
     }
+  })
+
+  it('injects effective display-rule descriptions once and diagnoses a missing anchor', async () => {
+    const { runtime, promptResources } = createFixture()
+    const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Rule descriptions' })
+    const rule = { id: 'phone', version: 3, scriptDocumentId: 'phone-script', contributionId: 'rule',
+      name: 'Phone', owner: { kind: 'workspace' as const }, enabled: true, orderIndex: 0,
+      matcher: { kind: 'regex' as const, pattern: 'NEVER_MATCH', flags: 'g' },
+      effect: { kind: 'replace' as const, replacement: '' }, targets: ['narrative', 'agent-session'] as ('narrative' | 'agent-session')[],
+      phases: ['display'] as 'display'[], description: 'PHONE_OUTPUT_PROTOCOL', createdAt: '', updatedAt: '' }
+    const compile = (rules: typeof rule[]) => composeAgentTurnPrompt({ preset, promptResources,
+      contextResourceIds: [], agentMessages: [], userInput: 'unrelated', historyRules: { session: rules, narrative: rules } })
+    const result = await compile([rule])
+    expect(result.messages.map(message => message.content).join('\n').match(/PHONE_OUTPUT_PROTOCOL/g)).toHaveLength(1)
+    expect(result.projection.observation?.sources).toContainEqual(expect.objectContaining({ original: rule.description }))
+    expect(JSON.stringify((await compile([{ ...rule, enabled: false }])).messages)).not.toContain(rule.description)
+    const missing = await compile([{ ...rule, descriptionAnchor: '@missing' } as typeof rule])
+    expect(JSON.stringify(missing.messages)).not.toContain(rule.description)
+    expect(missing.promptBuildTrace.diagnostics).toContainEqual(expect.objectContaining({ code: 'prompt.rule_description_anchor_missing' }))
   })
 
   it('routes reserved contributions to separate ordered regions and leaves empty regions absent', async () => {

@@ -73,11 +73,11 @@ describe('Application mutation request context', () => {
         return payload.result?.data
       }
 
-      const provider = await checked<{ providerProfile: { id: string } }>('application.createProviderProfile', {
+      const provider = await checked<{ providerProfile: { id: string; version: number } }>('application.createProviderProfile', {
         providerExtensionId: 'official.fake', displayName: 'Context Provider', enabledModelIds: [officialFakeModelId],
       })
       const providerProfileId = provider.providerProfile.id
-      await checked('application.updateProviderProfile', { providerProfileId, displayName: 'Updated Provider' })
+      await checked('application.updateProviderProfile', { expectedVersion: provider.providerProfile.version, providerProfileId, displayName: 'Updated Provider' })
       const capability = await checked<{ profile: { id: string } }>('application.createAiCapabilityProfile', {
         providerProfileId, capabilityId: 'chat.completions', displayName: 'Context Capability',
       })
@@ -97,7 +97,7 @@ describe('Application mutation request context', () => {
       await checked('application.updateAgentTool', { toolId: tool.id, expectedVersion: tool.version, definition: tool })
       await checked('application.deleteProviderProfile', { providerProfileId })
 
-      const credentialProvider = await checked<{ providerProfile: { id: string } }>('application.createProviderProfile', {
+      const credentialProvider = await checked<{ providerProfile: { id: string; version: number } }>('application.createProviderProfile', {
         providerExtensionId: 'official.openai-compatible', displayName: 'Credentials', config: { baseUrl: 'https://example.test/v1' },
       })
       const credentialId = credentialProvider.providerProfile.id

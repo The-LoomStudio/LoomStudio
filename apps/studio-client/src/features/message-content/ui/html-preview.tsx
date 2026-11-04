@@ -1,3 +1,4 @@
+import { createId } from '@loom-studio/shared'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { SkeletonText } from '@loom-studio/ui'
 import { buildHtmlDocument, readHtmlHeight } from '../model/html-document.js'
@@ -43,36 +44,42 @@ export function HtmlPreview(props: { value: string }) {
     // Let the message shell paint at its reserved height before creating the iframe.
     const layoutFrame = requestAnimationFrame(() => {
       mountFrame = requestAnimationFrame(() => {
-        const token = crypto.randomUUID()
-        instance = mountIsolatedFrame(staging, {
-          title: 'HTML',
-          source: { html: buildHtmlDocument(props.value, token) },
-          onLoad: frame => { frame.markReady() },
-          onMessage: data => {
-            const measured = readHtmlHeight(data, token)
-            if (measured === undefined) return
-            if (!committed) {
-              active.current?.dispose()
-              active.current = candidate
-              committed = true
-              staging.style.cssText = ''
-            }
-            height = measured
-            htmlHeightCache.write(cacheKey(), height)
-            instance?.markReady()
-            if (instance) instance.frame.inert = false
-            applySize()
-            setReady(true)
-          },
-          onFailure: message => {
-            if (!active.current) element.style.height = ''
-            setFailure({ value: props.value, message })
-          },
-        })
-        instance.frame.className = styles.preview
-        if (active.current) instance.frame.style.animation = 'none'
-        instance.frame.inert = true
-        applySize()
+        try {
+          const token = createId()
+          instance = mountIsolatedFrame(staging, {
+            title: 'HTML',
+            source: { html: buildHtmlDocument(props.value, token) },
+            onLoad: frame => { frame.markReady() },
+            onMessage: data => {
+              const measured = readHtmlHeight(data, token)
+              if (measured === undefined) return
+              if (!committed) {
+                active.current?.dispose()
+                active.current = candidate
+                committed = true
+                staging.style.cssText = ''
+              }
+              height = measured
+              htmlHeightCache.write(cacheKey(), height)
+              instance?.markReady()
+              if (instance) instance.frame.inert = false
+              applySize()
+              setReady(true)
+            },
+            onFailure: message => {
+              if (!active.current) element.style.height = ''
+              setFailure({ value: props.value, message })
+            },
+          })
+          instance.frame.className = styles.preview
+          if (active.current) instance.frame.style.animation = 'none'
+          instance.frame.inert = true
+          applySize()
+        } catch (error) {
+          candidate.dispose()
+          if (!active.current) element.style.height = ''
+          setFailure({ value: props.value, message: error instanceof Error ? error.message : String(error) })
+        }
       })
     })
     return () => {

@@ -1,5 +1,3 @@
-import type { LoomScriptContent } from '../../../packages/application-runtime/src/scripts/loom-script-contracts.js'
-import { migrateLegacyRuleScriptsToMarkdown } from '../../../packages/application-runtime/src/scripts/loom-script-markdown-migration.js'
 import { parseLoomScriptSource, serializeLoomScriptMetadata } from '@loom-studio/shared/loom-scripts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -11,7 +9,6 @@ import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
-import { migrateLegacyTextTransformRules, listScriptTextTransformRules } from '../../../packages/application-runtime/src/scripts/loom-script-text-migration.js'
 import { resolveEffectiveTextPipeline } from '../../../packages/application-runtime/src/runtime/transforms-runtime.js'
 import type { TextTransformRuleContent } from '../../../packages/application-runtime/src/transforms/history-text.js'
 import { createExtensionScriptArchiveExporter } from '../../../apps/studio-server/src/extensions/extension-script-export.js'
@@ -43,81 +40,6 @@ function rule(enabled = true): TextTransformRuleContent {
 }
 
 describe('Text rules become Script contributions', () => {
-  it('converts legacy Script latest and adopted revisions without activating unsaved changes', async () => {
-    const f = await fixture()
-    const definition = rule()
-    const { owner: _owner, createdAt: _created, updatedAt: _updated, ...plain } = definition
-    const source = [ '// ==LoomScript==', '// @format 1', '// @id imported.text-rule', '// @name Replacement', '// @version 2.1.0', '// @tag ui', '// @runtime declarative',
-      `// @contribution ${JSON.stringify({ kind: 'text-transform', id: 'rule', rule: plain })}`, '// ==/LoomScript==' ].join('\n')
-    const { script } = await f.runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'old.loom.js', source })
-    const original = (await f.documents.get(script.id))!
-    await f.documents.write({ id: script.id, type: original.type, expectedVersion: original.version,
-      content: { ...(original.content as LoomScriptContent), textResourceIds: { rule: 'original-rule' } } })
-    const { mount } = await f.runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 7 })
-    await f.runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 7, grantedCapabilities: [] })
-    const before = (await f.runtime.listLoomScriptMounts()).mounts[0]!
-    const { mount: disabled } = await f.runtime.createLoomScriptMount({ target: { kind: 'card', cardId: 'other' }, scriptDocumentId: script.id, orderIndex: 19, pinnedDocumentVersion: before.adoptedDocumentVersion })
-    const current = (await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script
-    await f.runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: current.version, fileName: 'old.loom.js', source: source.replace('new\\nline', 'later\\nline') })
-    expect((await migrateLegacyRuleScriptsToMarkdown(f)).migrated).toEqual([script.id])
-    const latest = (await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script
-    const after = (await f.runtime.listLoomScriptMounts()).mounts[0]!
-    expect(latest).toMatchObject({ metadataId: 'imported.text-rule', scriptVersion: '2.1.0', tags: ['ui'], textResourceIds: { rule: 'original-rule' }, source: { fileName: 'old.rule.md' } })
-    expect(after).toMatchObject({ enabled: true, orderIndex: 7, runtimeRevision: before.runtimeRevision, grantedCapabilities: before.grantedCapabilities })
-    expect(after.adoptedDocumentVersion).not.toBe(latest.version)
-    const disabledAfter = (await f.runtime.listLoomScriptMounts()).mounts.find(item => item.id === disabled.id)!
-    expect(disabledAfter).toMatchObject({ enabled: false, orderIndex: 19, target: { kind: 'card', cardId: 'other' }, pinnedDocumentVersion: after.adoptedDocumentVersion })
-    const adopted = (await f.documents.get(script.id, { version: after.adoptedDocumentVersion }))!.content as unknown as typeof latest
-    expect(adopted.source.mediaType).toBe('text/markdown')
-    expect(adopted.contributions[0]).toMatchObject({ rule: { effect: { replacement: 'new\nline' } } })
-    expect(latest.contributions[0]).toMatchObject({ rule: { effect: { replacement: 'later\nline' } } })
-    expect(await migrateLegacyRuleScriptsToMarkdown(f)).toEqual({ migrated: [], skipped: [] })
-    expect((await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script.version).toBe(latest.version)
-  })
-
-  it('reports edited code instead of discarding it during format migration', async () => {
-    const f = await fixture()
-    await f.documents.write({ id: 'legacy-rule', type: 'airp.textTransformRule', expectedVersion: 'new', content: rule() })
-    await migrateLegacyTextTransformRules(f)
-    const original = (await f.runtime.listLoomScripts()).scripts[0]!
-    const artifact = (await f.runtime.exportLoomScript({ scriptDocumentId: original.id })).artifact
-    const source = serializeLoomScriptMetadata(parseLoomScriptSource(artifact.source)).replace('// @runtime declarative', '// @runtime client') + '\nexport function activate() {}'
-    const { script } = await f.runtime.updateLoomScript({ scriptDocumentId: original.id, expectedVersion: original.version, fileName: 'edited.loom.js', source })
-    expect(await migrateLegacyRuleScriptsToMarkdown(f)).toMatchObject({ migrated: [], skipped: [{ id: script.id }] })
-    expect((await f.runtime.exportLoomScript({ scriptDocumentId: script.id })).artifact.source).toBe(source)
-    expect((await f.runtime.getLoomScript({ scriptDocumentId: script.id })).script.version).toBe(script.version)
-  })
-
-  it('migrates atomically, retains reference IDs and disabled status, and is idempotent', async () => {
-    const f = await fixture()
-    await f.documents.write({ id: 'legacy-rule', type: 'airp.textTransformRule', expectedVersion: 'new', content: rule(false) })
-    await migrateLegacyTextTransformRules(f)
-    expect(await f.documents.get('legacy-rule')).toBeNull()
-    const first = await listScriptTextTransformRules(f.documents)
-    expect(first).toEqual([expect.objectContaining({ id: 'legacy-rule', enabled: false, owner: { kind: 'workspace' },
-      effect: { kind: 'replace', replacement: 'new\nline' } })])
-    const scripts = (await f.runtime.listLoomScripts()).scripts
-    expect(scripts).toHaveLength(1)
-    expect(scripts[0]).toMatchObject({ runtime: 'declarative', requestedCapabilities: [], textResourceIds: { rule: 'legacy-rule' } })
-    await migrateLegacyTextTransformRules(f)
-    expect((await f.runtime.listLoomScripts()).scripts).toEqual(scripts)
-    expect(await listScriptTextTransformRules(f.documents)).toEqual(first)
-  })
-
-  it('keeps a disabled legacy rule available for an explicit Preset text use', async () => {
-    const f = await fixture()
-    await f.documents.write({ id: 'legacy-rule', type: 'airp.textTransformRule', expectedVersion: 'new', content: rule(false) })
-    await migrateLegacyTextTransformRules(f)
-    const { resource } = await f.runtime.importPromptResource({ artifact: {
-      format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset',
-      rootNode: { id: 'preset-root', kind: 'module', label: 'Preset' },
-      textUses: [{ id: 'legacy-rule', kind: 'rule', enabled: true }],
-    } })
-    const { session } = await f.runtime.createAgentSession({ agentPresetId: resource.id })
-    const effective = await resolveEffectiveTextPipeline(f, { kind: 'agent-session', sessionId: session.id }, 'display')
-    expect(effective.rules).toEqual([expect.objectContaining({ id: 'legacy-rule', enabled: true })])
-  })
-
   it('preserves full source, settings and cross-script addresses through two Preset round trips', async () => {
     const f = await fixture()
     const definition = rule()
@@ -167,14 +89,28 @@ describe('Text rules become Script contributions', () => {
     const f = await fixture()
     const { owner: _owner, createdAt: _created, updatedAt: _updated, ...artifact } = rule()
     const input: ImportExtensionPackageResourcesInput = { packageId: 'example.rules', packageVersion: '1.0.0',
-      promptResources: [], agentTools: [], textExtractors: [], transformRules: [{ contribution: { id: 'replacement', source: 'rule.json' }, artifact }] }
+      promptResources: [{ contribution: { id: 'preset', source: 'preset.json', resourceKind: 'preset', scriptMounts: [{ scriptId: 'native' }] },
+        artifact: { format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset', rootNode: { id: 'example.rules.native-preset-root', kind: 'module', label: 'Preset' } } }],
+      loomScripts: [{ contribution: { id: 'native', source: 'native.rule.md' }, source: '---\nid: native.rule\nname: Native\nregex: before\n---\nafter' }],
+      agentTools: [], textExtractors: [], transformRules: [{ contribution: { id: 'replacement', source: 'rule.json' }, artifact }] }
     const first = await f.runtime.importExtensionPackageResources(input)
     expect((await f.documents.list({ type: 'airp.textTransformRule' })).items).toEqual([])
     const ruleId = first.transformRules[0]!.ruleId
+    const initialMount = (await f.runtime.listLoomScriptMounts()).mounts[0]!
+    expect(initialMount).toMatchObject({ enabled: true, adoptedDocumentVersion: 1, adoptedSettings: {}, runtimeRevision: 1 })
+    expect(initialMount.origin).not.toHaveProperty('legacyRuleId')
+    expect(initialMount.origin).not.toHaveProperty('legacyPresetInheritance')
     const initial = (await f.runtime.getTextTransformRule({ ruleId })).rule
+    const presetMount = (await f.runtime.listLoomScriptMounts()).mounts.find(mount => mount.target.kind === 'preset')!
+    const adopted = (await f.runtime.updateLoomScriptMount({ mountId: presetMount.id, expectedVersion: presetMount.version,
+      enabled: true, orderIndex: presetMount.orderIndex, grantedCapabilities: [] })).mount
     const installation = (await f.runtime.listExtensionInstallations()).installations[0]!
     const updated = await f.runtime.importExtensionPackageResources({ ...input, packageVersion: '1.1.0', update: { expectedInstallationVersion: installation.version },
       transformRules: [{ ...input.transformRules[0]!, artifact: { ...artifact, effect: { kind: 'replace', replacement: 'updated' } } }] })
+    const retained = (await f.runtime.listLoomScriptMounts()).mounts.find(mount => mount.id === adopted.id)!
+    expect(retained).toMatchObject({ enabled: true, runtimeRevision: adopted.runtimeRevision,
+      adoptedDocumentVersion: adopted.adoptedDocumentVersion, adoptedSettings: adopted.adoptedSettings, settings: adopted.settings })
+    expect((await f.runtime.getLoomScript({ scriptDocumentId: retained.scriptDocumentId })).script.version).toBeGreaterThan(retained.adoptedDocumentVersion!)
     expect(updated.transformRules[0]!.ruleId).toBe(ruleId)
     const latest = (await f.runtime.getTextTransformRule({ ruleId })).rule
     expect(latest.scriptDocumentId).toBe(initial.scriptDocumentId)
@@ -277,7 +213,7 @@ describe('Text rules become Script contributions', () => {
     expect(effective.rules.map(item => item.origin?.contributionId).sort()).toEqual(['replacement', 'replacement/extra'])
     expect(effective.rules.find(item => item.contributionId === 'rule')?.id).toBe(reimported.transformRules[0]!.ruleId)
     const installation = (await second.runtime.listExtensionInstallations()).installations[0]!
-    await second.runtime.removeExtensionPackageResources({ packageId, uninstall: true, expectedInstallationVersion: installation.version })
+    await second.runtime.uninstallExtensionInstallation({ packageId, expectedInstallationVersion: installation.version })
     expect((await second.runtime.listLoomScripts()).scripts).toHaveLength(1)
     expect((await resolveEffectiveTextPipeline(second, { kind: 'agent-session', sessionId: session.id }, 'display')).rules).toEqual([])
   })

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import type { ClientNodeDisplayProjectionContext } from '@loom-studio/extension-sdk'
 import type { ClientRendererHost, ClientRendererRegistration } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
@@ -31,19 +31,21 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
   const entryId = props.surface === 'narrative' ? props.nodeId : props.messageId
   const ownerId = props.surface === 'narrative' ? props.timelineId : props.agentSessionId
   const rendererSurface = props.surface === 'narrative' ? 'narrative.entry.inline' : 'agent.message.inline'
-  const [projection, setProjection] = useState<ReturnType<typeof resolveNodeRenderMounts>>({
-    before: [],
-    inline: [],
-    after: [],
-    diagnostics: [],
-  })
+  const projectionInput = useMemo(() => ({
+    host: props.host, entryId, ownerId, rawText: props.rawText,
+    displayText: props.displayText, surface: props.surface, revision,
+  }), [props.host, entryId, ownerId, props.rawText, props.displayText, props.surface, revision])
+  const [published, setProjection] = useState<{
+    input: typeof projectionInput
+    value: ReturnType<typeof resolveNodeRenderMounts>
+  }>()
+  const projection = published?.input === projectionInput ? published.value
+    : { before: [], inline: [], after: [], diagnostics: [] }
 
   useEffect(() => {
     const registrations = props.host.list(rendererSurface).filter(hasNodeProjector)
     if (registrations.length === 0) {
-      setProjection(current => current.before.length || current.inline.length || current.after.length
-        ? { before: [], inline: [], after: [], diagnostics: [] }
-        : current)
+      setProjection(undefined)
       return
     }
     const controller = new AbortController()
@@ -101,13 +103,13 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
         matches,
       })
       for (const diagnostic of resolved.diagnostics) props.host.reportDiagnostic(diagnostic)
-      setProjection(resolved)
+      setProjection({ input: projectionInput, value: resolved })
     })
     return () => {
       disposed = true
       controller.abort()
     }
-  }, [entryId, ownerId, props.host, props.rawText, props.displayText, props.surface, rendererSurface, revision])
+  }, [entryId, ownerId, props.host, props.rawText, props.displayText, props.surface, rendererSurface, revision, projectionInput])
 
   const scope = props.surface === 'narrative' ? {
     kind: 'node' as const,

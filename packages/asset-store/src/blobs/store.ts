@@ -28,10 +28,7 @@ export function createBlobStore(options: {
   now(): string
   defaultMaxBytes?: number
 }): BlobStore {
-  options.engine.migrate({
-    namespace: migrationNamespace,
-    migrations: [{ version: 1, migrate: migrateVersionOne }],
-  })
+  options.engine.initializeSchema({ namespace: migrationNamespace, version: 1, initialize: initializeSchema })
   let writeQueue = Promise.resolve()
 
   function enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
@@ -199,7 +196,7 @@ async function writeStagingFile(
   return { sha256: hash.digest('hex'), sizeBytes }
 }
 
-function migrateVersionOne(database: SqliteDataEngine['database']): void {
+function initializeSchema(database: SqliteDataEngine['database']): void {
   database.exec(`
     CREATE TABLE stored_blobs (
       id TEXT PRIMARY KEY,

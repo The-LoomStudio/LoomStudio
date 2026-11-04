@@ -1,3 +1,6 @@
+import { RelatedLore } from '../../features/prompt-resources/ui/related-lore/related-lore.js'
+import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { cardMediaUrl } from '../../shared/lib/card-media.js'
 import studioLogoUrl from '../../shared/assets/logo.png'
 import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.js'
 import { presetIconUrl, useExtensionIdentities } from '../../shared/ui/extension-icon/extension-icon.js'
@@ -8,9 +11,9 @@ import { isPromptMessageSequence } from '@loom-studio/shared'
 import { ResourceUnavailable } from '../../shared/ui/resource-unavailable/resource-unavailable.js'
 import type { ResourceSearchReveal } from '../../shared/lib/search-match.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
-import { ArrowLeft, SlidersHorizontal, BookOpen, Braces, Copy, Download, Folder, FolderOpen, Package, Regex, Star, ToggleLeft, ToggleRight, Trash2, Wrench } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowUpRight, Link2, Plus, Upload, SlidersHorizontal, BookOpen, Braces, Copy, Download, Folder, FolderOpen, Package, Regex, Star, ToggleLeft, ToggleRight, Trash2, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { Button, IconButton, SearchField, Textarea } from '@loom-studio/ui'
+import { Button, Dialog, IconButton, SearchField, Textarea } from '@loom-studio/ui'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
@@ -21,7 +24,6 @@ import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/prompt-resources/ui/context-asset-workbench.js'
 import { readContextAssetBadgeInfo, renderContextAssetTreeIcon } from '../../features/prompt-resources/ui/context-asset-tree.js'
 import { flattenContextAssetNodes, findContextAssetNode, findContextAssetPath, findContextAssetByVirtualPath } from '../../features/prompt-resources/model/context-asset-tree.js'
-import toolbarStyles from '../../features/prompt-resources/ui/prompt-resource-toolbar/prompt-resource-toolbar.module.scss'
 import { PromptResourceToolbar } from '../../features/prompt-resources/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { buildPresetTokenProjection } from '../../features/prompt-resources/model/preset-token-projection.js'
 import { useResourceTokenSnapshot } from '../../features/prompt-resources/model/use-resource-token-snapshot.js'
@@ -29,7 +31,7 @@ import { presetAnchorDeclarations } from '../../features/prompt-resources/model/
 import { createDefaultPresetToolMountInput, toPresetToolMountInput, togglePresetToolMount, validPresetToolMounts } from '../../features/prompt-resources/model/preset-tool-mounts.js'
 import { FileTree, type FileTreeNode } from '../../shared/ui/file-tree/file-tree.js'
 import { buildPresetToolProjection } from '../../features/prompt-resources/model/preset-tool-projection.js'
-import type { AgentToolDefinition, Card, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, LoreMount, TextExtractor, TextTransformRule } from '../../entities/index.js'
+import type { AgentToolDefinition, Card, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, LoreMount } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
 import { AgentModelEditor } from '../../features/prompt-resources/ui/agent-model-editor.js'
 import { NarrativeRangePreview } from './narrative-range-preview.js'
@@ -74,6 +76,9 @@ function usageFolders(entries: Array<{ source: string; section?: string; node: F
 }
 
 type PresetWorkbenchProps = {
+  promptResourceApi?: StudioApi['promptResources']
+  onNavigateResource?(path: string): void
+  onRelatedResourceChanged?(): void | Promise<void>
   active: boolean
   onReturnToLibrary?(): void
   modelProfiles: ModelProfile[]
@@ -113,9 +118,10 @@ type PresetWorkbenchProps = {
   onExportResource: (resourceId: string) => Promise<void>
   onExportResourceZip?: (resourceId: string) => Promise<void>
   onImportResourceZip?: (file: File) => Promise<string | undefined>
-  onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
-  onReplaceLoreMounts: (source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { loreResourceId: string }>) => Promise<void>
+  onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[], expectedMountIds: string[]) => Promise<void>
+  onReplaceLoreMounts: (source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { loreResourceId: string }>, expectedMountIds: string[]) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
+  onOpenTool?: (toolId: string) => void
   routeToolId?: string
   routeAssetId?: string
   routeResourceId?: string
@@ -144,7 +150,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const [saveError, setSaveError] = useState<string>()
   const pending = useRef(false)
   const configured = presets.find(preset => preset.id === configurationId)
-  const editing = Boolean(props.routeResourceId || props.routeAssetId || props.routeToolId || localEditingId)
+  const [libraryTab, setLibraryTab] = useWorkbenchView<'presets' | 'tools'>('agent.library', 'presets', ['presets', 'tools'])
+  const [libraryToolId, setLibraryToolId] = useState<string>()
+  const [toolPane, setToolPane] = useState<'master' | 'detail'>('master')
+  useEffect(() => {
+    if (props.routeToolId) { setLibraryTab('tools'); setLibraryToolId(props.routeToolId); setToolPane('detail') }
+    else if (props.routeResourceId || props.routeAssetId) setLibraryTab('presets')
+  }, [props.routeToolId, props.routeResourceId, props.routeAssetId])
+  const editing = libraryTab === 'presets' && Boolean(props.routeResourceId || props.routeAssetId || localEditingId)
   useEffect(() => { if (!props.active) setConfigurationId(undefined) }, [props.active])
   const sourceOf = (preset: PromptResource): PresetCatalogSource => {
     const origin = preset.origin
@@ -158,6 +171,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       : { id: 'personal', name: '我的预设', kind: 'personal' }
   }
   const sources = [...new Map(presets.map(preset => { const source = sourceOf(preset); return [source.id, source] })).values()]
+  if (!sources.some(source => source.kind === 'personal')) sources.push({ id: 'personal', name: '我的预设', kind: 'personal' })
+  const importPresetInput = useRef<HTMLInputElement>(null)
   async function configureOperation<T,>(operation: () => Promise<T>): Promise<T> {
     if (pending.current) throw new Error('预设配置正在保存，请稍候。')
     pending.current = true; setSaving(true); setSaveError(undefined)
@@ -172,21 +187,39 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     else setLocalEditingId(id)
   }
   const projection = buildPresetToolProjection({ mounts: props.toolMounts, presetId: configured?.id, tools: props.tools })
-  const toolbar = <PromptResourceToolbar hideSelect hideSingleResourceActions resourceKind="preset" resources={presets}
-    selectedResourceId={configured?.id} draftResourceIds={props.draftResourceIds} t={props.t}
-    onCreate={props.onCreateResource} onImport={props.onImportResource} onImportZip={props.onImportResourceZip}
-    onDuplicate={props.onDuplicateResource} onDelete={props.onDeleteResource} onExport={props.onExportResource}
-    onExportZip={props.onExportResourceZip} onDiscardDraft={props.onDiscardDraft} onRetryDraft={props.onRetryDraft} onSelect={configure} />
+  const toolbar = <>
+    <IconButton size="small" title="新建预设" aria-label="新建预设" onClick={() => { void configureOperation(() => props.onCreateResource('preset')).catch(() => undefined) }}><Plus size={16} /></IconButton>
+    <IconButton size="small" title="导入预设" aria-label="导入预设" onClick={() => importPresetInput.current?.click()}><Upload size={16} /></IconButton>
+    <input ref={importPresetInput} hidden type="file" accept=".json,.zip" onChange={event => {
+      const file = event.target.files?.[0]; event.target.value = ''
+      if (file) void configureOperation(() => file.name.endsWith('.zip') && props.onImportResourceZip ? props.onImportResourceZip(file) : props.onImportResource(file)).catch(() => undefined)
+    }} />
+  </>
   return <div className={styles.libraryHost}>
-    <div className={styles.libraryPane} hidden={editing}>
-      <PresetLibraryCatalog sources={sources} items={presets.map(preset => ({
+    {saveError && !configured && <p role="alert">{saveError}</p>}
+    {!editing && <PanelTabs className={styles.libraryTabs} ariaLabel="Agent 资源库" activeId={libraryTab} onChange={setLibraryTab}
+      items={[{ id: 'presets', label: '预设库' }, { id: 'tools', label: '工具库' }]} />}
+    {libraryTab === 'tools' && <div className={styles.libraryPane}>
+      <MasterDetailWorkbench navigationScope="local" mobilePane={toolPane} onMobilePaneChange={setToolPane} hasSelection={Boolean(libraryToolId)}
+        master={<PresetToolExplorer selectedToolId={libraryToolId} t={props.t} toolMounts={props.toolMounts} tools={props.tools} presets={presets}
+          onOpenPreset={configure} onSelect={id => { setLibraryToolId(id); setToolPane('detail') }} />}>
+        <PresetToolDetail promptResourceApi={props.promptResourceApi} onNavigateResource={props.onNavigateResource} onRelatedResourceChanged={props.onRelatedResourceChanged} toolsReady={props.toolsReady} t={props.t} tool={props.tools.find(tool => tool.id === libraryToolId)} onUpdateTool={props.onUpdateTool} />
+      </MasterDetailWorkbench>
+    </div>}
+    <div className={styles.libraryPane} hidden={editing || libraryTab !== 'presets'}>
+      <PresetLibraryCatalog active={props.active && !editing && libraryTab === 'presets'} sources={sources} items={presets.map(preset => ({
         id: preset.id, sourceId: sourceOf(preset).id, name: preset.rootNode.label,
         iconUrl: presetIconUrl(preset, extensionIdentities),
         modelLabel: preset.model?.modelId ?? props.t('agent.model.unbound'),
         toolCount: props.toolMounts.filter(mount => mount.presetResourceId === preset.id && mount.defaultEnabled !== false).length,
         resourceCount: props.loreMounts.filter(mount => mount.source.kind === 'preset' && mount.source.id === preset.id).length + (preset.textUses?.length ?? 0),
         draft: props.draftResourceIds.includes(preset.id),
-      }))} actions={toolbar} onConfigure={configure} onOpen={open} />
+      }))} actions={toolbar} itemActions={item => <>
+        <IconButton size="small" title="复制预设" aria-label={`复制${item.name}`} onClick={() => { void configureOperation(() => props.onDuplicateResource(item.id)).catch(() => undefined) }}><Copy size={16} /></IconButton>
+        <IconButton size="small" title="删除预设" aria-label={`删除${item.name}`} onClick={() => {
+          if (window.confirm(`删除预设“${item.name}”？`)) void configureOperation(() => props.onDeleteResource(item.id)).catch(() => undefined)
+        }}><Trash2 size={16} /></IconButton>
+      </>} onConfigure={configure} onOpen={open} />
     </div>
     {editing && <div className={styles.libraryPane}>
       <PresetArrangementWorkbench {...props} selectedResourceId={localEditingId ?? props.selectedResourceId} onConfigure={configure}
@@ -208,11 +241,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           <AgentPresetOverview key={configured.id} {...props} preset={configured} installations={props.extensionInstallations}
             unavailableMounts={projection.unavailableMounts} hideHeader
             onSaveModel={input => configureOperation(() => props.onSaveModel(input))}
-            onReplaceMounts={(id, mounts) => configureOperation(() => props.onReplaceToolMounts(id, validPresetToolMounts(mounts, props.tools)))}
-            onReplaceLoreMounts={(source, mounts) => configureOperation(() => props.onReplaceLoreMounts(source, mounts))}
+            onReplaceMounts={(id, mounts, baseline) => configureOperation(() => props.onReplaceToolMounts(id, validPresetToolMounts(mounts, props.tools), baseline))}
+            onReplaceLoreMounts={(source, mounts, baseline) => configureOperation(() => props.onReplaceLoreMounts(source, mounts, baseline))}
             onDuplicate={async () => { await props.onDuplicateResource(configured.id) }}
             onDelete={async () => { await props.onDeleteResource(configured.id); setConfigurationId(undefined) }}
             onExport={() => props.onExportResource(configured.id)}
+            onOpenTool={props.onOpenTool ? id => { setConfigurationId(undefined); props.onOpenTool!(id) } : undefined}
             onOpenLore={(id, node) => { setConfigurationId(undefined); props.onOpenLore?.(id, node) }}
             onOpenTextUse={(kind, id) => { setConfigurationId(undefined); props.onOpenTextUse?.(kind, id) }} />
         </div>
@@ -222,7 +256,6 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 }
 
 export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onConfigure(id: string): void }) {
-  const activePresetView = useStudioLayoutStore(state => state.presetView)
   const metadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const textEditorMode = useStudioLayoutStore(state => state.textEditorMode)
   const explorerLayout = useStudioLayoutStore(state => state.assetLayouts.preset)
@@ -231,7 +264,6 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setAssetExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
-  const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
@@ -253,8 +285,8 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     presetId: selectedResource?.id,
     tools: props.tools,
   }), [props.toolMounts, props.tools, selectedResource?.id])
-  const replaceToolMounts = (presetId: string, mounts: PresetToolMountInput[]) => {
-    return props.onReplaceToolMounts(presetId, validPresetToolMounts(mounts, props.tools))
+  const replaceToolMounts = (presetId: string, mounts: PresetToolMountInput[], baseline: string[]) => {
+    return props.onReplaceToolMounts(presetId, validPresetToolMounts(mounts, props.tools), baseline)
   }
   const mainOrderNodes = useMemo(() => selectedResource
     ? [readPromptResourceWorkbenchRoot(selectedResource)] : [], [selectedResource])
@@ -296,21 +328,12 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
   })) ?? [], [declarations])
   const [declarationExpandedIds, setDeclarationExpandedIds] = useState<string[]>([])
   const searchQuery = props.searchQuery
-  const [selectedToolId, setSelectedToolId] = useState<string>()
-  useEffect(() => {
-    if (!props.routeToolId) return
-    setSelectedToolId(props.routeToolId)
-    setActivePresetView('tools')
-  }, [props.routeToolId, setActivePresetView])
-  const hasDetailSelection = activePresetView === 'tools'
-    ? Boolean(selectedToolId)
-    : Boolean(selectedNode)
+  const hasDetailSelection = Boolean(selectedNode)
 
   useEffect(() => {
     if (!props.routeAssetId) return
-    if (props.routeResourceId) setActivePresetView('assets')
     openAssetDetail('preset', props.workspaceId, props.routeAssetId)
-  }, [openAssetDetail, setActivePresetView, props.routeResourceId, props.routeAssetId, props.searchMatch?.requestId, props.workspaceId])
+  }, [openAssetDetail, props.routeResourceId, props.routeAssetId, props.searchMatch?.requestId, props.workspaceId])
 
 
 
@@ -318,9 +341,7 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     setAssetPane('preset', props.workspaceId, props.routeResourceId || props.routeToolId ? 'detail' : 'explorer')
   }, [props.routeResourceId, props.routeToolId, selectedResource?.id])
 
-  useEffect(() => {
-    if (!selectedToolId && !props.routeToolId) setSelectedToolId(props.tools[0]?.id)
-  }, [props.tools, selectedToolId, props.routeToolId])
+
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {
@@ -329,7 +350,6 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
       
       const matchedNode = findContextAssetByVirtualPath(workbenchNodes, detail.path)
       if (matchedNode) {
-        setActivePresetView('assets')
         openAssetDetail('preset', props.workspaceId, matchedNode.id)
         
         const pathNodes = findContextAssetPath(workbenchNodes, matchedNode.id)
@@ -349,7 +369,7 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     
     window.addEventListener('loom:navigate', handleNavigate)
     return () => window.removeEventListener('loom:navigate', handleNavigate)
-  }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setAssetExpandedIds, openAssetDetail, setActivePresetView])
+  }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setAssetExpandedIds, openAssetDetail])
 
 
   const displayNodes: ContextAssetNode[] = useMemo(() => {
@@ -391,7 +411,6 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     const clickedPreset = presetResources.find(p => p.id === id || p.rootNode.id === id)
     if (clickedPreset) {
       setSelectedResourceId(clickedPreset.id)
-      setActivePresetView('assets')
       openAssetDetail('preset', props.workspaceId, clickedPreset.rootNode.id)
       return
     }
@@ -400,7 +419,6 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     if (matchedPreset && matchedPreset.id !== selectedResourceId) {
       setSelectedResourceId(matchedPreset.id)
     }
-    setActivePresetView('assets')
 
     openAssetDetail('preset', props.workspaceId, id)
   }
@@ -431,15 +449,10 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
       hasSelection={hasDetailSelection}
       mobilePane={mobilePane}
       onMobilePaneChange={pane => setAssetPane('preset', props.workspaceId, pane)}
-      toolbar={activePresetView === 'assets' ? (
+      toolbar={(
         <PromptResourceToolbar
           trailingActions={configurationAction}
           tokenSnapshot={tokenSnapshot}
-          resourceBindings={props.resourceBindings}
-          bindingResources={props.resources}
-          extensionInstallations={props.extensionInstallations}
-          hideSelect
-          hideSingleResourceActions
           resourceKind="preset"
           resources={presetResources}
           selectedResourceId={selectedResource?.id}
@@ -450,28 +463,17 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
           onRetryDraft={props.onRetryDraft}
           onDelete={handleDeleteResource}
           onDuplicate={props.onDuplicateResource}
-          onExport={props.onExportResource}
-          onExportZip={props.onExportResourceZip}
           onImport={props.onImportResource}
           onImportZip={props.onImportResourceZip}
           onSelect={setSelectedResourceId}
         />
-      ) : <div className={toolbarStyles.actions}>{configurationAction}</div>}
+      )}
       header={(
         <div>
           {props.onReturnToLibrary && <Button className={styles.libraryBack} size="small" variant="ghost" onClick={props.onReturnToLibrary}>
             <ArrowLeft size={15} />预设库
           </Button>}
-          <PanelTabs
-            activeId={activePresetView}
-            ariaLabel={props.t('preset.panel.views')}
-            items={[
-              { id: 'assets' as const, label: props.t('preset.panel.assets') },
-              { id: 'tools' as const, label: props.t('preset.panel.tools') },
-            ]}
-            onChange={setActivePresetView}
-          />
-          {activePresetView === 'assets' && toolProjection.unavailableMounts.length > 0 ? (
+          {toolProjection.unavailableMounts.length > 0 ? (
             <div>
               {toolProjection.unavailableMounts.map(mount => <p key={`tool:${mount.id}`} role="status">{props.t('preset.tools.unavailable', { id: mount.toolId })}</p>)}
             </div>
@@ -481,19 +483,7 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
       viewMode={explorerView.viewMode}
-      explorer={activePresetView === 'tools' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <PresetToolExplorer
-            selectedToolId={selectedToolId}
-            t={props.t}
-            toolMounts={props.toolMounts}
-            unavailableMounts={toolProjection.unavailableMounts}
-            tools={props.tools}
-            presetId={selectedResource?.id}
-            onSelect={setSelectedToolId}
-          />
-        </div>
-      ) : (
+      explorer={(
         <ContextAssetExplorer
             highlightQuery={props.globalSearchQuery}
           tokenSnapshot={tokenSnapshot}
@@ -533,19 +523,7 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
         />
       )}
     >
-      {activePresetView === 'tools' ? (
-        <PresetToolDetail
-          toolsReady={props.toolsReady}
-          mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === selectedToolId)}
-          preset={selectedResource}
-          presetMounts={props.toolMounts.filter(mount => mount.presetResourceId === selectedResource?.id)}
-          unavailableMounts={toolProjection.unavailableMounts}
-          t={props.t}
-          tool={props.tools.find(tool => tool.id === selectedToolId)}
-          onReplaceMounts={replaceToolMounts}
-          onUpdateTool={props.onUpdateTool}
-        />
-      ) : (
+      {(
         <div className={styles.detailStack}>
           <div className={`${styles.authorDetail} ${detailNode?.kind === 'virtual' ? styles.anchorDetail : ''}`}>
             <ContextAssetEditor
@@ -565,7 +543,6 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
               onCommitNode={props.onCommitNode}
               onEditorModeChange={setTextEditorMode}
               onMetadataOpenChange={setMetadataOpen}
-              onSelectNodeId={handleSelectNode}
             />
             {declarations ? <section className={styles.declarations}>
               <h3>声明注入此处的资源</h3>
@@ -638,13 +615,15 @@ export function AgentPresetOverview(props: {
   unavailableMounts: PresetToolMount[]
   t: Translator
   onSaveModel(input: Parameters<StudioApi['agentPresets']['update']>[0]): Promise<PromptResource>
-  onReplaceMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
-  onReplaceLoreMounts(source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { loreResourceId: string }>): Promise<void>
+  onReplaceMounts(presetId: string, mounts: PresetToolMountInput[], expectedMountIds: string[]): Promise<void>
+  onReplaceLoreMounts(source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { loreResourceId: string }>, expectedMountIds: string[]): Promise<void>
   onDuplicate(): Promise<void>
   onDelete(): Promise<void>
   onExport(): Promise<void>
   onOpenLore?: (resourceId: string, nodeId: string) => void
+  onOpenTool?: (toolId: string) => void
 }) {
+  const identities = useExtensionIdentities()
   const origin = props.preset.origin
   const isBuiltin = origin?.kind === 'builtin'
   const isExtension = origin?.kind === 'extension-package'
@@ -690,8 +669,8 @@ export function AgentPresetOverview(props: {
   }, [props.tools])
 
   const [collapsedToolSources, setCollapsedToolSources] = useState<string[]>([])
-  const [expandedToolDetails, setExpandedToolDetails] = useState<string[]>([])
   const [toolQuery, setToolQuery] = useState('')
+  const [mountSettingsId, setMountSettingsId] = useState<string>()
   const [pendingToolId, setPendingToolId] = useState<string>()
   const [toolError, setToolError] = useState<string>()
   const [loreBusy, setLoreBusy] = useState(false)
@@ -722,7 +701,7 @@ export function AgentPresetOverview(props: {
     [...loreRows.filter(row => isCardLore(row.id)), ...loreRows.filter(row => !isCardLore(row.id))].map(row => ({
     section: isCardLore(row.id) ? '角色' : row.resource ? usageSection(row.resource.origin) : '不可用引用',
     source: isCardLore(row.id) ? props.card!.name
-      : row.resource ? usageSource(row.resource.origin, Boolean(row.resource.sourceArtifactRef)) : '不可用引用',
+      : row.resource ? identities.find(identity => row.resource?.origin?.kind === 'extension-package' && identity.packageId === row.resource.origin.packageId)?.displayName ?? usageSource(row.resource.origin, Boolean(row.resource.sourceArtifactRef)) : '不可用引用',
     node: {
       id: row.id, label: row.resource?.rootNode.label ?? `Lore 引用不可用：${row.mount!.loreResourceId}`,
       kind: 'entry' as const, meta: isCardLore(row.id) && useCardLore
@@ -747,7 +726,7 @@ export function AgentPresetOverview(props: {
       return group.tools.map(tool => ({
         source,
         node: { id: `tool:${tool.id}`, label: tool.name, kind: 'entry', meta: tool.id,
-          ...(tool.description ? { children: [] } : {}) },
+        },
       }))
     }),
     ...props.unavailableMounts.map(mount => ({
@@ -758,14 +737,14 @@ export function AgentPresetOverview(props: {
     ...node,
     meta: node.label === unavailableToolSource ? node.meta : `${node.children!.filter(child => toolEnabled(child.id)).length} / ${node.children!.length} 已启用`,
   }))
-  const expandedToolIds = [...toolNodes.filter(node => !collapsedToolSources.includes(node.id)).map(node => node.id), ...expandedToolDetails]
+  const expandedToolIds = toolNodes.filter(node => !collapsedToolSources.includes(node.id)).map(node => node.id)
 
   async function saveLore(mounts: Array<{ id: string } | { loreResourceId: string }>) {
     if (loreBusy) return
     setLoreBusy(true)
     setLoreError(undefined)
     try {
-      await props.onReplaceLoreMounts({ kind: 'preset', id: props.preset.id }, mounts)
+      await props.onReplaceLoreMounts({ kind: 'preset', id: props.preset.id }, mounts, usedLore.map(mount => mount.id))
     } catch (error) {
       setLoreError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -779,7 +758,7 @@ export function AgentPresetOverview(props: {
     setPendingToolId(tool.id)
     setToolError(undefined)
     try {
-      await props.onReplaceMounts(props.preset.id, togglePresetToolMount(presetMounts, tool))
+      await props.onReplaceMounts(props.preset.id, togglePresetToolMount(presetMounts, tool), presetMounts.map(mount => mount.id))
     } catch (caught) {
       setToolError(caught instanceof Error ? caught.message : String(caught))
     } finally {
@@ -789,13 +768,13 @@ export function AgentPresetOverview(props: {
 
   async function handleRemoveUnavailable(toolId: string) {
     const next = presetMounts.filter(m => m.toolId !== toolId).map(toPresetToolMountInput)
-    await props.onReplaceMounts(props.preset.id, next)
+    await props.onReplaceMounts(props.preset.id, next, presetMounts.map(mount => mount.id))
   }
 
   async function handleRemoveAllUnavailable() {
     const unavailableSet = new Set(props.unavailableMounts.map(m => m.toolId))
     const next = presetMounts.filter(m => !unavailableSet.has(m.toolId)).map(toPresetToolMountInput)
-    await props.onReplaceMounts(props.preset.id, next)
+    await props.onReplaceMounts(props.preset.id, next, presetMounts.map(mount => mount.id))
   }
 
   return (
@@ -827,6 +806,8 @@ export function AgentPresetOverview(props: {
         />
       </section>} preset={props.preset} api={props.textTransformsApi} t={props.t}
         onSave={props.onSaveModel} onOpen={props.onOpenTextUse}
+        card={props.card} identities={identities}
+        cardLoreCount={loreRows.filter(row => isCardLore(row.id)).length}
         loreContent={(useCardLore, useGlobalLore) => {
           const inherited = (nodeId: string) => (isCardLore(nodeId) && useCardLore) || (isGlobalLore(nodeId) && useGlobalLore)
           const nodes = loreNodes(useCardLore, useGlobalLore)
@@ -847,11 +828,11 @@ export function AgentPresetOverview(props: {
                 const row = loreRowsById.get(node.id)
                 if (row?.resource && !row.mount) mounts.push({ loreResourceId: row.resource.id })
               }
-              await props.onReplaceLoreMounts({ kind: 'preset', id: props.preset.id }, mounts)
+              await props.onReplaceLoreMounts({ kind: 'preset', id: props.preset.id }, mounts, usedLore.map(mount => mount.id))
             } },
             { id: 'remove', label: props.t('common.batchRemove'), run: async selected => {
               const ids = new Set(selected.map(node => loreRowsById.get(node.id)?.mount?.id))
-              await props.onReplaceLoreMounts({ kind: 'preset', id: props.preset.id }, currentLoreMounts().filter(mount => !ids.has(mount.id)))
+              await props.onReplaceLoreMounts({ kind: 'preset', id: props.preset.id }, currentLoreMounts().filter(mount => !ids.has(mount.id)), usedLore.map(mount => mount.id))
             } },
           ]}
           expandedIds={usageGroupNodes(nodes).filter(node => !collapsedLoreSources.includes(node.id)).map(node => node.id)}
@@ -896,7 +877,7 @@ export function AgentPresetOverview(props: {
           clearLabel="清除搜索" value={toolQuery} onClear={() => setToolQuery('')}
           onChange={event => { setToolQuery(event.target.value); setCollapsedToolSources([]) }} />
         {toolError ? <p className={styles.toolError} role="alert">{toolError}</p> : null}
-        <FileTree key={props.preset.id} ariaLabel="工具来源目录" nodes={toolNodes} expandedIds={expandedToolIds}
+        <FileTree key={props.preset.id} ariaLabel="工具来源目录" variant="indented" nodes={toolNodes} expandedIds={expandedToolIds}
           batchDisabled={Boolean(pendingToolId)}
           canBatchSelect={node => node.kind !== 'folder'}
           getBatchActions={selected => [
@@ -912,17 +893,16 @@ export function AgentPresetOverview(props: {
                   if (mount) mount.defaultEnabled = enabled
                   else if (enabled) mounts.push(createDefaultPresetToolMountInput(tool, Math.max(-1, ...mounts.map(item => item.orderIndex)) + 1))
                 }
-                await props.onReplaceMounts(props.preset.id, mounts)
+                await props.onReplaceMounts(props.preset.id, mounts, presetMounts.map(mount => mount.id))
               },
             })),
             { id: 'remove', label: props.t('common.batchRemove'), run: async nodes => {
               const ids = new Set(nodes.map(node => toolsByNodeId.get(node.id)?.id ?? unavailableToolsByNodeId.get(node.id)?.toolId))
-              await props.onReplaceMounts(props.preset.id, presetMounts.filter(mount => !ids.has(mount.toolId)).map(toPresetToolMountInput))
+              await props.onReplaceMounts(props.preset.id, presetMounts.filter(mount => !ids.has(mount.toolId)).map(toPresetToolMountInput), presetMounts.map(mount => mount.id))
             } },
           ]}
           onExpandedIdsChange={ids => {
             setCollapsedToolSources(toolNodes.filter(node => !ids.includes(node.id)).map(node => node.id))
-            setExpandedToolDetails(ids.filter(id => toolsByNodeId.has(id)))
           }}
           getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
           getDragLabel={node => node.label} moreActionsLabel="更多操作"
@@ -931,7 +911,7 @@ export function AgentPresetOverview(props: {
           renderIcon={(node, expanded) => node.kind === 'folder'
             ? expanded ? <FolderOpen size={15} /> : <Folder size={15} />
             : <Wrench size={15} className={toolEnabled(node.id) ? styles.usageEnabledIcon : undefined} />}
-          renderExpandedRow={node => expandedToolDetails.includes(node.id) && toolsByNodeId.get(node.id)?.description
+          renderExpandedRow={node => toolsByNodeId.get(node.id)?.description
             ? <p className={styles.toolDescription}>{toolsByNodeId.get(node.id)!.description}</p> : null}
           renderTrailing={node => {
             if (node.kind === 'folder') return node.label === unavailableToolSource
@@ -946,20 +926,45 @@ export function AgentPresetOverview(props: {
             </IconButton>
             const tool = toolsByNodeId.get(node.id)!
             const enabled = toolEnabled(node.id)
-            return <button type="button" className={styles.declarationToggle}
+            return <>
+              <IconButton size="small" title="工具在此预设中的配置" aria-label={`配置工具：${tool.name}`} onClick={() => setMountSettingsId(tool.id)}><SlidersHorizontal size={16} /></IconButton>
+              {props.onOpenTool && <IconButton size="small" title="查看工具详情"
+                aria-label={`查看工具详情：${tool.name}`} onClick={() => props.onOpenTool!(tool.id)}>
+                <ArrowUpRight size={16} aria-hidden="true" />
+              </IconButton>}
+              <button type="button" className={styles.declarationToggle}
               title={enabled ? '停用工具' : '启用工具'} aria-label={`${enabled ? '停用' : '启用'}工具：${tool.name}`}
               aria-pressed={enabled} disabled={Boolean(pendingToolId)}
               onClick={() => void handleToggleTool(tool)}>
               {enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
             </button>
+            </>
           }} />
+        {mountSettingsId && toolsByNodeId.get(`tool:${mountSettingsId}`) && <Dialog open title="工具在此预设中的配置" onClose={() => setMountSettingsId(undefined)}>
+          <ToolMountEditor key={mountSettingsId} tool={toolsByNodeId.get(`tool:${mountSettingsId}`)!} preset={props.preset}
+            mount={mountedToolMap.get(mountSettingsId)} presetMounts={presetMounts} t={props.t} onReplace={props.onReplaceMounts} />
+        </Dialog>}
         {!toolNodes.length && <p className={styles.presetResourceEmpty}>没有匹配的工具</p>}
       </section>} />
     </div>
   )
 }
 
+function PresetCardInheritance({ card, enabled, count, resourceLabel }: {
+  card?: Card; enabled: boolean; count?: number; resourceLabel: string
+}) {
+  const avatar = card && cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version)
+  return <span className={styles.presetInheritanceSource}>
+    {avatar && <img src={avatar} alt="" width={20} height={20} />}
+    <span>{card ? `${card.name} · ${count === undefined ? '' : count === 0 ? `暂无关联${resourceLabel} · ` : `${count} 项${resourceLabel} · `}${enabled ? '跟随当前角色' : '未继承'}`
+      : enabled ? '尚未选择角色，将随故事的当前角色采用' : '尚未选择角色 · 未继承'}</span>
+  </span>
+}
+
 export function PresetTextUses(props: {
+  card?: Card
+  identities?: ReturnType<typeof useExtensionIdentities>
+  cardLoreCount?: number
   t: Translator
   preset: PromptResource
   api: StudioApi['textTransforms']
@@ -974,25 +979,38 @@ export function PresetTextUses(props: {
     id: use.id, kind: use.kind, enabled: use.enabled,
     ...(use.orderIndex !== undefined ? { orderIndex: use.orderIndex } : {}),
   }))
-  const [rules, setRules] = useState<TextTransformRule[]>([])
-  const [extractors, setExtractors] = useState<TextExtractor[]>([])
-  const [draft, setDraft] = useState(() => ({
+  type RuleSummary = Awaited<ReturnType<StudioApi['textTransforms']['listRuleSummaries']>>['rules'][number]
+  type ExtractorSummary = Awaited<ReturnType<StudioApi['textTransforms']['listExtractorSummaries']>>['extractors'][number]
+  const [rules, setRules] = useState<RuleSummary[]>([])
+  const [extractors, setExtractors] = useState<ExtractorSummary[]>([])
+  const [baseline, setBaseline] = useState(props.preset)
+  const [storedDraft, setDraft] = useState(() => ({
     textUses: editableUses(props.preset.textUses),
     useCardLore: props.preset.useCardLore ?? true,
     useGlobalLore: props.preset.useGlobalLore ?? true,
+    useCardText: props.preset.useCardText ?? true,
+    useGlobalText: props.preset.useGlobalText ?? true,
   }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [activeTab, setActiveTab] = useWorkbenchView<'model' | 'lore' | 'text' | 'tools'>('preset.configuration', props.modelContent ? 'model' : 'lore', props.modelContent ? ['model', 'lore', 'text', 'tools'] : ['lore', 'text', 'tools'])
   const [textQuery, setTextQuery] = useState('')
   const [collapsedTextSources, setCollapsedTextSources] = useState<string[]>([])
-  const dirty = draft.useGlobalLore !== (props.preset.useGlobalLore ?? true)
-    || draft.useCardLore !== (props.preset.useCardLore ?? true)
-    || JSON.stringify(draft.textUses) !== JSON.stringify(editableUses(props.preset.textUses))
+  const readDraft = (preset: PromptResource) => ({
+    textUses: editableUses(preset.textUses),
+    useCardLore: preset.useCardLore ?? true, useGlobalLore: preset.useGlobalLore ?? true,
+    useCardText: preset.useCardText ?? true, useGlobalText: preset.useGlobalText ?? true,
+  })
+  const baseDraft = readDraft(baseline)
+  const dirty = JSON.stringify(storedDraft) !== JSON.stringify(baseDraft)
+  const currentBaseline = !dirty && props.preset.version > baseline.version ? props.preset : baseline
+  const draft = !dirty ? readDraft(currentBaseline) : storedDraft
+  const conflict = dirty && props.preset.version > baseline.version && !busy
+
 
   useEffect(() => {
     let active = true
-    Promise.all([props.api.listRules(), props.api.listExtractors()])
+    Promise.all([props.api.listRuleSummaries(), props.api.listExtractorSummaries()])
       .then(([ruleResult, extractorResult]) => {
         if (active) {
           setRules(ruleResult.rules)
@@ -1011,20 +1029,23 @@ export function PresetTextUses(props: {
     void save({ ...draft, textUses }).catch(() => undefined)
   }
 
-  async function save(next = draft) {
+  async function save(next = draft, base = currentBaseline) {
     if (busy) return
+    setBaseline(base)
     setDraft(next)
     setBusy(true)
     setError(undefined)
     try {
       const saved = await props.onSave({
         agentPresetId: props.preset.id,
-        expectedVersion: props.preset.version,
+        expectedVersion: base.version,
         textUses: next.textUses,
         useCardLore: next.useCardLore,
         useGlobalLore: next.useGlobalLore,
+        useCardText: next.useCardText, useGlobalText: next.useGlobalText,
       })
-      setDraft({ textUses: editableUses(saved.textUses), useCardLore: saved.useCardLore ?? true, useGlobalLore: saved.useGlobalLore ?? true })
+      setBaseline(saved)
+      setDraft(readDraft(saved))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
       throw cause
@@ -1033,16 +1054,23 @@ export function PresetTextUses(props: {
     }
   }
 
-  function textSource(item: TextTransformRule | TextExtractor): string {
-    if (item.owner.kind === 'card') return item.owner.cardId
-    if (item.owner.kind === 'preset') return item.owner.presetId
-    if (item.owner.kind === 'extension') return item.owner.packageId
-    return usageSource(item.origin)
+  function textSource(item: RuleSummary | ExtractorSummary): string {
+    if (item.owner.kind === 'card') return props.card?.id === item.owner.cardId ? props.card.name : '其他角色'
+    if (item.owner.kind === 'preset') return props.preset.rootNode.label
+    const packageId = item.owner.kind === 'extension' ? item.owner.packageId : item.origin?.packageId
+    return props.identities?.find(identity => identity.packageId === packageId)?.displayName ?? packageId ?? usageSource(item.origin)
   }
-  const candidates = [
-    ...rules.map(rule => ({ kind: 'rule' as const, id: rule.id, name: rule.name, enabled: rule.enabled, section: rule.owner.kind === 'card' ? '角色' : rule.owner.kind === 'extension' ? '扩展' : usageSection(rule.origin), source: textSource(rule) })),
-    ...extractors.map(extractor => ({ kind: 'extractor' as const, id: extractor.id, name: extractor.name, enabled: extractor.enabled, section: extractor.owner.kind === 'card' ? '角色' : extractor.owner.kind === 'extension' ? '扩展' : usageSection(extractor.origin), source: textSource(extractor) })),
+  const resources = [
+    ...rules.map(rule => ({ ...rule, kind: 'rule' as const })),
+    ...extractors.map(extractor => ({ ...extractor, kind: 'extractor' as const })),
   ]
+  const candidates = resources.filter(item => item.owner.kind === 'card' ? item.owner.cardId === props.card?.id
+    : item.owner.kind === 'preset' ? item.owner.presetId === props.preset.id : true).map(item => ({
+      kind: item.kind, id: item.id, name: item.name,
+      enabled: item.enabled && (item.owner.kind === 'card' ? draft.useCardText : item.owner.kind === 'preset' || draft.useGlobalText),
+      section: item.owner.kind === 'card' ? '角色' : item.owner.kind === 'extension' ? '扩展' : usageSection(item.origin),
+      source: textSource(item), cardSource: item.owner.kind === 'card',
+    }))
   const candidatesById = new Map(candidates.map(item => [`${item.kind}:${item.id}`, item]))
   const textEnabled = (nodeId: string) => {
     const item = candidatesById.get(nodeId)
@@ -1054,12 +1082,13 @@ export function PresetTextUses(props: {
       section: item.section, source: item.source,
       node: {
         id: `${item.kind}:${item.id}`, label: item.name, kind: 'entry' as const,
-        meta: `${item.kind === 'rule' ? '正则' : '提取器'} · ${draft.textUses.some(use => use.kind === item.kind && use.id === item.id) ? '预设配置' : '默认'}`,
+        meta: `${item.kind === 'rule' ? '正则' : '提取器'} · ${draft.textUses.some(use => use.kind === item.kind && use.id === item.id) ? '预设配置' : item.enabled ? item.cardSource ? '随当前角色采用' : '随全局采用' : '未采用'}`,
       },
     })),
     ...missing.map(use => ({
       section: '不可用引用', source: '不可用引用',
-      node: { id: `${use.kind}:${use.id}`, label: use.id, kind: 'entry' as const, meta: '未解析' },
+      node: { id: `${use.kind}:${use.id}`, label: resources.find(item => item.kind === use.kind && item.id === use.id)?.name ?? '原资源已删除或不可用', kind: 'entry' as const,
+        meta: resources.some(item => item.kind === use.kind && item.id === use.id) ? '不属于当前角色或预设 · 可移除引用' : `引用失效 · ${use.id}` },
     })),
   ], textQuery)
 
@@ -1082,7 +1111,9 @@ export function PresetTextUses(props: {
         </button>
       </div>
       <div className={styles.presetUsageOption}>
-        <span className={styles.presetResourceName}>使用角色世界书</span>
+        <span className={styles.presetResourceName}>使用角色世界书
+          <PresetCardInheritance card={props.card} enabled={draft.useCardLore} count={props.cardLoreCount} resourceLabel="Lore" />
+        </span>
         <button type="button" className={styles.declarationToggle} aria-label="使用角色世界书"
           title={draft.useCardLore ? '停用角色世界书' : '启用角色世界书'}
           aria-pressed={draft.useCardLore} disabled={busy}
@@ -1093,6 +1124,18 @@ export function PresetTextUses(props: {
       {typeof props.loreContent === 'function' ? props.loreContent(draft.useCardLore, draft.useGlobalLore) : props.loreContent}
     </section>
     <section role="tabpanel" aria-label="正则 / 提取器" hidden={activeTab !== 'text'} className={styles.presetUsagePanel}>
+      {(['useGlobalText', 'useCardText'] as const).map(key => <div key={key} className={styles.presetUsageOption}>
+        <span className={styles.presetResourceName}>{key === 'useCardText' ? '使用当前角色规则' : '使用全局规则'}
+          {key === 'useCardText' && <PresetCardInheritance card={props.card} enabled={draft.useCardText}
+            count={candidates.filter(item => item.cardSource).length} resourceLabel="正则 / 提取器" />}
+        </span>
+        <button type="button" className={styles.declarationToggle}
+          aria-label={key === 'useCardText' ? '使用当前角色规则' : '使用全局规则'} aria-pressed={draft[key]} disabled={busy}
+          onClick={() => void save({ ...draft, [key]: !draft[key] }).catch(() => undefined)}>
+          {draft[key] ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+        </button>
+      </div>)}
+      {missing.length > 0 && <p role="status">有 {missing.length} 项引用已失效或在当前角色下不可用，可在下方单独移除。</p>}
       <SearchField aria-label="搜索正则与提取器" placeholder="搜索名称或来源"
         clearLabel="清除搜索" value={textQuery} onClear={() => setTextQuery('')}
         onChange={event => { setTextQuery(event.target.value); setCollapsedTextSources([]) }} />
@@ -1126,13 +1169,16 @@ export function PresetTextUses(props: {
         onExpandedIdsChange={ids => setCollapsedTextSources(usageGroupNodes(textNodes).filter(node => !ids.includes(node.id)).map(node => node.id))}
         getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
         getDragLabel={node => node.label} moreActionsLabel="更多操作"
-        isMuted={node => node.kind !== 'folder' && !textEnabled(node.id)}
+        isMuted={node => candidatesById.has(node.id) && !textEnabled(node.id)}
         onSelect={node => {
           const item = candidatesById.get(node.id)
           if (item) props.onOpen?.(item.kind, item.id)
         }}
         renderIcon={(node, expanded) => node.kind === 'folder'
-          ? expanded ? <FolderOpen size={15} /> : <Folder size={15} />
+          ? props.card?.media?.avatarAssetId && node.id === `source:角色:${props.card.name}`
+            ? <img src={cardMediaUrl(props.card.id, 'avatar', props.card.media.avatarAssetId, props.card.version)} alt="" width={20} height={20} />
+            : expanded ? <FolderOpen size={15} /> : <Folder size={15} />
+          : !candidatesById.has(node.id) ? <AlertTriangle size={15} aria-label="引用不可用" />
           : node.id.startsWith('rule:')
             ? <Regex size={15} className={textEnabled(node.id) ? styles.usageEnabledIcon : undefined} />
             : <Braces size={15} className={textEnabled(node.id) ? styles.usageEnabledIcon : undefined} />}
@@ -1156,31 +1202,52 @@ export function PresetTextUses(props: {
     <section role="tabpanel" aria-label="工具" hidden={activeTab !== 'tools'} className={styles.presetUsagePanel}>
       {props.toolsContent}
     </section>
-    <div className={styles.presetUsageSave} hidden={!error && !busy}>
+    <div className={styles.presetUsageSave} hidden={!error && !busy && !conflict}>
       {error ? <p role="alert">{error}</p> : null}
       {busy && <p role="status">正在保存…</p>}
-      {error && dirty && <Button disabled={busy} onClick={() => void save().catch(() => undefined)}>重试保存</Button>}
+      {conflict && <div role="alert">
+        <p>预设已在其他位置更新。保留的修改尚未应用到新版本。</p>
+        <Button disabled={busy} onClick={() => { setBaseline(props.preset); setDraft(readDraft(props.preset)); setError(undefined) }}>采用服务端内容</Button>
+        <Button disabled={busy} onClick={() => {
+          const latest = readDraft(props.preset)
+          const reapplied = { ...latest }
+          for (const key of ['useCardLore', 'useGlobalLore', 'useCardText', 'useGlobalText'] as const) {
+            if (draft[key] !== baseDraft[key]) reapplied[key] = draft[key]
+          }
+          const uses = new Map(latest.textUses.map(use => [`${use.kind}:${use.id}`, use]))
+          const before = new Map(baseDraft.textUses.map(use => [`${use.kind}:${use.id}`, use]))
+          const edited = new Map(draft.textUses.map(use => [`${use.kind}:${use.id}`, use]))
+          for (const key of new Set([...before.keys(), ...edited.keys()])) {
+            if (JSON.stringify(before.get(key)) === JSON.stringify(edited.get(key))) continue
+            const use = edited.get(key)
+            if (use) uses.set(key, use)
+            else uses.delete(key)
+          }
+          reapplied.textUses = [...uses.values()]
+          void save(reapplied, props.preset).catch(() => undefined)
+        }}>重新应用保留的修改</Button>
+      </div>}
+      {error && dirty && !conflict && <Button disabled={busy} onClick={() => void save().catch(() => undefined)}>重试保存</Button>}
     </div>
   </div>
 }
 
 function PresetToolExplorer(props: {
-  presetId?: string
+  presets: PromptResource[]
+  onOpenPreset(id: string): void
   selectedToolId?: string
   t: Translator
   tools: AgentToolDefinition[]
   toolsReady?: boolean
   providersReady?: boolean
   toolMounts: PresetToolMount[]
-  unavailableMounts: PresetToolMount[]
   onSelect(toolId: string): void
 }) {
   const [query, setQuery] = useState('')
   const [collapsedNamespaces, setCollapsedNamespaces] = useState<Set<string>>(() => new Set())
-  const unavailableMounts = props.unavailableMounts.filter(mount => normalizeSearchText(mount.toolId).includes(normalizeSearchText(query)))
-  const mountedIds = useMemo(() => new Set(props.toolMounts
-    .filter(mount => mount.presetResourceId === props.presetId)
-    .map(mount => mount.toolId)), [props.presetId, props.toolMounts])
+  const [referencesToolId, setReferencesToolId] = useState<string>()
+  const references = (toolId: string) => props.presets.filter(preset =>
+    props.toolMounts.some(mount => mount.toolId === toolId && mount.presetResourceId === preset.id))
   const toolGroups = useMemo(() => {
     const normalizedQuery = normalizeSearchText(query)
     const groups = new Map<string, AgentToolDefinition[]>()
@@ -1203,16 +1270,6 @@ function PresetToolExplorer(props: {
   }, [props.tools, query])
 
   const nodes: FileTreeNode[] = [
-    ...(unavailableMounts.length ? [{
-      id: 'unavailable-tools',
-      label: props.t('preset.tools.unavailableGroup'),
-      isSection: true,
-      children: unavailableMounts.map(mount => ({
-        id: mount.toolId,
-        kind: 'unavailable',
-        label: props.t('preset.tools.unavailable', { id: mount.toolId }),
-      })),
-    }] : []),
     ...toolGroups.map(group => ({
       id: `tool-group:${group.namespace}`,
       kind: 'folder',
@@ -1252,7 +1309,9 @@ function PresetToolExplorer(props: {
           moreActionsLabel={props.t('preset.tools.searchLabel')}
           renderIcon={node => node.kind === 'folder' ? <Package aria-hidden="true" /> : <Wrench aria-hidden="true" />}
           renderTrailing={node => node.kind === 'tool'
-            ? <em>{props.t(mountedIds.has(node.id) ? 'preset.tools.mounted' : 'preset.tools.notMounted')}</em>
+            ? references(node.id).length > 0 ? <button type="button" className={styles.toolReferenceButton}
+                title="查看引用此工具的预设" aria-label={`查看引用此工具的 ${references(node.id).length} 个预设`}
+                onClick={() => setReferencesToolId(node.id)}><Link2 size={16} aria-hidden="true" />{references(node.id).length}</button> : null
             : null}
           onSelect={node => {
             if (node.kind === 'folder') {
@@ -1266,33 +1325,31 @@ function PresetToolExplorer(props: {
           }}
         /> : <div className={styles.toolSearchEmpty}>{props.t('preset.tools.searchEmpty')}</div>}
       </div>
+      {referencesToolId && <Dialog open title="引用此工具的预设" onClose={() => setReferencesToolId(undefined)}>
+        <div className={styles.toolReferences}>
+          {references(referencesToolId).map(preset => {
+            const enabled = props.toolMounts.some(mount => mount.toolId === referencesToolId && mount.presetResourceId === preset.id && mount.defaultEnabled !== false)
+            return <div key={preset.id} className={styles.toolReferenceRow}>
+              <button type="button" onClick={() => { setReferencesToolId(undefined); props.onOpenPreset(preset.id) }}>{preset.rootNode.label}</button>
+              <span>{enabled ? '已启用' : '已停用'}</span>
+            </div>
+          })}
+        </div>
+      </Dialog>}
     </div>
   )
 }
 
 function PresetToolDetail(props: {
+  promptResourceApi?: StudioApi['promptResources']
+  onNavigateResource?(path: string): void
+  onRelatedResourceChanged?(): void | Promise<void>
   toolsReady?: boolean
-  preset?: PromptResource
   tool?: AgentToolDefinition
-  mount?: PresetToolMount
-  presetMounts: PresetToolMount[]
-  unavailableMounts: PresetToolMount[]
   t: Translator
-  onReplaceMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
   onUpdateTool(tool: AgentToolDefinition): Promise<void> | void
 }) {
-  if (props.preset && !props.tool && props.mount) {
-    return <div inert={props.toolsReady === false}><UnavailableToolDetail
-      key={`${props.preset.id}:${props.mount.toolId}`}
-      presetId={props.preset.id}
-      mount={props.mount}
-      presetMounts={props.presetMounts}
-      unavailableMounts={props.unavailableMounts}
-      t={props.t}
-      onReplaceMounts={props.onReplaceMounts}
-    /></div>
-  }
-  if (!props.preset || !props.tool) {
+  if (!props.tool) {
     return <div className={styles.toolEmpty}>{props.t('preset.tools.selectEmpty')}</div>
   }
   return (
@@ -1305,51 +1362,11 @@ function PresetToolDetail(props: {
         </div>
         <code>{props.tool.id}</code>
       </header>
-      <ToolMountEditor
-        key={`${props.preset.id}:${props.tool.id}`}
-        mount={props.mount}
-        preset={props.preset}
-        presetMounts={props.presetMounts}
-        t={props.t}
-        tool={props.tool}
-        onReplace={props.onReplaceMounts}
-      />
+      {props.tool.prompt?.loreRefs?.length && props.promptResourceApi && props.onNavigateResource && <RelatedLore references={props.tool.prompt.loreRefs}
+        api={props.promptResourceApi} onNavigate={props.onNavigateResource} onChanged={() => props.onRelatedResourceChanged?.()} />}
       <ToolEntryEditor t={props.t} tool={props.tool} onSave={props.onUpdateTool} />
     </div>
   )
-}
-
-function UnavailableToolDetail(props: {
-  presetId: string
-  mount: PresetToolMount
-  presetMounts: PresetToolMount[]
-  unavailableMounts: PresetToolMount[]
-  t: Translator
-  onReplaceMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
-}) {
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string>()
-  async function removeUnavailable() {
-    setPending(true)
-    setError(undefined)
-    const ids = new Set(props.unavailableMounts.map(mount => mount.toolId))
-    try {
-      await props.onReplaceMounts(props.presetId, props.presetMounts
-        .filter(mount => !ids.has(mount.toolId)).map(toPresetToolMountInput))
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught))
-    } finally {
-      setPending(false)
-    }
-  }
-  return <div className={styles.toolDetail}>
-    <header className={styles.toolDetailHeader}><p role="status">{props.t('preset.tools.unavailable', { id: props.mount.toolId })}</p></header>
-    <pre>{JSON.stringify(toPresetToolMountInput(props.mount), null, 2)}</pre>
-    {error ? <p className={styles.toolError} role="alert">{error}</p> : null}
-    <button disabled={pending} type="button" onClick={() => void removeUnavailable()}>
-      <Trash2 aria-hidden="true" size={14} />{props.t('preset.tools.removeUnavailable')}
-    </button>
-  </div>
 }
 
 function ToolMountEditor(props: {
@@ -1358,7 +1375,7 @@ function ToolMountEditor(props: {
   mount?: PresetToolMount
   presetMounts: PresetToolMount[]
   t: Translator
-  onReplace(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
+  onReplace(presetId: string, mounts: PresetToolMountInput[], expectedMountIds: string[]): Promise<void>
 }) {
   const [draft, setDraft] = useState(() => createMountDraft(props.tool, props.mount))
   const [pending, setPending] = useState(false)
@@ -1371,7 +1388,7 @@ function ToolMountEditor(props: {
   async function replace(mounts: PresetToolMountInput[]) {
     setPending(true)
     try {
-      await props.onReplace(props.preset.id, mounts)
+      await props.onReplace(props.preset.id, mounts, props.presetMounts.map(mount => mount.id))
       setError(undefined)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
@@ -1466,10 +1483,21 @@ function ToolEntryEditor(props: {
   onSave(tool: AgentToolDefinition): Promise<void> | void
 }) {
   const [draft, setDraft] = useState(() => createToolDraft(props.tool))
+  const baseline = useRef(props.tool)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
   useEffect(() => {
-    setDraft(createToolDraft(props.tool))
+    const previous = baseline.current
+    baseline.current = props.tool
+    setDraft(current => {
+      const latest = createToolDraft(props.tool)
+      if (previous.id !== props.tool.id) return latest
+      const before = createToolDraft(previous)
+      for (const key of Object.keys(latest) as Array<keyof typeof latest>) {
+        if (current[key] !== before[key]) latest[key] = current[key]
+      }
+      return latest
+    })
     setError(undefined)
   }, [props.tool])
 

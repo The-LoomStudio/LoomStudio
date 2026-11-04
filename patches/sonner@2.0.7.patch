@@ -1,0 +1,48 @@
+diff --git a/dist/index.js b/dist/index.js
+index bd21e898f431298b70e941833c78819a1eb53a36..58114e54be156e2cc0aabacf064eea42bea8460a 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -188,13 +188,17 @@ class Observer {
+         };
+         this.dismiss = (id)=>{
+             if (id) {
+-                this.dismissedToasts.add(id);
++                this.toasts = this.toasts.filter((toast)=>toast.id !== id);
++                this.dismissedToasts.delete(id);
+                 requestAnimationFrame(()=>this.subscribers.forEach((subscriber)=>subscriber({
+                             id,
+                             dismiss: true
+                         })));
+             } else {
+-                this.toasts.forEach((toast)=>{
++                const dismissed = this.toasts;
++                this.toasts = [];
++                this.dismissedToasts.clear();
++                dismissed.forEach((toast)=>{
+                     this.subscribers.forEach((subscriber)=>subscriber({
+                             id: toast.id,
+                             dismiss: true
+diff --git a/dist/index.mjs b/dist/index.mjs
+index d0c7a5a1fa1ed8b19c27bea968bb404f2437a07e..969c695529a896ce04049699cba0986545b3f41c 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -181,13 +181,17 @@ class Observer {
+         };
+         this.dismiss = (id)=>{
+             if (id) {
+-                this.dismissedToasts.add(id);
++                this.toasts = this.toasts.filter((toast)=>toast.id !== id);
++                this.dismissedToasts.delete(id);
+                 requestAnimationFrame(()=>this.subscribers.forEach((subscriber)=>subscriber({
+                             id,
+                             dismiss: true
+                         })));
+             } else {
+-                this.toasts.forEach((toast)=>{
++                const dismissed = this.toasts;
++                this.toasts = [];
++                this.dismissedToasts.clear();
++                dismissed.forEach((toast)=>{
+                     this.subscribers.forEach((subscriber)=>subscriber({
+                             id: toast.id,
+                             dismiss: true

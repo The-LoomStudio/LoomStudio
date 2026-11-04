@@ -66,7 +66,6 @@ for (const [name, { path, pkg }] of selected) {
 
 // The server loads these official packages in place; themes and backgrounds remain outside the release.
 const officialExtensionFiles = {
-  'official/extensions/loom-assistant': ['package.json', 'manifest.json', 'icon.png', 'resources', 'nom-dialogue.js', 'assets'],
   'official/extensions/story-memory': ['package.json', 'manifest.json', 'icon.png', 'client.js', 'server.js', 'resources', 'README.md'],
 }
 const officialExtensionPaths = Object.entries(officialExtensionFiles)

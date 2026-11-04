@@ -17,7 +17,7 @@ export function createNarrativeSwipeStore(options: {
 }) {
   const { engine } = options
   const now = options.now ?? nowIso
-  engine.migrate({ namespace: 'application.narrative.swipes', migrations: [{ version: 1, migrate: database => {
+  engine.initializeSchema({ namespace: 'application.narrative.swipes', version: 1, initialize: database => {
     database.exec(`
       CREATE TABLE narrative_swipe_groups (
         id TEXT PRIMARY KEY, timeline_id TEXT NOT NULL, branch_id TEXT NOT NULL,
@@ -26,7 +26,7 @@ export function createNarrativeSwipeStore(options: {
       CREATE INDEX idx_narrative_swipes_branch ON narrative_swipe_groups(branch_id, deleted_at);
       CREATE INDEX idx_narrative_swipes_timeline ON narrative_swipe_groups(timeline_id, deleted_at);
     `)
-  } }] })
+  } })
 
   function read(database: DatabaseSync, where: string, args: string[], single = false): NarrativeSwipeGroup[] {
     const rows = database.prepare(`SELECT g.metadata_json FROM narrative_swipe_groups g

@@ -88,6 +88,7 @@ export async function projectExtensionEvent(
   if (operations.length === 0) return undefined
   return {
     ...event,
+    // Authorized invalidation only: never expose global chunk indices/counts.
     payload: {
       changesetId: payload.changesetId as string,
       ...(typeof payload.targetChangesetId === 'string' ? { targetChangesetId: payload.targetChangesetId } : {}),

@@ -63,6 +63,7 @@ describe('shared token Worker client', () => {
     const abort = new AbortController()
     const tasks = Array.from({ length: 32 }, () => countTexts(['text'], abort.signal))
     const results = Promise.allSettled(tasks)
+    await expect(countTexts([])).resolves.toEqual([])
     abort.abort()
     await expect(countTexts(['overflow'])).rejects.toThrow('queue')
     expect((await results).every(result => result.status === 'rejected')).toBe(true)

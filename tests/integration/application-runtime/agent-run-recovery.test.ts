@@ -40,7 +40,7 @@ async function setup(runtime: ReturnType<typeof open>['runtime']) {
   const provider = (await runtime.createProviderProfile({
     providerExtensionId: 'official.openai-compatible', displayName: 'Recovery', config: {}, enabledModelIds: ['original', 'other'],
   })).providerProfile
-  await runtime.replacePresetToolMounts({ presetId: preset.id, mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }] })
+  await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id), presetId: preset.id, mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }] })
   await runtime.updateAgentPreset({
     agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
     model: { providerProfileId: provider.id, modelId: 'original' },
@@ -52,6 +52,31 @@ async function setup(runtime: ReturnType<typeof open>['runtime']) {
 }
 
 describe('durable Agent Run recovery', () => {
+  it('rejects preset changes while a turn is still preparing against the AgentStore owner', async () => {
+    const fixture = open(':memory:', async () => ({ provider: 'test', model: 'original', text: 'Done', message: { role: 'assistant', content: 'Done' } }))
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let entered!: () => void
+    const preparing = new Promise<void>(resolve => { entered = resolve })
+    try {
+      const { session, preset } = await setup(fixture.runtime)
+      const getSession = fixture.agents.getSession.bind(fixture.agents)
+      vi.spyOn(fixture.agents, 'getSession').mockImplementationOnce(async id => {
+        entered()
+        await gate
+        return getSession(id)
+      })
+      const turn = fixture.runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Work.' })
+      await preparing
+      await expect(fixture.runtime.updateAgentSession({ agentSessionId: session.id, agentPresetId: preset.id }))
+        .rejects.toThrow('Wait for the active Agent turn')
+      release()
+      await turn
+      await expect(fixture.runtime.updateAgentSession({ agentSessionId: session.id, agentPresetId: preset.id }))
+        .rejects.toMatchObject({ code: 'agent.session_preset_immutable' })
+    } finally { release(); fixture.engine.close() }
+  })
+
   it.each([false, true])('reconciles stale markers but preserves live ownership (live=%s)', async live => {
     const gateway = vi.fn<NonNullable<ApplicationRuntimeOptions['gateway']>['invokeChat']>(async () => ({
       provider: 'test', model: 'test', text: 'Done', message: { role: 'assistant', content: 'Done' },
@@ -194,11 +219,11 @@ describe('durable Agent Run recovery', () => {
       await expect(fixture.runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Work.' }, {
         agentRun: { runId: 'cold-original', onEvent: () => {} },
       })).rejects.toThrow('Initial interruption')
-      await fixture.runtime.updateProviderProfile({ providerProfileId: provider.id, enabledModelIds: ['other'] })
+      await fixture.runtime.updateProviderProfile({ expectedVersion: (await fixture.runtime.listProviderProfiles()).providerProfiles.find(profile => profile.id === provider.id)!.version, providerProfileId: provider.id, enabledModelIds: ['other'] })
       const invoke = vi.spyOn(fixture.runtime, 'invokeAgentTurn')
       const failed = await handleAgentsRpc(fixture.runtime, 'application.agent.run.resume', { agentSessionId: session.id }) as { runId: string }
       await expect(invoke.mock.results[0]!.value).rejects.toThrow('Provider model is not enabled')
-      await fixture.runtime.updateProviderProfile({ providerProfileId: provider.id, enabledModelIds: ['original', 'other'] })
+      await fixture.runtime.updateProviderProfile({ expectedVersion: (await fixture.runtime.listProviderProfiles()).providerProfiles.find(profile => profile.id === provider.id)!.version, providerProfileId: provider.id, enabledModelIds: ['original', 'other'] })
       await handleAgentsRpc(fixture.runtime, 'application.agent.run.resume', { runId: failed.runId })
       await invoke.mock.results[1]!.value
       expect(calls).toBe(2)
@@ -275,8 +300,8 @@ describe('durable Agent Run recovery', () => {
         agentRun: { runId: 'model-run', onEvent: () => {} },
       })).rejects.toThrow('Original failure')
       const recovered = await fixture.runtime.prepareAgentRunRecovery({ agentSessionId: session.id })
-      if (changed === 'model') await fixture.runtime.updateProviderProfile({ providerProfileId: provider.id, enabledModelIds: ['other'] })
-      else await fixture.runtime.replacePresetToolMounts({ presetId: preset.id, mounts: [] })
+      if (changed === 'model') await fixture.runtime.updateProviderProfile({ expectedVersion: (await fixture.runtime.listProviderProfiles()).providerProfiles.find(profile => profile.id === provider.id)!.version, providerProfileId: provider.id, enabledModelIds: ['other'] })
+      else await fixture.runtime.replacePresetToolMounts({ expectedMountIds: (await fixture.runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id), presetId: preset.id, mounts: [] })
       const before = await fixture.agents.getEntryPage({ agentSessionId: session.id })
       await expect(fixture.runtime.invokeAgentTurn(recovered!.request, {
         agentRun: { runId: 'model-recovery', onEvent: () => {}, continuation: recovered!.continuation },
@@ -290,6 +315,7 @@ describe('durable Agent Run recovery', () => {
     let calls = 0
     const fixture = open(':memory:', async input => {
       if (++calls === 1) {
+        input.onEvent?.({ type: 'reasoning-delta', runId: 'provider-run', reasoningId: 'reasoning-1', delta: 'Private thought.' })
         input.onEvent?.({ type: 'text-delta', runId: 'provider-run', delta: 'The opening fragment.' })
         throw new Error('Stream interrupted')
       }
@@ -304,6 +330,9 @@ describe('durable Agent Run recovery', () => {
       })).rejects.toThrow('Stream interrupted')
       const recovered = await fixture.runtime.prepareAgentRunRecovery({ agentSessionId: session.id })
       expect(recovered?.continuation.partialEntryId).toBeDefined()
+      expect((await fixture.agents.getEntry(recovered!.continuation.partialEntryId!))?.entry).toMatchObject({
+        kind: 'message', role: 'assistant', state: 'partial', content: 'The opening fragment.',
+      })
       const result = await fixture.runtime.invokeAgentTurn(recovered!.request, {
         agentRun: { runId: 'partial-recovered', onEvent: () => {}, continuation: recovered!.continuation },
       })

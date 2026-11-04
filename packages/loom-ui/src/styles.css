@@ -519,17 +519,6 @@ html[data-loom-glass-panels='true'] .loom-ui-menu {
 
 .loom-ui-menu[data-menu-kind='context'] { transform-origin: var(--radix-context-menu-content-transform-origin); }
 .loom-ui-menu[data-menu-kind='dropdown'] { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
-.loom-ui-menu-hover-indicator {
-  position: absolute;
-  top: 0;
-  left: 5px;
-  right: 5px;
-  border-radius: var(--loom-radius-control);
-  background: color-mix(in srgb, var(--loom-color-surface-raised) 85%, transparent);
-  pointer-events: none;
-  z-index: 0;
-  will-change: transform, opacity;
-}
 .loom-ui-menu-item {
   position: relative;
   z-index: 1;
@@ -550,7 +539,6 @@ html[data-loom-glass-panels='true'] .loom-ui-menu {
 }
 .loom-ui-menu-item[data-highlighted],
 .loom-ui-menu-item[data-state='open'] { border-color: transparent; color: var(--loom-color-text); background: color-mix(in srgb, var(--loom-color-surface) 68%, transparent); box-shadow: none; }
-.loom-ui-menu:has(.loom-ui-menu-hover-indicator[style*='opacity: 1']) .loom-ui-menu-item[data-highlighted]:not([data-tone='danger']) { background: transparent; }
 .loom-ui-menu-item[data-disabled] { opacity: 0.5; pointer-events: none; }
 .loom-ui-menu-item[data-inset] { padding-left: 36px; }
 .loom-ui-menu-item[data-tone='danger'] { color: color-mix(in srgb, var(--loom-color-danger) 82%, var(--loom-color-text-muted)); }

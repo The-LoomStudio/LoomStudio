@@ -1,5 +1,5 @@
 import type { DataCommitOperation, SqliteDataTransaction } from '@loom-studio/data-engine'
-import { nowIso, type JsonObject } from '@loom-studio/shared'
+import { stripPromptAuthorDepth, nowIso, type JsonObject } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
 import {
   PromptResourceStoreError,
@@ -63,6 +63,7 @@ export function applyCreateResource(
   if (readResourceRow(database, resourceId)) throw new PromptResourceStoreError('prompt_resource.conflict', `Prompt resource already exists: ${resourceId}`)
   const timestamp = now()
   const flat = flattenTree(input.rootNode, resourceId, timestamp)
+  normalizeAuthorNodeDepths(input.resourceKind, flat)
   validateTree(resourceId, flat, input.rootNode.id)
   const root = flat.get(input.rootNode.id)
   if (!root || root.kind !== 'module') throw new PromptResourceStoreError('prompt_resource.root_invalid', 'Prompt resource root must be a module')
@@ -164,6 +165,7 @@ export function applyMutateResource(
     }
   }
 
+  normalizeAuthorNodeDepths(row.resource_kind, after)
   validateTree(row.id, after, header.rootNodeId)
   const headerChanged = header.rootNodeId !== originalHeader.rootNodeId || header.label !== originalHeader.label || !sameJson(header.metadata, originalHeader.metadata)
   const changedIds = new Set<string>()
@@ -310,6 +312,7 @@ export function applyRevert(
     if (original) after.set(original.id, original)
     else after.delete(revision.node_id)
   }
+  normalizeAuthorNodeDepths(resource.resource_kind, after)
   validateTree(resourceId, after, targetHeader.rootNodeId ?? resource.root_node_id)
   const version = resource.version + 1
   const timestamp = now()
@@ -426,6 +429,14 @@ export function requireResourceRow(database: DatabaseSync, id: string): Resource
   const row = readResourceRow(database, id)
   if (!row) throw new PromptResourceStoreError('prompt_resource.not_found', `Prompt resource not found: ${id}`)
   return row
+}
+
+function normalizeAuthorNodeDepths(resourceKind: string, nodes: Map<string, StoredNode>): void {
+  if (resourceKind !== 'preset' && resourceKind !== 'lore') return
+  for (const [id, node] of nodes) {
+    const capabilities = stripPromptAuthorDepth(node.capabilities)
+    if (capabilities !== node.capabilities) nodes.set(id, { ...node, capabilities })
+  }
 }
 
 function readNodeMap(database: DatabaseSync, resourceId: string): Map<string, StoredNode> {

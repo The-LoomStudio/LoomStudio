@@ -11,13 +11,14 @@ export function useNarrativeAnchorNavigation(input: {
   busy: boolean
   onLoadOlder(): Promise<void>
   onLocate(nodeId: string): void
-}): 'idle' | 'loading' | 'located' | 'unavailable' | 'failed' {
+}) {
   const sourceRef = useRef<AnchorSource>({ timelineId: input.timelineId, nodeId: input.nodeId })
   if (sourceRef.current.timelineId !== input.timelineId || sourceRef.current.nodeId !== input.nodeId) {
     sourceRef.current = { timelineId: input.timelineId, nodeId: input.nodeId }
   }
   const source = sourceRef.current
   const attemptRef = useRef<PageAttempt | undefined>(undefined)
+  const cancelledRef = useRef<AnchorSource | undefined>(undefined)
   const locatedRef = useRef<AnchorSource | undefined>(undefined)
   const mountedRef = useRef(false)
   const [completed, setCompleted] = useState(0)
@@ -25,7 +26,7 @@ export function useNarrativeAnchorNavigation(input: {
   const found = input.nodes.some(node => node.id === source.nodeId)
   const attempt = attemptRef.current
   const samePage = attempt?.source === source && attempt.firstNodeId === firstNodeId
-  const status = !source.nodeId || !source.timelineId ? 'idle'
+  const status = cancelledRef.current === source || !source.nodeId || !source.timelineId ? 'idle'
     : found ? 'located'
       : input.busy ? 'loading'
         : !input.hasOlder ? 'unavailable'
@@ -37,13 +38,13 @@ export function useNarrativeAnchorNavigation(input: {
   }, [])
 
   useLayoutEffect(() => {
-    if (status !== 'located' || locatedRef.current === source) return
+    if (cancelledRef.current === source || status !== 'located' || locatedRef.current === source) return
     locatedRef.current = source
     input.onLocate(source.nodeId!)
   }, [source, status, input.onLocate])
 
   useEffect(() => {
-    if (status !== 'loading' || input.busy || !input.hasOlder) return
+    if (cancelledRef.current === source || status !== 'loading' || input.busy || !input.hasOlder) return
     const previous = attemptRef.current
     if (previous?.pending && previous.source.timelineId === source.timelineId) return
     if (previous?.source === source && previous.firstNodeId === firstNodeId) return
@@ -61,5 +62,8 @@ export function useNarrativeAnchorNavigation(input: {
     })()
   }, [source, firstNodeId, status, input.busy, input.hasOlder, input.onLoadOlder, completed])
 
-  return status
+  return { status, cancel: () => {
+    cancelledRef.current = source
+    setCompleted(value => value + 1)
+  } }
 }

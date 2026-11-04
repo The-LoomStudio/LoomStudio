@@ -10,11 +10,11 @@ import { mapObservationStep, mapObservationSummary } from '../../features/observ
 import { useObservations } from '../../features/observability/model/use-observations.js'
 import styles from '../../features/observability/ui/observability-workbench.module.scss'
 
-type Props = { api: StudioApi; endpoint: string; t: Translator; searchParams: URLSearchParams; onSearchParamsChange(params: URLSearchParams): void }
+type Props = { active: boolean; api: StudioApi; endpoint: string; t: Translator; searchParams: URLSearchParams; onSearchParamsChange(params: URLSearchParams): void }
 
-export function ObservabilityPanel({ api, endpoint, t, searchParams, onSearchParamsChange }: Props) {
+export function ObservabilityPanel({ active, api, endpoint, t, searchParams, onSearchParamsChange }: Props) {
   const targetRecord = searchParams.get('observationId') ?? undefined
-  const state = useObservations(api, endpoint, targetRecord)
+  const state = useObservations(api, endpoint, targetRecord, active)
   useEffect(() => { if (targetRecord) state.setRecordId(targetRecord) }, [targetRecord])
   const summary = state.selected?.record
   const providerId = state.entry.data?.id === state.step?.id ? state.entry.data?.request?.model?.providerProfileId : undefined
@@ -23,7 +23,7 @@ export function ObservabilityPanel({ api, endpoint, t, searchParams, onSearchPar
     ...(summary?.agentSessionId ? [{ kind: 'entity' as const, type: 'session' as const, id: summary.agentSessionId }] : []),
     ...(providerId ? [{ kind: 'entity' as const, type: 'provider' as const, id: providerId }] : []),
   ]
-  const names = useLogReferenceLabels(api, endpoint, [...entityRefs.map(formatEntityReference), ...state.records.map(record => formatEntityReference({ kind: 'entity', type: 'run', id: record.id })), ...(summary ? [formatEntityReference({ kind: 'entity', type: 'run', id: summary.id })] : [])])
+  const names = useLogReferenceLabels(active ? api : undefined, endpoint, [...entityRefs.map(formatEntityReference), ...state.records.map(record => formatEntityReference({ kind: 'entity', type: 'run', id: record.id })), ...(summary ? [formatEntityReference({ kind: 'entity', type: 'run', id: summary.id })] : [])])
   function entityLink(ref: EntityReference): ObservationReference {
     const value = names.labels.get(`${ref.type}:${ref.id}`)
     return { label: `${t(`logs.ref.${ref.type}`)} · ${value ? value.state === 'available' ? value.title || t('observation.unnamed') : t(value.state === 'deleted' ? 'observation.resourceDeleted' : 'observation.recordUnavailable') : t(names.isError ? 'observation.readError' : 'observation.loading')}`,

@@ -11,9 +11,9 @@ import {
   toStoredNodeDraft,
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
-import { applyDefaultPromptProjection, normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
+import { applyDefaultPromptProjection, normalizePromptResourceArtifact } from '../cards/card-bundle-codec.js'
 import defaultPresetTemplate from '../prompt/default-preset.json' with { type: 'json' }
-import type { PromptResourceNode } from '../cards/workspace-types.js'
+import type { PromptResourceNode } from '../prompt/prompt-resource-types.js'
 import type { TextTransformRuleDraft } from '../transforms/history-text.js'
 import { revertApplicationStateChangeset, revertApplicationStateDefinitionChangeset } from '../state/state.js'
 import type {
@@ -57,7 +57,7 @@ import { normalizeMacros } from '../cards/card.js'
 import { normalizeMacroOptions, canPlacePromptNode, promptAnchorOutput } from '@loom-studio/shared'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
 import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
-import { allocateImportedTextResourceIds, exportScriptTextResourceIds, importedTextResourceReferences, prepareTextTransformScript, rebaseScriptTextResourceReferences, remapImportedTextUses, writePreparedTextTransformScript } from '../scripts/loom-script-text-migration.js'
+import { allocateImportedTextResourceIds, exportScriptTextResourceIds, importedTextResourceReferences, prepareTextTransformScript, rebaseScriptTextResourceReferences, remapImportedTextUses, writePreparedTextTransformScript } from '../scripts/script-text-resources.js'
 
 type PromptRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'agentTools'
@@ -94,29 +94,29 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
 
     createPromptResource: async (input: CreatePromptResourceInput, requestContext?: RuntimeRequestContext): Promise<CreatePromptResourceResult> => {
       const content = createEmptyPromptResourceContent(ctx.createId, input.name, input.resourceKind, ctx.now())
-      const result = await ctx.promptResources.createResource({
-        ...toStoredResourceInput({ content }),
+      const result = await ctx.dataEngine.transact({
         ...promptResourceWriteContext(requestContext),
         reason: 'application.createPromptResource',
-      })
-      if (content.resourceKind === 'preset') {
-        const availableTools = ctx.agentTools.list()
-        for (const [orderIndex, definition] of availableTools.entries()) {
-          await ctx.promptResources.addPresetToolMount({
-            actor: applicationActor,
-            reason: 'application.createPromptResource',
-            presetResourceId: result.resource.id,
-            toolId: definition.id,
-            orderIndex,
-            defaultEnabled: false,
-            ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
-            ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
-            ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
-            origin: { kind: 'manual' },
-          })
+      }, async dataTx => {
+        const resourceTx = ctx.promptResources.transaction(dataTx)
+        const resource = resourceTx.createResource(toStoredResourceInput({ content }))
+        if (content.resourceKind === 'preset') {
+          for (const [orderIndex, definition] of ctx.agentTools.list().entries()) {
+            resourceTx.addPresetToolMount({
+              presetResourceId: resource.id,
+              toolId: definition.id,
+              orderIndex,
+              defaultEnabled: false,
+              ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
+              ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
+              ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+              origin: { kind: 'manual' },
+            })
+          }
         }
-      }
-      return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
+        return resource
+      })
+      return { resource: fromStoredResource(result.value), mutation: { changesetId: result.commit.changesetId } }
     },
 
     duplicatePromptResource: async (input: DuplicatePromptResourceInput, requestContext?: RuntimeRequestContext): Promise<CreatePromptResourceResult> => {
@@ -230,7 +230,9 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         ...(artifact.macros !== undefined ? { macros: normalizeMacros(artifact.macros, 'Preset') } : {}),
         ...(artifact.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(artifact.macroOptions) } : {}),
         ...(artifact.useCardLore !== undefined ? { useCardLore: artifact.useCardLore } : {}),
+        ...(artifact.useCardText !== undefined ? { useCardText: artifact.useCardText } : {}),
         ...(artifact.useGlobalLore !== undefined ? { useGlobalLore: artifact.useGlobalLore } : {}),
+        ...(artifact.useGlobalText !== undefined ? { useGlobalText: artifact.useGlobalText } : {}),
         ...(artifact.textUses !== undefined ? { textUses: structuredClone(artifact.textUses) } : {}),
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
@@ -256,6 +258,9 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         return { orderIndex: mount.content.orderIndex,
       ...(typeof mount.content.origin.groupOrder === 'number' ? { groupOrder: mount.content.origin.groupOrder } : {}),
           ...(mount.content.settings ? { settings: mount.content.settings } : {}),
+      ...(mount.content.ruleUsage ? { ruleUsage: mount.content.ruleUsage } : {}),
+          ...(script.loreNodeReferences ? { loreNodeReferences: script.loreNodeReferences } : {}),
+          ...(script.loreResourceReferences ? { loreResourceReferences: script.loreResourceReferences } : {}),
           textResourceIds: exportScriptTextResourceIds(document.id, script),
           ...(script.textResourceReferences ? { textResourceReferences: script.textResourceReferences } : {}),
           script: { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName,
@@ -273,7 +278,9 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
           ...(resource.macros !== undefined ? { macros: structuredClone(resource.macros) } : {}),
           ...(resource.macroOptions !== undefined ? { macroOptions: structuredClone(resource.macroOptions) } : {}),
           ...(resource.useCardLore !== undefined ? { useCardLore: resource.useCardLore } : {}),
+          ...(resource.useCardText !== undefined ? { useCardText: resource.useCardText } : {}),
           ...(resource.useGlobalLore !== undefined ? { useGlobalLore: resource.useGlobalLore } : {}),
+          ...(resource.useGlobalText !== undefined ? { useGlobalText: resource.useGlobalText } : {}),
           ...(resource.textUses !== undefined ? { textUses: resource.textUses.map(use => ({
             ...structuredClone(use),
             reference: use.reference ?? { kind: 'external' as const, resourceId: use.id },
@@ -313,6 +320,7 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         ...promptResourceWriteContext(requestContext),
         reason: 'application.replaceLoreMounts',
         source: input.source,
+        expectedMountIds: input.expectedMountIds,
         mounts,
       })
       return { mounts: result.mounts, mutation: { changesetId: result.commit.changesetId } }
@@ -326,11 +334,18 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
       const asset = applyDefaultPromptProjection(input.asset, mapped)
       assertPromptAssetPlacement(mapped.rootNode, placement.parentId, asset)
       assertTextContributionTarget(asset)
-      const mutation: PromptResourceMutation = { kind: 'node.create', parentId: placement.parentId, node: toStoredNodeDraft(asset) }
+      const mutations: PromptResourceMutation[] = []
+      const appendNode = (node: PromptResourceNode, parentId: string, orderIndex: number) => {
+        const { children, ...leaf } = node
+        const draft = toStoredNodeDraft(leaf)
+        mutations.push({ kind: 'node.create', parentId, node: { ...draft, orderIndex } })
+        for (const [index, child] of (children ?? []).entries()) appendNode(child, node.id, index)
+      }
+      appendNode(asset, placement.parentId, placement.orderIndex)
       const result = await ctx.promptResources.mutateResource({
         ...promptResourceWriteContext(requestContext), reason: 'application.createPromptResourceAsset',
         resourceId: input.resourceId, expectedVersion: current.version,
-        mutations: [{ ...mutation, node: { ...mutation.node, orderIndex: placement.orderIndex } }, ...buildInsertionReorderMutations(mapped.rootNode, placement.parentId, placement.orderIndex)],
+        mutations: [...mutations, ...buildInsertionReorderMutations(mapped.rootNode, placement.parentId, placement.orderIndex)],
       })
       return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
@@ -432,7 +447,7 @@ async function importPromptResourceContent(
   attachments: LoomScriptAttachmentArtifact[],
   requestContext?: RuntimeRequestContext,
   textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>,
-  loreMounts?: NonNullable<import('../cards/workspace-types.js').PromptResourceArtifact['loreMounts']>,
+  loreMounts?: NonNullable<import('../prompt/prompt-resource-types.js').PromptResourceArtifact['loreMounts']>,
 ): Promise<PromptResourceMutationResult> {
   if ((attachments.length > 0 || textTransformRules?.length) && !ctx.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
   const preparedResults = await Promise.allSettled(attachments.map(async attachment => {
@@ -492,6 +507,8 @@ async function importPromptResourceContent(
             },
             sourceDigest: blob.sha256,
             textResourceIds: item.textResourceIds,
+            loreResourceReferences: item.attachment.loreResourceReferences,
+            loreNodeReferences: item.attachment.loreNodeReferences,
             textResourceReferences: rebaseScriptTextResourceReferences(item.attachment, references),
             createdAt: content.createdAt,
             updatedAt: content.updatedAt,
@@ -505,9 +522,11 @@ async function importPromptResourceContent(
             target: { kind: 'preset', presetId: resource.id },
             scriptDocumentId: script.id,
             enabled: false,
+            runtimeRevision: 0,
             orderIndex: item.attachment.orderIndex,
             grantedCapabilities: [],
             ...(item.attachment.settings ? { settings: item.attachment.settings } : {}),
+            ...(item.attachment.ruleUsage ? { ruleUsage: item.attachment.ruleUsage } : {}),
             origin: { kind: 'prompt-resource-import', orderOverride: true, ...(item.attachment.groupOrder !== undefined ? { groupOrder: item.attachment.groupOrder } : {}) },
             createdAt: content.createdAt,
             updatedAt: content.updatedAt,
@@ -596,7 +615,6 @@ function clonePromptResourceNode(
   const clone = (current: PromptResourceNode): PromptResourceNode => ({
     ...current,
     id: ids.get(current.id)!,
-    ...(current.orderList ? { orderList: current.orderList.map(id => ids.get(id) ?? id) } : {}),
     ...(current.children ? { children: current.children.map(clone) } : {}),
   })
   return clone(node)
@@ -699,7 +717,6 @@ async function updatePromptResourceAssets(input: {
     enabled?: boolean
     label?: string
     meta?: string
-    orderList?: string[]
   }>
 }): Promise<UpdatePromptResourceResult> {
   const current = await input.ctx.promptResources.getResource(input.resourceId)
@@ -718,15 +735,12 @@ async function updatePromptResourceAssets(input: {
       && update.capabilities.targetAnchorId !== previous?.capabilities?.targetAnchorId) {
       assertPromptAssetPlacement(nextRoot, target.parentId, target.node)
     }
-    if (target) assertTextContributionTarget(target.node)
+    if (target) {
+      if (target.node.meta === 'message.developer') throw new Error('Unsupported Prompt message role: developer')
+      assertTextContributionTarget(target.node)
+    }
   }
   const mutations: PromptResourceMutation[] = input.updates.map(update => {
-    let extra: PromptResourceNode['extra']
-    if (update.orderList !== undefined || update.capabilities?.projection !== undefined) {
-      extra = { ...(findPromptNode(current.rootNode, update.assetId)?.node.extra ?? {}) }
-      if (update.orderList !== undefined) extra.orderList = update.orderList
-      if (update.capabilities?.projection !== undefined) delete extra.projection
-    }
     return {
       kind: 'node.update',
       nodeId: update.assetId,
@@ -736,7 +750,6 @@ async function updatePromptResourceAssets(input: {
         ...(update.capabilities === undefined ? {} : { capabilities: normalizeAuthorCapabilities(update.capabilities) }),
         ...(update.enabled === undefined ? {} : { enabled: update.enabled }),
         ...(update.meta === undefined ? {} : { meta: update.meta }),
-        ...(extra === undefined ? {} : { extra }),
       },
     }
   })

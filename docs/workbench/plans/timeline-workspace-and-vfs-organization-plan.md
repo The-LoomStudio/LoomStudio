@@ -35,7 +35,7 @@
 - 基础施工见[归档实施记录](../../archive/plans/timeline-foundation-implementation-plan.md)；现行采用合同见[Runtime 与 Session](../../architecture/application/agent/runtime-and-session.md)。
 - Session 摘要与文件 UI 已完成，见[总结交付记录](../../archive/plans/session-summary-implementation-plan.md)；不再将文件管理列为未做。
 - Workspace 文件执行、采用及脚本重建由 [Script 计划](./loom-script-distribution-and-runtime-plan.md)承接，本页不另建执行器。
-- [Context](../../archive/plans/agent-context-skeleton-and-memory-projection-plan.md)已确认完成，Notice / Pin 仅为设想；作者开发源与显式 Apply 归[资源分发后续](./workspace-resource-and-distribution-plan.md)。
+- [Context](../../archive/plans/agent-context-skeleton-and-memory-projection-plan.md)已确认完成，Notice / Pin 仅为设想；作者开发源与显式 Apply 首版见[资源作者交付记录](../../archive/plans/resource-authoring-dx-plan.md)。
 
 ## 最小关闭条件与验证边界
 

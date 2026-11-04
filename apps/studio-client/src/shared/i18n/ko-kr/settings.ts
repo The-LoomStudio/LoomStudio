@@ -77,6 +77,8 @@ export const messages = {
   'settings.about': '정보',
   'settings.back': '설정으로 돌아가기',
   'settings.categories': '설정 분류',
+  'settings.focusComposerOnStartup': '시작 시 본문 입력란에 초점 맞추기',
+  'settings.focusComposerOnStartupHelp': '기본값은 꺼짐입니다. 새로고침 후 시작할 때 한 번만 적용되며, 이미 조작을 시작했다면 초점을 옮기지 않습니다.',
   'settings.general': '일반',
   'settings.narrativeOverscan': '본문 상하 버퍼 메시지 수',
   'settings.appearance': '외관',

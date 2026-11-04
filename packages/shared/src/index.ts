@@ -20,6 +20,7 @@ export type {
   ListGlobalSearchScopesResult,
 } from './global-search.js'
 export {
+  stripPromptAuthorDepth,
   promptAnchorOutput,
   isPromptMessageSequence,
   canPlacePromptNode,
@@ -144,3 +145,5 @@ export type { AuthoringNode, AuthoringResource, AuthoringApplyInput, AuthoringSt
 
 export { toolReferenceSchema, extensionToolMountSchema, authoringToolMountSchema } from "./tool-mount-contracts.js"
 export type { AgentToolReference, ExtensionToolMount } from "./tool-mount-contracts.js"
+export { summarizePackageResource, packageResourceSummaryKinds } from './package-resource-summary.js'
+export type { PackageResourceSummary, PackageResourceSummaryKind } from './package-resource-summary.js'

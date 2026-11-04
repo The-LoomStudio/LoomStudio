@@ -2,14 +2,14 @@
 
 > **状态**：Active Package Guide / Current Source Is Authority
 
-Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 connection、namespaced migration、FIFO 读写、transaction、Changeset/Commit Journal 和提交后通知。
+Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 connection、namespaced schema 初始化、FIFO 读写、transaction、Changeset/Commit Journal 和提交后通知。
 
 ## 公共入口
 
 [`src/index.ts`](./src/index.ts) 公开：
 
 - `createSqliteDataEngine()`、`SqliteDataEngine` 和 `DataEngineError`；
-- Migration、`DataTransactionInput`、Transaction 与 Engine options 类型；
+- `SqliteSchema`、`DataTransactionInput`、Transaction 与 Engine options 类型；
 - `DataCommitFact`、operation、observer、source 和 notifier；
 - `readSqliteSpaceUsage()`：读取当前 SQLite 空间统计。
 
@@ -17,7 +17,7 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 
 | 文件        | 当前职责                                                             |
 | ----------- | -------------------------------------------------------------------- |
-| `sqlite.ts` | Connection、Migration、FIFO read/transact、Commit Journal 与关闭状态 |
+| `sqlite.ts` | Connection、Schema 初始化、FIFO read/transact、Commit Journal 与关闭状态 |
 | `commit.ts` | 领域无关 Commit Fact、Observer 和通知隔离                            |
 | `storage-statistics.ts` | SQLite 页面与 freelist 空间统计 |
 | `index.ts`  | Package public exports                                               |
@@ -38,13 +38,11 @@ Data Engine 是 Loom Studio 的业务无关 SQLite 基础层。它管理单一 c
 
 ## 原生依赖职责
 
-本包没有第三方运行时依赖。[`sqlite.ts`](./src/sqlite.ts) 直接使用 Node 的 `node:sqlite` `DatabaseSync`，`node:async_hooks` 的 `AsyncLocalStorage` 检测事务重入，文件与路径 API 只负责数据库父目录。FIFO 是本包对共享连接的访问合同，不是异步 SQLite 驱动；领域 Store 应参与既有 transaction，不再引入连接池、ORM 或另一套 migration runner。
+本包没有第三方运行时依赖。[`sqlite.ts`](./src/sqlite.ts) 直接使用 Node 的 `node:sqlite` `DatabaseSync`，`node:async_hooks` 的 `AsyncLocalStorage` 检测事务重入，文件与路径 API 只负责数据库父目录。FIFO 是本包对共享连接的访问合同，不是异步 SQLite 驱动；领域 Store 应参与既有 transaction，不再引入连接池或 ORM。
 
 ## Schema 版本边界
 
-`migrate()` 是 Store 启动装配时的同步入口，不进入运行期 FIFO。版本保存在 `schema_migrations(namespace, version)`；每个 namespace 只按已注册的连续版本升级，缺口返回 `data.sqlite_migration_gap`，本次升级失败时 DDL 与版本记录一起回滚。
-
-数据库 namespace 版本高于当前程序支持版本时返回 `data.sqlite_schema_newer`，拒绝继续装配；不会自动降级、兼容读取或猜测迁移。核心 namespace 与领域 namespace 的检查均在 [`sqlite.ts`](./src/sqlite.ts)。
+Store 创建时调用 `initializeSchema({ namespace, version, initialize })`。版本仍记录在 `schema_migrations(namespace, version)`：空 namespace 在一个事务中执行当前完整 DDL 并写入当前版本；版本相同则直接使用；已有非零版本与当前版本不同则返回 `data.sqlite_schema_unsupported`，不升级、降级或兼容读取。运行期读写仍统一进入 Engine FIFO；核心 namespace 检查见 [`sqlite.ts`](./src/sqlite.ts)。
 
 ## 构建与验证
 

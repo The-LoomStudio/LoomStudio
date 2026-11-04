@@ -1,19 +1,24 @@
 export type ObservationReference = { label: string; note?: string; open?: () => void }
 
 // Display projections shared by the production reader and the isolated development preview.
+export type ObservationToolExchange = { callId?: string; name?: string; input?: unknown; result?: unknown; status: string }
+
 export type ObservationMessage = {
   id: string
   role: string
   content: string
   raw?: unknown
+  exchanges?: ObservationToolExchange[]
   toolCalls?: Array<{ name: string; arguments: string }>
   estimatedTokens?: number
   sourceId?: string
+  changeKind?: 'added' | 'changed'
   change?: string
   position?: number
 }
 
 export type ObservationSource = {
+  exchanges?: ObservationToolExchange[]
   id: string
   title: string
   path: string
@@ -42,6 +47,7 @@ export type ObservationStep = {
   model?: string
   finishReason?: string
   messages: ObservationMessage[]
+  reasoning?: ObservationMessage
   response?: ObservationMessage
   outputRecorded?: boolean
   sources: ObservationSource[]
@@ -64,6 +70,8 @@ export type ObservationStep = {
   canCompare?: boolean
   initialInput?: boolean
   removedMessages?: ObservationMessage[]
+  previousMessages?: ObservationMessage[]
+  previousToolDefinitions?: unknown[]
   references?: ObservationReference[]
   identity?: Record<string, string | undefined>
   comparison?: string

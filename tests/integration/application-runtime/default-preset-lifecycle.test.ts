@@ -10,7 +10,7 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import type { ChatMessage } from '@loom-studio/shared'
 import { serializeLoomScriptMetadata } from '@loom-studio/shared/loom-scripts'
-import type { PromptResourceNode } from '../../../packages/application-runtime/src/cards/workspace-types.js'
+import type { PromptResourceNode } from '../../../packages/application-runtime/src/prompt/prompt-resource-types.js'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 const actor = { kind: 'system' as const, id: 'lifecycle-test' }
@@ -118,7 +118,7 @@ async function simulateLifecycle() {
         assetId: entry.id, body: entryBodies.get(entry.label)!,
       })),
     })
-    await runtime.replacePresetToolMounts({
+    await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id),
       presetId: preset.id, mounts: tools.map((tool, index) => ({ toolId: tool.id, orderIndex: index, defaultEnabled: true })),
     })
     const settings = []
@@ -149,7 +149,7 @@ async function simulateLifecycle() {
         },
       })
     }
-    await runtime.replaceLoreMounts({
+    await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.id } })).mounts.map(mount => mount.id),
       source: { kind: 'preset', id: preset.id }, loreResourceIds: settings.map(resource => resource.id),
     })
     const { card } = await runtime.createCard({ name: 'Branching Story', opening: 'RAW:N001' })

@@ -64,7 +64,7 @@ describe('global resource search', () => {
       await f.lore('z-active', 'Z adopted', '只在搜索时返回的正文')
       await f.lore('b-other', 'B resource', '另一份正文')
       await f.lore('a-other', 'A resource', '另一份正文')
-      await f.runtime.updateCardPromptResources({ cardId: card.id, promptResourceIds: ['z-active'] })
+      await f.runtime.updateCardPromptResources({ expectedVersion: (await f.runtime.getCard({ cardId: card.id })).card.version, cardId: card.id, promptResourceIds: ['z-active'] })
       expect((await f.runtime.searchResources({ query: '' })).items).toEqual([])
       const roots = await collectResults(f.runtime, { query: '', kind: 'lore', currentCardId: card.id, limit: 1 })
       expect(roots.map(hit => hit.title)).toEqual(['Z adopted', 'A resource', 'B resource'])
@@ -87,7 +87,7 @@ describe('global resource search', () => {
       const current = (await f.runtime.createCard({ name: '同名角色' })).card
       await f.lore('a-inactive', '世界书', '未采用')
       await f.lore('z-active', '世界书', '已采用')
-      await f.runtime.updateCardPromptResources({ cardId: current.id, promptResourceIds: ['z-active'] })
+      await f.runtime.updateCardPromptResources({ expectedVersion: (await f.runtime.getCard({ cardId: current.id })).card.version, cardId: current.id, promptResourceIds: ['z-active'] })
       const first = await f.runtime.listGlobalSearchScopes({ query: '', currentCardId: current.id, limit: 1 })
       expect(first.items.map(item => item.id)).toEqual([current.id])
       const second = await f.runtime.listGlobalSearchScopes({ query: '', currentCardId: current.id, limit: 1, cursor: first.nextCursor })
@@ -98,7 +98,7 @@ describe('global resource search', () => {
       const preset = (await f.promptResources.createResource({ id: 'preset-no-card', actor, resourceKind: 'preset', metadata: { useCardLore: false }, rootNode: { id: 'preset-no-card-root', kind: 'module', label: '预设' } })).resource
       const disabled = await f.runtime.listGlobalSearchScopes({ query: '世界书', currentCardId: current.id, currentPresetId: preset.id })
       expect(disabled.items.map(item => item.id)).toEqual(['a-inactive', 'z-active'])
-      await f.runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.id }, loreResourceIds: ['z-active'] })
+      await f.runtime.replaceLoreMounts({ expectedMountIds: (await f.runtime.listLoreMounts({ source: { kind: 'preset', id: preset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: preset.id }, loreResourceIds: ['z-active'] })
       const adopted = await f.runtime.listGlobalSearchScopes({ query: '世界书', currentCardId: current.id, currentPresetId: preset.id, limit: 1 })
       expect(adopted.items.map(item => item.id)).toEqual(['z-active'])
     } finally { await f.engine.close() }
@@ -115,9 +115,9 @@ describe('global resource search', () => {
       const carriedPreset = imported.card.promptResourceIds![0]!
       const lore = await f.lore('lore-north', '北境设定', '遥远的王都坐落于两条河流的交汇处。')
       await f.lore('lore-other', '王都', '不属于该角色的定义。')
-      await f.runtime.replaceLoreMounts({ source: { kind: 'preset', id: carriedPreset }, loreResourceIds: [lore.id] })
+      await f.runtime.replaceLoreMounts({ expectedMountIds: (await f.runtime.listLoreMounts({ source: { kind: 'preset', id: carriedPreset } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: carriedPreset }, loreResourceIds: [lore.id] })
       const external = (await f.runtime.createCard({ name: '关联卡' })).card
-      await f.runtime.updateCardPromptResources({ cardId: external.id,
+      await f.runtime.updateCardPromptResources({ expectedVersion: (await f.runtime.getCard({ cardId: external.id })).card.version, cardId: external.id,
         promptResourceIds: [carriedPreset], externalPromptResourceIds: [carriedPreset] })
 
       const forbidden = [
@@ -136,7 +136,7 @@ describe('global resource search', () => {
       expect((await collectResults(f.runtime, { query: '', scope: { kind: 'card', id: external.id }, limit: 1 })).map(hit => hit.kind)).toEqual(['preset'])
       for (const spy of forbidden) { expect(spy).not.toHaveBeenCalled(); spy.mockRestore() }
 
-      await f.runtime.updateCardPromptResources({ cardId: external.id,
+      await f.runtime.updateCardPromptResources({ expectedVersion: (await f.runtime.getCard({ cardId: external.id })).card.version, cardId: external.id,
         promptResourceIds: [carriedPreset, lore.id], externalPromptResourceIds: [carriedPreset, lore.id] })
       expect((await f.runtime.searchResources({ query: '王都', scope: { kind: 'card', id: external.id }, kind: 'lore' })).items)
         .toHaveLength(1)

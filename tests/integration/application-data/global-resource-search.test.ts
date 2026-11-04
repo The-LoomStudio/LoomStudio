@@ -6,16 +6,6 @@ import {
   type PromptResourceTreeNode,
 } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
-import {
-  migrationNamespace,
-  migrateVersionOne,
-  migrateVersionTwo,
-  migrateVersionThree,
-  migrateVersionFour,
-  migrateVersionFive,
-  migrateVersionSix,
-  migrateVersionSeven,
-} from '../../../packages/application-data/src/prompt-resource/schema.js'
 
 const actor = { kind: 'system' as const, id: 'global-resource-search-test' }
 const now = () => '2026-10-13T00:00:00.000Z'
@@ -247,13 +237,10 @@ describe('global definition resource search', () => {
     } finally { await engine.close() }
   })
 
-  it.each([6, 7])('upgrades v%s definitions, excludes runtime resources and drops source-name indexing', async version => {
+  it('indexes current author resources without runtime resources or source names', async () => {
     const engine = createEngine()
     try {
-      engine.migrate({ namespace: migrationNamespace, migrations: [
-        migrateVersionOne, migrateVersionTwo, migrateVersionThree,
-        migrateVersionFour, migrateVersionFive, migrateVersionSix, migrateVersionSeven,
-      ].slice(0, version).map((migrate, index) => ({ version: index + 1, migrate })) })
+      const store = createPromptResourceStore({ engine, now })
       engine.database.exec('BEGIN')
       for (const kind of ['lore', 'preset', 'runtime', 'history', 'prompt', 'logic']) {
         engine.database.prepare(`
@@ -266,7 +253,6 @@ describe('global definition resource search', () => {
         `).run(`${kind}-root`, kind, `${kind}名称`, now(), now())
       }
       engine.database.exec('COMMIT')
-      const store = createPromptResourceStore({ engine, now })
       expect(engine.database.prepare('PRAGMA table_info(prompt_resource_node_search)').all().map(row => row.name)).toEqual(['label', 'meta', 'body'])
       expect((await store.searchNodes({ query: '迁移历史' })).hits.map(hit => hit.resourceId)).toEqual(['lore', 'preset'])
       expect(engine.database.prepare('SELECT count(*) AS count FROM prompt_resource_node_search').get()).toEqual({ count: 2 })

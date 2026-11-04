@@ -86,6 +86,23 @@ async function mount(search: SearchState) {
 }
 
 describe('global search dialog keyboard interaction', () => {
+  it.each(['close', 'clearFilters'] as const)('leaves Enter on the normal %s button to native activation', async action => {
+    const state = searchState({ kind: 'lore' })
+    const f = await mount(state)
+    const button = action === 'close'
+      ? f.container.querySelector<HTMLButtonElement>(`button[aria-label="${t('search.closeHint')}"]`)!
+      : [...f.container.querySelectorAll('button')].find(button => button.textContent === t('search.clearFilters'))!
+    button.focus()
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    await act(async () => { button.dispatchEvent(event) })
+    expect(event.defaultPrevented).toBe(false)
+    expect(f.props.onOpenPanel).not.toHaveBeenCalled()
+    expect(f.props.onOpenResult).not.toHaveBeenCalled()
+    // happy-dom does not synthesize the browser's keydown default click.
+    await act(async () => { button.click() })
+    expect(action === 'close' ? f.props.onClose : state.clearFilters).toHaveBeenCalledOnce()
+  })
+
   it('formats structured installation sources using the active language', async () => {
     const hit = { ...resource('lore:source'), source: { packageId: 'the-world', installationId: 'global' } }
     const f = await mount(searchState({ results: [hit] }))

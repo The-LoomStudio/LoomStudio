@@ -29,6 +29,12 @@ export function Dialog(props: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [portalContainer, setPortalContainer] = useState<HTMLDialogElement | null>(null)
   const setDialogRef = useCallback((element: HTMLDialogElement | null) => {
+    // Close while the node is still connected so native dialog focus restoration runs.
+    const previous = dialogRef.current
+    if (!element && previous?.open) {
+      for (const child of [...previous.querySelectorAll<HTMLDialogElement>('dialog[open]')].reverse()) child.close()
+      previous.close()
+    }
     dialogRef.current = element
     setPortalContainer(element)
   }, [])

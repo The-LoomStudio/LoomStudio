@@ -1,3 +1,5 @@
+import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
+import type { DisplayProjection } from '../../message-content/model/use-display-projection.js'
 import { UserInputEditor, type ReviseUserInput } from '../../attachments/user-input-editor.js'
 import { MessageAttachments } from '../../attachments/message-attachments.js'
 import { ConversationMessageAction, ConversationMessageChrome } from '../../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
@@ -48,8 +50,12 @@ export function useCommunicationExpansion(_mode: 'roleplay' | 'discussion', keys
 }
 
 /** Candidate-bound communication stays in the reading flow beneath its prose. */
-export function NarrativeCommunication({ candidate, round, selected, onReply, onInspect, followWork, onRetryInput, onReviseInput, editRunning, onContinue, activeRunId, actionsDisabled, onSend }: {
+export function NarrativeCommunication({ rendererHost, agentSessionId, displayProjection, candidate, connecting, round, selected, onReply, onInspect, followWork, onRetryInput, onReviseInput, editRunning, onContinue, activeRunId, actionsDisabled, onSend }: {
+  rendererHost?: ClientRendererHost
+  agentSessionId?: string
+  displayProjection?: DisplayProjection
   candidate: { execution: NarrativeSessionExecution; discussions: NarrativeSessionExecution[] }
+  connecting?: boolean
   round: number
   selected?: number
   followWork?: boolean
@@ -66,11 +72,12 @@ export function NarrativeCommunication({ candidate, round, selected, onReply, on
 }) {
   return <section className={styles.thread} data-communication-current={!!onReply} aria-label={round ? `第 ${round} 轮${selected === undefined ? '' : `候选 ${selected + 1}`}的创作沟通` : '创作准备沟通'}>
     <div className={styles.messages}>
-      {candidate.execution.steps.length > 0 && <div className={styles.assistant} data-communication-role="assistant">
-        <NarrativeExecutionFlow execution={candidate.execution} reading={false} followWork={followWork} onInspect={onInspect} />
-      </div>}
-      {candidate.discussions.map(execution => <CommunicationExchange key={execution.id} execution={execution} followWork={followWork} onInspect={onInspect}
-        disabled={actionsDisabled} onReviseInput={onReviseInput} editRunning={editRunning} onRetryInput={onRetryInput} onContinue={execution.runId === activeRunId ? onContinue : undefined} />)}
+      {[...(candidate.execution.steps.length ? [candidate.execution] : []), ...candidate.discussions]
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map(execution => execution === candidate.execution ? <div key={execution.id} className={styles.assistant} data-communication-role="assistant">
+          <NarrativeExecutionFlow rendererHost={rendererHost} agentSessionId={agentSessionId} displayProjection={displayProjection} execution={execution} reading={false} followWork={followWork} onInspect={onInspect} />
+        </div> : <CommunicationExchange rendererHost={rendererHost} agentSessionId={agentSessionId} displayProjection={displayProjection} key={execution.id} execution={execution} connecting={connecting && execution === candidate.discussions.at(-1)} followWork={followWork} onInspect={onInspect}
+          disabled={actionsDisabled} onReviseInput={onReviseInput} editRunning={editRunning} onRetryInput={onRetryInput} onContinue={execution.runId === activeRunId ? onContinue : undefined} />)}
       {communicationMessageCount(candidate) === 0 && candidate.execution.steps.length === 0 && <p className={styles.empty}>在这里讨论写法、提出修改，正文留在上方。</p>}
     </div>
     {onSend && <CommunicationInput onSend={onSend} disabled={actionsDisabled} />}
@@ -103,8 +110,10 @@ function CommunicationInput({ onSend, disabled }: { onSend(content: string): Pro
   </form>
 }
 
-function CommunicationExchange({ execution, followWork, onInspect, onRetryInput, onReviseInput, editRunning, onContinue, disabled }: {
-  execution: NarrativeSessionExecution
+function CommunicationExchange({ rendererHost, agentSessionId, displayProjection, execution, connecting, followWork, onInspect, onRetryInput, onReviseInput, editRunning, onContinue, disabled }: {
+  rendererHost?: ClientRendererHost
+  agentSessionId?: string
+  displayProjection?: DisplayProjection; execution: NarrativeSessionExecution
   onReviseInput?: ReviseUserInput
   editRunning?: boolean
   followWork?: boolean
@@ -112,6 +121,7 @@ function CommunicationExchange({ execution, followWork, onInspect, onRetryInput,
   onRetryInput?(entryId: string, content: string): Promise<boolean>
   onContinue?(): Promise<boolean>
   disabled?: boolean
+  connecting?: boolean
 }) {
   const [draft, setDraft] = useState<{ content: string; width: number }>()
   const [busy, setBusy] = useState(false)
@@ -163,7 +173,7 @@ function CommunicationExchange({ execution, followWork, onInspect, onRetryInput,
         }}><Pencil /></button>}
       </>} />}
     </div>}
-    <div className={styles.assistant} data-communication-role="assistant"><NarrativeExecutionFlow execution={execution} reading={false} followWork={followWork} onInspect={onInspect} actions={<>
+    <div className={styles.assistant} data-communication-role="assistant"><NarrativeExecutionFlow rendererHost={rendererHost} agentSessionId={agentSessionId} displayProjection={displayProjection} execution={execution} connecting={connecting} reading={false} followWork={followWork} onInspect={onInspect} actions={<>
       {execution.resumable && onContinue && <Button size="small" disabled={busy || disabled} onClick={() => { void retry('', true) }}>继续</Button>}
       {canEdit && execution.interjectionStatus !== 'pending' && onRetryInput && <ConversationMessageAction label="重试沟通" disabled={busy || disabled} onClick={() => { void retry(execution.input!) }}><RotateCcw /></ConversationMessageAction>}
     </>} /></div>

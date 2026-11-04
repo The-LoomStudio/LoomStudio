@@ -7,7 +7,7 @@ import { readDocument } from '../foundation/document-store.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import type { ExtensionInstallationContent, RuntimeRequestContext } from '../types.js'
 import { normalizeMacros } from '../cards/card.js'
-import { normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
+import { normalizePromptResourceArtifact } from '../cards/card-bundle-codec.js'
 import { toStoredNode } from '../prompt/prompt-resource-mapper.js'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { narrativeWriteContext, requireDocumentParticipant } from './context.js'
@@ -16,7 +16,7 @@ import { isPromptActivation } from '../prompt/prompt-activation.js'
 import { resolveAgentToolReference, assertToolReferenceRevisions, type ResolvedAgentToolReference } from '../extensions/tool-reference.js'
 
 type Context = Pick<ApplicationRuntimeContext, 'dataEngine' | 'promptResources' | 'agentTools' | 'documents' | 'validatePackageAsset'>
-const fields = ['macros', 'macroOptions', 'useCardLore', 'useGlobalLore'] as const
+const fields = ['macros', 'macroOptions', 'useCardLore', 'useGlobalLore', 'useCardText', 'useGlobalText'] as const
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
   if (value !== null && typeof value === 'object') return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`
@@ -27,8 +27,6 @@ function conflict(message: string): never { throw Object.assign(new Error(messag
 function origin(resource: PromptResource) { return resource.metadata.origin as { kind?: string; packageId?: string; installationId?: string; contributionId?: string } | undefined }
 function canonicalAuthorNode(input: AuthoringNode): AuthoringNode {
   const node = structuredClone(input)
-  if (node.meta === 'message.developer') node.meta = 'message.system'
-  if (node.capabilities?.roleHint === 'developer') node.capabilities.roleHint = 'system'
   if (node.kind === 'message') node.capabilities = { ...node.capabilities, roleHint: node.capabilities?.roleHint ?? 'system' }
   if (node.capabilities && !Object.keys(node.capabilities).length) delete node.capabilities
   if (node.kind === 'entry') node.body ??= ''
@@ -94,7 +92,7 @@ export function createResourceAuthoringRuntimeMethods(ctx: Context) {
       if (existing && existing.resourceKind !== item.resource.resourceKind) throw new Error('Cannot change resource kind')
       if (existing && existing.rootNodeId !== item.resource.rootNode.id) throw new Error('Cannot replace stable root node identity')
       if (item.resource.resourceKind === 'lore' && (item.resource.loreMounts?.length || item.resource.toolMounts?.length)) throw new Error('Only presets can own mounts')
-      const resource = authoringResourceSchema.parse({ ...item.resource, ...(item.resource.resourceKind === 'preset' ? { loreMounts: item.resource.loreMounts ?? [], toolMounts: item.resource.toolMounts ?? [] } : {}) })
+      const resource: AuthoringResource = { ...item.resource, ...(item.resource.resourceKind === 'preset' ? { loreMounts: item.resource.loreMounts ?? [], toolMounts: item.resource.toolMounts ?? [] } : {}) }
       if (resource.macros !== undefined) resource.macros = normalizeMacros(resource.macros, 'Preset')
       const artifact = normalizePromptResourceArtifact({ ...resource, format: 'loom.promptResource', schemaVersion: 2 })
       toStoredNode(artifact.rootNode) // Reuse domain validation without rewriting legacy extra metadata.
@@ -237,8 +235,8 @@ export function createResourceAuthoringRuntimeMethods(ctx: Context) {
         }
         for (const item of prepared) {
           if (!item.changed || item.resource.resourceKind !== 'preset') continue
-          if (!item.before || canonical(item.resource.loreMounts) !== canonical(item.before.snapshot.resource.loreMounts)) store.replaceLoreMounts({ source: { kind: 'preset', id: item.resource.id }, mounts: item.loreMounts })
-          if (!item.before || canonical(item.resource.toolMounts) !== canonical(item.before.snapshot.resource.toolMounts)) store.replacePresetToolMounts({ presetResourceId: item.resource.id,
+          if (!item.before || canonical(item.resource.loreMounts) !== canonical(item.before.snapshot.resource.loreMounts)) store.replaceLoreMounts({ expectedMountIds: store.listLoreMounts({ source: { kind: 'preset', id: item.resource.id } }).map(mount => mount.id), source: { kind: 'preset', id: item.resource.id }, mounts: item.loreMounts })
+          if (!item.before || canonical(item.resource.toolMounts) !== canonical(item.before.snapshot.resource.toolMounts)) store.replacePresetToolMounts({ expectedMountIds: store.listPresetToolMounts({ presetResourceId: item.resource.id }).map(mount => mount.id), presetResourceId: item.resource.id,
             mounts: item.toolMounts })
         }
         return prepared.map(item => { const resource = project(written.get(item.resource.id)!, item.resource.loreMounts, item.resource.toolMounts); return { resource, version: written.get(item.resource.id)!.version, digest: digest(resource) } })

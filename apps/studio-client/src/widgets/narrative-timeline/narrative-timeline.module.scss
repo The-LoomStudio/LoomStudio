@@ -163,6 +163,8 @@
 .user .messageHeader {
   justify-content: flex-end;
   margin-bottom: 8px;
+
+  > span { flex-direction: row-reverse; }
 }
 
 .messageSurface {
@@ -413,18 +415,6 @@
 
 .timeline { overflow-anchor: none; overscroll-behavior: contain; scroll-behavior: auto; }
 
-.communicationCollapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  opacity: 0;
-  transition: grid-template-rows 280ms var(--loom-motion-ease-out, cubic-bezier(0.215, 0.61, 0.355, 1)), opacity 200ms ease;
-  > div { min-height: 0; overflow: hidden; }
-  &[data-expanded='true'] { grid-template-rows: 1fr; opacity: 1; }
-}
-:global(html[data-loom-motion='reduce']) .communicationCollapse { transition: none; }
-@media (prefers-reduced-motion: reduce) {
-  :global(html:not([data-loom-motion='full'])) .communicationCollapse { transition: none; }
-}
 
 @media (max-width: 768px) {
   .returnLatestLabel { display: none; }

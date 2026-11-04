@@ -38,3 +38,5 @@ JSON RPC 先按实际传输字节有界读取，再交 adapter 解析；声明�
 修改认证或 Origin 看 `application-session-auth.ts`；修改文件投递/HTTP 路由看 `http-server.ts` / `client-files.ts`；修改 RPC body 或 adapter 看 `rpc-request-body.ts` / `trpc-request.ts`。新 procedure 应进入 [RPC 层](../rpc/README.md)，不在此增加平行 JSON 分发器。
 
 已有验证定位：[`application-session-auth.test.ts`](../../../../tests/integration/studio-server/application-session-auth.test.ts)、[`origin-protection.test.ts`](../../../../tests/integration/studio-server/origin-protection.test.ts)、[`rpc-request-body.test.ts`](../../../../tests/integration/studio-server/rpc-request-body.test.ts)、[`trpc-cancellation.test.ts`](../../../../tests/integration/studio-server/trpc-cancellation.test.ts)、[`shutdown.test.ts`](../../../../tests/integration/studio-server/shutdown.test.ts)、[`assets-http.test.ts`](../../../../tests/integration/studio-server/assets-http.test.ts)与 [`client-files.test.ts`](../../../../tests/unit/studio-server/client-files.test.ts)。这些是按问题选用的入口，不代表本次已执行。
+
+Card 扩展资产的用户 HTTP 授权策略位于 `../extensions/extension-asset-access.ts` 的 `canReadCardExtensionAsset`；Server 组合根只注入 Store 与 capability 查询。该策略与扩展代码消费资源时的声明依赖检查保持分离。

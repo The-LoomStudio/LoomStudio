@@ -38,8 +38,8 @@ export function countTexts(texts: string[], signal?: AbortSignal): Promise<numbe
   if (texts.some(text => typeof text !== 'string' || text.length > TOKEN_INPUT_LIMIT)) {
     return Promise.reject(new RangeError(`Token input limit is ${TOKEN_INPUT_LIMIT} characters per text`))
   }
-  if (pending.size >= TOKEN_QUEUE_LIMIT) return Promise.reject(new RangeError('Token counting queue is full'))
   if (texts.length === 0) return Promise.resolve([])
+  if (pending.size >= TOKEN_QUEUE_LIMIT) return Promise.reject(new RangeError('Token counting queue is full'))
   if (!worker) {
     worker = new Worker(new URL('./tokenizer.worker.ts', import.meta.url), { type: 'module' })
     worker.onmessage = (event: MessageEvent<{ id: number; counts?: number[]; error?: string }>) => {

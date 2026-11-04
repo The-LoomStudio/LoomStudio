@@ -75,6 +75,7 @@ export function useClientExtensionRuntime(input: {
   const lifecycle = useRef<{ host: typeof host; signal: AbortSignal } | null>(null)
   const globalPackages = useRef<ManagedExtensionPackage[]>([])
   const currentPackages = useRef<ManagedExtensionPackage[]>([])
+  const loadedCatalog = useRef<{ signal: AbortSignal; packages: readonly ManagedExtensionPackage[] } | undefined>(undefined)
   const requestSequence = useRef(0)
   const participationSequence = useRef(0)
 
@@ -117,6 +118,10 @@ export function useClientExtensionRuntime(input: {
       const saved = useAppearanceStore.getState().background
       const background = migrateOfficialBackground(saved, host.backgrounds())
       if (background !== saved) useAppearanceStore.setState({ background })
+      // A scope refresh can supersede the catalog's first participation request.
+      // Its successful reconciliation still completes the real startup boundary.
+      if (loadedCatalog.current?.signal === signal && loadedCatalog.current.packages === catalog
+        && currentPackages.current === catalog) setRefreshSequence(sequence => Math.max(1, sequence))
       return true
     } catch (reason) {
       if (stale()) return false
@@ -141,8 +146,8 @@ export function useClientExtensionRuntime(input: {
       if (stale()) return []
       // Import badges and diagnostics do not grant Timeline participation.
       const [rules, extractors, diagnostics] = await Promise.allSettled([
-        input.api.textTransforms.listRules(),
-        input.api.textTransforms.listExtractors(),
+        input.api.textTransforms.listRuleSummaries(),
+        input.api.textTransforms.listExtractorSummaries(),
         input.api.extensions.diagnostics(),
       ])
       if (stale()) return []
@@ -153,6 +158,7 @@ export function useClientExtensionRuntime(input: {
       const privatePackages = withImportState(privateResult.items)
       globalPackages.current = packagesWithImportState
       currentPackages.current = [...packagesWithImportState, ...privatePackages]
+      loadedCatalog.current = { signal, packages: currentPackages.current }
       setPackages(packagesWithImportState)
       setCardPackages(privatePackages)
       if (diagnostics.status === 'fulfilled') setServerDiagnostics(diagnostics.value.diagnostics)

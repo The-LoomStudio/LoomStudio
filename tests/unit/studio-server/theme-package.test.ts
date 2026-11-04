@@ -29,6 +29,8 @@ it('installs the official theme package and serves its CSS and palette previews 
       devLinksFile: join(root, 'dev-links.json'),
       readCardPackage: async () => { throw new Error('No Card package in this fixture') },
       listInstallations: async () => ({ installations: [] }),
+      uninstallInstallation: async () => { throw new Error('Not used') },
+      previewPackageResources: async () => { throw new Error('Not used') },
       importPackageResources: async () => ({ installationId: 'fixture', promptResources: [], agentTools: [], transformRules: [], textExtractors: [] }),
       removePackageResources: async ({ packageId }) => ({ packageId, promptResourceIds: [], agentToolIds: [], textTransformRuleIds: [], textExtractorIds: [], detachedReferences: { cards: 0, timelines: 0, presetToolMounts: 0 } }),
     })
@@ -102,6 +104,8 @@ it('installs a module-free static background package and exposes its catalog and
       devLinksFile: join(root, 'dev-links.json'),
       readCardPackage: async () => { throw new Error('No Card package in this fixture') },
       listInstallations: async () => ({ installations: [] }),
+      uninstallInstallation: async () => { throw new Error('Not used') },
+      previewPackageResources: async () => { throw new Error('Not used') },
       importPackageResources: async () => ({ installationId: 'fixture', promptResources: [], agentTools: [], transformRules: [], textExtractors: [] }),
       removePackageResources: async ({ packageId }) => ({ packageId, promptResourceIds: [], agentToolIds: [], textTransformRuleIds: [], textExtractorIds: [], detachedReferences: { cards: 0, timelines: 0, presetToolMounts: 0 } }),
     })

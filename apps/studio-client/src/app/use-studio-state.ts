@@ -42,9 +42,7 @@ export function useStudioState(transportLogger: Logger) {
     })
   }
   const t = useMemo(() => createTranslator(locale), [locale])
-  const [transportEndpoint, setEndpoint] = useState('/trpc')
-  // ponytail: Preserve persisted workspace/draft keys during the transport change; remove when workspace identity has its own storage migration.
-  const endpoint = transportEndpoint.replace(/\/trpc$/, '/rpc')
+  const [endpoint, setEndpoint] = useState('/trpc')
   const customCss = useThemeStore(state => state.customCss)
   const setCustomCss = useThemeStore(state => state.setCustomCss)
   const [networkSettings, setNetworkSettings] = useState<NetworkSettings>({
@@ -56,7 +54,7 @@ export function useStudioState(transportLogger: Logger) {
     tags: [],
   })
   const operations = useAsyncOperations()
-  const trpc = useMemo(() => createStudioTrpcClient({ endpoint: transportEndpoint, logger: transportLogger }), [transportEndpoint, transportLogger])
+  const trpc = useMemo(() => createStudioTrpcClient({ endpoint, logger: transportLogger }), [endpoint, transportLogger])
   const api = useMemo(() => createStudioApi(trpc), [trpc])
   const userProfilesQuery = useUserProfilesQuery(api.userProfiles, endpoint)
   const userConfig = userProfilesQuery.data?.config
@@ -204,6 +202,7 @@ export function useStudioState(transportLogger: Logger) {
   const macroSelections = macroSelection.readSelections(macroKey)
   const macroPreviewState = useMacroPreview({
     api: api.macros,
+    ready: !userProfilesQuery.isPending && (promptResourceState.resourcesReady || Boolean(promptResourceState.resourcesError)),
     branchId: narrativeRuntime.branch?.id,
     cardId: cardsState.selectedCardId,
     cardVersion: cardsState.selectedCardDetails?.version,
@@ -222,6 +221,8 @@ export function useStudioState(transportLogger: Logger) {
     runMutation: action => operations.run('mutation', action),
     recordEdit: editHistory.record,
     promptResources,
+    loreMounts,
+    presetToolMounts,
     setPromptResources,
     setLoreMounts,
     setPresetToolMounts,
@@ -348,6 +349,7 @@ export function useStudioState(transportLogger: Logger) {
     setSelectedCardId: cardsState.setSelectedCardId,
     selectedCard: cardsState.selectedCard,
     selectedCardDetails: cardsState.selectedCardDetails,
+    readCardDetails: cardsState.readCardDetails,
     updateCardMedia: cardsState.updateCardMedia,
     updateCardProfile: cardsState.updateCardProfile,
     updateCardStateConfig: cardsState.updateCardStateConfig,
@@ -360,8 +362,8 @@ export function useStudioState(transportLogger: Logger) {
     macroTargetKey: macroKey,
     selectMacroSource: (name: string, sourceId: import('@loom-studio/shared').MacroSelection | undefined) => { void macroSelection.selectSource(macroKey, name, sourceId) },
     refreshMacros: () => { void macroSelection.refresh().then(macroPreviewState.refresh) },
-    replaceCardPromptResources: async (cardId: string, resourceIds: string[]) => {
-      await cardsState.replaceCardPromptResources(cardId, resourceIds)
+    replaceCardPromptResources: async (cardId: string, resourceIds: string[], expectedVersion: number) => {
+      await cardsState.replaceCardPromptResources(cardId, resourceIds, expectedVersion)
       await promptResourceState.invalidate({ bindings: true })
     },
     attachCardExtensionPackage: cardsState.attachExtensionPackage,
@@ -390,6 +392,7 @@ export function useStudioState(transportLogger: Logger) {
     narrativeAgentSession: narrativeRuntime.primarySession,
     narrativeWorkEntries: narrativeRuntime.rootMessages,
     narrativeActiveRun: narrativeRuntime.rootActiveRun,
+    narrativeConnecting: narrativeRuntime.rootConnecting,
     narrativeRecovery: narrativeRuntime.rootRecovery,
     reconnectNarrativeRun: narrativeRuntime.reconnectRootRun,
     pauseNarrativeRun: narrativeRuntime.pauseRootRun,

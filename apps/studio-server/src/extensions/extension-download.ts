@@ -59,7 +59,7 @@ async function publicEndpoint(url: URL) {
   return addresses[0]!
 }
 
-export async function downloadExtensionZip(source: ExtensionDownloadSource, redirects = 0): Promise<Uint8Array> {
+export async function downloadExtensionZip(source: ExtensionDownloadSource, redirects = 0, limits = { maxBytes: downloadLimit, timeoutMs: 120_000 }): Promise<Uint8Array> {
   if (source.kind !== 'zip') throw new Error('ZIP source is required')
   const url = new URL(source.url)
   const endpoint = await publicEndpoint(url)
@@ -74,7 +74,7 @@ export async function downloadExtensionZip(source: ExtensionDownloadSource, redi
         if (!response.headers.location || redirects >= 5) return reject(new Error('Extension download redirect limit exceeded'))
         try {
           const next = parseDownloadSource({ kind: 'zip', url: new URL(response.headers.location, url).href })
-          downloadExtensionZip(next, redirects + 1).then(resolve, reject)
+          downloadExtensionZip(next, redirects + 1, limits).then(resolve, reject)
         } catch (error) { reject(error) }
         return
       }
@@ -87,13 +87,13 @@ export async function downloadExtensionZip(source: ExtensionDownloadSource, redi
       let bytes = 0
       response.on('data', (chunk: Buffer) => {
         bytes += chunk.length
-        if (bytes > downloadLimit) response.destroy(new Error('Extension download exceeds 256 MiB'))
+        if (bytes > limits.maxBytes) response.destroy(new Error(`Extension download exceeds ${limits.maxBytes} bytes`))
         else chunks.push(chunk)
       })
       response.on('error', reject)
       response.on('end', () => resolve(Buffer.concat(chunks)))
     })
-    const timer = setTimeout(() => req.destroy(new Error('Extension download timed out')), 120_000)
+    const timer = setTimeout(() => req.destroy(new Error('Extension download timed out')), limits.timeoutMs)
     req.on('close', () => clearTimeout(timer))
     req.on('error', reject)
     req.end()

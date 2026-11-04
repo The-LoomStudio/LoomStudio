@@ -63,11 +63,11 @@ describe('The World prompt resources', () => {
       expect((await runtime.listPresetToolMounts({ presetId })).mounts.every(mount => !mount.defaultEnabled)).toBe(true)
       expect(before.toolExposures).toEqual([])
 
-      await runtime.replaceLoreMounts({
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: presetId } })).mounts.map(mount => mount.id),
         source: { kind: 'preset', id: presetId },
         loreResourceIds: [imported.promptResources[0]!.resourceId],
       })
-      await runtime.replacePresetToolMounts({
+      await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: presetId })).mounts.map(mount => mount.id),
         presetId,
         mounts: imported.agentTools.map((tool, orderIndex) => ({
           toolId: tool.toolId, orderIndex, defaultEnabled: true,

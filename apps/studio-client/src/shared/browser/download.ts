@@ -1,4 +1,4 @@
-export async function readBoundedResponseBlob(response: Response, maxBytes: number, tooLargeMessage: string): Promise<Blob> {
+export async function readBoundedResponseBlob(response: Response, maxBytes: number, tooLargeMessage: string, onProgress?: (received: number, total?: number) => void): Promise<Blob> {
   const tooLarge = new Error(tooLargeMessage)
   const declaredSize = Number(response.headers.get('content-length'))
   if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
@@ -7,6 +7,8 @@ export async function readBoundedResponseBlob(response: Response, maxBytes: numb
     throw tooLarge
   }
 
+  const total = declaredSize > 0 && !response.headers.get('content-encoding') ? declaredSize : undefined
+  onProgress?.(0, total)
   const type = response.headers.get('content-type') ?? ''
   if (!response.body) return new Blob([], { type })
   const reader = response.body.getReader()
@@ -22,6 +24,7 @@ export async function readBoundedResponseBlob(response: Response, maxBytes: numb
         throw tooLarge
       }
       chunks.push(value)
+      onProgress?.(received, total)
     }
     // ponytail: This bounds accumulated bytes, not browser network buffers or Blob allocation overhead.
     return new Blob(chunks, { type })

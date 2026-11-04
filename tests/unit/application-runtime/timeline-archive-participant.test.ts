@@ -1,12 +1,9 @@
 import {
   createTimelineArchiveParticipantRegistry,
   parseTimelineArchive,
-  serializeTimelineArchive,
   type TimelineArchiveParticipant,
 } from '@loom-studio/application-runtime'
 import { describe, expect, it } from 'vitest'
-import type { NarrativeBranch, NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
-import type { StateRevision, StateScope } from '@loom-studio/application-data'
 import type { JsonValue } from '@loom-studio/shared'
 
 const input = {
@@ -20,28 +17,9 @@ const input = {
 }
 
 describe('Timeline archive participants', () => {
-  it('round-trips the v1 core archive and rejects incomplete graphs', () => {
-    const timeline = { id: 'timeline-1', activeBranchId: 'branch-1', promptResourceIds: [], createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' } as NarrativeTimeline
-    const branch = { id: 'branch-1', timelineId: 'timeline-1', stateHeadRevisionId: 'revision-1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' } as NarrativeBranch
-    const node = { id: 'node-1', timelineId: 'timeline-1', stateRevisionId: 'revision-1', body: { format: 'loom-markdown.v1', raw: 'Opening' }, createdAt: '2026-01-01T00:00:00Z' } as NarrativeNode
-    const scope = { id: 'scope-1', kind: 'timeline', ownerId: 'timeline-1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' } as StateScope
-    const revision = { id: 'revision-1', scopeId: 'scope-1', snapshot: {}, operations: [], changesetId: 'change-1', createdAt: '2026-01-01T00:00:00Z' } as StateRevision
-    const source = serializeTimelineArchive({ format: 'loom-timeline-archive.v1', exportedAt: '2026-01-01T00:00:00Z', timeline, branches: [branch], nodes: [node], state: { scope, revisions: [revision] }, participants: [] })
-    expect(parseTimelineArchive(source).timeline.id).toBe('timeline-1')
-    expect(parseTimelineArchive(source).nodes[0]?.kind).toBe('narrative')
-    const mapped = JSON.parse(source)
-    mapped.participants = [{ namespace: 'memory.pending', version: 1, payload: {},
-      idMap: { timelineId: 'timeline-1', branchIds: {}, nodeIds: { original: 'node-1' }, stateRevisionIds: {} } }]
-    expect(parseTimelineArchive(JSON.stringify(mapped)).participants).toHaveLength(1)
-    mapped.participants[0].idMap.nodeIds.original = 'foreign-node'
-    expect(() => parseTimelineArchive(JSON.stringify(mapped))).toThrow('outside the archive')
-
-    const withKind = JSON.parse(source)
-    withKind.nodes[0].kind = 'user-input'
-    expect(parseTimelineArchive(JSON.stringify(withKind)).nodes[0]?.kind).toBe('user-input')
-    withKind.nodes[0].kind = 'unknown'
-    expect(() => parseTimelineArchive(JSON.stringify(withKind))).toThrow('node kind')
-    expect(() => parseTimelineArchive(source.replace('branch-1', 'missing-branch'))).toThrow('active branch')
+  it('rejects the retired v1 archive format', () => {
+    expect(() => parseTimelineArchive(JSON.stringify({ format: 'loom-timeline-archive.v1' })))
+      .toThrow('Unsupported Timeline archive format')
   })
 
   it('exports namespaced blocks in stable order and imports with the new ID map', async () => {

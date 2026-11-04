@@ -15,12 +15,7 @@ describe('SQLite concurrent transaction stress and SLA gate', () => {
     onTestFinished(() => engine.close())
 
     // 运行初始迁移，创建压测表
-    engine.migrate({
-      namespace: 'test.stress',
-      migrations: [
-        {
-          version: 1,
-          migrate: db => {
+    engine.initializeSchema({ namespace: 'test.stress', version: 1, initialize: db => {
             db.exec(`
               CREATE TABLE stress_records (
                 id TEXT PRIMARY KEY,
@@ -29,10 +24,7 @@ describe('SQLite concurrent transaction stress and SLA gate', () => {
                 payload TEXT NOT NULL
               );
             `)
-          },
-        },
-      ],
-    })
+          } })
 
     const concurrency = 50
     const startTime = performance.now()

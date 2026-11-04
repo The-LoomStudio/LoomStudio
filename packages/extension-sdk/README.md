@@ -202,3 +202,10 @@ Server 合同主要由示例 Extension 构建和 Extension Host contract tests �
 - [Extension Architecture](../../docs/architecture/extensions/README.md)
 - [Extension Data and Portable Payload](../../docs/architecture/application/extension/data-and-portable-payload.md)
 - [Extension Host Package Guide](./extension-host/README.md)
+
+
+### 提交通知合同
+
+`data.changed`、`docs.changed`、`docs.rollback.completed` 使用 definition version 2。小提交保留单条原形 payload；大提交按 UTF-8 JSON 预算分片，所有分片关联同一 changesetId，携带 `chunk: { index, count }`（从 0 开始），eventId 各自独立。docs operations/documents 成对，rollback completed 另带 targetChangesetId。单项摘要超出预算不在支持范围内；通知失败不撤销已提交数据。
+
+Card 安装收到的事件逐片按权限过滤，空片省略，不携带全局 chunk。它们是独立失效提示；changesetId 只用于关联，不能作为忽略后续通知的去重键，也不能从没有 chunk 推断包含整笔提交。definition version 是事实标记，不会自动迁移消费者。直接 Commit Source 仍交付完整提交；extensions.data.changed 每个原始提交派生一次，不受 SSE 连接数或分片数影响，不承诺与 data 分片的跨订阅者全序。

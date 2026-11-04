@@ -17,7 +17,6 @@ export function PresetWorkbenchHeader(props: {
   onSelectResource?: (resourceId: string) => void
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.agent
-  const activePresetView = useStudioLayoutStore(state => state.presetView)
   const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
   const selectedResource = props.selectedResourceId
     ? presetResources.find(r => r.id === props.selectedResourceId)
@@ -26,8 +25,7 @@ export function PresetWorkbenchHeader(props: {
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
 
-  // 工具视图下不显示资产路径面包屑
-  const breadcrumbs = props.library ? [] : activePresetView === 'tools' || !selectedResource || !selectedId
+  const breadcrumbs = props.library ? [] : !selectedResource || !selectedId
     ? []
     : buildContextPathSegments(
       findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId),

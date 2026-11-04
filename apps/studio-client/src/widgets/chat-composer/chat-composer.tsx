@@ -99,6 +99,7 @@ export function ChatComposer(props: ChatComposerProps) {
             {props.attachmentNotice ? <p className={styles.attachmentNotice} role="status">{props.attachmentNotice}</p> : null}
             {props.attachments?.some(item => !item.attachment) ? <p className={styles.attachmentNotice} role="status">{props.attachments.filter(item => item.error).length ? `还有 ${props.attachments.filter(item => item.error).length} 个附件上传失败，请重试或移除后发送。` : '附件正在上传，完成后可发送。'}</p> : null}
             <textarea
+              data-autofocus=""
               onPaste={event => {
                 const files = Array.from(event.clipboardData.files)
                 if (!files.length || !props.onAddAttachments) return

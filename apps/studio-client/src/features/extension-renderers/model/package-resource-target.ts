@@ -22,20 +22,20 @@ export async function resolvePackageResourceTarget(input: {
   if (entry.kind === 'theme' || entry.kind === 'style' || entry.kind === 'background') return { path: '/studio/settings?category=appearance' }
   if (entry.kind === 'script') {
     const id = installedExtensionContributionId(pkg.packageId, target, `${pkg.packageId}/script/${entry.id}`)
-    const script = (await api.loomScripts.list()).scripts.find(item => item.id === id)
+    const { script } = await api.loomScripts.getSummary(id)
     if (!script) return undefined
-    const filter = script.contributions.some(item => item.kind === 'text-transform') ? 'rules' : 'runtime'
+    const filter = script.contributionKinds.includes('text-transform') ? 'rules' : 'runtime'
     return { path: `/studio/extensions?extensionView=scripts&scriptFilter=${filter}&scriptId=${encodeURIComponent(script.id)}` }
   }
   if (entry.kind === 'rule') {
-    const rule = (await api.textTransforms.listRules()).rules.find(item => matches(item.origin))
-    return rule ? { path: `/studio/text-transforms?ruleId=${encodeURIComponent(rule.id)}` } : undefined
+    const rule = (await api.textTransforms.listRuleSummaries()).rules.find(item => matches(item.origin))
+    return rule ? { path: `/studio/extensions?extensionView=scripts&scriptFilter=rules&scriptId=${encodeURIComponent(rule.id)}` } : undefined
   }
   if (entry.kind === 'extractor') {
-    const extractor = (await api.textTransforms.listExtractors()).extractors.find(item => matches(item.origin))
-    return extractor ? { path: `/studio/text-transforms?extractorId=${encodeURIComponent(extractor.id)}` } : undefined
+    const extractor = (await api.textTransforms.listExtractorSummaries()).extractors.find(item => matches(item.origin))
+    return extractor ? { path: `/studio/extensions?extensionView=scripts&scriptFilter=rules&ruleInspector=1` } : undefined
   }
   const id = installedExtensionContributionId(pkg.packageId, target, entry.id)
-  const tool = (await api.agentTools.list()).tools.find(item => item.id === id)
+  const { tool } = await api.agentTools.getSummary(id)
   return tool ? { path: `/studio/agents?toolId=${encodeURIComponent(tool.id)}` } : undefined
 }

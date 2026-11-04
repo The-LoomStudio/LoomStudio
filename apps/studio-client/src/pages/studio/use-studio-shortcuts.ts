@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import type { StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 
 type UseStudioShortcutsOptions = {
+  mobileDrawerOpen: boolean
+  closeMobileDrawer(): void
   activePanel: StudioPanelId | null
   assetMetadataOpen: boolean
   busy: boolean
@@ -19,6 +21,8 @@ type UseStudioShortcutsOptions = {
 
 export function useStudioShortcuts(options: UseStudioShortcutsOptions) {
   const {
+    mobileDrawerOpen,
+    closeMobileDrawer,
     activePanel,
     assetMetadataOpen,
     busy,
@@ -38,6 +42,11 @@ export function useStudioShortcuts(options: UseStudioShortcutsOptions) {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || document.querySelector('dialog:modal')) return
       if (event.key === 'Escape' && isEditableTarget(event.target)) return
+      if (event.key === 'Escape' && mobileDrawerOpen) {
+        event.preventDefault()
+        closeMobileDrawer()
+        return
+      }
       if (event.key === 'Escape' && assetMetadataOpen && (activePanel === 'resource' || activePanel === 'preset' || activePanel === 'agent')) {
         event.preventDefault()
         setAssetMetadataOpen(false)
@@ -72,7 +81,7 @@ export function useStudioShortcuts(options: UseStudioShortcutsOptions) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activePanel, assetMetadataOpen, busy, canRedo, canUndo, closeDock, closePanel, dockOpen, isImmersive, onRedo, onUndo, setAssetMetadataOpen, togglePanelWindowMode])
+  }, [mobileDrawerOpen, closeMobileDrawer, activePanel, assetMetadataOpen, busy, canRedo, canUndo, closeDock, closePanel, dockOpen, isImmersive, onRedo, onUndo, setAssetMetadataOpen, togglePanelWindowMode])
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

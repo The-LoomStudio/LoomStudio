@@ -18,7 +18,7 @@ Studio Application 是 Loom Studio 第一方内建的 AIRP 领域层。它定义
 | [用户资料与背景集合](user-profiles.md) | 全局用户配置、头像、背景目录与媒体引用；不属于剧情 State | [Runtime 包导航](../../../packages/application-runtime/README.md#源码导航) |
 | [全局资源搜索](global-resource-search.md) | 导航、定义全文索引、范围关系、空关键词浏览与定位高亮 | 已实现；独立于运行时内容搜索 |
 | [`data-capabilities-and-lifecycle.md`](data-capabilities-and-lifecycle.md) | 文本、State、宏、运行记录的能力与共享事务、引用和生命周期边界 | 当前实现边界 |
-| [`card-bundle-files.md`](card-bundle-files.md) | 文件化 Card Bundle、可编辑目录、ZIP 与 PNG 分发 | ZIP v2、PNG Base64 ZIP 与旧格式读取已实现 |
+| [`card-bundle-files.md`](card-bundle-files.md) | 文件化 Card Bundle、可编辑目录、ZIP 与 PNG 分发 | ZIP v2、PNG Base64 ZIP 与 Polyglot PNG 已实现；旧 Loom PNG 载荷和 ZIP v1 已退出 |
 | [`prompt-build/`](prompt-build/) | Sources、Composition 与 Application DFS 编译 | Agent 主链直接编译与异步正文处理 |
 | [`agent/`](agent/)                                     | Agent Session、Loop、Tool、Provider 与 PromptBuild 接缝                               | 基础运行架构已晋升；恢复、子智能体与领域 Tool 仍在演进 |
 | [`history-text-pipeline.md`](history-text-pipeline.md) | Narrative / Session History 的 Regex、Reasoning Promotion、Extractor 与 Renderer Slot | Phase 0—5 基础闭环已实现                               |
@@ -36,7 +36,7 @@ Extension 安装可分别以全局或 Card 为目标；资源 origin 关联安�
 
 显式资源/包更新提交后，后续资源解析使用当前资源；State、Session Transcript 与 Narrative History 不自动重置或重写。单个 Prompt Resource 导出包含资源树、作者宏配置及可选的包图标引用，不递归携带图标文件、规则、脚本、模型绑定、工具实现或关联 Lore；组合分发使用 Card/Extension Package。Card Bundle 中的扩展归档与扩展 Portable Payload 私有数据分开。Loom Script 声明 `client-sandbox` 运行目标不等于任意代码的 OS 级强沙箱。
 
-源码入口：[Agent Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts)、[资源导入导出](../../../packages/application-runtime/src/runtime/prompt-runtime.ts)、[Extension 安装管理](../../../apps/studio-server/src/extensions/extension-manager.ts)、[Card Bundle](../../../packages/application-runtime/src/cards/workspace.ts)。
+源码入口：[Agent Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts)、[资源导入导出](../../../packages/application-runtime/src/runtime/prompt-runtime.ts)、[Extension 安装管理](../../../apps/studio-server/src/extensions/extension-manager.ts)、[Card Bundle](../../../packages/application-runtime/src/cards/card-bundle.ts)。
 
 ## Application Runtime Context
 

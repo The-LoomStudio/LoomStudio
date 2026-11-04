@@ -102,3 +102,37 @@ export function sourceDisplayTitle(source: ObservationSource): string {
   if (source.nodeKind !== 'virtual') return source.title
   return source.anchorIds?.find(id => id.startsWith('@')) ?? source.anchorIds?.find(id => id !== source.id) ?? source.id
 }
+
+/** Keep ancestry for matching entries without exposing unrelated children or own content. */
+export function filterSourceTree(nodes: SourceTreeNode[], query: string, sourceIds?: Set<string>, anchor?: string): SourceTreeNode[] {
+  const needle = query.trim().toLocaleLowerCase()
+  function visit(items: SourceTreeNode[], pathMatches = false): SourceTreeNode[] {
+    return items.flatMap(node => {
+      const source = node.source
+      if (anchor !== undefined && source?.nodeKind === 'virtual' && source.id !== anchor && !source.anchorIds?.includes(anchor)) return []
+      const matchesPath = pathMatches || (!!needle && node.title.toLocaleLowerCase().includes(needle))
+      const textMatches = !needle || matchesPath || [source?.path, source?.original, source?.rendered, ...(source?.injections ?? []).flatMap(item => [item.role, item.rendered])].some(text => text?.toLocaleLowerCase().includes(needle))
+      const own = !!source && (!sourceIds || sourceIds.has(source.id)) && textMatches
+      const children = visit(node.children, matchesPath)
+      if (!own && !children.length) return []
+      const count = (own && (source?.included ?? source?.active) ? 1 : 0) + children.reduce((sum, child) => sum + child.count, 0)
+      return [{ ...node, source: source && !own ? { ...source, included: false } : source, children, count, included: count > 0 }]
+    })
+  }
+  return visit(nodes)
+}
+
+/** Sort siblings only; missing estimates follow measured entries and ties keep authored order. */
+export function sortSourceTreeByTokens(nodes: SourceTreeNode[], counts: Map<string, number | undefined>): SourceTreeNode[] {
+  function visit(items: SourceTreeNode[]): Array<{ node: SourceTreeNode; values: Map<string, number | undefined>; total?: number }> {
+    return items.map(node => {
+      const children = visit(node.children)
+      const values = new Map(children.flatMap(child => [...child.values]))
+      if (node.source && (node.source.included ?? node.source.active) && (!node.children.length || node.source.injections?.length)) values.set(node.source.id, counts.get(node.source.id))
+      const known = [...values.values()]
+      const total = known.length && known.every(value => value !== undefined) ? known.reduce<number>((sum, value) => sum + value!, 0) : undefined
+      return { node: { ...node, children: children.map(child => child.node) }, values, total }
+    }).sort((a, b) => (b.total ?? -1) - (a.total ?? -1))
+  }
+  return visit(nodes).map(item => item.node)
+}

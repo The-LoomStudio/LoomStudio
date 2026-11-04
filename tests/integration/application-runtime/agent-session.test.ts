@@ -10,9 +10,9 @@ import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
-function createTestRuntime(agentTools = createAgentToolRegistry([])) {
+function createTestRuntime(agentTools = createAgentToolRegistry([]), gateway?: Parameters<typeof createApplicationRuntime>[0]['gateway']) {
   let nextId = 0
   let nextTime = 0
   const createId = (prefix: string) => `${prefix}-${++nextId}`
@@ -27,7 +27,7 @@ function createTestRuntime(agentTools = createAgentToolRegistry([])) {
   const promptResources = createPromptResourceStore({ engine, createId, now })
   const logs = createMemoryLogSink({ capacity: 100 })
   const logger = createRootLogger({ service: 'test', instanceId: 'test', sinks: [logs] })
-  const runtime = createApplicationRuntime({ blobs, agents, agentTools, dataEngine: engine, documents, narratives, promptResources, runtimeLogger: logger.child('runtime') })
+  const runtime = createApplicationRuntime({ blobs, agents, agentTools, gateway, dataEngine: engine, documents, narratives, promptResources, runtimeLogger: logger.child('runtime') })
   return { engine, documents, runtime, narratives, logs }
 }
 
@@ -62,6 +62,78 @@ async function createPreset(
 }
 
 describe('application agent session lifecycle', () => {
+  it.each(['session', 'timeline', 'card'] as const)('aborts a blocked Run after committed %s owner deletion and releases its subscription', async mode => {
+    const entered = Promise.withResolvers<AbortSignal>()
+    const { runtime, engine } = createTestRuntime(undefined, {
+      invokeChat: async input => {
+        const signal = input.abortSignal!
+        entered.resolve(signal)
+        await new Promise<never>((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        throw new Error('unreachable')
+      },
+    })
+    const { profile } = await createProfile(runtime)
+    const card = mode !== 'session' ? (await runtime.createCard({ name: 'Active owner' })).card : undefined
+    const timeline = card ? (await runtime.createNarrativeTimeline({ cardId: card.id })).timeline : undefined
+    const { session } = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline?.id })
+    const subscribe = engine.subscribeCommits.bind(engine)
+    const disposals: ReturnType<typeof vi.fn>[] = []
+    vi.spyOn(engine, 'subscribeCommits').mockImplementation(observer => {
+      const subscription = subscribe(observer)
+      const dispose = vi.fn(() => subscription.dispose())
+      disposals.push(dispose)
+      return { dispose }
+    })
+    const run = runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Wait.' })
+    const rejected = expect(run).rejects.toMatchObject({ code: 'agent.session_deleted' })
+    const signal = await entered.promise
+    expect(signal.aborted).toBe(false)
+    if (mode === 'session') await runtime.deleteAgentSession({ agentSessionId: session.id })
+    else if (mode === 'timeline') await runtime.deleteNarrativeTimeline({ timelineId: timeline!.id })
+    else await runtime.deleteCard({ cardId: card!.id, includePlayData: true })
+    expect(signal.aborted).toBe(true)
+    await rejected
+    expect(disposals.length).toBeGreaterThan(0)
+    expect(disposals.every(dispose => dispose.mock.calls.length === 1)).toBe(true)
+  })
+
+  it('keeps a blocked Run alive when owner deletion rolls back, and preserves external cancellation', async () => {
+    const entered = Promise.withResolvers<AbortSignal>()
+    const { runtime, engine } = createTestRuntime(undefined, {
+      invokeChat: async input => {
+        const signal = input.abortSignal!
+        entered.resolve(signal)
+        await new Promise<never>((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        throw new Error('unreachable')
+      },
+    })
+    const { profile } = await createProfile(runtime)
+    const { card } = await runtime.createCard({ name: 'Rollback active owner' })
+    const { timeline } = await runtime.createNarrativeTimeline({ cardId: card.id })
+    await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline.id, title: 'blocked' })
+    const { session } = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline.id })
+    await engine.read(database => database.exec(`
+      CREATE TRIGGER reject_active_owner_deletion
+      BEFORE UPDATE OF tombstoned ON agent_sessions
+      WHEN OLD.title = 'blocked' AND NEW.tombstoned = 1
+      BEGIN SELECT RAISE(ABORT, 'owner deletion refused'); END;
+    `))
+    const controller = new AbortController()
+    const run = runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Wait.' }, { abortSignal: controller.signal })
+    const rejected = expect(run).rejects.toThrow()
+    const signal = await entered.promise
+    await expect(runtime.deleteNarrativeTimeline({ timelineId: timeline.id })).rejects.toThrow('owner deletion refused')
+    expect(signal.aborted).toBe(false)
+    expect((await runtime.getAgentSession({ agentSessionId: session.id })).session.id).toBe(session.id)
+    controller.abort(new DOMException('External cancellation', 'AbortError'))
+    expect(signal.aborted).toBe(true)
+    await rejected
+  })
+
   it.each(['timeline', 'card', 'batch'] as const)('deletes all Timeline-bound sessions across pages via %s and their storage, preserving other sessions', async mode => {
     const { engine, documents, runtime } = createTestRuntime()
     try {
@@ -258,10 +330,9 @@ describe('application agent session lifecycle', () => {
       const { profile } = await createProfile(runtime)
       const { session } = await runtime.createAgentSession({ agentPresetId: profile.id })
       const controller = new AbortController()
-      controller.abort(reason)
       await expect(runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'private-input' }, {
         abortSignal: controller.signal,
-        agentRun: { runId: 'test-run', onEvent: () => undefined, onSuspended: () => undefined },
+        agentRun: { runId: 'test-run', onEvent: () => controller.abort(reason), onSuspended: () => undefined },
       })).rejects.toThrow()
       const outcome = reason === 'user-pause' ? 'suspended' : 'cancelled'
       expect(logs.list().at(-1)).toMatchObject({ event: `run.${outcome}`, level: 'info', data: { runId: 'test-run', outcome } })
@@ -314,7 +385,9 @@ describe('application agent session lifecycle', () => {
       const commits: string[] = []
       const subscription = engine.subscribeCommits(commit => commits.push(commit.changesetId))
       const [first, second] = await Promise.all([runtime.appendNarrativeInput(input), runtime.appendNarrativeInput(input)])
-      expect(second).toEqual(first)
+      const storedInput = (await runtime.getNarrativePage({ timelineId: input.timelineId })).nodes.find(node => node.id === input.nodeId)!
+      expect(storedInput).toMatchObject({ id: first.node.id, body: first.node.body })
+      expect(second).toEqual({ ...first, node: storedInput })
       expect(commits).toEqual([first.mutation.changesetId])
       await runtime.appendNarrativeInput({ ...input, nodeId: 'later-input', expectedHeadNodeId: first.node.id, content: 'later' })
       const count = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
@@ -327,7 +400,7 @@ describe('application agent session lifecycle', () => {
       })
       const afterEdit = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
       const retried = await runtime.appendNarrativeInput(input)
-      expect(retried.node).toEqual(first.node)
+      expect(retried.node).toEqual(storedInput)
       expect(retried.mutation).toEqual(first.mutation)
       expect(engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual(afterEdit)
       subscription.dispose()
@@ -386,13 +459,15 @@ describe('application agent session lifecycle', () => {
       }, { expectedRevision: group.revision }))
       const checkpoint = await agents.appendEntries({ actor, agentSessionId: timelineId, expectedEntryCount: 7,
         entries: [{ runId: 'original-run', entry: { kind: 'run-state', state: 'completed', recovery: {
+          materialBaseline: { timelineId, branchId: story.branch.id, headNodeId: story.nodes[0]!.id,
+            headEntryId: story.nodes[0]!.entryId ?? null, stateRevisionId: story.branch.stateHeadRevisionId, workspaceRevisionId: story.branch.workspaceHeadRevisionId },
           userEntryId: input.node.entryId!, partialEntryId: 'partial-original',
           request: { agentSessionId: timelineId, input: 'Keep archive-input as user text', narrativeTarget: { timelineId, branchId: story.branch.id, inputNodeId: input.node.id } },
           narrativeOutput: { logicalId: 'logical-original', consumedEntryId: 'complete-original' },
         } } }] })
       const fork = await narratives.forkBranch({ actor, timelineId, fromBranchId: story.branch.id, fromNodeId: reply.node.id })
       const summary = await agents.appendEntries({ actor, agentSessionId: timelineId, expectedEntryCount: 8,
-        entries: [{ entry: { kind: 'work-summary', content: 'Work summary' } }] })
+        entries: [{ entry: { kind: 'work-summary', content: 'Work summary', boundary: { sourceThroughSequence: 8, retiredThroughSequence: 8 } } }] })
       await narratives.switchBranch({ actor, timelineId, branchId: fork.branch.id })
       await agents.appendEntries({ actor, agentSessionId: timelineId, expectedEntryCount: 9,
         entries: [{ runId: 'fork-run', entry: { kind: 'message', role: 'assistant', content: 'Fork discussion', purpose: 'discussion' } }] })
@@ -439,11 +514,8 @@ describe('application agent session lifecycle', () => {
       const before = engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()
       await expect(runtime.importTimelineArchive({ source: JSON.stringify(broken) })).rejects.toThrow('Entry reference')
       expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()).toEqual(before)
-      const legacy = structuredClone(original)
-      legacy.format = 'loom-timeline-archive.v1'
-      delete legacy.agent
-      const oldImport = await runtime.importTimelineArchive({ source: JSON.stringify(legacy) })
-      expect((await agents.listEntries(oldImport.timelineId)).every(entry => entry.entry.kind === 'message')).toBe(true)
+      const legacy = { ...original, format: 'loom-timeline-archive.v1' }
+      await expect(runtime.importTimelineArchive({ source: JSON.stringify(legacy) })).rejects.toThrow('Unsupported Timeline archive format')
       expect(engine.database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
     } finally { engine.close() }
   })
@@ -676,7 +748,7 @@ describe('application agent session lifecycle', () => {
       enabledModelIds: [officialFakeModelId],
     })
     const preset = await createPreset(firstRuntime, 'Tool Prompt', 'Use available tools.')
-    await firstRuntime.replacePresetToolMounts({
+    await firstRuntime.replacePresetToolMounts({ expectedMountIds: (await firstRuntime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id),
       presetId: preset.id,
       mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true, provider: { order: 3 } }],
     })
@@ -760,7 +832,7 @@ describe('application agent session lifecycle', () => {
       providerExtensionId: 'official.fake', displayName: 'Fake', config: {}, enabledModelIds: [officialFakeModelId],
     })
     const preset = await createPreset(runtime, 'Tool Agent', 'Use tools when available.')
-    await runtime.replacePresetToolMounts({
+    await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id),
       presetId: preset.id,
       mounts: [{
         toolId: tool.id,
@@ -785,7 +857,7 @@ describe('application agent session lifecycle', () => {
     expect(inactive.toolExposures).toEqual([])
     expect(active.toolExposures).toEqual([expect.objectContaining({ toolId: tool.id, transport: 'content' })])
     expect(active.projection.messages.some((msg: any) => msg.fragmentIds.some((id: string) => id.includes('agent-tools')))).toBe(true)
-    await expect(runtime.replacePresetToolMounts({
+    await expect(runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: profile.id })).mounts.map(mount => mount.id),
       presetId: profile.id, mounts: [{ toolId: 'missing/tool', orderIndex: 0, defaultEnabled: true }],
     }))
       .rejects.toThrow('not registered')
@@ -954,7 +1026,7 @@ describe('application agent session lifecycle', () => {
         resourceId: setting.resource.id, targetAssetId: setting.resource.rootNode.id, position: 'inside',
         asset: { id: 'only-a-setting', kind: 'entry', label: 'Only A', body: 'ONLY_A_SETTING', capabilities: { targetAnchorId: '@chat.system' } },
       })
-      await runtime.replaceLoreMounts({ source: { kind: 'preset', id: first.profile.id }, loreResourceIds: [setting.resource.id] })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: first.profile.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: first.profile.id }, loreResourceIds: [setting.resource.id] })
       const a = await runtime.createAgentSession({ agentPresetId: first.profile.id })
       const b = await runtime.createAgentSession({ agentPresetId: second.profile.id })
       const preview = await runtime.previewAgentTurn({ agentSessionId: a.session.id, input: 'hello' })
@@ -1082,7 +1154,7 @@ describe('application agent session lifecycle', () => {
       { role: 'user', content: 'Second.' },
     ])
     const transcript = await runtime.getAgentTranscriptPage({ agentSessionId: session.session.id })
-    expect(transcript.entries.filter(item => item.entry.kind === 'message').map(item => item.entry)).toEqual([
+    expect(transcript.entries.filter(item => item.entry.kind === 'message').map(item => item.entry)).toMatchObject([
       { kind: 'message', role: 'user', content: 'First.' },
       { kind: 'message', role: 'assistant', content: 'First reply.' },
       { kind: 'message', role: 'user', content: 'Second.' },
@@ -1151,6 +1223,7 @@ describe('application agent session lifecycle', () => {
         timelineId: timeline.timeline.id, branchId: timeline.branch.id, nodeId: 'main-input',
         expectedHeadNodeId: timeline.branch.headNodeId!, content: 'Persisted.',
       })
+      const storedInput = (await runtime.getNarrativePage({ timelineId: timeline.timeline.id })).nodes.at(-1)
       for (const inputNodeId of ['missing', appended.node.id]) {
         await expect(runtime.invokeAgentTurn({
           agentSessionId: agent.session.id, input: 'forged',
@@ -1163,7 +1236,7 @@ describe('application agent session lifecycle', () => {
         narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, inputNodeId: appended.node.id },
       })).rejects.toThrow('Prompt resource not found')
       expect((await runtime.getAgentTranscriptPage({ agentSessionId: agent.session.id })).entries).toEqual([])
-      expect((await runtime.getNarrativePage({ timelineId: timeline.timeline.id })).nodes.at(-1)).toEqual(appended.node)
+      expect((await runtime.getNarrativePage({ timelineId: timeline.timeline.id })).nodes.at(-1)).toEqual(storedInput)
     } finally { await engine.close() }
   })
 

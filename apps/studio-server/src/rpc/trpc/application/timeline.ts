@@ -153,6 +153,7 @@ export const timelineProcedures = {
   })).mutation(({ ctx, input }) => ctx.runtime.editNarrativeNode(input, ctx.request)),
   'createNarrativeTimeline': procedure.input(z.strictObject({
     cardId: z.string(),
+    agentPresetId: z.string().optional(),
     playerProfile: z.strictObject({ name: z.string(), description: z.string(), avatarAssetId: z.string().optional() }).optional(),
     extensionAdoptions: z.array(z.strictObject({ packageId: z.string(), target: z.enum(['global', 'card']) })).optional(),
     expectedCardVersion: z.number().optional(),

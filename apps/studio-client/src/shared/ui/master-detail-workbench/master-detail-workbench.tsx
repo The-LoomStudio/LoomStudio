@@ -1,3 +1,4 @@
+import { StudioPanelActive } from '../../studio-shell/studio-panel-active.js'
 import { MobileTabPageActive } from '../mobile-tab-pages/mobile-tab-pages.js'
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { mobileMotionDuration, mobileMotionEasing, mobileReleaseTarget, mobileResistance } from '@loom-studio/ui'
@@ -32,6 +33,7 @@ export type MasterDetailWorkbenchProps = {
 
 export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
   const pageActive = useContext(MobileTabPageActive)
+  const panelActive = useContext(StudioPanelActive)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isNarrow, setIsNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768)
   const [internalMobilePane, setInternalMobilePane] = useState<'master' | 'detail'>('master')
@@ -160,7 +162,7 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
   }, [mobilePane])
 
   useEffect(() => {
-    if (props.navigationScope === 'local' || !pageActive) return
+    if (props.navigationScope === 'local' || !pageActive || !panelActive) return
     const nav = {
       canGoBack: () => showDetailOnlyRef.current,
       goBack: handleGoBack,
@@ -169,9 +171,9 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
     }
     setWorkbenchNavigation(nav)
     return () => {
-      setWorkbenchNavigation(null)
+      if (useStudioLayoutStore.getState().workbenchNavigation === nav) setWorkbenchNavigation(null)
     }
-  }, [handleGoBack, handleGoForward, setWorkbenchNavigation, props.navigationScope, pageActive])
+  }, [handleGoBack, handleGoForward, setWorkbenchNavigation, props.navigationScope, pageActive, panelActive])
 
   const currentMasterWidth = typeof props.masterWidth === 'number' ? props.masterWidth : internalMasterWidth
 

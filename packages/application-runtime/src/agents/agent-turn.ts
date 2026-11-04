@@ -1,3 +1,4 @@
+import { createTextRuleDescriptionInputs } from '../prompt/text-rule-descriptions.js'
 import { attachmentMessage } from './message-attachments.js'
 import type { ObservationBuild } from '../observability/types.js'
 import type { ChatAttachment, ChatMessage } from '@loom-studio/shared'
@@ -14,12 +15,13 @@ import { appendBuildEvidence, recordMacroReads, compilePromptDataModel, type Pro
 import { processPrompt, type ProcessedPromptSnapshot } from '../prompt/process-prompt.js'
 import type { PromptProcessorRegistry } from '../prompt/prompt-processor-registry.js'
 import type { ExtensionPromptProcessingContext } from '@loom-studio/extension-sdk'
-import { readPromptResourceInputs } from '../cards/workspace.js'
-import type { PromptResourceContent } from '../cards/workspace-types.js'
+import { readPromptResourceInputs } from '../cards/card-bundle.js'
+import type { PromptResourceContent } from '../prompt/prompt-resource-types.js'
 import { createPromptToolExecutionScope } from './official-tools/index.js'
 import type { ToolExecutionScope } from './tool-registry.js'
 import { cloneVariableRenderTrace, createVariableRenderContext, renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
-import { projectHistoryEntries, type TextTransformRuleEntry } from '../transforms/history-text.js'
+import { type TextTransformRuleEntry } from '../transforms/history-text.js'
+import { projectHistoryEntriesIsolated } from '../transforms/history-text-isolation.js'
 import { projectNarrativeNodes } from '../narrative/projection.js'
 import { projectSessionHistory, summaryRetiredThrough } from './session-history.js'
 import type { ResolvedNarrativeContext } from '../narrative/context-provider.js'
@@ -121,7 +123,7 @@ export async function composeAgentTurnPrompt(input: {
           },
         })
       : undefined
-    const runtimeInputs = createRuntimePromptSources({
+    const runtimeInputs = await createRuntimePromptSources({
       observation: input.resumeMessages ? undefined : observation,
       agentMessages: input.agentMessages,
       workspaceMemory: input.workspaceMemory,
@@ -139,18 +141,29 @@ export async function composeAgentTurnPrompt(input: {
           sourceId: 'runtime.prompt-addition',
         })
       : undefined
+    const ruleDescriptions = createTextRuleDescriptionInputs(input.historyRules ?? { session: [], narrative: [] })
     const sourceNodes = [
       ...(resourceInputs?.sourceNodes ?? []),
       ...runtimeInputs.sourceNodes,
+      ...ruleDescriptions.sourceNodes,
       ...(input.externalRuntime?.sourceNodes ?? []),
       ...(additionalInputs?.sourceNodes ?? []),
     ]
     const contributions = [
       ...(resourceInputs?.contributions ?? []),
       ...runtimeInputs.contributions,
+      ...ruleDescriptions.contributions,
       ...(input.externalRuntime?.contributions ?? []),
       ...(additionalInputs?.contributions ?? []),
     ]
+    for (const description of ruleDescriptions.contributions) {
+      const anchor = description.capabilities.targetAnchorId!
+      if (!sourceNodes.some(node => (node.kind === 'virtual' || node.kind === 'slot') && (node.capabilities?.targetAnchorId ?? node.id) === anchor)) {
+        diagnostics.push({ severity: 'warning', code: 'prompt.rule_description_anchor_missing',
+          resourceId: description.sourceRef.sourceId, targetAnchorId: anchor,
+          message: `Rule description anchor is unavailable: ${anchor}` })
+      }
+    }
     const model = {
       skeletonRootId: input.preset.rootNode.id,
       sourceNodes,
@@ -246,7 +259,7 @@ export async function composeAgentTurnPrompt(input: {
   }
 }
 
-function createRuntimePromptSources(input: {
+async function createRuntimePromptSources(input: {
   observation?: ObservationBuild
   agentMessages: AgentTranscriptEntry[]
   workspaceMemory?: string
@@ -263,7 +276,7 @@ function createRuntimePromptSources(input: {
     narrative: TextTransformRuleEntry[]
     session: TextTransformRuleEntry[]
   }
-}): { sourceNodes: SourceNode[]; contributions: PromptContribution[] } {
+}): Promise<{ sourceNodes: SourceNode[]; contributions: PromptContribution[] }> {
   const sourceNodes: SourceNode[] = []
   const contributions: PromptContribution[] = []
   const narrativeTextByEntry = new Map<string, string>()
@@ -319,7 +332,7 @@ function createRuntimePromptSources(input: {
       displayName: input.narrative.timeline.title ?? 'Narrative Timeline',
       orderIndex: 0, kind: 'folder',
     })
-    const projectedNarrative = projectNarrativeNodes({
+    const projectedNarrative = await projectNarrativeNodes({
       timelineId: input.narrative.timeline.id,
       branchId: input.narrative.branchId,
       nodes: input.narrative.nodes,
@@ -353,7 +366,7 @@ function createRuntimePromptSources(input: {
     displayName: 'Session History',
     orderIndex: 0, kind: 'folder',
   })
-  const projectedSession = projectHistoryEntries({
+  const projectedSession = await projectHistoryEntriesIsolated({
     source: { kind: 'agent-session', sessionId: input.agentMessages[0]?.agentSessionId ?? 'agent-session' },
     phase: 'prompt',
     entries: input.agentMessages.flatMap(agentMessage => agentMessage.entry.kind === 'message'
@@ -373,8 +386,9 @@ function createRuntimePromptSources(input: {
   recordHistoryProjection(input.observation, projectedSession)
   const sessionText = new Map(projectedSession.entries.map(entry => [entry.id, entry.text]))
   for (const [id, text] of narrativeTextByEntry) sessionText.set(id, text)
-  projectSessionHistory(input.agentMessages, sessionText).forEach(({ entry: agentMessage, messages }) => {
+  projectSessionHistory(input.agentMessages, sessionText).forEach(({ entry: agentMessage, messages, toolEvidence }) => {
     const sourceNodeId = `runtime.session.${agentMessage.entry.kind}:${agentMessage.id}`
+    for (const tool of toolEvidence ?? []) appendBuildEvidence(input.observation, 'transformations', { kind: 'session-tool', sourceNodeId, ...tool })
     sourceNodes.push({
       id: sourceNodeId,
       sourceId: agentMessage.agentSessionId,

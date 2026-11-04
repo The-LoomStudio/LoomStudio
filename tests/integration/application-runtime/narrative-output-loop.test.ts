@@ -14,7 +14,7 @@ async function fixture(mode: 'declared' | 'automatic', purpose: 'narrative' | 'a
   const createId = () => `entry-${++nextId}`
   const now = () => '2026-10-24T00:00:00.000Z'
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
-  createNarrativeStore({ engine, createId, now })
+  const narratives = createNarrativeStore({ engine, createId, now })
   const agents = createAgentStore({ engine, createId, now })
   await engine.transact({ actor }, async tx => agents.transaction(tx).createTimelineSession({ id: 'timeline' }))
   const user = await agents.appendEntries({ actor, agentSessionId: 'timeline', expectedEntryCount: 0,
@@ -25,7 +25,7 @@ async function fixture(mode: 'declared' | 'automatic', purpose: 'narrative' | 'a
   let calls = 0
   const adopted: string[] = []
   const ctx = createApplicationRuntimeContext({ dataEngine: engine, documents: createSqliteDocumentStore({ engine }),
-    promptResources: createPromptResourceStore({ engine, createId, now }), agents,
+    promptResources: createPromptResourceStore({ engine, createId, now }), agents, narratives,
     gateway: { invokeChat: async () => {
       calls += 1
       if (calls === failCall) throw new Error('provider interrupted')

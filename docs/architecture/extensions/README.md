@@ -315,3 +315,12 @@ Card 的全局依赖及默认预设引用见[文件化角色包](../application/
 ### Client Renderer 的精确内联锚点
 
 Client Renderer 可提供 `projectNodeWithAnchors(context)`，返回 `{mounts, matches}`；matches 的范围以 `context.displayText` 的字符偏移为准，mount 使用 `match-ref` 指向本次投影的 ID。同文案多次出现时分别分配 ID，避免 literal selector 歧义。该接口复用宿主现有的范围、挂载数和重叠检查；注册和生命周期仍归 Client Module 管理，不改变 HTML iframe 权限。`projectNode` 继续兼容。
+
+### 2026-11 生命周期与管理操作补充
+
+- Card 安装卸载使用 Runtime `uninstallExtensionInstallation`：按安装版本删除安装记录，返回 `resourcesRetained: true`，保留导入资源以供同包重装复用；`removeExtensionPackageResources` 单独负责显式资源删除，不再通过 `uninstall` 布尔参数切换含义。Script Service 监听所属安装、Script 和 mount 的删除提交，剪除对应实例并取消迟到加载，不依赖客户端 SSE。
+- `extensions.previewPackageResources` 使用实际导入预处理生成只读采用计划。现有资源的 update 表示重新采用/覆盖，不一定代表正文不同；没有可靠作者基线时 `localChanges` 为 unknown。引用提示匹配持久数据里的资源 ID，可能包含文本提及，不覆盖所有运行中或外部消费者。界面确认提交携带 fingerprint，提交前和事务内重新校验材料与相关持久版本，变化时要求重新预览；不自动合并。
+- `extensions.listRecoveryRecords` 只读扫描 `.history` 恢复记录，包含不在 catalog 中的包、损坏或路径异常的记录。管理页显示版本、故障阶段、路径与人工处理指引，不自动移动文件、启用模块或重放授权。
+- 安装结果沿用 installed/failed 并呈现 stage、codeCommitted 和 recovery；资源导入失败使用 import-resources 阶段。已提交后的界面刷新失败与安装失败分开反馈。
+- `extensions.startModuleBatch` 受理后由 Manager 队列执行启停，权限校验沿用逐模块入口，部分失败继续处理其他模块。`getModuleBatch` / `listModuleBatches` 查询状态与逐项结果；完成后发布扩展变更提示。页面离开不取消受理批次。当前进程保留最近100个完成结果及在途批次；重启不自动续作，也不承诺跨重启结果历史。
+- Agent Task 创建 Run 后、尚未确认终态前的持久登记失败，调用方负责取消并等待 Run 收尾；已完成后的结果收据写入失败保留Transcript恢复材料。dispose日志按实际成功/失败记录outcome。

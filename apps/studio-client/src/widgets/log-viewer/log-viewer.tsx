@@ -12,7 +12,7 @@ import type { Translator } from '../../shared/i18n/index.js'
 import { highestLogLevel, moreSevereLogLevel } from './log-viewer-model.js'
 import { readLogReferences } from '../../features/log-viewer/model/log-references.js'
 import { useLogReferenceLabels } from '../../features/log-viewer/model/use-log-reference-labels.js'
-import { LogEventRow } from './log-event-row.js'
+import { LogEventHeader, LogEventRow } from './log-event-row.js'
 import styles from './log-viewer.module.scss'
 
 declare const __LOOM_STUDIO_VERSION__: string
@@ -42,6 +42,7 @@ export function LogViewer(props: {
   const historyMode = source === 'history'
   const [since, setSince] = useState(() => localDateTime(new Date(Date.now() - 86_400_000)))
   const [until, setUntil] = useState(() => localDateTime(new Date()))
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [eventFilter, setEventFilter] = useState('')
   const [moduleId, setModuleId] = useState('')
   const [report, setReport] = useState<{ context: string; filtered: string }>()
@@ -202,31 +203,12 @@ export function LogViewer(props: {
       <div className={styles.sources} role="group" aria-label={props.t('logs.source')}>
         {(['all', 'server', 'client', 'history'] as const).map(value => <button key={value} type="button" aria-pressed={source === value} onClick={() => changeSource(value)}>{props.t(`logs.source.${value}`)}</button>)}
       </div>
-      <SearchField containerClassName={styles.search} aria-label={props.t('logs.search')} placeholder={props.t('logs.searchPlaceholder')} clearLabel={props.t('logs.search')} value={query} onClear={() => setQuery('')} onChange={event => setQuery(event.target.value)} />
-      <select className="loom-underlined-field" aria-label={props.t('logs.level')} value={level} onChange={event => setLevel(event.target.value as LogLevel | 'all')}>
-        <option value="all">{props.t('logs.level.all')}</option>
-        {(['debug', 'info', 'warn', 'error'] as const).map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}
-      </select>
       <label className={styles.technical}><Checkbox checked={technical} onChange={event => setTechnical(event.target.checked)} />{props.t('logs.technical')}</label>
       <div className={styles.actions}>
         {!historyMode && <IconButton aria-label={props.t('logs.refresh')} disabled={loading} onClick={() => { resetFollowingLatest(); void current.refresh() }}><RefreshCw size={15} /></IconButton>}
         <IconButton aria-label={props.t('logs.report')} disabled={!sourceReady || !records.length} onClick={previewReport}><Copy size={15} /></IconButton>
         <IconButton aria-label={props.t('logs.download')} disabled={!sourceReady || !visibleRecords.length} onClick={() => downloadBlob(new Blob([JSON.stringify(visibleRecords, null, 2)], { type: 'application/json' }), `loom-logs-${new Date().toISOString().replaceAll(':', '-')}.json`)}><Download size={15} /></IconButton>
       </div>
-    </div>
-    <div className={styles.filters}>
-      <select className="loom-underlined-field" aria-label={props.t('logs.extension')} value={packageId ?? ''} onChange={event => {
-        const next = new URLSearchParams(searchParams)
-        if (event.target.value) next.set('logPackage', event.target.value)
-        else next.delete('logPackage')
-        setSearchParams(next)
-      }}>
-        <option value="">{props.t('logs.allExtensions')}</option>
-        {packageId && !props.extensions?.some(item => item.packageId === packageId) && <option value={packageId}>{packageId}</option>}
-        {props.extensions?.map(item => <option key={item.packageId} value={item.packageId}>{item.displayName}</option>)}
-      </select>
-      <TextInput aria-label={props.t('logs.module')} placeholder={props.t('logs.module')} value={moduleId} onChange={event => setModuleId(event.target.value)} />
-      <TextInput aria-label={props.t('logs.event')} placeholder={props.t('logs.event')} value={eventFilter} onChange={event => setEventFilter(event.target.value)} />
     </div>
     {historyMode && <form className={styles.filters} onSubmit={event => { event.preventDefault(); searchHistory() }}>
       <label>{props.t('logs.since')}<input type="datetime-local" required value={since} onChange={event => setSince(event.target.value)} /></label>
@@ -249,14 +231,38 @@ export function LogViewer(props: {
     </div>
     <div className={styles.recordsShell}>
       <div className={styles.records} ref={recordsRef} onScroll={handleScroll}>
+        <LogEventHeader t={props.t}
+          levelControl={<select className="loom-underlined-field" aria-label={props.t('logs.level')} value={level} onChange={event => setLevel(event.target.value as LogLevel | 'all')}>
+        <option value="all">{props.t('logs.level.all')}</option>
+        {(['debug', 'info', 'warn', 'error'] as const).map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}
+      </select>}
+          sourceControl={<div className={styles.sourceFilter}><select className="loom-underlined-field" aria-label={props.t('logs.extension')} value={packageId ?? ''} onChange={event => {
+        const next = new URLSearchParams(searchParams)
+        if (event.target.value) next.set('logPackage', event.target.value)
+        else next.delete('logPackage')
+        setSearchParams(next)
+      }}>
+        <option value="">{props.t('logs.allExtensions')}</option>
+        {packageId && !props.extensions?.some(item => item.packageId === packageId) && <option value={packageId}>{packageId}</option>}
+        {props.extensions?.map(item => <option key={item.packageId} value={item.packageId}>{item.displayName}</option>)}
+      </select><IconButton aria-label={props.t('logs.extraFilters')} title={props.t('logs.extraFilters')} aria-haspopup="dialog" data-active={!!moduleId || !!eventFilter} onClick={() => { pauseForInspection(); setFiltersOpen(true) }}><Filter size={14} /></IconButton></div>}
+          messageControl={<SearchField containerClassName={styles.search} aria-label={props.t('logs.search')} placeholder={props.t('logs.searchPlaceholder')} clearLabel={props.t('logs.search')} value={query} onClear={() => setQuery('')} onChange={event => setQuery(event.target.value)} />}
+        />
         {!loading && !visibleRecords.length && <p className={styles.empty}>{props.t('logs.empty')}</p>}
-        {keyedRecords.map(({ key, record }) => <LogEventRow referenceLabels={referenceLabels.labels} referenceError={referenceLabels.isError} key={key} record={record} t={props.t} onInspect={pauseForInspection} onFilterRun={value => { pauseForInspection(); setRunId(value) }} />)}
+        {keyedRecords.map(({ key, record }, index) => <LogEventRow striped={index % 2 === 1} referenceLabels={referenceLabels.labels} referenceError={referenceLabels.isError} key={key} record={record} t={props.t} onInspect={pauseForInspection} onFilterRun={value => { pauseForInspection(); setRunId(value) }} />)}
         {historyMode && sourceReady && history.page?.hasMore && !history.capped && <button className={styles.loadMore} type="button" disabled={loading} onClick={history.loadMore}>{props.t('logs.loadMore')}</button>}
         <div ref={latestRef} />
       </div>
       {!historyMode && !followingLatest && <button className={styles.latest} data-level={unread.level} type="button" onClick={scrollToLatest}><ArrowDown size={14} />{unread.count ? props.t('logs.newRecords', { count: unread.count }) : props.t('logs.returnLatest')}</button>}
     </div>
     <footer className={styles.footer}>{props.t('logs.count', { count: visibleRecords.length })} · {props.t(historyMode ? 'logs.historyAvailability' : 'logs.currentAvailability')}</footer>
+    <Dialog open={filtersOpen} onClose={() => setFiltersOpen(false)} title={props.t('logs.extraFilters')} closeLabel={props.t('logs.close')} className={styles.filterDialog} closeOnBackdrop>
+      <div className={styles.extraFilters}>
+        <label>{props.t('logs.module')}<TextInput aria-label={props.t('logs.module')} value={moduleId} onChange={event => setModuleId(event.target.value)} /></label>
+        <label>{props.t('logs.event')}<TextInput aria-label={props.t('logs.event')} value={eventFilter} onChange={event => setEventFilter(event.target.value)} /></label>
+        <button type="button" disabled={!moduleId && !eventFilter} onClick={() => { setModuleId(''); setEventFilter('') }}>{props.t('logs.clearExtraFilters')}</button>
+      </div>
+    </Dialog>
     {report && <Dialog open onClose={closeReport} className={styles.report} title={props.t('logs.report')}
       showCloseButton={false} headerActions={<IconButton aria-label={props.t('logs.close')} onClick={closeReport}><X size={16} /></IconButton>}
       actions={<>

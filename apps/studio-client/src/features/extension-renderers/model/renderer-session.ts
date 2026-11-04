@@ -60,10 +60,15 @@ export function createRendererSessionHost(rendererHost?: ClientRendererHost): Re
       url?.searchParams.set('loomRendererSession', sessionId)
       const opened = url ? window.open(url.href, '_blank') ?? undefined : undefined
       if (opened) opened.opener = null
-      const channel = typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(`loom-renderer:${sessionId}`)
+      const channel = opened && typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(`loom-renderer:${sessionId}`) : undefined
+      const contributionKey = rendererContributionKey(registration)
+      for (const [previousId, previous] of sessions) {
+        if (!previous.window && previous.contributionKey === contributionKey
+          && previous.scope.kind === scope.kind && previous.scope.key === scope.key) revoke(previousId)
+      }
       const session: RendererSessionSummary & { channel?: BroadcastChannel; window?: Window } = {
         sessionId,
-        contributionKey: rendererContributionKey(registration),
+        contributionKey,
         scope: structuredClone(scope),
         state: opened ? 'opening' : 'disconnected',
         ...(channel ? { channel } : {}),

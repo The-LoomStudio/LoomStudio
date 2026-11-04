@@ -9,7 +9,7 @@ import type { TimelinePresetConfigContent } from '../prompt/timeline-preset-conf
 import type { RuntimeRequestContext } from '../types.js'
 import { readMappedResource } from '../prompt/prompt-resource-mapper.js'
 import { createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
-import { readAgentTurnVariables } from './narrative-runtime.js'
+import { readAgentTurnVariables } from '../prompt/agent-turn-variables.js'
 import { hasPlayerProfile } from '../profiles/player-state.js'
 import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
 import { getApplicationStateSnapshot } from '../state/state.js'

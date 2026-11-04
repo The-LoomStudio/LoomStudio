@@ -9,6 +9,7 @@ import { ContextAssetDetail } from '../../../apps/studio-client/src/features/pro
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
 vi.mock('react', async original => ({
   ...await original<typeof import('react')>(),
+  useContext: () => true,
   useId: () => 'test-id',
   useRef: (initial: unknown) => ({ current: initial }),
   useMemo: (fn: () => unknown) => fn(),

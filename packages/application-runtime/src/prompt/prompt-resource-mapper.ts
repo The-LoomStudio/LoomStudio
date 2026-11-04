@@ -7,15 +7,9 @@ import type {
   PromptResourceTreeNode as StoredPromptResourceTreeNode,
 } from '@loom-studio/application-data'
 import type { JsonObject } from '@loom-studio/shared'
-import { normalizeMacroOptions, canPlacePromptNode, promptAnchorOutput } from '@loom-studio/shared'
-import type {
-  PromptResourceContent,
-  PromptResourceNode,
-  PromptResourceKind,
-} from '../cards/workspace-types.js'
+import { stripPromptAuthorDepth, normalizeMacroOptions, canPlacePromptNode, promptAnchorOutput } from '@loom-studio/shared'
+import type { PromptResourceContent, PromptResourceNode, PromptResourceKind } from './prompt-resource-types.js'
 import { normalizeMacros } from '../cards/card.js'
-
-const legacyNodeKeys = ['configRows', 'isSection', 'orderList'] as const
 
 type PromptResourceMetadata = JsonObject & {
   icon?: NonNullable<PromptResourceContent['metadata']>['icon']
@@ -28,7 +22,9 @@ type PromptResourceMetadata = JsonObject & {
   macros?: Record<string, string>
   macroOptions?: import("@loom-studio/shared").MacroOptions
   useCardLore?: boolean
+  useCardText?: boolean
   useGlobalLore?: boolean
+  useGlobalText?: boolean
   textUses?: PromptResourceContent['textUses']
 }
 
@@ -50,7 +46,9 @@ export function toStoredResourceInput(input: {
   if (input.content.metadata?.icon) metadata.icon = structuredClone(input.content.metadata.icon)
   if (input.content.historyPolicy !== undefined) metadata.historyPolicy = input.content.historyPolicy
   if (input.content.useCardLore !== undefined) metadata.useCardLore = input.content.useCardLore
+  if (input.content.useCardText !== undefined) metadata.useCardText = input.content.useCardText
   if (input.content.useGlobalLore !== undefined) metadata.useGlobalLore = input.content.useGlobalLore
+  if (input.content.useGlobalText !== undefined) metadata.useGlobalText = input.content.useGlobalText
   if (input.content.textUses !== undefined) metadata.textUses = input.content.textUses
   if (input.content.resourceKind === 'preset') {
     if (input.content.model !== undefined) metadata.model = input.content.model
@@ -74,21 +72,14 @@ export function toStoredNode(node: PromptResourceNode): StoredPromptResourceTree
   if (node.kind !== 'virtual' && node.capabilities?.targetAnchorId && promptAnchorOutput(node.capabilities.targetAnchorId) === 'messages')
     throw new Error('Text contributions cannot target a message sequence')
   const extra: JsonObject = { ...(node.extra ?? {}) }
-  delete extra.projection
-  const normalizedCapabilities = normalizeAuthorCapabilities(node.capabilities)
-  const capabilities = normalizedCapabilities?.projection
-    ? normalizedCapabilities
-    : readCompositionCapabilities(normalizedCapabilities, node.projection)
-  for (const key of legacyNodeKeys) {
-    const value = node[key]
-    if (value !== undefined) extra[key] = value
-  }
+  const capabilities = normalizeAuthorCapabilities(node.capabilities)
+  if (node.meta === 'message.developer') throw new Error('Unsupported Prompt message role: developer')
   return {
     id: node.id,
     kind: node.kind,
     label: node.label,
     ...(node.category === undefined ? {} : { category: node.category }),
-    ...(node.meta === undefined ? {} : { meta: node.meta === 'message.developer' ? 'message.system' : node.meta }),
+    ...(node.meta === undefined ? {} : { meta: node.meta }),
     ...(node.enabled === undefined ? {} : { enabled: node.enabled }),
     ...(node.body === undefined ? {} : { body: node.body }),
     ...(capabilities === undefined ? {} : { capabilities }),
@@ -108,7 +99,9 @@ export function fromStoredResource(resource: StoredPromptResource): PromptResour
     ...(resource.resourceKind === 'preset' && metadata.delivery !== undefined ? { delivery: metadata.delivery } : {}),
     ...(resource.resourceKind === 'preset' && metadata.approvalPolicy !== undefined ? { approvalPolicy: metadata.approvalPolicy } : {}),
     ...(resource.resourceKind === 'preset' && metadata.useCardLore !== undefined ? { useCardLore: metadata.useCardLore } : {}),
+    ...(resource.resourceKind === 'preset' && metadata.useCardText !== undefined ? { useCardText: metadata.useCardText } : {}),
     ...(resource.resourceKind === 'preset' && metadata.useGlobalLore !== undefined ? { useGlobalLore: metadata.useGlobalLore } : {}),
+    ...(resource.resourceKind === 'preset' && metadata.useGlobalText !== undefined ? { useGlobalText: metadata.useGlobalText } : {}),
     ...(resource.resourceKind === 'preset' && metadata.textUses !== undefined ? { textUses: metadata.textUses } : {}),
     ...(metadata.origin ? { origin: metadata.origin } : {}),
     ...(metadata.sourceArtifactRef ? { sourceArtifactRef: metadata.sourceArtifactRef } : {}),
@@ -123,52 +116,21 @@ export function fromStoredResource(resource: StoredPromptResource): PromptResour
 }
 
 function fromStoredNode(node: StoredPromptResourceTreeNode): PromptResourceNode {
-  const extra = node.extra ?? {}
-  const known = new Set<string>([...legacyNodeKeys, 'projection'])
-  const unknownExtra = Object.fromEntries(Object.entries(extra).filter(([key]) => !known.has(key))) as JsonObject
-  const capabilities = readCompositionCapabilities(
-    normalizeAuthorCapabilities(node.capabilities as PromptResourceNode['capabilities']),
-    extra.projection as PromptResourceNode['projection'],
-  )
+  const capabilities = normalizeAuthorCapabilities(node.capabilities as PromptResourceNode['capabilities'])
+  if (node.meta === 'message.developer') throw new Error('Unsupported Prompt message role: developer')
   const result: PromptResourceNode = {
-    ...(extra.configRows === undefined ? {} : { configRows: extra.configRows as PromptResourceNode['configRows'] }),
-    ...(extra.isSection === undefined ? {} : { isSection: extra.isSection as boolean }),
-    ...(extra.orderList === undefined ? {} : { orderList: extra.orderList as string[] }),
-    ...(Object.keys(unknownExtra).length === 0 ? {} : { extra: unknownExtra }),
+    ...(node.extra === undefined ? {} : { extra: node.extra }),
     id: node.id,
     kind: node.kind,
     label: node.label,
     ...(node.category === undefined || node.category === 'prompt' ? {} : { category: node.category }),
-    ...(node.meta === undefined ? {} : { meta: node.meta === 'message.developer' ? 'message.system' : node.meta }),
+    ...(node.meta === undefined ? {} : { meta: node.meta }),
     ...(node.enabled === undefined ? {} : { enabled: node.enabled }),
     ...(node.body === undefined ? {} : { body: node.body }),
     ...(capabilities === undefined ? {} : { capabilities }),
     ...(node.children?.length ? { children: node.children.map(fromStoredNode) } : {}),
   }
   return result
-}
-
-function readCompositionCapabilities(
-  capabilities: PromptResourceNode['capabilities'],
-  legacyProjection: PromptResourceNode['projection'],
-): PromptResourceNode['capabilities'] {
-  if (!legacyProjection) return capabilities
-  // Preserve the effective ordering of stored legacy resources at the read boundary.
-  const projection = Object.fromEntries(Object.entries({
-    ...capabilities?.projection,
-    entryOrderHint: legacyProjection.entryOrder,
-    zoneId: legacyProjection.zoneId,
-    order: legacyProjection.order,
-    reason: legacyProjection.reason,
-    slotKey: legacyProjection.slotKey,
-    slotOrderHint: legacyProjection.slotOrder,
-    sourceKind: legacyProjection.sourceKind,
-  }).filter(([, value]) => value !== undefined)) as NonNullable<PromptResourceNode['capabilities']>['projection']
-  return {
-    ...capabilities,
-    lifecycle: { lifecycle: legacyProjection.lifecycle ?? capabilities?.lifecycle?.lifecycle ?? 'always' },
-    projection,
-  }
 }
 
 export function toStoredNodeDraft(node: PromptResourceNode): StoredPromptResourceNodeDraft {
@@ -231,7 +193,8 @@ export async function listResourceCatalog(store: PromptResourceStore, resourceKi
   return { resources, ...(invalidResources.length ? { invalidResources } : {}) }
 }
 
-/** Legacy author roles keep their effective Provider behavior without rewriting run evidence. */
 export function normalizeAuthorCapabilities(capabilities: PromptResourceNode['capabilities']): PromptResourceNode['capabilities'] {
-  return capabilities?.roleHint === 'developer' ? { ...capabilities, roleHint: 'system' } : capabilities
+  if (capabilities?.roleHint !== undefined && !['system', 'user', 'assistant'].includes(capabilities.roleHint))
+    throw new Error(`Unsupported Prompt role: ${capabilities.roleHint}`)
+  return stripPromptAuthorDepth(capabilities)
 }

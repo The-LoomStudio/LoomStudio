@@ -9,6 +9,7 @@ import type {
   ProviderAccount,
 } from '../../../entities/index.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
+import { notify } from '../../../shared/notifications/index.js'
 import { collectPages } from '../../../shared/api/collect-pages.js'
 
 type ProviderAccountDraft = {
@@ -162,6 +163,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
         if (account.enabledModelIds.includes(model)) return
         await commitAccountUpdate({
           providerProfileId: providerAccountId,
+          expectedVersion: account.version,
           enabledModelIds: [...new Set([...account.enabledModelIds, model])],
         })
         await refreshProviderAccounts()
@@ -211,6 +213,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
       const nextModelId = updates.providerModelId?.trim() || current.providerModelId
       await commitAccountUpdate({
         providerProfileId: account.id,
+        expectedVersion: account.version,
         ...(updates.tokenMultiplier !== undefined ? {
           expectedVersion: current.version,
           tokenMultipliers: { ...account.tokenMultipliers, [current.providerModelId]: updates.tokenMultiplier },
@@ -228,6 +231,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
       if (!current || !account) return
       await commitAccountUpdate({
         providerProfileId: account.id,
+        expectedVersion: account.version,
         enabledModelIds: account.enabledModelIds.filter(modelId => modelId !== current.providerModelId),
       })
       await refreshProviderAccounts()
@@ -240,13 +244,17 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     return providerProfile
   }
 
-  async function commitAccountUpdate(request: Parameters<StudioApi['providerAccounts']['update']>[0], nextCredential?: Record<string, string>) {
-    const { providerProfile } = await input.api.providerAccounts.update(request)
+  async function commitAccountUpdate(request: Omit<Parameters<StudioApi['providerAccounts']['update']>[0], 'expectedVersion'> & { expectedVersion?: number }, nextCredential?: Record<string, string>) {
+    const account = providerAccounts.find(item => item.id === request.providerProfileId)
+    const expectedVersion = request.expectedVersion ?? account?.version
+    if (expectedVersion === undefined) throw new Error(`Provider Profile not found: ${request.providerProfileId}`)
+    const { providerProfile, credentialCleanupFailed } = await input.api.providerAccounts.update({
+      ...request,
+      expectedVersion,
+      ...(nextCredential && Object.keys(nextCredential).length > 0 ? { credential: nextCredential } : {}),
+    })
     publishProviderAccount(providerProfile)
-    if (nextCredential && Object.keys(nextCredential).length > 0) {
-      const { credential } = await input.api.providerAccounts.replaceCredential(request.providerProfileId, nextCredential)
-      setProviderAccounts(current => current.map(profile => profile.id === request.providerProfileId ? { ...profile, credential } : profile))
-    }
+    if (credentialCleanupFailed) notify.warning('连接已保存，旧凭据清理尚未完成。')
   }
 
   function publishProviderAccount(profile: ProviderAccount) {

@@ -15,10 +15,10 @@ let clock: number
 let contentHeight: number
 let follow: ReturnType<typeof useSmoothFollow>
 
-function Fixture() {
+function Fixture({ enabled = true }: { enabled?: boolean } = {}) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  follow = useSmoothFollow({ scrollRef, contentRef })
+  follow = useSmoothFollow({ scrollRef, contentRef, enabled })
   return h('div', { ref: scrollRef }, h('div', { ref: contentRef }, h('div', { 'data-stream-scroll': '', 'data-inner': '' }, 'nested')))
 }
 
@@ -99,7 +99,9 @@ it('keeps inspected live reasoning open when following prose completes', async (
     { id: 'thought', kind: 'thinking', title: '思考', content: 'Long thought', state: 'running' },
   ] }
   await act(async () => root.render(h(NarrativeExecutionFlow, { execution, reading: false, followWork: true, onInspect: inspected })))
-  const detail = host.querySelector('details')!
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="查看工作过程"]')!.click())
+  const detail = host.querySelector('[data-work-step="thought"]')!
+  await act(async () => detail.querySelector('button')!.click())
   const region = host.querySelector('[aria-label="思考内容"]') as HTMLElement
   await act(async () => region.focus())
   await act(async () => root.render(h(NarrativeExecutionFlow, { execution: { ...execution, state: 'completed', steps: [
@@ -107,8 +109,8 @@ it('keeps inspected live reasoning open when following prose completes', async (
     { id: 'body', kind: 'narrative', title: '正文', content: 'The door opens.', state: 'completed' },
   ] }, reading: false, followWork: true, onInspect: inspected })))
   expect(inspected).toHaveBeenCalled()
-  expect(host.querySelector('details')).toBe(detail)
-  expect(detail.open).toBe(true)
+  expect(host.querySelector('[data-work-step="thought"]')).toBe(detail)
+  expect(detail.getAttribute('data-open')).toBe('true')
   expect(host.querySelector('[aria-label="思考内容"]')).toBe(region)
 })
 
@@ -150,4 +152,14 @@ it('does not mistake its own animated writes for user scrolling', async () => {
   expect(follow.following).toBe(true)
   await settle()
   expect(viewport().scrollTop).toBeCloseTo(1000, 0)
+})
+
+it('explicitly reaches the bottom after continuous following has stopped', async () => {
+  await act(async () => follow.pause())
+  viewport().scrollTop = 100
+  await act(async () => root.render(h(Fixture, { enabled: false })))
+  await act(async () => follow.resume())
+  expect(viewport().scrollTop).toBe(600)
+  expect(follow.following).toBe(true)
+  expect(callbacks.size).toBe(0)
 })

@@ -61,6 +61,9 @@ export function GlobalSearchDialog({ open, search, recent, t, onClose, onOpenPan
           if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229)) {
             event.preventDefault()
             event.stopPropagation()
+          } else if (event.key === 'Enter' && event.target instanceof Element) {
+            const button = event.target.closest('button')
+            if (button && !button.hasAttribute('cmdk-item')) event.stopPropagation()
           }
           if (event.key === 'Escape' && candidateMode) {
             event.preventDefault()

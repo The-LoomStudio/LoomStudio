@@ -10,6 +10,36 @@ let activeClient: QueryClient | undefined
 afterEach(() => { activeClient?.clear() })
 
 describe('Prompt Resource mutation cache publication', () => {
+  it('passes Query cancellation to the resource list while retaining the current cache', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    activeClient = client
+    const key = ['prompt-resources', '/rpc-a', 'resources']
+    const cached = { resources: [] }
+    client.setQueryData(key, cached)
+    const started = Promise.withResolvers<void>()
+    let requestSignal: AbortSignal | undefined
+    const list = vi.fn((_kind?: 'preset' | 'lore', signal?: AbortSignal) => {
+      requestSignal = signal
+      started.resolve()
+      return new Promise<ListPromptResourcesResult>((_resolve, reject) => {
+        signal!.addEventListener('abort', () => reject(signal!.reason), { once: true })
+      })
+    })
+    function Consumer() {
+      usePromptResourceState({ api: { promptResources: { list } } as unknown as StudioApi, endpoint: '/rpc-a' })
+      return null
+    }
+    renderToString(createElement(QueryClientProvider, { client }, createElement(Consumer)))
+    const query = client.getQueryCache().find({ queryKey: key, exact: true })!
+    const pending = query.fetch().catch(error => error)
+    await started.promise
+    await client.cancelQueries({ queryKey: key, exact: true })
+    await pending
+    expect(requestSignal?.aborted).toBe(true)
+    expect(client.getQueryData(key)).toBe(cached)
+    expect(query.state.fetchStatus).toBe('idle')
+  })
+
   it.each([false, true])('retains invalid resource diagnostics with cached healthy resources: %s', cached => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     activeClient = client

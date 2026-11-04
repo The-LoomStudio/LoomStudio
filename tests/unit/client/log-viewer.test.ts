@@ -129,6 +129,17 @@ describe('log viewer model', () => {
     expect(mergePolledLogRecords([records[0]!], [records[1]!], { reason: 'reset' })).toEqual([records[1]])
   })
 
+  it('discards already read pages when a later page resets the log generation', async () => {
+    const pages: LogPage[] = [
+      { items: [records[0]!], cursor: 'old:1', hasMore: true, gap: { reason: 'evicted' } },
+      { items: [records[1]!], cursor: 'new:1', hasMore: true, gap: { reason: 'reset' } },
+      { items: [records[2]!], cursor: 'new:2', hasMore: false },
+    ]
+    const result = await readLogPages(async () => pages.shift()!, 'old:0')
+    expect(result).toEqual({ items: [records[1], records[2]], cursor: 'new:2', gap: { reason: 'reset' }, truncated: false })
+    expect(mergePolledLogRecords([records[0]!], result.items, result.gap)).toEqual([records[1], records[2]])
+  })
+
   it('only commits and finishes the latest refresh when requests resolve out of order', async () => {
     const guard = createLatestRequestGuard()
     const first = Promise.withResolvers<string>()

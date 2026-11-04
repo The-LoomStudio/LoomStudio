@@ -7,6 +7,11 @@ self.onmessage = async (event: MessageEvent<{ id: number; texts: string[] }>) =>
   try {
     const counts: number[] = []
     for (const text of texts) {
+      // LAN HTTP lacks SubtleCrypto; hashing is only a cache optimization.
+      if (!crypto.subtle) {
+        counts.push(countText(text).baseTokens)
+        continue
+      }
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
       const key = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
       let count = cache.get(key)

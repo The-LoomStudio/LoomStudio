@@ -45,12 +45,9 @@ export function createCardDirectoryCatalog(options: {
           if (!stat.isDirectory()) continue
           const manifest = await readHeader(directory, 'manifest.json')
           if (!manifest) continue
-          const header = manifest.schema === 'loom.cardBundle.zip.v2'
-            ? { metadata: manifest.resources?.metadata, card: (await readHeader(directory, manifest.resources?.card))?.config }
-            : manifest.schema === 'loom.cardBundle.zip.v1'
-              ? { metadata: manifest.artifact, card: manifest.artifact?.card }
-              : undefined
-          if (!header || typeof header.metadata?.artifactId !== 'string' || typeof header.card?.name !== 'string') {
+          if (manifest.schema !== 'loom.cardBundle.zip.v2') throw new Error('Invalid Loom Card directory header')
+          const header = { metadata: manifest.resources?.metadata, card: (await readHeader(directory, manifest.resources?.card))?.config }
+          if (typeof header.metadata?.artifactId !== 'string' || typeof header.card?.name !== 'string') {
             throw new Error('Invalid Loom Card directory header')
           }
           entry.name = header.card.name
@@ -130,7 +127,7 @@ export function createCardDirectoryCatalog(options: {
       attachments,
       promptResources: bundle.artifact.contextAssets.map((node, index) => ({
         id: node.id, label: node.label, external: bundle.artifact.externalContextAssetIds?.includes(node.id) ?? false,
-        ...(manifest.schema === 'loom.cardBundle.zip.v2' ? { indexPath: manifest.resources.contextAssets[index] } : {}),
+        indexPath: manifest.resources.contextAssets[index],
       })),
       scriptCount: bundle.artifact.scriptAttachments?.length ?? 0,
       payloadCount: bundle.artifact.extensionPayloads?.length ?? 0,
@@ -167,7 +164,6 @@ function imageMediaType(path: string): string | undefined {
 type DirectoryHeader = {
   schema?: string
   resources?: { metadata?: ArtifactHeader; card?: string }
-  artifact?: ArtifactHeader & { card?: { name?: string } }
   config?: { name?: string }
 }
 type ArtifactHeader = { artifactId?: string; metadata?: { exportedFromCardId?: string } }

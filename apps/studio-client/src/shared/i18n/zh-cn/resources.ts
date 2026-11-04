@@ -1,4 +1,10 @@
 export const messages = {
+  'context.anchors.title': "按锚点查看",
+  'context.anchors.hint': "组内按文件树顺序排列；组间排列仅用于浏览，实际位置由使用本书的预设决定。条件条目仅列出候选，不代表本轮已激活。",
+  'context.anchors.empty': "此世界书暂无条目。",
+  'context.anchors.unassigned': "未指定锚点",
+  'context.anchors.unassignedHint': "这些条目没有注入目标，不会作为锚点贡献注入。",
+  'context.anchors.disabled': "已停用（含上级停用）",
   'promptResource.temporaryHint': "临时查看，不会自动加入当前角色。",
   'dashboard.open': '数据总览',
   'promptResource.processingWarning': '提示词处理出现警告，部分 Lore 可能已跳过。请查看构建诊断。',
@@ -83,7 +89,6 @@ export const messages = {
   'context.anchorPicker.noAnchors': '该预设暂无锚点',
   'context.anchorPicker.noResults': '没有匹配的锚点',
   'context.metadata.targetAnchorPlaceholder': '输入或选择目标锚点（如 @lore.stable）…',
-  'context.metadata.localDepth': '排序深度 (Depth)',
   'context.metadata.localOrder': '排序顺序 (Order)',
   'context.metadata.zoneId': '目标锚点',
   'context.metadata.zonePlaceholder': '输入或选择目标锚点（如 @lore.stable）…',

@@ -770,6 +770,7 @@
   .workspaceBody {
     border-left-color: transparent;
     border-top-left-radius: 0;
+    clip-path: inset(0);
     transition:
       border-top-left-radius var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing),
       border-left-color var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing);
@@ -867,42 +868,6 @@
   color: var(--loom-color-text-muted);
 }
 
-.headerNavigation {
-  display: none !important;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 0;
-}
-
-.headerNavigationButton {
-  width: 24px;
-  min-width: 24px;
-  height: 32px;
-  min-height: 32px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  padding: 0;
-  color: var(--loom-color-text-muted);
-  background: transparent;
-}
-
-.headerNavigationButton:hover:not(:disabled),
-.headerNavigationButton:focus-visible {
-  color: var(--loom-color-accent-strong);
-}
-
-.headerNavigationButton:disabled {
-  color: var(--loom-color-text-subtle);
-  opacity: 0.45;
-  cursor: default;
-}
-
-.headerNavigationButton svg {
-  width: var(--loom-page-header-icon-size, 16px);
-  height: var(--loom-page-header-icon-size, 16px);
-}
-
 .viewModeControl {
   display: flex;
   align-items: center;
@@ -988,6 +953,7 @@
   border-top: 1px solid color-mix(in srgb, var(--loom-color-border) 60%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--loom-color-border) 60%, transparent);
   border-top-left-radius: var(--loom-radius-window, 18px);
+  clip-path: inset(0 round var(--loom-radius-window, 18px) 0 0 0);
   transition:
     border-top-left-radius var(--loom-shell-motion-duration-enter) var(--loom-shell-motion-easing),
     border-left-color var(--loom-shell-motion-duration-enter) var(--loom-shell-motion-easing);
@@ -1478,7 +1444,7 @@
     backdrop-filter: blur(4px);
   }
 
-  .floatingDock:not(.floatingDockActive):not(.floatingDockMobileOpen) {
+  .floatingDock:not(.floatingDockActive) {
     position: fixed !important;
     inset: 0 !important;
     top: 0 !important;
@@ -1496,7 +1462,6 @@
     border-radius: 0 !important;
   }
 
-  .floatingDockMobileOpen,
   .floatingDockActive {
     position: fixed !important;
     inset: 0 !important;

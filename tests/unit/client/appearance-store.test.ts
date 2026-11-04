@@ -15,14 +15,17 @@ describe('appearance persistence boundary', () => {
     const result = merge({
       material: { mode: 'solid', blur: 12, opacity: -1 }, canvasWidth: 900,
       narrativeOverscan: NaN, followAI: false, background: { id: 'wall', image: '/wall.png' },
+      explicitOverrides: { canvasWidth: true, blur: true, material: true },
       scopedBackground: { id: 'forged' }, setMaterial: null,
     }, current)
     expect(result).toMatchObject({
       material: { mode: 'solid', blur: 12, opacity: current.material.opacity },
-      canvasWidth: 900, narrativeOverscan: current.narrativeOverscan,
+      canvasWidth: 900, narrativeOverscan: current.narrativeOverscan, explicitOverrides: { canvasWidth: true, blur: true },
       followAI: false, background: { id: 'wall', image: '/wall.png' }, scopedBackground: current.scopedBackground,
     })
     expect(result.setMaterial).toBe(current.setMaterial)
+    expect(result.explicitOverrides).toEqual({ canvasWidth: true, blur: true })
+    expect(merge({ canvasWidth: 900, material: { blur: 12 } }, current).explicitOverrides).toEqual({})
   })
 
   it('preserves glassPanels boolean preference', () => {

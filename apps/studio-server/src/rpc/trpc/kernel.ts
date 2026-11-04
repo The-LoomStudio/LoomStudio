@@ -16,10 +16,16 @@ const globalPackage = z.strictObject({ packageId: z.string() }, { error: issue =
 const moduleInput = pkg.extend({ moduleId: z.string(), target: target.optional() })
 const version = z.number().int({ error: 'Expected a positive integer' }).positive({ error: 'Expected a positive integer' })
 const installCard = pkg.extend({ cardId: z.string(), expectedCardVersion: version })
-const updateCard = installCard.extend({ packageVersion: z.string(), expectedInstallationVersion: version })
+const updateCard = installCard.extend({ packageVersion: z.string(), expectedInstallationVersion: version, expectedPreviewFingerprint: z.string().min(1).optional() })
 const removeCard = pkg.extend({ cardId: z.string(), expectedInstallationVersion: version })
 const source = z.discriminatedUnion('kind', [z.object({ kind: z.literal('git'), url: z.string(), ref: z.string().optional() }), z.object({ kind: z.literal('zip'), url: z.string() })])
+const capabilityGrants = z.object({ ui: z.array(z.literal('ui.notify')).optional(), 'events.subscribe': z.array(z.union([z.enum(['documents', 'narrative', 'agent', 'diagnostics', 'platform-data', 'state']), z.templateLiteral(['extension:', z.string()])])).optional(), assets: z.array(z.enum(['assets.read', 'assets.publish'])).optional() })
 export const extensionsRouter = t.router({
+  listRecoveryRecords: procedure.query(({ ctx }) => callBuiltin(ctx, 'extensions.listRecoveryRecords')),
+  listModuleBatches: procedure.query(({ ctx }) => callBuiltin(ctx, 'extensions.listModuleBatches')),
+  getModuleBatch: procedure.input(z.object({ batchId: z.string().min(1) })).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.getModuleBatch', input)),
+  startModuleBatch: procedure.input(pkg.extend({ target: target.optional(), enabled: z.boolean(), modules: z.array(z.object({ moduleId: z.string().min(1), grants: capabilityGrants.optional() })).max(100) })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.startModuleBatch', input)),
+  previewPackageResources: procedure.input(pkg.extend({ packageVersion: z.string(), expectedInstallationVersion: version, target: target.optional(), expectedCardVersion: version.optional() })).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.previewPackageResources', input)),
   importConvertedBatch: procedure.input(pkg.extend({ target, sessionId: z.string().min(1) }).strict()).mutation(({ ctx, input }) => {
     if (!ctx.services.batchImporter) throw new Error('Batch import service unavailable')
     return ctx.services.batchImporter.commit(input, ctx.request)
@@ -46,12 +52,12 @@ export const extensionsRouter = t.router({
   checkRemoteUpdate: procedure.input(pkg).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.checkRemoteUpdate', input)),
   commitRemoteInstall: procedure.input(z.object({ token: z.string() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.commitRemoteInstall', input)),
   uninstallPackage: procedure.input(pkg.extend({ version: z.string().optional(), deleteData: z.boolean().optional(), target: target.optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.uninstallPackage', input)),
-  enableModule: procedure.input(moduleInput.extend({ grants: z.object({ ui: z.array(z.literal('ui.notify')).optional(), 'events.subscribe': z.array(z.union([z.enum(['documents', 'narrative', 'agent', 'diagnostics', 'platform-data', 'state']), z.templateLiteral(['extension:', z.string()])])).optional(), assets: z.array(z.enum(['assets.read', 'assets.publish'])).optional() }).optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.enableModule', input)),
+  enableModule: procedure.input(moduleInput.extend({ grants: capabilityGrants.optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.enableModule', input)),
   disableModule: procedure.input(moduleInput).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.disableModule', input)),
   reloadModule: procedure.input(moduleInput).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.reloadModule', input)),
   importPackageResources: procedure.input(globalPackage).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.importPackageResources', input)),
   removePackageResources: procedure.input(globalPackage).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.removePackageResources', input)),
-  updatePackageResources: procedure.input(globalPackage.extend({ packageVersion: z.string(), expectedInstallationVersion: version })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.updatePackageResources', input)),
+  updatePackageResources: procedure.input(globalPackage.extend({ packageVersion: z.string(), expectedInstallationVersion: version, expectedPreviewFingerprint: z.string().min(1).optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.updatePackageResources', input)),
   listCharacters: procedure.input(pkg).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.listCharacters', input)),
   previewCharacter: procedure.input(pkg.extend({ characterId: z.string().min(1) })).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.previewCharacter', input)),
   importCharacter: procedure.input(pkg.extend({ characterId: z.string().min(1), digest: z.string().min(1), allowDuplicate: z.boolean().optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.importCharacter', input)),

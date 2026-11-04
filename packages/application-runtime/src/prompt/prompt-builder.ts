@@ -79,7 +79,7 @@ export type SourceNode = {
     activation?: PromptActivation
     targetAnchorId?: string
     localDepth?: number
-    roleHint?: PromptProviderRole
+    roleHint?: Exclude<PromptProviderRole, 'developer'>
     [key: string]: unknown
   }
 }

@@ -1,3 +1,4 @@
+import { mobileHaptic } from '../mobile-haptics.js'
 import { createContext, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { mobileMotionDuration, mobileMotionEasing, mobileReleaseTarget, mobileResistance } from '@loom-studio/ui'
 import type { MobilePagePan } from '../master-detail-workbench/mobile-page-pan.js'
@@ -64,6 +65,7 @@ export function MobileTabPages<T extends string>(props: {
           if (commit) {
             pendingRef.current = pages[next]!.id
             onChange(pages[next]!.id)
+            mobileHaptic()
           } else {
             track.style.transform = `translate3d(${-active * 100}%,0,0)`
             animation.cancel()
@@ -79,8 +81,14 @@ export function MobileTabPages<T extends string>(props: {
       }
       event.stopPropagation()
     }
+    const primaryTabs = (props.header ? container.firstElementChild?.querySelector('[data-loom-ui-tabs]') : [...(container.parentElement?.querySelectorAll('[data-loom-ui-tabs]') ?? [])].find(tabs => !container.contains(tabs)))
+    const confirmTab = (event: Event) => {
+      const tab = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('[role="tab"]') : null
+      if (tab && !tab.disabled && tab.getAttribute('aria-selected') !== 'true') mobileHaptic()
+    }
+    primaryTabs?.addEventListener('click', confirmTab, true)
     container.addEventListener('loom:mobile-tab-pan', begin)
-    return () => { container.removeEventListener('loom:mobile-tab-pan', begin); animationRef.current?.cancel() }
+    return () => { primaryTabs?.removeEventListener('click', confirmTab, true); container.removeEventListener('loom:mobile-tab-pan', begin); animationRef.current?.cancel() }
   }, [])
   return <div ref={containerRef} className={styles.viewport} data-mobile-tab-pages="">
     {props.header ? <div className={styles.header}>{props.header}</div> : null}

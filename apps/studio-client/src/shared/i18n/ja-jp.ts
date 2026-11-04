@@ -1,3 +1,5 @@
+import { messages as extensionsFlow } from './ja-jp/extensions-flow.js'
+import { messages as extensionReview } from './ja-jp/extension-review.js'
 import { messages as observation } from './ja-jp/observation.js'
 import { messages as userProfile } from './ja-jp/user-profile.js'
 import { messages as common } from './ja-jp/common.js'
@@ -26,6 +28,8 @@ export const jaJP = {
   ...state,
   ...prompt,
   ...extensions,
+  ...extensionsFlow,
+  ...extensionReview,
   ...settings,
   ...textTransforms,
   ...logs,

@@ -15,12 +15,11 @@ const position: StudioWorkspace = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Studio workspace navigation', () => {
-  it('maps legacy preset links and restored positions to the same Agent editor', () => {
-    expect(readStudioRoute('/studio/presets/reference/preset-2/node/node-2'))
-      .toEqual(readStudioRoute('/studio/agents/reference/preset-2/node/node-2'))
-    expect(readStudioRoute('/studio/presets/card-2/node-2'))
-      .toEqual({ panel: 'agent', cardId: 'card-2', assetId: 'node-2' })
-    expect(readStudioWorkspace({ ...position, panel: 'preset', resourceId: 'preset-2' }))
+  it('reads current Agent links without restoring the old preset route', () => {
+    expect(readStudioRoute('/studio/agents/reference/preset-2/node/node-2'))
+      .toEqual({ panel: 'agent', resourceId: 'preset-2', assetId: 'node-2' })
+    expect(readStudioRoute('/studio/presets/card-2/node-2')).toEqual({ panel: null })
+    expect(readStudioWorkspace({ ...position, panel: 'agent', resourceId: 'preset-2' }))
       .toEqual({ ...position, panel: 'agent', resourceId: 'preset-2' })
   })
   it('restores same-URL history positions without losing Timeline/Branch', async () => {

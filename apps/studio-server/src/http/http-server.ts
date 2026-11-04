@@ -10,6 +10,7 @@ import { maxCardPngBytes } from '../codecs/card-png.js'
 import { createHash } from 'node:crypto'
 import { pipeline } from 'node:stream/promises'
 import { serveClientFile } from './client-files.js'
+import { packageResourceSummaryKinds, summarizePackageResource } from '@loom-studio/shared'
 
 export function createStudioHttpServer(options: {
   auth: ApplicationSessionAuth
@@ -160,7 +161,7 @@ export function createStudioHttpServer(options: {
 
     const extensionFile = readExtensionFileRequest(request.url)
     if (request.method === 'GET' && extensionFile && options.extensionFiles) {
-      await handleExtensionFile(response, options.extensionFiles, extensionFile)
+      await handleExtensionFile(request, response, options.extensionFiles, extensionFile)
       return
     }
 
@@ -401,12 +402,30 @@ function readExtensionIconRequest(requestUrl: string | undefined): { packageId: 
 }
 
 async function handleExtensionFile(
+  request: IncomingMessage,
   response: ServerResponse,
   files: NonNullable<Parameters<typeof createStudioHttpServer>[0]['extensionFiles']>,
   input: { packageId: string; version: string; path: string; installation?: { cardId: string; archiveDigest: string } },
 ): Promise<void> {
+  const params = new URL(request.url!, 'http://localhost').searchParams
+  const preview = params.get('preview')
+  const summaryKind = packageResourceSummaryKinds.find(kind => kind === params.get('kind'))
+  if (preview !== null && (preview !== 'summary' || !summaryKind || params.getAll('preview').length !== 1 || params.getAll('kind').length !== 1)) {
+    writeJson(response, 400, { error: { code: 'extension.preview_invalid', message: 'Expected preview=summary and a supported resource kind' } })
+    return
+  }
   try {
     const file = await files.read(input.packageId, input.version, input.path, input.installation)
+    if (preview === 'summary' && summaryKind) {
+      try {
+        const summary = summarizePackageResource(summaryKind, new TextDecoder('utf-8', { fatal: true }).decode(file.bytes))
+        response.setHeader('cache-control', 'no-store')
+        writeJson(response, 200, summary)
+      } catch (error) {
+        writeJson(response, 400, { error: { code: 'extension.preview_invalid', message: error instanceof Error ? error.message : String(error) } })
+      }
+      return
+    }
     response.writeHead(200, {
       'content-type': file.mediaType,
       'content-length': file.bytes.byteLength,

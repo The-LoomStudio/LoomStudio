@@ -5,7 +5,7 @@ import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createVariableRenderContext, exportCardArtifact, importCardBundle, readPromptResourceInputs, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { compilePromptDataModel } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
 import { fromStoredResource } from '../../../packages/application-runtime/src/prompt/prompt-resource-mapper.js'
-import { assertCardBundleArtifact, normalizeCardBundleArtifact } from '../../../packages/application-runtime/src/cards/workspace-codec.js'
+import { assertCardBundleArtifact, normalizeCardBundleArtifact } from '../../../packages/application-runtime/src/cards/card-bundle-codec.js'
 import { decodeCardBundleZip, encodeCardBundleZip } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
 
 function fixture() {

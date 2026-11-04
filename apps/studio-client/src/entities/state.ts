@@ -96,7 +96,6 @@ export type StateSourcesInspection = {
       sourceCardId: string
       sourceCardVersion: number
       cardName?: string
-      fallbackUserName: string
       stateEntityTypes: StateEntityType[]
       stateEntities: StateEntityId[]
       stateComponents: Array<{ path: string; schema: Record<string, ClientJsonValue>; templateId: string; componentKey: string }>

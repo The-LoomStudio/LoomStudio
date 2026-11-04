@@ -54,7 +54,7 @@ async function setup() {
   await runtime.initialize()
   const preset = (await runtime.createPromptResource({ resourceKind: 'preset', name: 'Swipe' })).resource
   const provider = (await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test'] })).providerProfile
-  await runtime.replacePresetToolMounts({ presetId: preset.id, mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }] })
+  await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id), presetId: preset.id, mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true }] })
   await runtime.updateAgentPreset({ agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version, model: { providerProfileId: provider.id, modelId: 'test' } })
   const { card } = await runtime.createCard({ name: 'Swipe Card' })
   const { timeline, branch } = await runtime.createNarrativeTimeline({ cardId: card.id })
@@ -146,7 +146,7 @@ describe('runtime Narrative Swipe', () => {
       await expect(f.runtime.invokeAgentTurn(f.request)).rejects.toThrow('Interrupted')
       const recovery = await f.runtime.prepareAgentRunRecovery({ agentSessionId: f.session.id })
       const head = (await f.narratives.getBranch(f.target.branchId))!.headNodeId
-      await f.runtime.updateProviderProfile({ providerProfileId: f.provider.id, enabledModelIds: [] })
+      await f.runtime.updateProviderProfile({ expectedVersion: (await f.runtime.listProviderProfiles()).providerProfiles.find(profile => profile.id === f.provider.id)!.version, providerProfileId: f.provider.id, enabledModelIds: [] })
       await expect(f.runtime.invokeAgentTurn(recovery!.request, {
         agentRun: { runId: 'preparation-failure', onEvent: () => {}, continuation: recovery!.continuation },
       })).rejects.toThrow('Provider model is not enabled')
@@ -158,7 +158,19 @@ describe('runtime Narrative Swipe', () => {
         group.candidates.find(candidate => candidate.id === group.activeCandidateId)!.status = 'running'
         store.transaction(tx).save(group, { expectedRevision: group.revision })
       })
-      await f.runtime.updateProviderProfile({ providerProfileId: f.provider.id, enabledModelIds: ['test'] })
+      await f.runtime.updateProviderProfile({ expectedVersion: (await f.runtime.listProviderProfiles()).providerProfiles.find(profile => profile.id === f.provider.id)!.version, providerProfileId: f.provider.id, enabledModelIds: ['test'] })
+      const beforeResume = await f.agents.getSession(f.session.id)
+      await expect(f.runtime.invokeAgentTurn(recovery!.request, {
+        agentRun: { runId: 'transcript-failure', onEvent: () => {}, continuation: {
+          ...recovery!.continuation,
+          recovery: { ...recovery!.continuation.recovery, toolContract: 'changed-contract' },
+        } },
+      })).rejects.toThrow('Agent tool contract changed')
+      expect(await f.read()).toMatchObject({ suspended: true })
+      expect(await f.agents.getSession(f.session.id)).toMatchObject({
+        headEntryId: beforeResume!.headEntryId, entryCount: beforeResume!.entryCount,
+      })
+      expect((await f.narratives.getBranch(f.target.branchId))!.headNodeId).toBe(head)
       f.configure({ completeNext: true })
       await f.runtime.invokeAgentTurn(recovery!.request, {
         agentRun: { runId: 'cold-resume', onEvent: () => {}, continuation: recovery!.continuation },
@@ -204,7 +216,7 @@ describe('runtime Narrative Swipe', () => {
       await f.runtime.createPromptResourceAsset({ resourceId: lore.id, targetAssetId: lore.rootNode.id, position: 'inside',
         asset: { id: 'current-rules', kind: 'entry', label: 'Current rules', body: 'CURRENT_RESOURCE_AFTER_A', capabilities: { targetAnchorId: '@lore.stable' } },
       })
-      await f.runtime.replaceLoreMounts({ source: { kind: 'preset', id: f.preset.id }, loreResourceIds: [lore.id] })
+      await f.runtime.replaceLoreMounts({ expectedMountIds: (await f.runtime.listLoreMounts({ source: { kind: 'preset', id: f.preset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: f.preset.id }, loreResourceIds: [lore.id] })
       f.configure({ content: 'CANDIDATE_B', coins: 60, beforeGenerate: async input => {
         expect((await f.narratives.getBranch(f.target.branchId))?.headNodeId).toBe('input')
         expect((await f.runtime.getStateSnapshot({ target: f.stateTarget })).snapshot.value).toMatchObject({ coins: 100 })

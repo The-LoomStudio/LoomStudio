@@ -77,6 +77,7 @@ export function createExtensionBatchImporter(input: {
             report.imported += 1
             if (sharedIds.length) await input.runtime.updateCardPromptResources({
               cardId: created.card.id,
+              expectedVersion: created.card.version,
               promptResourceIds: [...new Set([...(created.card.promptResourceIds ?? []), ...sharedIds])],
               externalPromptResourceIds: sharedIds,
             }, context)

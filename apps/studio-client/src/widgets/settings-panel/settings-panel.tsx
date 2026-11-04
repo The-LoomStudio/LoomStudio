@@ -61,6 +61,8 @@ export function SettingsPanel(props: {
   const setTokenMultiplier = useTokenDisplaySettings(state => state.setMultiplier)
   const previewBackgroundId = useAppearanceStore(state => state.scopedBackground && state.scopedBackground.cardId === props.backgroundCardId
     ? state.scopedBackground.id : state.background?.id ?? null)
+  const focusComposerOnStartup = useAppearanceStore(state => state.focusComposerOnStartup)
+  const setFocusComposerOnStartup = useAppearanceStore(state => state.setFocusComposerOnStartup)
   const previewFollowState = useAppearanceStore(state => state.followAI)
   const explicitOverrides = useAppearanceStore(state => state.explicitOverrides)
   const resetCanvasWidth = useAppearanceStore(state => state.resetCanvasWidth)
@@ -170,6 +172,13 @@ export function SettingsPanel(props: {
                     {supportedLocales.map(locale => <option key={locale} value={locale}>{localeLabels[locale]}</option>)}
                   </select>
                 </label>
+              </section>
+              <section className={styles.settingSection}>
+                <label className={styles.settingRow}>
+                  <span>{props.t('settings.focusComposerOnStartup')}</span>
+                  <input type="checkbox" checked={focusComposerOnStartup} onChange={event => setFocusComposerOnStartup(event.currentTarget.checked)} />
+                </label>
+                <p>{props.t('settings.focusComposerOnStartupHelp')}</p>
               </section>
               <section className={styles.settingSection}>
                 <label className={styles.settingRow} title={props.t('tokens.displayMultiplierHelp')}>

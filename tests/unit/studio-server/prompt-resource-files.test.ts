@@ -29,15 +29,15 @@ describe('Prompt Resource files', () => {
     index.rootNode.body = '../secret.md'
     await expect(loadPromptResourceFiles(index, async () => { throw new Error('must not read') })).rejects.toThrow('Unsafe')
   })
-  it('writes a file index and still reads legacy artifact ZIPs', () => {
+  it('writes current file indexes and rejects legacy artifact ZIPs', () => {
     const files = unzipSync(encodePromptResourceZip(artifact))
     expect(files['entries/0/0.md']).toBeDefined()
     for (const input of [artifact, { ...artifact, rootNode: { id: 'empty', kind: 'module' as const, label: 'Empty', children: [] } }]) {
       expect(decodePromptResourceZip(encodePromptResourceZip(input))).toEqual(input)
     }
-    expect(decodePromptResourceZip(zipSync({
+    expect(() => decodePromptResourceZip(zipSync({
       'manifest.json': new TextEncoder().encode(JSON.stringify({ schema: 'loom.promptResource.zip.v1', resourceKind: 'prompt', artifactPath: 'resource.json' })),
       'resource.json': new TextEncoder().encode(JSON.stringify(artifact)),
-    }))).toEqual(artifact)
+    }))).toThrow('Invalid Prompt Resource ZIP manifest')
   })
 })

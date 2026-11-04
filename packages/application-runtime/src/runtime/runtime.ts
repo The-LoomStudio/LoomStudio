@@ -1,11 +1,9 @@
-import { migrateLegacyRuleScriptsToMarkdown } from '../scripts/loom-script-markdown-migration.js'
 import { createResourceAuthoringRuntimeMethods } from './resource-authoring-runtime.js'
 import { createObservabilityRuntimeMethods } from './observability-runtime.js'
 import type { ObservationBuild } from '../observability/types.js'
 import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { initializeGlobalState } from '../state/state.js'
-import { obsoleteBuiltinAgentToolIds } from '../prompt/prompt-resource-defaults.js'
 import { isDeepStrictEqual } from 'node:util'
 import { officialAgentToolDefinitions } from '../agents/official-tools/index.js'
 import type {
@@ -18,12 +16,8 @@ import { createCardsRuntimeMethods } from './cards-runtime.js'
 import { createCardDirectoryRuntimeMethods } from './card-directory-sync.js'
 import { createNarrativeRuntimeMethods } from './narrative-runtime.js'
 import { createSwipeRuntimeMethods } from './swipe-runtime.js'
-import {
-  createAgentsRuntimeMethods,
-  refreshAgentToolRegistry,
-  toAgentToolContent,
-  toAgentToolDefinition,
-} from './agents-runtime.js'
+import { createAgentsRuntimeMethods } from './agents-runtime.js'
+import { refreshAgentToolRegistry, toAgentToolContent, toAgentToolDefinition } from '../agents/tool-catalog.js'
 import { createPromptRuntimeMethods } from './prompt-runtime.js'
 import { createSearchRuntimeMethods } from './search-runtime.js'
 import { createWorkspaceRuntimeMethods } from './workspace-runtime.js'
@@ -36,9 +30,8 @@ import {
   initializeOfficialFakeProviderProfiles,
 } from './providers-runtime.js'
 import { createExtensionsRuntimeMethods } from './extensions-runtime.js'
-import { migrateLegacyTextTransformRules } from '../scripts/loom-script-text-migration.js'
 import { setScriptExecutionStates } from '../scripts/loom-script-text-pipeline.js'
-import { createLoomScriptsRuntimeMethods, initializeLoomScriptAdoptions } from './loom-scripts-runtime.js'
+import { createLoomScriptsRuntimeMethods } from './loom-scripts-runtime.js'
 import { createOfficialContentRuntimeMethods } from './official-content-runtime.js'
 import { createMacroConfigurationRuntimeMethods } from './macros-runtime.js'
 import { buildExtensionPrompt } from '../prompt/extension-prompt.js'
@@ -60,23 +53,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     registerTimelineArchiveParticipant: ctx.timelineArchiveParticipants.register,
     setLoomScriptExecutionStates: states => setScriptExecutionStates(ctx.documents, states),
     initialize: async () => {
-      await migrateLegacyTextTransformRules(ctx)
-      const ruleMigration = await migrateLegacyRuleScriptsToMarkdown(ctx)
-      for (const skipped of ruleMigration.skipped) console.warn(`[rule.md migration] ${skipped.id}: ${skipped.reason}`)
-      await initializeLoomScriptAdoptions(ctx)
       await initializeGlobalState(ctx)
       await initializeOfficialFakeProviderProfiles(ctx)
       const timestamp = ctx.now()
-      for (const toolId of obsoleteBuiltinAgentToolIds) {
-        const document = await ctx.documents.get(toolId)
-        if (!document) continue
-        await ctx.documents.delete({
-          id: toolId,
-          expectedVersion: document.version,
-          actor: applicationActor,
-          reason: 'application.removeObsoleteBuiltinAgentTools',
-        })
-      }
       for (const definition of ctx.agentTools.list().map(tool =>
         officialAgentToolDefinitions.find(official => official.id === tool.id) ?? tool
       )) {

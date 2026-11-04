@@ -30,8 +30,8 @@ it('restores the requested tool only after startup effects finish, then shows it
   function Shell() {
     const [ready, setReady] = useState(false)
     const onDismissed = useCallback(() => setReady(true), [])
-    return h('main', null, h(StartupReady, { onDismissed }), h(StudioToolDialog, {
-      id: 'extensions', open: true, ready, title: '扩展', icon: null, closeLabel: '关闭', onClose: close,
+    return h('main', null, h<{ onDismissed?(): void }>(StartupReady, { onDismissed }), h(StudioToolDialog, {
+      id: 'extensions', open: true, ready, title: '扩展', icon: null, closeLabel: '关闭', onClose: close, onReturnToReading: vi.fn(),
       render: () => h(LazyPanel),
     }))
   }

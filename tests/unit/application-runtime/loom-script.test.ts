@@ -1,4 +1,6 @@
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
+import { createApplicationRuntimeContext } from '../../../packages/application-runtime/src/foundation/application-context.js'
+import { createLoomScriptsRuntimeMethods } from '../../../packages/application-runtime/src/runtime/loom-scripts-runtime.js'
 import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
@@ -10,7 +12,6 @@ import assert from 'node:assert/strict'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseLoomScriptSource, serializeLoomScriptMetadata } from '../../../packages/application-runtime/src/scripts/loom-script-codec.js'
 import { snapshotLoomScriptMounts } from '../../../packages/application-runtime/src/scripts/loom-script-resolution.js'
-import { initializeLoomScriptAdoptions } from '../../../packages/application-runtime/src/runtime/loom-scripts-runtime.js'
 
 const roots: string[] = []
 
@@ -19,6 +20,36 @@ afterEach(async () => {
 })
 
 describe('Loom Script codec and store', () => {
+  it('commits a scope import and disabled initial mount together, preserving declared ordering', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const target = { kind: 'card' as const, cardId: 'role' }
+      const source = '---\nid: scoped.rule\nname: Scoped\nregex: x\norder: 17\n---\ny'
+      const { script } = await runtime.importLoomScript({ owner: target, fileName: 'rule.md', source, mount: { target } })
+      const restarted = createApplicationRuntime(fixture)
+      expect((await restarted.listLoomScriptMounts({ target })).mounts).toEqual([
+        expect.objectContaining({ scriptDocumentId: script.id, target, orderIndex: 17, enabled: false,
+          grantedCapabilities: [], settings: {}, runtimeRevision: 0 }),
+      ])
+      expect((await restarted.exportLoomScript({ scriptDocumentId: script.id })).artifact.source).toBe(source)
+    } finally { await fixture.dataEngine.close() }
+  })
+
+  it('rolls back the script document when its initial mount cannot be created', async () => {
+    const fixture = await createFixture()
+    const runtime = createLoomScriptsRuntimeMethods({ ...createApplicationRuntimeContext(fixture), createId: prefix => {
+      if (prefix === 'loom-script-mount') throw new Error('mount write unavailable')
+      return `${prefix}-rollback`
+    } })
+    try {
+      await expect(runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'script.loom.js', source: source(),
+        mount: { target: { kind: 'user' }, orderIndex: 3 } })).rejects.toThrow('mount write unavailable')
+      expect((await runtime.listLoomScripts()).scripts).toEqual([])
+      expect((await runtime.listLoomScriptMounts()).mounts).toEqual([])
+    } finally { await fixture.dataEngine.close() }
+  })
+
   it('persists Markdown ordering without rewriting or restarting, and deletes its adoptions', async () => {
     const fixture = await createFixture()
     const runtime = createApplicationRuntime(fixture)
@@ -58,25 +89,6 @@ describe('Loom Script codec and store', () => {
         expect.objectContaining({ mountId: global.id, enabled: false, settings: {} }),
       ])
       expect((await runtime.getLoomScriptSettings({ mountId: global.id })).validationError).toContain('obsolete')
-    } finally { await fixture.dataEngine.close() }
-  })
-
-  it('preserves migrated preset inheritance on settings saves and clears it on explicit enabled changes', async () => {
-    const fixture = await createFixture()
-    const runtime = createApplicationRuntime(fixture)
-    try {
-      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'legacy.loom.js', source: source() })
-      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 0,
-        origin: { legacyPresetInheritance: true, legacyRuleId: 'old-rule' } })
-      const saved = (await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version,
-        enabled: false, orderIndex: 0, grantedCapabilities: [], settings: {} })).mount
-      expect(saved.origin).toEqual(mount.origin)
-      const enabled = (await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: saved.version,
-        enabled: true, orderIndex: 0, grantedCapabilities: ['state.read'] })).mount
-      expect(enabled.origin).toEqual({ legacyRuleId: 'old-rule' })
-      const disabled = (await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: enabled.version,
-        enabled: false, orderIndex: 0, grantedCapabilities: ['state.read'] })).mount
-      expect(disabled.origin).toEqual({ legacyRuleId: 'old-rule' })
     } finally { await fixture.dataEngine.close() }
   })
 
@@ -134,22 +146,26 @@ describe('Loom Script codec and store', () => {
     } finally { await fixture.dataEngine.close() }
   })
 
-  it('freezes existing enabled mounts once on startup before source edits', async () => {
+  it('captures the current revision on activation before source edits without startup repair', async () => {
     const fixture = await createFixture()
     const runtime = createApplicationRuntime(fixture)
     try {
-      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'legacy.loom.js', source: source() })
+      const { script } = await runtime.importLoomScript({ owner: { kind: 'user' }, fileName: 'snapshot.loom.js', source: source() })
       const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 0 })
-      const { id, version, ...content } = mount
-      await fixture.documents.write({ id, type: 'airp.loomScriptMount', expectedVersion: version,
-        content: { ...content, enabled: true, grantedCapabilities: ['state.read'] } })
-      await initializeLoomScriptAdoptions(fixture)
-      const adopted = (await runtime.listLoomScriptMounts()).mounts[0]!
-      expect(adopted.adoptedDocumentVersion).toBe(script.version)
-      await initializeLoomScriptAdoptions(fixture)
-      expect((await runtime.listLoomScriptMounts()).mounts[0]).toEqual(adopted)
-      await runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: 'legacy.loom.js', source: hostSource('client') })
+      expect(mount.adoptedDocumentVersion).toBeUndefined()
+      expect(mount.adoptedSettings).toBeUndefined()
+      const { mount: adopted } = await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version,
+        enabled: true, orderIndex: 0, grantedCapabilities: ['state.read'] })
+      expect(adopted).toMatchObject({ adoptedDocumentVersion: script.version, adoptedSettings: {}, runtimeRevision: 1 })
+      await runtime.updateLoomScript({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: 'snapshot.loom.js', source: hostSource('client') })
       expect((await runtime.resolveLoomScriptRendererMounts()).mounts[0]?.script.runtime).toBe('client-sandbox')
+      const { mount: pinned } = await runtime.createLoomScriptMount({ target: { kind: 'card', cardId: 'pinned-role' },
+        scriptDocumentId: script.id, orderIndex: 0, pinnedDocumentVersion: script.version })
+      const enabledPin = (await runtime.updateLoomScriptMount({ mountId: pinned.id, expectedVersion: pinned.version,
+        enabled: true, orderIndex: 0, grantedCapabilities: ['state.read'] })).mount
+      expect(enabledPin.adoptedDocumentVersion).toBe(script.version)
+      const refreshedPin = (await runtime.refreshLoomScriptMount({ mountId: enabledPin.id, expectedVersion: enabledPin.version })).mount
+      expect(refreshedPin.adoptedDocumentVersion).toBe(script.version)
     } finally { await fixture.dataEngine.close() }
   })
 
@@ -269,9 +285,9 @@ describe('Loom Script codec and store', () => {
         enabledMounts.push(enabled.mount)
       }
       if (mode === 'uninstall') {
-        await runtime.removeExtensionPackageResources({
+        await runtime.uninstallExtensionInstallation({
           packageId: 'example.scripts', target: { kind: 'card', cardId: card.id },
-          uninstall: true, expectedInstallationVersion: (await fixture.documents.get(installation.installationId))!.version,
+          expectedInstallationVersion: (await fixture.documents.get(installation.installationId))!.version,
         })
       } else {
         await runtime.deleteCard({ cardId: card.id, includePlayData: mode === 'delete-play-data', includePromptResources: true })

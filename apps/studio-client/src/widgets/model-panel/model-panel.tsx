@@ -1,4 +1,4 @@
-import { legacyChatProviderIds } from '../../features/provider-settings/model/chat-provider.js'
+import { officialChatProviderIds } from '../../features/provider-settings/model/chat-provider.js'
 import { useState, type FormEvent } from 'react'
 import { TextInput } from '@loom-studio/ui'
 import type {
@@ -39,7 +39,7 @@ export type ModelPanelProps = {
 
 export function ModelPanel(props: ModelPanelProps) {
   const [createError, setCreateError] = useState<string>()
-  const chatProviderAccounts = props.providerAccounts.filter(account => legacyChatProviderIds.has(account.providerExtensionId))
+  const chatProviderAccounts = props.providerAccounts.filter(account => officialChatProviderIds.has(account.providerExtensionId))
   const chatEndpoint = readChatCompletionsEndpoint(props.providerAccountDraft.baseUrl)
   const endpointWarning = isLikelyProviderEndpoint(props.providerAccountDraft.baseUrl)
 

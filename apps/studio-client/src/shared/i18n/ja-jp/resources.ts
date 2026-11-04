@@ -1,6 +1,12 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'context.anchors.title': "アンカー別に表示",
+  'context.anchors.hint': "各グループ内はファイルツリー順です。グループ順は閲覧用で、実際の配置は使用するプリセットが決めます。条件付き項目は候補であり、今回の有効化を示しません。",
+  'context.anchors.empty': "このLorebookに項目はありません。",
+  'context.anchors.unassigned': "アンカー未指定",
+  'context.anchors.unassignedHint': "注入先がないため、アンカーには注入されません。",
+  'context.anchors.disabled': "無効（上位による無効化を含む）",
   'promptResource.temporaryHint': "一時的に表示しています。現在のキャラクターには自動追加されません。",
   'dashboard.open': 'ダッシュボード',
   'promptResource.processingWarning': 'プロンプト処理で警告が発生しました。一部の Lore がスキップされた可能性があります。構築診断を確認してください。',
@@ -85,7 +91,6 @@ export const messages = {
   'context.anchorPicker.noAnchors': 'アンカーがありません',
   'context.anchorPicker.noResults': '一致するアンカーがありません',
   'context.metadata.targetAnchorPlaceholder': 'アンカーを入力または選択（例: @lore.stable）…',
-  'context.metadata.localDepth': 'ソート深度 (Depth)',
   'context.metadata.localOrder': 'ソート順序 (Order)',
   'context.metadata.zoneId': 'ターゲットアンカー',
   'context.metadata.zonePlaceholder': 'アンカーを入力または選択（例: @lore.stable）…',

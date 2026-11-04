@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { projectHistoryEntries, type TextTransformRuleEntry } from '../../../packages/application-runtime/src/transforms/history-text.js'
 import { convertSillyTavernRegexScripts, diagnoseSillyTavernRegexScripts } from '../../../extensions/st-data-compat/src/normalizer/regex.js'
 import { convertSillyTavernCard } from '../../../extensions/st-data-compat/src/normalizer/card.js'
 import { convertSillyTavernChat } from '../../../extensions/st-data-compat/src/parser/chat.js'
-import { MarkdownContent } from '../../../apps/studio-client/src/shared/ui/markdown-content/markdown-content.js'
 import { fingerprint } from '../../../extensions/st-data-compat/src/client/index.js'
 import { compatibleFileKind, normalizeScanPath } from '../../../extensions/st-data-compat/src/client/index.js'
 
 describe('SillyTavern compatibility', () => {
+  it.each(['regex_scripts', 'custom_regex_rules'] as const)('preserves Card top-level %s through the legacy import boundary', field => {
+    const { artifact } = convertSillyTavernCard({ spec: 'chara_card_v2', data: {
+      name: 'Legacy regex card', [field]: [{ findRegex: '/AA(.*?)AA/g', replaceString: '[$1]', trimStrings: ['#'], markdownOnly: true }],
+    } })
+    expect(artifact.textTransformRules).toMatchObject([{ captureRemove: ['#'], phases: ['display'] }])
+  })
+
   it('maps native regex scripts without changing replacement semantics', () => {
     const rules = convertSillyTavernRegexScripts([{
       scriptName: 'State',
@@ -60,10 +64,10 @@ describe('SillyTavern compatibility', () => {
     expect(diagnoseSillyTavernRegexScripts([{
       scriptName: 'Legacy',
       findRegex: '/x/',
-      trimStrings: ['$1'],
+      trimStrings: ['$1', '{{user}}'],
       runOnEdit: true,
     }])).toEqual([
-      'Legacy: trimStrings 无法在声明式 replacement 中逐捕获组等价映射',
+      'Legacy: trimStrings 中的 ST 宏暂不支持；字面量清理已保留',
       'Legacy: runOnEdit 被忽略，Loom 当前没有独立编辑阶段',
     ])
   })
@@ -115,7 +119,7 @@ describe('SillyTavern compatibility', () => {
     expect(entries[0].text).toBe('原文 [status]')
   })
 
-  it('preserves ST opening raw text and renders its lines as separate HTML paragraphs', () => {
+  it('preserves ST opening raw text including single and blank line breaks', () => {
     const opening = '第一行\n第二行\n\n第四行'
     const { artifact } = convertSillyTavernCard({
       spec: 'chara_card_v2',
@@ -129,11 +133,6 @@ describe('SillyTavern compatibility', () => {
     const imported = importedOpening.content
     expect(imported).toBe(opening)
     if (typeof imported !== 'string') throw new Error('Imported opening must contain text')
-    const html = renderToStaticMarkup(createElement(MarkdownContent, {
-      value: imported,
-      codeBlockLabels: { copy: 'Copy', copied: 'Copied', copyFailed: 'Failed', enableWrap: 'Wrap', disableWrap: 'Unwrap' },
-    }))
-    expect(html).toContain('<p>第一行</p>\n<p>第二行</p>\n<p>第四行</p>')
     expect(artifact.card.opening).toBe(importedOpening)
     expect(importedOpening.content).toBe(opening)
   })

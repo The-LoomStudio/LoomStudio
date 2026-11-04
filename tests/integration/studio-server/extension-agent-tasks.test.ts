@@ -42,6 +42,57 @@ describe('extension Agent task ownership', () => {
       await expect(tasks.read(owner, target, created.sessionId)).rejects.toThrow('does not belong')
     } finally { engine.close() }
   })
+  it.each(['registration', 'receipt'] as const)('closes the Run handoff when %s persistence fails', async failure => {
+    const clock = { createId: (prefix: string) => `${prefix}-${crypto.randomUUID()}`, now: () => new Date().toISOString() }
+    const engine = createSqliteDataEngine({ filename: ':memory:', ...clock })
+    const started = Promise.withResolvers<void>()
+    const cancelled = Promise.withResolvers<void>()
+    try {
+      const documents = createSqliteDocumentStore({ engine })
+      const runtime = createApplicationRuntime({ dataEngine: engine, documents,
+        agents: createAgentStore({ engine, ...clock }), narratives: createNarrativeStore({ engine, ...clock }),
+        promptResources: createPromptResourceStore({ engine, ...clock }),
+        gateway: { invokeChat: async ({ abortSignal }) => {
+          started.resolve()
+          if (failure === 'registration') await new Promise<never>((_resolve, reject) => {
+            const abort = () => { cancelled.resolve(); reject(new Error('Provider cancelled')) }
+            if (abortSignal!.aborted) abort()
+            else abortSignal!.addEventListener('abort', abort, { once: true })
+          })
+          return { provider: 'test', model: 'test-model', text: 'Recoverable output', message: { role: 'assistant', content: 'Recoverable output' } }
+        } },
+      })
+      const { providerProfile } = await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test-model'] })
+      const { agentPreset } = await runtime.createAgentPreset({ name: 'Task', model: { providerProfileId: providerProfile.id, modelId: 'test-model' } })
+      const { card } = await runtime.createCard({ name: 'Tasks' })
+      const { timeline, branch } = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const owner = { packageId: 'example.tasks', installationId: 'install' }
+      const target = { timelineId: timeline.id, branchId: branch.id }
+      const tasks = createExtensionAgentTasks({ runtime, documents })
+      const { sessionId } = await tasks.create(owner, target, { presetId: agentPreset.id })
+      const write = documents.write.bind(documents)
+      const spy = vi.spyOn(documents, 'write').mockImplementation(async input => {
+        if (input.id === `extension-agent-task:${sessionId}`) {
+          const content = input.content as Record<string, unknown>
+          if ((failure === 'registration' && content.runId && !content.result) || (failure === 'receipt' && content.result)) {
+            await started.promise
+            throw new Error('Task persistence failed')
+          }
+        }
+        return write(input)
+      })
+      await expect(tasks.invoke(owner, target, { sessionId, input: 'Work' })).rejects.toThrow('Task persistence failed')
+      spy.mockRestore()
+      if (failure === 'registration') await cancelled.promise
+      const snapshot = await tasks.read(owner, target, sessionId)
+      expect(snapshot.state).toBe(failure === 'registration' ? 'cancelled' : 'completed')
+      if (failure === 'receipt') {
+        const transcript = await runtime.getAgentTranscriptPage({ agentSessionId: sessionId, limit: 100 })
+        expect(transcript.entries.some(item => item.entry.kind === 'message' && item.entry.content === 'Recoverable output')).toBe(true)
+      }
+      await tasks.dispose(owner, target, sessionId)
+    } finally { engine.close() }
+  })
   it('runs an independent task through the model and cancels its active run without appending Narrative', async () => {
     const clock = { createId: (prefix: string) => `${prefix}-${crypto.randomUUID()}`, now: () => new Date().toISOString() }
     const engine = createSqliteDataEngine({ filename: ':memory:', ...clock })
@@ -148,7 +199,7 @@ describe('extension Agent task ownership', () => {
       const characterLore = await makeLore('character-lore', 'CHARACTER_BACKGROUND')
       await makeLore('global-lore', 'GLOBAL_LORE_SHOULD_NOT_LEAK')
       const { card } = await runtime.createCard({ name: 'Summary' })
-      await runtime.updateCardPromptResources({ cardId: card.id, promptResourceIds: [characterLore.resource.id] })
+      await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: card.id })).card.version, cardId: card.id, promptResourceIds: [characterLore.resource.id] })
       const { timeline, branch } = await runtime.createNarrativeTimeline({ cardId: card.id, openingContent: 'OLD_STORY_SHOULD_NOT_LEAK', extensionAdoptions: [] })
       const target = { timelineId: timeline.id, branchId: branch.id }
       const workspace = await runtime.getTimelineWorkspace(target)

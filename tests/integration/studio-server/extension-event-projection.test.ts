@@ -66,8 +66,9 @@ describe('Card extension platform event projection', () => {
       })
       const deleted = await documents.delete({ id: `A:${applicationDocumentTypes.textTransformRule}`, expectedVersion: 1, actor })
       for (const target of [a, b]) {
-        for (const input of [event('docs.changed', summarizeDocumentCommit(created.commit)), event('data.changed', summarizeDataCommit(created.commit))]) {
+        for (const input of [event('docs.changed', { ...summarizeDocumentCommit(created.commit) as JsonObject, chunk: { index: 1, count: 3 } }), event('data.changed', { ...summarizeDataCommit(created.commit) as JsonObject, chunk: { index: 1, count: 3 } })]) {
           const result = await projectExtensionEvent({ documents }, input, target)
+          expect(result!.payload).not.toHaveProperty('chunk')
           const operations = (result!.payload as JsonObject).operations as JsonObject[]
           expect(operations).toHaveLength(resourceTypes.length)
           expect(operations.every(operation => {

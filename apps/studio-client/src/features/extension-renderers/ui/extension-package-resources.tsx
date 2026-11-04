@@ -6,7 +6,7 @@ import { BookOpen, Braces, Code, ExternalLink, Info, Image, ListOrdered, Palette
 import type { ManagedExtensionPackage, PromptResource } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { PanelTabs } from '../../../shared/ui/panel-tabs/index.js'
-import { packageResourceEntries, packageResourceUrl, previewPackageResource, readPackageResource, type PackageResourceEntry, type PackageResourceKind } from '../model/package-resource-preview.js'
+import { packageResourceEntries, packageResourceUrl, previewPackageResource, readPackageResource, readPackageResourceSummary, type PackageResourceEntry, type PackageResourceKind } from '../model/package-resource-preview.js'
 import styles from './extension-package-resources.module.scss'
 
 export function ExtensionPackageTabs(props: { overview: ReactNode; resources: ReactNode; settings?: ReactNode; t: Translator }) {
@@ -68,10 +68,11 @@ function ResourceCard(props: Parameters<typeof ExtensionPackageResources>[0] & {
   const [infoOpen, setInfoOpen] = useState(false)
   const [opening, setOpening] = useState(false)
   const [navigationError, setNavigationError] = useState<string>()
+  const summaryKind = entry.kind === 'background' ? undefined : entry.kind
   const query = useQuery({
-    queryKey: ['extension-resource-preview', pkg.packageId, pkg.target, pkg.fileRevision ?? pkg.version, pkg.archiveDigest, entry.kind, entry.id, entry.source],
-    enabled: entry.kind !== 'background',
-    queryFn: async ({ signal }) => previewPackageResource(entry, await readPackageResource(packageResourceUrl(pkg, entry.source), signal)),
+    queryKey: ['extension-resource-summary', pkg.packageId, pkg.target, pkg.fileRevision ?? pkg.version, pkg.archiveDigest, entry.kind, entry.id, entry.source],
+    enabled: summaryKind !== undefined,
+    queryFn: ({ signal }) => readPackageResourceSummary(packageResourceUrl(pkg, entry.source), summaryKind!, signal),
   })
   const imported = props.promptResources.filter(resource => resource.origin?.kind === 'extension-package' && resource.origin.contributionId === entry.id)
   const title = query.data?.title ?? entry.label ?? imported[0]?.rootNode.label ?? entry.id
@@ -104,22 +105,37 @@ function ResourceCard(props: Parameters<typeof ExtensionPackageResources>[0] & {
       <div className={styles.information}>
         {description ? <p>{description}</p> : null}
         <dl><dt>{t('renderer.owner')}</dt><dd>{pkg.packageId}@{pkg.version}</dd><dt>ID</dt><dd>{entry.id}</dd><dt>{t('renderer.source')}</dt><dd>{entry.source}</dd>
-          {query.data?.facts?.map(fact => <div className={styles.fact} key={fact.kind}><dt>{t(`renderer.resourceFact.${fact.kind}`)}</dt><dd>{fact.value}</dd></div>)}
           {entry.parameters?.map((parameter, index) => <div className={styles.fact} key={index}><dt>{parameter.label}</dt><dd>{String(parameter.default)}</dd></div>)}
         </dl>
         {loading}{failure}
-        {query.data ? <section>
-          <h3>{t('renderer.resourceContent')}</h3>
-          {query.data.sections.length ? query.data.sections.map((section, index) => <section key={index}>
-            <h4>{section.label}</h4>
-            {section.source ? <ResourceBody pkg={pkg} source={section.source} t={t} /> : <pre>{section.body}</pre>}
-          </section>) : <pre>{query.data.source}</pre>}
-        </section> : null}
+        {entry.kind !== 'background' && <ResourceDetails pkg={pkg} entry={entry} t={t} />}
         {entry.kind === 'background' ? <img className={styles.background} src={packageResourceUrl(pkg, entry.source)} alt={title} /> : null}
         <section><h3>{t('renderer.resourceDeclaration')}</h3><pre>{JSON.stringify(entry.declaration, null, 2)}</pre></section>
       </div>
     </Dialog> : null}
   </article>
+}
+
+function ResourceDetails({ pkg, entry, t }: { pkg: ManagedExtensionPackage; entry: PackageResourceEntry; t: Translator }) {
+  const query = useQuery({
+    queryKey: ['extension-resource-preview', pkg.packageId, pkg.target, pkg.fileRevision ?? pkg.version, pkg.archiveDigest, entry.kind, entry.id, entry.source],
+    queryFn: async ({ signal }) => previewPackageResource(entry, await readPackageResource(packageResourceUrl(pkg, entry.source), signal)),
+  })
+  if (query.error) return <div role="alert"><p>{t('renderer.resourceLoadFailed')}: {query.error.message}</p>
+    <Button size="small" onClick={() => void query.refetch()}>{t('renderer.resourceRetry')}</Button></div>
+  if (!query.data) return <p role="status">{t('renderer.resourceLoading')}</p>
+  return <>
+    {query.data.facts?.length ? <dl>{query.data.facts.map(fact => <div className={styles.fact} key={fact.kind}>
+      <dt>{t(`renderer.resourceFact.${fact.kind}`)}</dt><dd>{fact.value}</dd>
+    </div>)}</dl> : null}
+    <section>
+      <h3>{t('renderer.resourceContent')}</h3>
+      {query.data.sections.length ? query.data.sections.map((section, index) => <section key={index}>
+        <h4>{section.label}</h4>
+        {section.source ? <ResourceBody pkg={pkg} source={section.source} t={t} /> : <pre>{section.body}</pre>}
+      </section>) : <pre>{query.data.source}</pre>}
+    </section>
+  </>
 }
 
 function ResourceBody(props: { pkg: ManagedExtensionPackage; source: string; t: Translator }) {

@@ -33,6 +33,26 @@ describe('Loom Markdown preview tokens', () => {
     )
   })
 
+  it.each([
+    '````text\n```\n{{player.name}} @assets/a.png\n```\n````',
+    '~~~~text\n~~~\n{% player.name %} @assets/a.png\n~~~\n~~~~',
+    '``code ` {{player.name}} @assets/a.png``',
+    '``code\n` {{player.name}} @assets/a.png``',
+    '```text\n{{player.name}} @assets/a.png',
+    '    {{player.name}} @assets/a.png',
+  ])('preserves Markdown code delimiters and contents in %s', value => {
+    expect(prepareLoomMarkdown(value)).toBe(value)
+  })
+
+  it('still transforms tokens after a long closing fence and beside inline code', () => {
+    const code = '````text\n```\n{{inside}}\n```\n````'
+    const value = prepareLoomMarkdown(`${code}\n{{outside}} and \`\`{{literal}} \`\` @assets/a.png`)
+    expect(value.startsWith(`${code}\n`)).toBe(true)
+    expect(value).toContain('``{{literal}} ``')
+    expect(value).toContain('[{{outside}}](loom-macro:')
+    expect(value).toContain('[@assets/a.png](loom-asset:')
+  })
+
   it('rejects malformed encoded tokens', () => {
     expect(readLoomToken('loom-asset:%E0%A4%A', 'loom-asset:')).toBeUndefined()
   })

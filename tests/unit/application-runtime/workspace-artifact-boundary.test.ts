@@ -8,7 +8,7 @@ import {
   readPromptResourceInputs,
   type CardBundleArtifact,
 } from '@loom-studio/application-runtime'
-import { isPromptResourceArtifact, normalizePromptResourceArtifact } from '../../../packages/application-runtime/src/cards/workspace.js'
+import { isPromptResourceArtifact, normalizePromptResourceArtifact } from '../../../packages/application-runtime/src/cards/card-bundle.js'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
@@ -30,7 +30,7 @@ describe('card bundle artifact boundary', () => {
     })
     const shared = first.card.promptResourceIds![0]!
     const own = first.card.promptResourceIds![1]!
-    await runtime.updateCardPromptResources({ cardId: second.card.id, promptResourceIds: [shared] })
+    await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: second.card.id })).card.version, cardId: second.card.id, promptResourceIds: [shared] })
     await runtime.deleteCard({ cardId: first.card.id, includePromptResources: true })
     expect(deletedIds).toEqual([first.card.id])
     expect(await fixture.promptResources.getResource(shared)).toBeTruthy()
@@ -162,15 +162,15 @@ describe('card bundle artifact boundary', () => {
     expect(reexported.externalContextAssetIds).toEqual([reexported.contextAssets[1]!.id])
 
     const runtime = createApplicationRuntime({ dataEngine: fixture.engine, documents: fixture.documents, promptResources: fixture.promptResources })
-    await expect(runtime.updateCardPromptResources({
+    await expect(runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: first.card.id })).card.version,
       cardId: first.card.id, promptResourceIds: first.card.promptResourceIds!, externalPromptResourceIds: ['missing'],
     })).rejects.toThrow('External prompt resources')
-    await runtime.updateCardPromptResources({
+    await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: first.card.id })).card.version,
       cardId: first.card.id, promptResourceIds: first.card.promptResourceIds!, externalPromptResourceIds: [],
     })
     expect((await exportCard(first.card.id)).externalContextAssetIds).toEqual([])
     expect((await exportCard(second.card.id)).externalContextAssetIds).toEqual(reexported.externalContextAssetIds)
-    await runtime.updateCardPromptResources({
+    await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: second.card.id })).card.version,
       cardId: second.card.id, promptResourceIds: [second.card.promptResourceIds![0]!],
     })
     expect((await exportCard(second.card.id)).externalContextAssetIds).toEqual([])
@@ -293,7 +293,7 @@ describe('card bundle artifact boundary', () => {
       const exported = await exportCardArtifact({ cardId: imported.card.id, documents: fixture.documents, promptResources: fixture.promptResources, blobs })
       expect(exported.schemaVersion).toBe(4)
       expect(exported.scriptAttachments).toEqual(artifact.scriptAttachments!.map(attachment => ({
-        ...attachment, textResourceIds: {}, textResourceReferences: {},
+        ...attachment, textResourceIds: {}, textResourceReferences: {}, loreNodeReferences: {}, loreResourceReferences: {},
       })))
     } finally {
       await rm(rootDirectory, { recursive: true, force: true })
@@ -338,7 +338,7 @@ describe('card bundle artifact boundary', () => {
       await runtime.updateLoomScriptMount({ mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 4, grantedCapabilities: [] })
 
       const exported = (await runtime.exportCardBundle({ cardId: card.id })).artifact
-      expect(exported.scriptAttachments).toEqual([{ orderIndex: 4, settings: {}, textResourceIds: {}, script: { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName, source: editedSource } }])
+      expect(exported.scriptAttachments).toEqual([{ orderIndex: 4, settings: {}, textResourceIds: {}, ...(saved.loreNodeReferences ? { loreNodeReferences: saved.loreNodeReferences } : {}), loreResourceReferences: saved.loreResourceReferences ?? {}, script: { format: 'loom.script', schemaVersion: 1, fileName: script.source.fileName, source: editedSource } }])
       expect((await runtime.getLoomScript({ scriptDocumentId: script.id })).script).toEqual(saved)
       const copy = (await runtime.importCardBundle({ artifact: exported })).card
       const copies = (await runtime.listLoomScripts({ owner: { kind: 'card', cardId: copy.id } })).scripts
@@ -348,7 +348,7 @@ describe('card bundle artifact boundary', () => {
         expect.objectContaining({ scriptDocumentId: copies[0]!.id, enabled: false, grantedCapabilities: [], orderIndex: 4 }),
       ])
       expect((await runtime.exportCardBundle({ cardId: copy.id })).artifact.scriptAttachments)
-        .toEqual(exported.scriptAttachments!.map(attachment => ({ ...attachment, textResourceReferences: {} })))
+        .toEqual(exported.scriptAttachments!.map(attachment => ({ ...attachment, textResourceReferences: {}, loreNodeReferences: {}, loreResourceReferences: {} })))
       expect((await runtime.getLoomScript({ scriptDocumentId: script.id })).script.owner).toEqual(script.owner)
       if (kind === 'card-extension') {
         expect(exported.extensionPackages).toHaveLength(1)
@@ -382,9 +382,13 @@ describe('card bundle artifact boundary', () => {
     const second = await importCardBundle({ artifact: exported, ...fixture })
     const runtime = createApplicationRuntime({ ...fixture })
     const rules = await runtime.listTextTransformRules()
-    expect(rules.rules).toEqual(expect.arrayContaining([first.card.id, second.card.id].map(cardId =>
-      expect.objectContaining({ ...artifact.textTransformRules![0], owner: { kind: 'card', cardId } }),
-    )))
+    expect(rules.rules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ...artifact.textTransformRules![0], owner: { kind: 'card', cardId: first.card.id } }),
+      expect.objectContaining({ ...artifact.textTransformRules![0], enabled: false, owner: { kind: 'card', cardId: second.card.id } }),
+    ]))
+    expect(new Set(rules.rules.map(rule => rule.id)).size).toBe(2)
+    expect((await runtime.listLoomScriptMounts({ target: { kind: 'card', cardId: second.card.id } })).mounts)
+      .toEqual([expect.objectContaining({ enabled: false })])
     const extractors = await fixture.documents.list({ type: 'airp.textExtractor' })
     expect(extractors.items).toEqual(expect.arrayContaining([first.card.id, second.card.id].map(cardId =>
       expect.objectContaining({ content: expect.objectContaining({ owner: { kind: 'card', cardId } }) }),
@@ -395,15 +399,15 @@ describe('card bundle artifact boundary', () => {
     expect((await runtime.listTextTransformRules()).rules).toHaveLength(2)
   })
 
-  it('accepts Prompt Resource v1 and normalizes portable Script attachments to v2', () => {
+  it('rejects Prompt Resource v1 and preserves current portable Script attachments', () => {
     const legacy = {
       format: 'loom.promptResource' as const,
       schemaVersion: 1 as const,
       resourceKind: 'preset' as const,
       rootNode: { id: 'preset-root', label: 'Preset', kind: 'module' as const },
     }
-    expect(isPromptResourceArtifact(legacy)).toBe(true)
-    expect(normalizePromptResourceArtifact(legacy).schemaVersion).toBe(2)
+    expect(isPromptResourceArtifact(legacy)).toBe(false)
+    expect(() => normalizePromptResourceArtifact(legacy as never)).toThrow('Unsupported Prompt Resource artifact schemaVersion')
 
     const portable = normalizePromptResourceArtifact({
       ...legacy,

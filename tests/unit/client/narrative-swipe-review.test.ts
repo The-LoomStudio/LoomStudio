@@ -1,7 +1,8 @@
+// @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
+import { settle, hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
 import { NarrativeSwipePicker } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-swipe-picker.js'
 import type { NarrativeSwipeView } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
@@ -18,9 +19,9 @@ async function connect(f: Awaited<ReturnType<typeof primaryFixture>>, swipe = vi
   const getSwipes = vi.fn(async () => ({ swipe }))
   f.input.api.narratives.getSwipes = getSwipes
   f.render()
-  const dispose = hooks.commitEffect?.()
-  await Promise.resolve()
-  await Promise.resolve()
+  const dispose = f.unmount
+  hooks.narrativeConnected()
+  await f.loadRoot()
   return { getSwipes, dispose }
 }
 
@@ -28,9 +29,9 @@ describe('Swipe production recovery review regressions', () => {
   it('requires confirmed regeneration for the retired base prefix of the same Session', async () => {
     const f = await primaryFixture()
     const { dispose } = await connect(f, { ...view(), requiresRegeneration: true })
-    await f.render().generateSwipe('swipe')
+    await settle(() => f.render().generateSwipe('swipe'))
     expect(f.createRun).not.toHaveBeenCalled()
-    await f.render().generateSwipe('regenerate', true)
+    await settle(() => f.render().generateSwipe('regenerate', true))
     expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({ narrativeTarget: expect.objectContaining({
       swipe: { groupId: 'group', mode: 'regenerate', expectedRevision: 4, allowSessionChange: true },
     }) }))
@@ -71,7 +72,7 @@ describe('Swipe production recovery review regressions', () => {
     const { getSwipes, dispose } = await connect(f)
     getSwipes.mockResolvedValue({ swipe: { ...view(), suspended: true, canGenerate: false, canSelect: false } })
     f.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 1, done: true, state: 'suspended' })
-    await f.render().generateSwipe('swipe')
+    await settle(() => f.render().generateSwipe('swipe'))
     expect(f.render().swipe?.suspended).toBe(true)
     getSwipes.mockResolvedValue({ swipe: view() })
     hooks.onCommit?.([{ entityType: 'agent.session', entityId: 'timeline' }])
@@ -87,12 +88,12 @@ describe('Swipe production recovery review regressions', () => {
     f.getTranscript.mockImplementation(async input => input.agentSessionId === other.id
       ? { session: other, entries: [] }
       : readTranscript(input))
-    await f.render().activateAgentSession(other)
+    await settle(() => f.render().activateAgentSession(other))
     const { dispose } = await connect(f)
     f.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 1, done: true, state: 'suspended' })
-    await f.render().generateSwipe('swipe')
+    await settle(() => f.render().generateSwipe('swipe'))
     await f.loadRoot()
-    await f.render().resumeRootRun()
+    await settle(() => f.render().resumeRootRun())
     expect(f.resumeRun).toHaveBeenCalledWith({ runId: 'run', agentSessionId: 'timeline' })
     expect(f.subscribeRun.mock.calls.at(-1)).toEqual(['continued', 0, 'timeline'])
     expect(f.render().agentSession?.id).toBe('other')

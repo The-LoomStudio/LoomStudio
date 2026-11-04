@@ -18,33 +18,19 @@ const storageKey = (endpoint: string) => `loom-studio-workspace:${endpoint}`
 
 export function readStudioWorkspace(value: unknown): StudioWorkspace | undefined {
   if (!isRecord(value) || (value.panel !== null && !STUDIO_PANEL_IDS.includes(value.panel as never))) return
-  const result: StudioWorkspace = { panel: value.panel === 'preset' ? 'agent' : value.panel as StudioRoute['panel'], search: '' }
-  for (const key of ['timelineId', 'branchId', 'cardId', 'resourceId', 'assetId', 'nodeId', 'referenceUri', 'targetUri'] as const) {
+  const result: StudioWorkspace = { panel: value.panel as StudioRoute['panel'], search: '' }
+  for (const key of ['timelineId', 'branchId', 'cardId', 'previewCardId', 'resourceId', 'assetId', 'nodeId', 'referenceUri', 'targetUri'] as const) {
     if (value[key] === undefined) continue
     if (typeof value[key] !== 'string' || (!value[key] && key !== 'targetUri') || value[key].length > 8192) return
     result[key] = value[key]
   }
   if (value.search !== undefined && typeof value.search !== 'string') return
   result.search = typeof value.search === 'string' ? value.search : ''
-  if (result.panel === 'sessions' || result.panel === 'play' && new URLSearchParams(result.search).has('sessionId')) {
-    const params = new URLSearchParams(result.search)
-    params.set('historyTab', params.has('sessionId') ? 'sessions' : 'timelines')
-    result.tool = 'recent'
-    result.toolSearch = params.toString()
-    result.panel = null
-    result.search = ''
-  }
   if (value.extensionWorkspace !== undefined && value.extensionWorkspace !== true) return
   if (value.extensionWorkspace === true && result.panel === 'extensions') result.extensionWorkspace = true
   if (value.tool !== undefined) {
     if (!isStudioTool(value.tool as StudioRoute['panel'])) return
     result.tool = value.tool as StudioToolId
-  }
-  if (isStudioTool(result.panel) && !result.extensionWorkspace) {
-    result.tool = result.panel
-    if (result.search) result.toolSearch = result.search
-    result.search = ''
-    result.panel = null
   }
   if (value.toolSearch !== undefined) {
     if (typeof value.toolSearch !== 'string') return
@@ -83,9 +69,10 @@ export function resolveStudioWorkspace(
     params.delete('target')
     params.delete('resourceRef')
     const route = readStudioRoute(location.pathname)
-    const legacySummary = route.panel === 'play' && params.has('sessionId')
-    const tool = route.panel === 'sessions' || legacySummary ? 'recent' : isStudioTool(route.panel) ? route.panel : undefined
-    if (legacySummary) params.set('historyTab', 'sessions')
+    const tool = isStudioTool(route.panel) ? route.panel : undefined
+    if (route.panel === 'text-transform') {
+      return { ...restored, panel: restored?.panel === 'text-transform' ? null : restored?.panel ?? null, search: restored?.search ?? '', tool: 'extensions', toolSearch: textTransformSearch(params) }
+    }
     return {
       ...(tool ? { ...restored, tool, panel: restored?.panel ?? null,
         ...(params.size ? { toolSearch: params.toString() } : {}) } : route),
@@ -98,11 +85,24 @@ export function resolveStudioWorkspace(
   if (isRecord(location.state) && isRecord(location.state.studioWorkspace)
     && location.state.studioWorkspace.endpoint === endpoint) {
     const stored = readStudioWorkspace(location.state.studioWorkspace.position)
-    if (stored) return stored
+    if (stored) return normalizeStudioWorkspace(stored)
   }
-  return restored ?? { panel: null, search: '' }
+  return restored ? normalizeStudioWorkspace(restored) : { panel: null, search: '' }
 }
 
 export function studioHistoryState(endpoint: string, position: StudioWorkspace) {
   return { studioWorkspace: { endpoint, position } }
+}
+
+export function textTransformSearch(params = new URLSearchParams()): string {
+  const search = new URLSearchParams({ extensionView: 'scripts', scriptFilter: 'rules' })
+  const id = params.get('ruleId') ?? params.get('extractorId')
+  if (id) search.set('scriptId', id)
+  else search.set('ruleInspector', '1')
+  return search.toString()
+}
+
+function normalizeStudioWorkspace(workspace: StudioWorkspace): StudioWorkspace {
+  if (workspace.panel !== 'text-transform') return workspace
+  return { ...workspace, panel: null, search: '', tool: 'extensions', toolSearch: textTransformSearch(new URLSearchParams(workspace.search)) }
 }

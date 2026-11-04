@@ -589,17 +589,17 @@ export type ClientExtensionActivationContext = {
     get(recordId: string): Promise<ExtensionRecordEntry | null>
   }
   configs: {
-    list(input?: { scope?: ExtensionStorageScope }): Promise<ExtensionConfigEntry[]>
-    get(input: { scope: ExtensionStorageScope; key: string }): Promise<ExtensionConfigEntry | null>
+    list(input?: { scope?: ExtensionStorageScope }): Promise<ClientConfigEntry[]>
+    get(input: { scope: ExtensionStorageScope; key: string }): Promise<ClientConfigEntry | null>
     upsert(input: {
       scope: ExtensionStorageScope
       key: string
       value: JsonValue
       expectedVersion?: number
-    }): Promise<ExtensionConfigEntry>
+    }): Promise<ClientConfigEntry>
     subscribe(
       input: { scope?: ExtensionStorageScope },
-      handler: (entries: ExtensionConfigEntry[]) => void | Promise<void>,
+      handler: (entries: ClientConfigEntry[]) => void | Promise<void>,
     ): ExtensionRegistrationHandle
   }
   state: {
@@ -916,6 +916,9 @@ export type ExtensionConfigEntry = {
   updatedAt: string
 }
 
+export type ScriptConfigEntry = Omit<ExtensionConfigEntry, 'packageId'> & { scriptDocumentId: string }
+export type ClientConfigEntry = ExtensionConfigEntry | ScriptConfigEntry
+
 export type ExtensionRecordEntry = {
   id: string
   packageId: string
@@ -1010,6 +1013,8 @@ export type ExtensionStateSubscription = {
 }
 
 export type ExtensionActivationContext = {
+  /** Independent Scripts expose their owner-isolated Config API here. */
+  configs?: ClientExtensionActivationContext['configs']
   /** Loom Script configuration captured at explicit activation/refresh; absent for ordinary extensions. */
   readonly scriptSettings?: Readonly<Record<string, string | number | boolean>>
   archives: { registerRecords(adapter: import('./narrative-work.js').ExtensionRecordArchive): ExtensionRegistrationHandle }
@@ -1212,3 +1217,5 @@ export type ServerExtensionModule = {
 export function defineServerExtension(module: ServerExtensionModule): ServerExtensionModule {
   return module
 }
+
+export { createScriptConfigClient } from './script-config-client.js'

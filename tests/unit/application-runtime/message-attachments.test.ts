@@ -44,12 +44,12 @@ describe('Session message attachments', () => {
   })
 
   it('requires CodeAct explicitly for text attachments', () => {
-    expect(() => mountMessageAttachments({}, storage(), [attachment], false)).toThrow('CodeAct enabled')
+    expect(() => mountMessageAttachments({ context: [] }, storage(), [attachment], false)).toThrow('CodeAct enabled')
   })
 
   it('mounts and lists lazily, then returns only the requested lines through ctx.read', async () => {
     const assets = storage()
-    const scope: ToolExecutionScope = {}
+    const scope: ToolExecutionScope = { context: [] }
     mountMessageAttachments(scope, assets, [attachment], true)
     expect(assets.read).not.toHaveBeenCalled()
     const context = createCodeActContext(scope)

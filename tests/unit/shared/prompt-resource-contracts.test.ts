@@ -7,14 +7,17 @@ import {
 describe('shared prompt resource contracts', () => {
   it('accepts the supported Setting Mount sources', () => {
     expect(replaceLoreMountsInputSchema.parse({
+      expectedMountIds: [],
       source: { kind: 'manual', id: 'global' },
       loreResourceIds: ['setting-1'],
     })).toEqual({
+      expectedMountIds: [],
       source: { kind: 'manual', id: 'global' },
       loreResourceIds: ['setting-1'],
     })
 
     expect(replaceLoreMountsInputSchema.parse({
+      expectedMountIds: [],
       source: { kind: 'preset', id: 'preset-1' },
       loreResourceIds: [],
     }).source).toEqual({ kind: 'preset', id: 'preset-1' })
@@ -22,6 +25,7 @@ describe('shared prompt resource contracts', () => {
 
   it('rejects invalid sources and malformed mount responses', () => {
     expect(replaceLoreMountsInputSchema.safeParse({
+      expectedMountIds: [],
       source: { kind: 'manual', id: 'workspace' },
       loreResourceIds: [],
     }).success).toBe(false)
@@ -30,7 +34,8 @@ describe('shared prompt resource contracts', () => {
       mounts: [{
         id: 'mount-1',
         loreResourceId: 'setting-1',
-        source: { kind: 'preset' },
+        expectedMountIds: [],
+      source: { kind: 'preset' },
         orderIndex: 0,
         origin: {},
         createdAt: '2026-09-14T00:00:00.000Z',

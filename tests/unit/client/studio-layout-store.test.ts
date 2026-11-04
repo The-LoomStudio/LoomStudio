@@ -3,7 +3,6 @@ import {
   createDefaultStudioLayout,
   sanitizeStudioLayout,
   useStudioLayoutStore,
-  useStudioPanelStore,
 } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 
 describe('studio layout store', () => {
@@ -17,7 +16,6 @@ describe('studio layout store', () => {
       setItem: vi.fn((key: string, value: string) => storedValues.set(key, value)),
     })
     useStudioLayoutStore.setState(createDefaultStudioLayout())
-    useStudioPanelStore.setState({ activePanel: null })
   })
 
   afterEach(() => vi.unstubAllGlobals())
@@ -27,6 +25,7 @@ describe('studio layout store', () => {
     store.setViewPreference('preset.configuration', 'tools')
     store.rememberPanelPosition('endpoint/card/logs', { search: 'logView=model' })
     const key = useStudioLayoutStore.persist.getOptions().name
+    if (!key) throw new Error('Layout persistence requires a storage key')
     const saved = storedValues.get(key)!
     expect(JSON.parse(saved).state.viewPreferences).toEqual({ 'preset.configuration': 'tools' })
     expect(JSON.parse(saved).state.panelPositions).toBeUndefined()
@@ -79,41 +78,22 @@ describe('studio layout store', () => {
 
   it('keeps window immersive mode global across all panel switches', () => {
     const layout = useStudioLayoutStore.getState()
-    const panels = useStudioPanelStore.getState()
 
     expect(layout.panelWindowMode).toBe('reference')
 
     layout.togglePanelWindowMode()
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
-    panels.syncActivePanel('agent')
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
-    panels.syncActivePanel('character')
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
-    panels.syncActivePanel('sessions')
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
     useStudioLayoutStore.getState().togglePanelWindowMode()
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('reference')
     expect(useStudioLayoutStore.getState()).not.toHaveProperty('panelWindowModes')
     expect(JSON.parse(storedValues.get('loom-studio-layout')!).state).not.toHaveProperty('panelWindowModes')
-  })
-
-  it('switches workspace panels without changing persisted layout data', () => {
-    const writesBefore = vi.mocked(localStorage.setItem).mock.calls.length
-    const store = useStudioPanelStore.getState()
-
-    store.syncActivePanel('character')
-    expect(useStudioPanelStore.getState().activePanel).toBe('character')
-
-    store.syncActivePanel('resource')
-    expect(useStudioPanelStore.getState().activePanel).toBe('resource')
-
-    store.syncActivePanel(null)
-    expect(useStudioPanelStore.getState().activePanel).toBeNull()
-    expect(vi.mocked(localStorage.setItem).mock.calls.length).toBe(writesBefore)
   })
 
   it('keeps window and explorer layouts isolated by page', () => {
@@ -210,30 +190,13 @@ describe('studio layout store', () => {
     })
   })
 
-  it('migrates legacy model, character and resource panel ids without changing asset layouts', () => {
-    expect(sanitizeStudioLayout({
-      activePanel: 'api',
-      assetLayouts: { resources: { explorerWidth: 340, views: {} } },
-      lastActivePanel: 'editor',
-      panelWindowModes: { api: 'reference', resources: 'immersive', editor: 'reference' },
-      panelWindowSizes: {
-        api: { width: 720, height: 600 },
-        resources: { width: 1080, height: 760 },
-        editor: { width: 900, height: 640 },
-      },
-    })).toMatchObject({
-      assetLayouts: { resources: { explorerWidth: 340, views: {} } },
-      panelWindowMode: 'immersive',
-      panelWindowSizes: {
-        model: { width: 720, height: 600 },
-        character: { width: 1080, height: 760 },
-        resource: { width: 900, height: 640 },
-      },
+  it('ignores old panel names and window preferences', () => {
+    expect(sanitizeStudioLayout({ activePanel: 'api', panelWindowModes: { resources: 'immersive' },
+      panelWindowSizes: { api: { width: 720, height: 600 } } })).toMatchObject({
+      dockOpen: false, panelWindowMode: 'reference', panelWindowSizes: {},
     })
-    expect(sanitizeStudioLayout({
-      panelWindowModes: { character: 'reference', resources: 'immersive' },
-    }).panelWindowMode).toBe('reference')
   })
+
 })
 
 describe('sanitizeStudioLayout', () => {
@@ -257,10 +220,7 @@ describe('sanitizeStudioLayout', () => {
         preset: { width: 900, height: 680 },
         resources: { width: Number.NaN, height: 600 },
       },
-      panelWindowModes: {
-        preset: 'immersive',
-        resources: 'oversized',
-      },
+      panelWindowMode: 'immersive',
       presetPanel: 'order',
       textEditorMode: 'preview',
       uiScale: 100,
@@ -327,7 +287,8 @@ describe('sanitizeStudioLayout', () => {
   })
 
   it('clamps and snaps the persisted interface scale', () => {
-    expect(sanitizeStudioLayout({ uiScale: 117 }).uiScale).toBe(115)
+    expect(sanitizeStudioLayout({ uiScale: 117 })).toMatchObject({ uiScale: 115, uiScaleOverridden: false })
+    expect(sanitizeStudioLayout({ uiScale: 117, uiScaleOverridden: true }).uiScaleOverridden).toBe(true)
     expect(sanitizeStudioLayout({ uiScale: 40 }).uiScale).toBe(80)
     expect(sanitizeStudioLayout({ uiScale: 180 }).uiScale).toBe(125)
   })

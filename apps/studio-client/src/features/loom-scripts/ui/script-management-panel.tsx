@@ -1,8 +1,10 @@
+import { RelatedLore } from '../../prompt-resources/ui/related-lore/related-lore.js'
+import { RuleUsageFields } from './rule-usage-fields.js'
 import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
 import { useWorkbenchView } from '../../../shared/studio-shell/use-workbench-view.js'
 import { Button, IconButton, Tabs, SearchField, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@loom-studio/ui'
-import { ChevronDown, Code2, Download, Folder, Plus, Power, ToggleLeft, ToggleRight, RefreshCw, Upload, X } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { ScanSearch, ChevronDown, Code2, Download, Folder, Plus, Power, ToggleLeft, ToggleRight, RefreshCw, Upload, X } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { loomScriptMediaType, resolveLoomScriptSettings, type LoomScriptMountTarget, type LoomScriptSettingDefinition, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { LoomScript, LoomScriptMount, LoomScriptOwner } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
@@ -22,6 +24,7 @@ const TextRulePreviewDialog = lazy(async () => ({ default: (await import('./text
 
 type ScriptDraft = { script?: LoomScript; owner: LoomScriptOwner; fileName: string; source: string; savedSource: string; savedFileName: string }
 type ScriptSettingsSnapshot = {
+  ruleDefaults?: Array<{ id: string; rule: import('@loom-studio/shared/loom-scripts').ScriptTextTransformRule }>
   definitions: LoomScriptSettingDefinition[]
   effective?: LoomScriptSettings
   saved: LoomScriptSettings
@@ -34,25 +37,33 @@ type ScriptSettingsSnapshot = {
 
 export function ScriptManagementPanel(props: {
   api: Pick<StudioApi['loomScripts'], 'list' | 'listMounts' | 'export' | 'import' | 'update' | 'createMount' | 'updateMount' | 'refreshMount'> & Partial<Pick<StudioApi['loomScripts'], 'preview' | 'getSettings' | 'removeMount' | 'remove' | 'reorder'>>
+  promptResourceApi?: StudioApi['promptResources']
+  onNavigate?(path: string): void
   initialScriptId?: string
   initialFilter?: 'rules' | 'runtime'
+  category?: 'rules' | 'runtime'
+  previewContext?: 'narrative' | 'agent-session'
   cardId?: string
   scopes?: Array<{ owner: LoomScriptOwner; target: LoomScriptMountTarget }>
   getOwnerName?(owner: LoomScriptOwner): string | undefined
+  onRelatedResourceChanged?(): void | Promise<void>
   onScriptsChanged(): void
   refreshToken?: number
+  onInspect?: () => void
   header?: ReactNode
   t: Translator
 }) {
   useSyncExternalStore(sceneScriptDevelopment.subscribe, sceneScriptDevelopment.revision, sceneScriptDevelopment.revision)
-  const [filter, setFilter] = useWorkbenchView<'rules' | 'runtime'>('scripts.filter', props.initialFilter ?? 'rules', ['rules', 'runtime'])
+  const [savedFilter, setFilter] = useWorkbenchView<'rules' | 'runtime'>('scripts.filter', props.initialFilter ?? 'rules', ['rules', 'runtime'])
   useEffect(() => { if (props.initialFilter) setFilter(props.initialFilter) }, [props.initialFilter])
+  const filter = props.category ?? savedFilter
+  const viewKey = props.category ? `scripts.${props.category}` : 'scripts'
   const [scripts, setScripts] = useState<LoomScript[]>([])
   const [mounts, setMounts] = useState<LoomScriptMount[]>([])
   const [draft, setDraft] = useState<ScriptDraft>()
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [detailTab, setDetailTab] = useWorkbenchView<'run' | 'source'>('scripts.detail', 'run', ['run', 'source'])
-  const [scopeTab, setScopeTab] = useWorkbenchView<'user' | 'card' | 'select'>('scripts.scope', 'user', props.cardId ? ['user', 'card', 'select'] : ['user', 'select'])
+  const [detailTab, setDetailTab] = useWorkbenchView<'run' | 'source'>(`${viewKey}.detail`, 'run', ['run', 'source'])
+  const [scopeTab, setScopeTab] = useWorkbenchView<'user' | 'card' | 'select'>(`${viewKey}.scope`, 'user', props.cardId ? ['user', 'card', 'select'] : ['user', 'select'])
   const [selectedOwner, setSelectedOwner] = useState<string>()
   const scope = scopeTab === 'select' && selectedOwner ? selectedOwner : scopeTab
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
@@ -61,7 +72,17 @@ export function ScriptManagementPanel(props: {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [tag, setTag] = useState('')
+  const [dirtyRuleUsageMounts, setDirtyRuleUsageMounts] = useState<Set<string>>(() => new Set())
+  const onRuleUsageDirtyChange = useCallback((id: string, dirty: boolean) => {
+    setDirtyRuleUsageMounts(current => {
+      if (current.has(id) === dirty) return current
+      const next = new Set(current)
+      if (dirty) next.add(id); else next.delete(id)
+      return next
+    })
+  }, [])
   const [settingsDrafts, setSettingsDrafts] = useState<Record<string, LoomScriptSettings>>({})
+  const [settingsPending, setSettingsPending] = useState(false)
   const [settingsSnapshots, setSettingsSnapshots] = useState<Record<string, ScriptSettingsSnapshot>>({})
   const inputRef = useRef<HTMLInputElement>(null)
   const requestRef = useRef(0)
@@ -70,7 +91,7 @@ export function ScriptManagementPanel(props: {
     if (!props.initialScriptId) { initialSelectionRef.current = undefined; return }
     if (initialSelectionRef.current === props.initialScriptId || busy) return
     const script = scripts.find(item => item.id === props.initialScriptId || item.contributions.some(contribution => contribution.kind !== 'renderer' && (item.textResourceIds?.[contribution.id] ?? `${item.id}:${contribution.id}`) === props.initialScriptId))
-    if (script) {
+    if (script && (!props.category || scriptMatchesFilter(script, props.category))) {
       initialSelectionRef.current = props.initialScriptId
       setScopeTab('user')
       if (!scriptMatchesFilter(script, filter)) setFilter(scriptMatchesFilter(script, 'rules') ? 'rules' : 'runtime')
@@ -118,10 +139,11 @@ export function ScriptManagementPanel(props: {
   useEffect(() => {
     if (!props.api.getSettings) return
     let active = true
-    setSettingsSnapshots({})
+    setSettingsPending(true)
     void Promise.all(selectedMounts.map(async mount => [mount.id, await props.api.getSettings!({ mountId: mount.id })] as const))
       .then(results => { if (active) setSettingsSnapshots(Object.fromEntries(results)) })
       .catch(cause => { if (active) setError(readError(cause)) })
+      .finally(() => { if (active) setSettingsPending(false) })
     return () => { active = false }
   }, [props.api, selectedMounts, draft?.script?.version])
 
@@ -132,7 +154,7 @@ export function ScriptManagementPanel(props: {
     try { await operation() } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
   }
   function canReplaceDraft() {
-    const accepted = !dirty && !settingsDirty || window.confirm('放弃尚未保存的脚本或配置修改？')
+    const accepted = !dirty && !settingsDirty && dirtyRuleUsageMounts.size === 0 || window.confirm('放弃尚未保存的脚本或配置修改？')
     if (accepted) setSettingsDrafts({})
     return accepted
   }
@@ -172,11 +194,10 @@ export function ScriptManagementPanel(props: {
     if (!canReplaceDraft()) return
     await run(async () => {
       const source = await file.text()
-      const { script } = await props.api.import({ owner: creationOwner, fileName: file.name, source })
+      const { script } = await props.api.import({ owner: creationOwner, fileName: file.name, source, mount: { target: ownerTarget(creationOwner) } })
       setDraft({ script, owner: script.owner, fileName: file.name, source, savedSource: source, savedFileName: file.name })
       setMobilePane('detail')
       setDetailTab('run')
-      await props.api.createMount({ target: ownerTarget(script.owner), scriptDocumentId: script.id, orderIndex: declaredOrder(script) })
       await load()
       notify.success(props.t('notify.success.imported'))
     })
@@ -187,15 +208,14 @@ export function ScriptManagementPanel(props: {
       const input = { fileName: draft.fileName, source: draft.source }
       const { script } = draft.script
         ? await props.api.update({ ...input, scriptDocumentId: draft.script.id, expectedVersion: draft.script.version })
-        : await props.api.import({ ...input, owner: draft.owner })
+        : await props.api.import({ ...input, owner: draft.owner, mount: { target: ownerTarget(draft.owner) } })
       setDraft({ ...draft, script, owner: script.owner, savedSource: draft.source, savedFileName: draft.fileName })
-      if (!draft.script) await props.api.createMount({ target: ownerTarget(script.owner), scriptDocumentId: script.id, orderIndex: declaredOrder(script) })
       await load()
       props.onScriptsChanged()
       notify.success(props.t('notify.success.saved'))
     })
   }
-  async function changeMount(mount: LoomScriptMount, patch: Partial<Pick<LoomScriptMount, 'enabled' | 'grantedCapabilities'>>) {
+  async function changeMount(mount: LoomScriptMount, patch: Partial<Pick<LoomScriptMount, 'enabled' | 'grantedCapabilities' | 'ruleUsage'>>) {
     await run(async () => {
       await props.api.updateMount({ mountId: mount.id, expectedVersion: mount.version, enabled: mount.enabled, orderIndex: mount.orderIndex, pinnedDocumentVersion: mount.pinnedDocumentVersion, grantedCapabilities: mount.grantedCapabilities, ...patch })
       await load()
@@ -211,7 +231,8 @@ export function ScriptManagementPanel(props: {
         orderIndex: mount.orderIndex, pinnedDocumentVersion: mount.pinnedDocumentVersion, grantedCapabilities: mount.grantedCapabilities, settings })
       setSettingsDrafts(current => { const next = { ...current }; delete next[mount.id]; return next })
       await load()
-      notify.success('配置已保存，刷新脚本后生效。')
+      props.onScriptsChanged()
+      notify.success(draft.script!.runtime === 'declarative' ? '配置已保存并生效。' : '配置已保存，刷新脚本后生效。')
     })
   }
   async function removeMount(mount: LoomScriptMount) {
@@ -354,8 +375,8 @@ export function ScriptManagementPanel(props: {
             <DropdownMenuItem onSelect={() => changeScope('select')}>单独选择</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Tabs<'rules' | 'runtime'> ariaLabel="脚本分类" size="compact" activeId={filter} onChange={setFilter}
-          items={[{ id: 'rules', label: '正则' }, { id: 'runtime', label: '脚本' }]} />
+        {!props.category && <Tabs<'rules' | 'runtime'> ariaLabel="脚本分类" size="compact" activeId={filter} onChange={setFilter}
+          items={[{ id: 'rules', label: '正则' }, { id: 'runtime', label: '脚本' }]} />}
       </div>
       <div data-loom-mobile-tab-scope="" style={{ display: 'contents' }}>
       <div className={styles.toolbar}>
@@ -366,8 +387,8 @@ export function ScriptManagementPanel(props: {
         </div>
       </div>
       <div data-loom-mobile-tab-scope="" style={{ display: 'contents' }}>
-      <Tabs<'rules' | 'runtime'> className={styles.filterTabs} ariaLabel="脚本分类" activeId={filter} onChange={setFilter}
-        items={[{ id: 'rules', label: '正则' }, { id: 'runtime', label: '脚本' }]} />
+      {!props.category && <Tabs<'rules' | 'runtime'> className={styles.filterTabs} ariaLabel="脚本分类" activeId={filter} onChange={setFilter}
+        items={[{ id: 'rules', label: '正则' }, { id: 'runtime', label: '脚本' }]} />}
       {(scope === 'select' || scopeOwner) && <div className={styles.sourcePicker}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="small" className={styles.sourceTrigger} disabled={busy} aria-label="选择脚本来源">
@@ -379,6 +400,7 @@ export function ScriptManagementPanel(props: {
         </DropdownMenu>
       </div>}
       <div className={styles.tools}>
+        {filter === 'rules' && props.onInspect && <IconButton size="small" aria-label="运行检查器" title="运行检查器" onClick={props.onInspect}><ScanSearch size={16} aria-hidden="true" /></IconButton>}
         <IconButton size="small" disabled={busy || scope === 'select'} aria-label={filter === 'rules' ? '新建规则' : '新建脚本'} title={filter === 'rules' ? '新建规则' : '新建脚本'} onClick={() => startNew(filter === 'rules')}><Plus size={16} aria-hidden="true" /></IconButton>
         <IconButton size="small" disabled={busy || scope === 'select'} aria-label="导入脚本或规则" title="导入脚本或规则" onClick={() => inputRef.current?.click()}><Upload size={16} aria-hidden="true" /></IconButton>
         <input ref={inputRef} hidden type="file" accept=".loom.js,.js,.md,text/javascript,text/markdown" aria-label="导入脚本" onChange={event => { const file = event.target.files?.[0]; event.currentTarget.value = ''; if (file) void importFile(file) }} />
@@ -418,7 +440,7 @@ export function ScriptManagementPanel(props: {
       </div></div>
     </div>}>
     <div data-loom-mobile-tab-scope="" className={styles.detail}>
-      {previewOpen && draft && props.api.preview && <Suspense fallback={null}><TextRulePreviewDialog key={draft.script?.id ?? 'new'} source={draft.source} name={draft.script?.name ?? '新规则'} onPreview={props.api.preview} t={props.t} onClose={() => setPreviewOpen(false)} /></Suspense>}
+      {previewOpen && draft && props.api.preview && <Suspense fallback={null}><TextRulePreviewDialog key={draft.script?.id ?? 'new'} source={draft.source} previewContext={props.previewContext} name={draft.script?.name ?? '新规则'} onPreview={props.api.preview} t={props.t} onClose={() => setPreviewOpen(false)} /></Suspense>}
       {error ? <p role="alert" className={styles.error}>{error}</p> : null}
       {draft ? <>
         <header className={styles.heading}>
@@ -449,7 +471,7 @@ export function ScriptManagementPanel(props: {
             const missing = draft.script!.requestedCapabilities.filter(capability => !mount.grantedCapabilities.includes(capability))
             const independentRules = draft.script!.contributions.some(contribution => contribution.kind !== 'renderer' && !contribution.requiresCode)
             const settings = settingsSnapshots[mount.id]
-            const settingsLoading = Boolean(props.api.getSettings && !settings)
+            const settingsLoading = Boolean(props.api.getSettings && (settingsPending || !settings))
             return <section className={styles.mount} key={mount.id} aria-label={`${label}脚本配置`}>
               <div className={styles.mountHeading}>
                 <div><strong>{label}</strong><div className={styles.muted}>{mount.enabled ? '已启用' : '已停用'}{mount.adoptedDocumentVersion !== undefined ? ` · 采用 v${mount.adoptedDocumentVersion}` : ''}</div></div>
@@ -464,7 +486,12 @@ export function ScriptManagementPanel(props: {
               {mount.enabled && mount.adoptedDocumentVersion !== undefined && mount.adoptedDocumentVersion !== draft.script!.version && <p className={styles.muted}>已保存新版，刷新此实例后生效。</p>}
               {settings?.validationError && <p role="alert" className={styles.error}>{settings.validationError}</p>}
               {settings?.definitions.length ? <p className={styles.muted}>配置声明来自 v{settings.documentVersion}{settings.documentVersion !== settings.adoptedDocumentVersion && mount.enabled ? '；刷新后采用此版本。' : ''}</p> : null}
-              <ScriptSettingsFields definitions={settings?.definitions ?? draft.script!.settings ?? []} values={settingsDrafts[mount.id] ?? settings?.saved ?? mount.settings ?? {}}
+              {props.promptResourceApi && props.onNavigate && settings?.ruleDefaults && <RelatedLore
+                references={settings.ruleDefaults.flatMap(item => item.rule.loreRefs ?? [])} api={props.promptResourceApi}
+                onNavigate={props.onNavigate} onChanged={props.onRelatedResourceChanged ?? props.onScriptsChanged} />}
+              {!!settings?.ruleDefaults?.length && <RuleUsageFields key={`${mount.id}:${mount.version}`} mountId={mount.id} rules={settings.ruleDefaults}
+                saved={mount.ruleUsage ?? {}} disabled={busy || settingsLoading} onDirtyChange={onRuleUsageDirtyChange} onSave={ruleUsage => changeMount(mount, { ruleUsage })} />}
+              <ScriptSettingsFields immediate={draft.script!.runtime === 'declarative'} definitions={settings?.definitions ?? draft.script!.settings ?? []} values={settingsDrafts[mount.id] ?? settings?.saved ?? mount.settings ?? {}}
                 inherited={settings?.inherited}
                 dirty={settingsDrafts[mount.id] !== undefined && !sameSettings(settingsDrafts[mount.id]!, mount.settings ?? {})}
                 disabled={busy || settingsLoading} pendingApply={mount.enabled && Boolean(settings?.effective && !sameSettings(settings.effective, settings.adopted ?? {}))}

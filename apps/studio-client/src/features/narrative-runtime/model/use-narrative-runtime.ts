@@ -620,7 +620,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         const selectedOpening = choice ?? (cardId === input.selectedCardId ? openingChoice
           : input.selectedCard && input.selectedCard.id === cardId ? { kind: 'card' as const, id: input.selectedCard.opening.id } : undefined)
         const result = await input.api.narratives.create({
-          cardId, ...(selectedOpening ? openingChoiceRequest(selectedOpening) : {}),
+          cardId, agentPresetId: input.selectedAgentPresetId, ...(selectedOpening ? openingChoiceRequest(selectedOpening) : {}),
           ...(setup ? { extensionAdoptions: setup.extensionAdoptions, playerProfile: setup.playerProfile } : {}),
           expectedCardVersion: cardVersion ?? (input.selectedCard?.id === cardId ? input.selectedCard.version : undefined),
         })
@@ -685,17 +685,21 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     }
   }
 
-  async function activateTimeline(timelineId: string, branchId?: string) {
+  async function activateTimeline(timelineId: string, branchId?: string, canActivate?: () => boolean) {
+    if (canActivate && !canActivate()) return
     let activatedBranchId: string | undefined
     const selection = beginAgentSelection()
     setAgentSessions([])
     await input.runLatestAction(async context => {
+      const isCurrent = () => context.isCurrent() && selection === agentSelectionRef.current
+        && input.api === cardSourceRef.current.api && (!canActivate || canActivate())
       try {
         const details = await input.api.narratives.get(timelineId)
+        if (!isCurrent()) return
         const nextBranch = resolveNarrativeBranch(details.branches, details.timeline.activeBranchId, branchId)
         if (!nextBranch) throw new Error(`Narrative timeline ${timelineId} has no active branch`)
         const page = await input.api.narratives.getPage({ timelineId, branchId: nextBranch.id, limit: 100 })
-        if (!context.isCurrent() || selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
+        if (!isCurrent()) return
         setTimeline(page.timeline)
         setBranch(page.branch)
         setBranches(details.branches)
@@ -704,13 +708,17 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         setPromptPreview(undefined)
         setLastRun(undefined)
         activateComposerDraft(page.timeline, page.branch)
-        await restoreAgentSession(timelineId, selection)
-        activatedBranchId = page.branch.id
+        await restoreAgentSession(timelineId, selection, undefined, isCurrent)
+        if (isCurrent()) activatedBranchId = page.branch.id
       } finally {
-        if (selection === agentSelectionRef.current) setAgentSessionLoading(false)
+        if (selection === agentSelectionRef.current) {
+          setAgentSessionLoading(false)
+          if (!isCurrent()) markAgentSessionReady(true)
+        }
       }
     })
     return input.api === cardSourceRef.current.api && selection === agentSelectionRef.current
+      && (!canActivate || canActivate())
       ? activatedBranchId
       : undefined
   }
@@ -730,6 +738,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     activateComposerDraft(undefined, undefined, composerInput)
   }
 
+  const [connectingInput, setConnectingInput] = useState<{ sessionId: string; branchId?: string }>()
   const pendingInterjections = useRef(new Map<string, { signature: string; requestId: string }>())
   async function submitInterjection(sessionId: string | undefined, content: string, mode: 'discussion' | 'narrative', attachments: typeof agentAttachments, accepted: () => void) {
     if (!sessionId || (!content.trim() && !attachments.values.length) || !attachments.ready) return
@@ -741,21 +750,27 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     const previous = pendingInterjections.current.get(sessionId)
     const pending = previous?.signature === signature ? previous : { signature, requestId: createId() }
     pendingInterjections.current.set(sessionId, pending)
-    await input.runAction(async () => {
-      const result = await input.api.agentSessions.submitInterjection({ ...request, requestId: pending.requestId })
-      pendingInterjections.current.delete(sessionId)
-      attachments.clear()
-      if (sourceApi !== cardSourceRef.current.api || cardSourceRef.current.disposed) return
-      if (sessionId === timeline?.id && displayedNarrativeRef.current.timelineId === sessionId && displayedNarrativeRef.current.branchId === targetBranchId) {
-        accepted()
-        root.acceptEntry(result.entry)
-        if ('runId' in result && result.runId) await root.executeStarted(result.runId)
-      } else if (agentSessionRef.current?.id === sessionId) {
-        accepted()
-        setAgentTranscriptEntries(current => current.some(entry => entry.id === result.entry.id) ? current : [...current, result.entry])
-        if ('runId' in result && result.runId) followSessionRun(sessionId, result.runId, content)
-      }
-    })
+    const connecting = { sessionId, branchId: targetBranchId }
+    if (sessionId === timeline?.id) setConnectingInput(connecting)
+    try {
+      await input.runAction(async () => {
+        const result = await input.api.agentSessions.submitInterjection({ ...request, requestId: pending.requestId })
+        pendingInterjections.current.delete(sessionId)
+        attachments.clear()
+        if (sourceApi !== cardSourceRef.current.api || cardSourceRef.current.disposed) return
+        if (sessionId === timeline?.id && displayedNarrativeRef.current.timelineId === sessionId && displayedNarrativeRef.current.branchId === targetBranchId) {
+          accepted()
+          root.acceptEntry(result.entry)
+          if ('runId' in result && result.runId) await root.executeStarted(result.runId)
+        } else if (agentSessionRef.current?.id === sessionId) {
+          accepted()
+          setAgentTranscriptEntries(current => current.some(entry => entry.id === result.entry.id) ? current : [...current, result.entry])
+          if ('runId' in result && result.runId) followSessionRun(sessionId, result.runId, content)
+        }
+      })
+    } finally {
+      setConnectingInput(current => current === connecting ? undefined : current)
+    }
   }
 
   async function submitTurn(event: FormEvent) {
@@ -1303,15 +1318,18 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     return sessions
   }
 
-  async function restoreAgentSession(timelineId: string | undefined, selection: number, selectedId?: string) {
+  async function restoreAgentSession(timelineId: string | undefined, selection: number, selectedId?: string, canActivate?: () => boolean) {
+    const isCurrent = () => selection === agentSelectionRef.current && input.api === cardSourceRef.current.api
+      && (!canActivate || canActivate())
     const sessions = await listAgentSessions(timelineId)
-    if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
+    if (!isCurrent()) return
     setAgentSessions(sessions)
     const selected = sessions.find(item => item.id === selectedId) ?? sessions[0]
     if (selected) {
       const transcript = await loadTranscript(input.api, selected.id, true)
+      if (!isCurrent()) return
       const restoredRun = await resolveSessionRun(input.api, selected.id, transcript.entries)
-      if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
+      if (!isCurrent()) return
       publishAgentSession(transcript.session)
       setAgentTranscriptEntries(current => retainRunPresentation(current, transcript.entries))
       setActiveAgentRun(restoredRun)
@@ -1477,12 +1495,16 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     rootMessages: root.entries,
     approveRootMutation: root.approve,
     rootActiveRun: root.activeRun,
+    rootConnecting: root.connecting || Boolean(connectingInput && connectingInput.sessionId === timeline?.id && connectingInput.branchId === branch?.id),
     rootRecovery: root.recovery,
     reconnectRootRun: async () => { await input.runAction(root.reconnect) },
     pauseRootRun: () => input.runAction(root.pause),
     resumeRootRun: () => input.runAction(root.resume),
     abandonRootRun: async () => { await input.runAction(root.abandon) },
-    configureRoot: (patch: Parameters<typeof root.configure>[0]) => input.runAction(() => root.configure(patch)),
+    configureRoot: (patch: Parameters<typeof root.configure>[0]) => input.runAction(async () => {
+      await root.configure(patch)
+      if (patch.agentPresetId !== undefined) input.onSelectAgentPreset(patch.agentPresetId)
+    }),
     inputMode, setInputMode,
     createAgentSession,
     setPrimaryAgentSession,

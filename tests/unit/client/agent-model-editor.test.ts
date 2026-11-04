@@ -124,7 +124,7 @@ describe('Agent model slot', () => {
 
 function pickerFixture() {
   const editor = fixture()
-  const account = { id: 'provider', version: 1, providerExtensionId: 'openai', displayName: 'My OpenAI', config: {},
+  const account = { id: 'provider', version: 1, providerExtensionId: 'official.openai', displayName: 'My OpenAI', config: {},
     enabledModelIds: ['saved'], credential: { configured: true }, createdAt: '', updatedAt: '' }
   const props: ComponentProps<typeof AgentModelPicker> = {
     ...editor.picker(), providerAccounts: [account, { ...account, id: 'other', displayName: 'Other account', enabledModelIds: [] }],

@@ -6,7 +6,7 @@ import { createStudioHttpServer } from '../../../apps/studio-server/src/http/htt
 
 const viteOrigin = 'http://127.0.0.1:18011'
 const configuredOrigin = 'https://localhost:5443'
-const rpcBody = JSON.stringify({ presetId: 'control', mounts: [] })
+const rpcBody = JSON.stringify({ presetId: 'control', expectedMountIds: [], mounts: [] })
 
 describe('protected HTTP Origin boundary', () => {
   let server: ReturnType<typeof createStudioHttpServer>

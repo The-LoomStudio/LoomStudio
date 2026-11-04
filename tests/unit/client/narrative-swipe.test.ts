@@ -1,6 +1,7 @@
+// @vitest-environment happy-dom
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { describe, expect, it, vi } from 'vitest'
-import { hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
+import { settle, hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
 import type { NarrativeSwipeView } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 
 const view = (changes: Partial<NarrativeSwipeView> = {}): NarrativeSwipeView => ({
@@ -18,16 +19,16 @@ async function swipeFixture(swipe = view()) {
   f.input.api.narratives.getSwipes = getSwipes
   f.input.api.narratives.selectSwipe = selectSwipe
   f.render()
-  const dispose = hooks.commitEffect?.()
-  await Promise.resolve()
-  await Promise.resolve()
+  const dispose = f.unmount
+  hooks.narrativeConnected()
+  await f.loadRoot()
   return { ...f, getSwipes, selectSwipe, dispose }
 }
 
 describe('Narrative Swipe wiring', () => {
   it('submits an edited input atomically through Swipe without modifying the continuation draft', async () => {
     const f = await swipeFixture()
-    await f.render().generateSwipe('swipe', false, 'Different direction')
+    await settle(() => f.render().generateSwipe('swipe', false, 'Different direction'))
     expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({ narrativeTarget: expect.objectContaining({
       swipe: { groupId: 'group', mode: 'swipe', expectedRevision: 4, input: 'Different direction' },
     }) }))
@@ -65,7 +66,7 @@ describe('Narrative Swipe wiring', () => {
 
   it('selects a completed candidate with revision and head CAS, keeping the draft', async () => {
     const f = await swipeFixture()
-    await f.render().selectSwipe('b')
+    await settle(() => f.render().selectSwipe('b'))
     expect(f.selectSwipe).toHaveBeenCalledWith({ timelineId: 'timeline', branchId: 'branch',
       groupId: 'group', candidateId: 'b', expectedRevision: 4, expectedHeadNodeId: null })
     expect(f.render().swipe?.selectedCandidateId).toBe('b')
@@ -77,7 +78,8 @@ describe('Narrative Swipe wiring', () => {
 
   it.each(['swipe', 'regenerate', 'retry'] as const)('creates %s on the original input without appending or clearing the draft', async mode => {
     const f = await swipeFixture()
-    await f.render().generateSwipe(mode)
+    f.getPage.mockClear()
+    await settle(() => f.render().generateSwipe(mode))
     await f.loadRoot()
     expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({
       agentSessionId: 'timeline', input: '', narrativeTarget: {
@@ -96,8 +98,8 @@ describe('Narrative Swipe wiring', () => {
 
   it('does not select or generate while suspended even with stale permissions', async () => {
     const f = await swipeFixture(view({ suspended: true }))
-    await f.render().selectSwipe('b')
-    await f.render().generateSwipe('swipe')
+    await settle(() => f.render().selectSwipe('b'))
+    await settle(() => f.render().generateSwipe('swipe'))
     expect(f.selectSwipe).not.toHaveBeenCalled()
     expect(f.createRun).not.toHaveBeenCalled()
     f.dispose?.()
@@ -105,9 +107,9 @@ describe('Narrative Swipe wiring', () => {
 
   it('requires confirmed regeneration when the primary session changes', async () => {
     const f = await swipeFixture(view({ sourceAgentSessionId: 'old-session' }))
-    await f.render().generateSwipe('swipe')
+    await settle(() => f.render().generateSwipe('swipe'))
     expect(f.createRun).not.toHaveBeenCalled()
-    await f.render().generateSwipe('regenerate', true)
+    await settle(() => f.render().generateSwipe('regenerate', true))
     expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({ narrativeTarget: expect.objectContaining({
       swipe: { groupId: 'group', mode: 'regenerate', expectedRevision: 4, allowSessionChange: true },
     }) }))
@@ -117,7 +119,7 @@ describe('Narrative Swipe wiring', () => {
   it('reports selection errors and leaves the current candidate unchanged', async () => {
     const f = await swipeFixture()
     f.selectSwipe.mockRejectedValueOnce(new Error('Revision conflict'))
-    await f.render().selectSwipe('b')
+    await settle(() => f.render().selectSwipe('b'))
     expect(f.reportFailure).toHaveBeenCalledWith(expect.objectContaining({ message: 'Revision conflict' }))
     expect(f.render().swipe?.selectedCandidateId).toBe('a')
     expect(f.render().swipeBusy).toBe(false)

@@ -6,11 +6,13 @@ import type { StepToolItem } from '../model/transcript-render-items.js'
 import styles from './agent-tool-blocks.module.scss'
 export function ToolCollapse(props: {
   open: boolean
+  id?: string
   className?: string
   children: ReactNode
 }) {
   return (
     <div
+      id={props.id}
       className={`${styles.toolCollapse} ${props.className ?? ''}`}
       data-open={props.open}
       aria-hidden={!props.open}
@@ -122,7 +124,7 @@ export function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolea
       </button>
 
       <ToolCollapse open={open}>
-        {props.followWork ? <StreamingViewport label="工具参数与结果" active={open} onInspect={props.onInspect}>{detail}</StreamingViewport> : detail}
+        {props.followWork ? <StreamingViewport showLatest={false} label="工具参数与结果" active={open} streaming={props.status === 'preparing' || props.status === 'running'} onInspect={props.onInspect}>{detail}</StreamingViewport> : detail}
       </ToolCollapse>
     </div>
   )

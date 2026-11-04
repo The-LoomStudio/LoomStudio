@@ -12,6 +12,9 @@ import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import type { ObservationMessage } from '../../features/observability/model/observation-view.js'
 import styles from '../../features/observability/ui/observability-workbench.module.scss'
 import { ObservationRawData } from '../../features/observability/ui/observation-dialog.js'
+import { ObservationMessages, ObservationMessageCard } from '../../features/observability/ui/observation-messages.js'
+import { useTokenCounts } from '../../shared/tokenizer/use-token-counts.js'
+import { messageTokenParts, sumTokenParts } from '../../features/observability/model/observation-token-view.js'
 import { groupMacroReads } from '../../features/observability/model/observation-variables.js'
 
 import { ObservationSources } from '../../features/observability/ui/observation-sources.js'
@@ -114,8 +117,7 @@ function RecordView({ record, onSelectStep, stepNotice }: { record: ObservationR
   useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0 }, [step?.id, view])
   return <section data-loom-mobile-tab-scope="" ref={scroller} className={styles.detail} aria-label={record.title}>
     <div className={styles.recordHeading}>
-      <div className={styles.eyebrow}>{kindNames[record.kind]} · {record.time}</div>
-      <h2><LogOrigin source={record.source} title={record.title} /><Status status={record.status} /><IconButton aria-label={t('observation.identifiers')} onClick={() => setInfoOpen(true)}><Info size={16} /></IconButton></h2>
+      <h2><LogOrigin source={record.source} title={record.title} metadata={<span className={styles.eyebrow}>{kindNames[record.kind]} · <time>{record.time}</time></span>} /><Status status={record.status} /><IconButton aria-label={t('observation.identifiers')} onClick={() => setInfoOpen(true)}><Info size={16} /></IconButton></h2>
       <Dialog className={styles.identityDialog} open={infoOpen} title={t('observation.identifiers')} onClose={() => setInfoOpen(false)} closeOnBackdrop>
         <div className={styles.identitySections}>
           <section className={styles.identitySection}><h3>{t('observation.runInfo')}</h3><p>{kindNames[record.kind]} · {record.time} · {record.origin}</p></section>
@@ -143,15 +145,13 @@ function RecordView({ record, onSelectStep, stepNotice }: { record: ObservationR
         {stepNotice ?? <>
         {view === 'messages' && (step.capability ? <><h3>{t('observation.capabilityInput')}</h3><p className={styles.hint}>{[step.capability.providerId, step.capability.capabilityId].filter(Boolean).join(' / ')}</p><ObservationRawData title={t('observation.capabilityInput')} text={step.capabilityInput} t={t} /></> : <>
           <div className={styles.sectionHeading}><h3>{t(step.kind === 'build' ? 'observation.inputMessages' : 'observation.stepMessages')}</h3>{step.kind !== 'build' && <Button size="small" aria-pressed={changesOnly} onClick={() => setChangesOnly(!changesOnly)}>{t(changesOnly ? 'observation.allMessages' : 'observation.changedMessages')}</Button>}</div>
+          <InputMessages step={step} changesOnly={step.kind !== 'build' && changesOnly} onSource={id => { setSourceId(id); setView('build') }} />
           {step.kind !== 'build' && <>
+            {step.reasoning && <div className={styles.stepOutput}><h4>{t('agent.reasoning')}</h4><MessageReader message={step.reasoning} onSource={() => {}} /></div>}
             {step.response && <div className={styles.stepOutput}><h4>{t('observation.assistantContent')}</h4><MessageReader message={step.response} onSource={() => {}} /></div>}
             {!!step.tools.length && <div className={styles.stepOutput}><h4>{t('observation.toolCalls')}</h4>{step.tools.map(tool => <ToolReader key={tool.id} tool={tool} />)}</div>}
-            {!step.response && !step.tools.length && <p className={styles.hint}>{t(step.outputRecorded ? 'observation.noAssistantOutput' : 'observation.outputMissing')}</p>}
+            {!step.response && !step.reasoning && !step.tools.length && <p className={styles.hint}>{t(step.outputRecorded ? 'observation.noAssistantOutput' : 'observation.outputMissing')}</p>}
           </>}
-          {step.kind === 'build' ? <InputMessages step={step} changesOnly={false} onSource={id => { setSourceId(id); setView('build') }} /> : <details key={`${step.id}:${changesOnly}`} className={styles.requestInput} open={!changesOnly}>
-            <summary>{t('observation.inputMessages')} · {step.messages.length}<small>{t('observation.inputContextHint')}</small></summary>
-            <InputMessages step={step} changesOnly={changesOnly} onSource={id => { setSourceId(id); setView('build') }} />
-          </details>}
         </>)}
         {view === 'build' && <>
           <ObservationSources renderSourceIcon={props => <ObservationSourceIcon {...props} />} key={step.id} sources={step.sources} selectedId={sourceId} onSelect={setSourceId} scroller={scroller} t={t} />
@@ -179,7 +179,7 @@ function RecordView({ record, onSelectStep, stepNotice }: { record: ObservationR
           {!step.variables.length && <Empty title={step.evidence && !step.evidence.variables ? t('observation.variablesMissing') : t('observation.variablesEmpty')} description={t('observation.variablesEvidence')} />}
         </>}
         {view === 'tools' && <>
-          <ObservationRawData title={`${t('observation.toolDefinitions')} · ${step.toolDefinitions?.length ?? '—'}`} value={step.toolDefinitions} text={step.toolDefinitions === undefined ? t('observation.toolDefinitionsMissing') : undefined} t={t} />
+          <ToolDefinitions definitions={step.toolDefinitions} />
           <h3>{t('observation.toolCalls')}</h3>
           {step.tools.map(tool => <ToolReader key={tool.id} tool={tool} />)}
           {!step.tools.length && <Empty title={step.evidence && !step.evidence.tools ? t('observation.toolsMissing') : t('observation.toolsEmpty')} description={t('observation.toolsHint')} />}
@@ -193,17 +193,34 @@ function RecordView({ record, onSelectStep, stepNotice }: { record: ObservationR
 
 function InputMessages({ step, changesOnly, onSource }: { step: ObservationStep; changesOnly: boolean; onSource(id?: string): void }) {
   const t = useContext(ObservationTranslation)
-  const [showUnchanged, setShowUnchanged] = useState(false)
-  const filtered = changesOnly && step.canCompare && !showUnchanged
-  return <div className={styles.inputMessageList}>
-    <p className={styles.hint}>{t(step.kind === 'build' ? 'observation.buildHint' : 'observation.requestHint')}</p>
-    {step.comparison && <p className={styles.hint}>{step.comparison}</p>}
-    {!step.canCompare && step.kind !== 'build' && <p className={styles.hint}>{t(step.initialInput ? 'observation.initialInput' : 'observation.comparisonMissing')}</p>}
-    {filtered && step.messages.some(message => !message.change) && <button type="button" className={styles.unchangedMessages} onClick={() => setShowUnchanged(true)}>{t('observation.unchangedCount', { count: step.messages.filter(message => !message.change).length })}<ChevronRight size={14} /></button>}
-    {step.evidence && !step.evidence.messages && <Empty title={t('observation.messagesMissing')} description={t('observation.messagesMissingHint')} />}
-    {step.messages.filter(message => !filtered || message.change).map(message => <MessageReader key={message.id} message={message} index={step.messages.indexOf(message)} onSource={() => onSource(message.sourceId)} />)}
-    {!!step.removedMessages?.length && <details className={styles.removedMessages}><summary>{t('observation.removedCount', { count: step.removedMessages.length })}</summary>{step.removedMessages.map(message => <MessageReader key={message.id} message={message} onSource={() => {}} />)}</details>}
-  </div>
+  return <ObservationMessages key={step.id} step={step} changesOnly={changesOnly} onSource={onSource} t={t} />
+}
+
+function ToolDefinitions({ definitions }: { definitions: ObservationStep['toolDefinitions'] }) {
+  const t = useContext(ObservationTranslation)
+  return <section className={styles.toolDefinitions}>
+    <div className={styles.sectionHeading}><h3>{t('observation.toolDefinitions')} · {definitions?.length ?? '—'}</h3><ObservationRawData icon title={`${t('observation.toolDefinitions')} · JSON`} value={definitions} t={t} /></div>
+    {definitions === undefined && <p className={styles.hint}>{t('observation.toolDefinitionsMissing')}</p>}
+    {definitions?.map((value, index) => {
+      const raw = toolObject(value)
+      const definition = toolObject(raw.function ?? raw)
+      const schema = toolObject(definition.inputSchema ?? definition.parameters)
+      const required = Array.isArray(schema.required) ? schema.required : []
+      return <fieldset key={index} className={`${styles.source} ${styles.messageFrame}`}>
+        <legend className={styles.frameLegend}><span className={styles.frameHeading}><span className={styles.frameTitle}><Wrench size={14} />{typeof definition.name === 'string' ? definition.name : `#${index + 1}`}</span><span className={styles.frameLine} /><ObservationRawData icon title={`${typeof definition.name === 'string' ? definition.name : t('observation.toolDefinitions')} · JSON`} value={value} t={t} /></span></legend>
+        {typeof definition.description === 'string' && <p className={styles.toolDescription}>{definition.description}</p>}
+        {Object.keys(toolObject(schema.properties)).length > 0 && <dl className={styles.toolParameters}>{Object.entries(toolObject(schema.properties)).map(([name, parameter]) => {
+          const field = toolObject(parameter)
+          return <div key={name}><dt><code>{name}</code>{typeof field.type === 'string' && <small>{field.type}</small>}{required.includes(name) && <span aria-label={t('observation.requiredParameter')}>*</span>}</dt><dd>{typeof field.description === 'string' ? field.description : '—'}</dd></div>
+        })}</dl>}
+      </fieldset>
+    })}
+  </section>
+}
+
+// Recorded provider definitions are untyped and may use either the normalized or function envelope.
+function toolObject(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
 function ToolReader({ tool }: { tool: ObservationStep['tools'][number] }) {
@@ -226,16 +243,10 @@ function Identity({ values, inline = false }: { values: Record<string, string | 
 
 function MessageReader({ message, index, onSource }: { message: ObservationMessage; index?: number; onSource(): void }) {
   const t = useContext(ObservationTranslation)
-  const [expanded, setExpanded] = useState(false)
-  const long = message.content.length > 900 || message.content.split('\n').length > 12
-  return <fieldset className={`${styles.message} ${styles.messageFrame}`}>
-    <legend className={styles.frameLegend}><span className={styles.frameHeading}><span className={styles.role}>{message.role}</span>{(message.position !== undefined || index !== undefined) && <small>#{message.position ?? (index! + 1)}</small>}{message.change && <span className={styles.change}>{message.change}</span>}<span className={styles.frameLine} /><small>{message.estimatedTokens === undefined ? '' : t('observation.estimatedTokens', { count: message.estimatedTokens })}</small>{message.raw !== undefined && <ObservationRawData icon title={t('observation.rawMessage')} value={message.raw} t={t} />}</span></legend>
-    {message.content && <div className={`${styles.messageText} ${long && !expanded ? styles.clamped : ''}`}>{message.content}</div>}
-    {long && <Button size="small" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{t(expanded ? 'observation.collapseText' : 'observation.expandText')}</Button>}
-    {message.toolCalls?.map((call, callIndex) => <div className={styles.sectionHeading} key={callIndex}><span><Wrench size={14} /> {call.name}</span><InfoDialog title={`${call.name} · ${t('observation.input')}`}><ToolArguments value={call.arguments} t={t} /></InfoDialog></div>)}
-    <div className={styles.messageActions}>{message.sourceId && <button type="button" className={styles.referenceLink} onClick={onSource}>{t('observation.locateSource')}</button>}
-    </div>
-  </fieldset>
+  const parts = messageTokenParts([message])
+  const counted = useTokenCounts(parts.map(part => part.text), message.id)
+  const tokens = sumTokenParts(parts, new Map(parts.map((part, position) => [part.text, counted.currentCounts[position]])))
+  return <ObservationMessageCard message={message} index={index} tokens={tokens} onSource={onSource} t={t} />
 }
 
 function Usage({ step }: { step: ObservationStep }) {
@@ -244,8 +255,6 @@ function Usage({ step }: { step: ObservationStep }) {
   return <><h3>{t('observation.stepUsage')}</h3><div className={styles.metrics}>
     {[[t('observation.requestEstimate'), value?.estimatedTokens], [t('observation.inputUsage'), value?.inputTokens], [t('observation.outputUsage'), value?.outputTokens], [t('observation.duration'), step.duration], [t('observation.firstOutput'), step.firstOutputMs === undefined ? undefined : `${(step.firstOutputMs >= 1000 ? step.firstOutputMs / 1000 : step.firstOutputMs).toLocaleString(undefined, { maximumFractionDigits: 1 })} ${step.firstOutputMs >= 1000 ? 's' : 'ms'}`]].map(([label, number]) => <div key={label}><small>{label}</small><strong>{typeof number === 'number' ? number.toLocaleString() : number ?? t('observation.notReturned')}</strong></div>)}
   </div><p className={styles.hint}>{value?.note ?? t('observation.measurementMissing')}</p>
-    {value && <><h4>{t('observation.breakdown')}</h4><dl className={styles.breakdown}>{step.messages.map(message => <div key={message.id}><dt>{message.role} · #{step.messages.indexOf(message) + 1}</dt><dd>{message.estimatedTokens ?? t('observation.missing')}</dd></div>)}<div><dt>{t('observation.toolSchema')}</dt><dd>{value.toolTokens ?? t('observation.missing')}</dd></div></dl></>}
-    <ObservationRawData title={t('observation.configuration')} value={step.configuration} t={t} />
     <p className={styles.hint}>{t('observation.finish', { reason: step.finishReason ?? t('observation.pendingResult') })}</p></>
 }
 function Status({ status, iconOnly }: { status: string; iconOnly?: boolean }) {

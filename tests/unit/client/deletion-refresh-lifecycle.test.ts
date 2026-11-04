@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fixture, hooks } from '../../support/client/narrative-runtime.js'
+import { settle, fixture, hooks } from '../../support/client/narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import type { DataOperation } from '../../../apps/studio-client/src/shared/api/data-commit-events.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
@@ -10,10 +11,10 @@ const deleted: DataOperation[] = [
   { entityType: 'narrative.branch', entityId: 'branch', kind: 'delete' },
 ]
 async function watchingTimeline() {
-  const f = fixture()
-  await f.render().createTimelineFromCard()
+  const f = await fixture()
+  await settle(() => f.render().createTimelineFromCard())
   f.render()
-  const cleanup = hooks.commitEffect?.()
+  const cleanup = f.unmount
   await Promise.resolve()
   await Promise.resolve()
   vi.mocked(f.input.api.narratives.getSwipes).mockClear()
@@ -66,7 +67,7 @@ describe('Deletion refresh lifecycle', () => {
       hooks.onCommit?.(deleted)
       return { deleted: true as const, mutation: { changesetId: 'delete' } }
     })
-    expect(await f.render().deleteTimeline('timeline')).toBe(true)
+    expect(await settle(() => f.render().deleteTimeline('timeline'))).toBe(true)
     expect(f.render().timeline).toBeUndefined()
     expect(f.getPage).not.toHaveBeenCalled()
     expect(f.reportFailure).not.toHaveBeenCalled()
@@ -80,7 +81,7 @@ describe('Deletion refresh lifecycle', () => {
     f.input.t = createTranslator('zh-CN')
     const failure = new Error('Permission denied')
     f.input.api.narratives.delete = vi.fn().mockRejectedValue(failure)
-    expect(await f.render().deleteTimeline('timeline')).toBe(false)
+    expect(await settle(() => f.render().deleteTimeline('timeline'))).toBe(false)
     expect(f.render().timeline?.id).toBe('timeline')
     expect(f.reportFailure).toHaveBeenCalledWith(failure)
     expect(success).not.toHaveBeenCalled()
@@ -89,19 +90,18 @@ describe('Deletion refresh lifecycle', () => {
 
   it('discards a pending Session update read superseded by its deletion', async () => {
     vi.stubGlobal('EventSource', class {})
-    const f = fixture()
-    await f.render().createTimelineFromCard()
-    await f.render().createAgentSession('profile', true)
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
+    await settle(() => f.render().createAgentSession('profile', true))
     f.render()
     const read = Promise.withResolvers<Awaited<ReturnType<StudioApi['agentSessions']['get']>>>()
     f.input.api.agentSessions.get = vi.fn(() => read.promise)
     f.input.api.agentSessions.list = vi.fn(async () => ({ sessions: [] }))
-    hooks.subscribingSessions = true
-    const cleanup = hooks.sessionEffect?.()
+    const cleanup = f.unmount
     const operation = (kind: string): DataOperation[] => [{ entityType: 'agent.session', entityId: 'session', kind,
       scope: { store: 'agents', entityType: 'narrative.timeline', entityId: 'timeline' } }]
-    hooks.sessionCommit?.(operation('update'))
-    hooks.sessionCommit?.(operation('delete'))
+    hooks.onCommit(operation('update'))
+    hooks.onCommit(operation('delete'))
     read.reject(new Error('Session not found'))
     await Promise.allSettled([read.promise])
     await Promise.resolve()

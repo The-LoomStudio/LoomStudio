@@ -49,13 +49,18 @@ export const agentsProcedures = {
       historyPolicy: readOptionalHistoryPolicy(params),
       approvalPolicy: parseAgentApprovalPolicy(isRecord(params) ? params.approvalPolicy : undefined),
       useCardLore: readOptionalBoolean(params, 'useCardLore'),
+      useCardText: readOptionalBoolean(params, 'useCardText'),
       useGlobalLore: readOptionalBoolean(params, 'useGlobalLore'),
+      useGlobalText: readOptionalBoolean(params, 'useGlobalText'),
       textUses: readPresetTextUses(params),
     }
   })).mutation(({ ctx, input }) => ctx.runtime.updateAgentPreset(input, ctx.request)),
   'deleteAgentPreset': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['deleteAgentPreset']>[0] => {
     return { agentPresetId: readString(params, 'agentPresetId') }
   })).mutation(({ ctx, input }) => ctx.runtime.deleteAgentPreset(input, ctx.request)),
+  'getAgentToolSummary': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['getAgentToolSummary']>[0] => {
+    return { toolId: readString(params, 'toolId') }
+  })).query(({ ctx, input }) => ctx.runtime.getAgentToolSummary(input)),
   'listAgentTools': procedure.query(({ ctx }) => ctx.runtime.listAgentTools()),
   'updateAgentTool': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['updateAgentTool']>[0] => {
     return {

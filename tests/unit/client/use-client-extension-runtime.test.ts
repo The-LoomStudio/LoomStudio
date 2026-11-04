@@ -68,13 +68,13 @@ async function drainTasks(): Promise<void> {
 
 function createHarness() {
   const list = vi.fn(async () => ({ items: [extensionPackage] }))
-  const listRules = vi.fn(async () => ({ rules: [] }))
+  const listRuleSummaries = vi.fn(async () => ({ rules: [] }))
   const getParticipation = vi.fn<() => Promise<TimelineExtensionParticipation>>()
   const listInstallations = vi.fn<() => Promise<ListExtensionInstallationsResult>>()
   const getState = vi.fn()
   const api = {
     extensions: { list, diagnostics: async () => ({ diagnostics: [] }) },
-    textTransforms: { listRules, listExtractors: async () => ({ extractors: [] }) },
+    textTransforms: { listRuleSummaries, listExtractorSummaries: async () => ({ extractors: [] }) },
     extensionRuntime: {},
     states: { get: getState },
     timelineExtensions: { get: getParticipation },
@@ -85,7 +85,7 @@ function createHarness() {
   const logger = createRootLogger({ service: 'studio-client', instanceId: 'hook-test', sinks: [clientLogs] }).child('extension.loader')
   const runtime = useClientExtensionRuntime({ api, rendererHost, logger, clientLogs, notify: vi.fn() })
   const setup = hooks.effects.at(-1)!
-  return { runtime, rendererHost, list, listRules, setup, getParticipation, listInstallations, getState }
+  return { runtime, rendererHost, list, listRuleSummaries, setup, getParticipation, listInstallations, getState }
 }
 
 beforeEach(() => {
@@ -211,7 +211,7 @@ describe('Client Extension Runtime Effect lifecycle', () => {
       TestEvents.instance.dispatchEvent(new Event('extensions.data.changed'))
       await drainTasks()
       expect(stateChanged).toHaveBeenCalledTimes(2)
-      harness.listRules.mockRejectedValueOnce(new Error('one malformed Rule'))
+      harness.listRuleSummaries.mockRejectedValueOnce(new Error('one malformed Rule'))
       await runtime.refresh()
       expect(contexts[0]!.signal.aborted).toBe(false)
       expect(runtime.host.isPackageAvailable(pkg)).toBe(true)
@@ -264,6 +264,51 @@ describe('Client Extension Runtime Effect lifecycle', () => {
       await drainTasks()
       expect(hooks.loadModule).not.toHaveBeenCalled()
       expect(rendererHost.list('narrative.timeline.tail')).toEqual([])
+    } finally { cleanup(); await runtime.host.dispose() }
+  })
+
+  it('does not publish startup readiness from scope reconciliation before its catalog has loaded', async () => {
+    const { runtime, rendererHost, list, setup } = createHarness()
+    const catalog = Promise.withResolvers<{ items: ManagedClientExtensionPackage[] }>()
+    list.mockReturnValueOnce(catalog.promise)
+    const readiness = hooks.setters[5]!
+    const publishedSequence = () => readiness.mock.calls.reduce((sequence, [update]) => update(sequence), 0)
+    rendererHost.setScopeSnapshot({ workspace: 'workspace', timelineId: 'story', branchId: 'main' })
+    const cleanup = setup() as () => void
+    try {
+      await drainTasks()
+      rendererHost.setScopeSnapshot({ workspace: 'workspace', timelineId: 'story', branchId: 'fork' })
+      await drainTasks()
+      expect(publishedSequence()).toBe(0)
+      catalog.resolve({ items: [extensionPackage] })
+      await drainTasks()
+      expect(publishedSequence()).toBeGreaterThan(0)
+      expect(rendererHost.list('narrative.timeline.tail')).toHaveLength(1)
+    } finally { cleanup(); await runtime.host.dispose() }
+  })
+
+  it('publishes startup readiness from the current participation refresh after the first is superseded', async () => {
+    const { runtime, rendererHost, list, setup, getParticipation, listInstallations } = createHarness()
+    list.mockResolvedValue({ items: [{ ...extensionPackage, participation: 'timeline' }] })
+    const previous = Promise.withResolvers<TimelineExtensionParticipation>()
+    const current = Promise.withResolvers<TimelineExtensionParticipation>()
+    getParticipation.mockReturnValueOnce(previous.promise).mockReturnValueOnce(current.promise)
+    listInstallations.mockResolvedValue({ installations: [] })
+    const readiness = hooks.setters[5]!
+    const publishedSequence = () => readiness.mock.calls.reduce((sequence, [update]) => update(sequence), 0)
+    rendererHost.setScopeSnapshot({ workspace: 'workspace', timelineId: 'story', branchId: 'main' })
+    const cleanup = setup() as () => void
+    try {
+      await drainTasks()
+      rendererHost.setScopeSnapshot({ workspace: 'workspace', timelineId: 'story', branchId: 'fork' })
+      await drainTasks()
+      previous.resolve({ timelineId: 'story', version: 1, entries: [] })
+      await drainTasks()
+      expect(publishedSequence()).toBe(0)
+      current.resolve({ timelineId: 'story', version: 2, entries: [] })
+      await drainTasks()
+      expect(publishedSequence()).toBeGreaterThan(0)
+      expect(list).toHaveBeenCalledTimes(1)
     } finally { cleanup(); await runtime.host.dispose() }
   })
 
@@ -397,11 +442,11 @@ describe('Client Extension Runtime Effect lifecycle', () => {
   })
 
   it.each(['catalog', 'import state'])('does not reconcile a late %s response after cleanup', async phase => {
-    const { runtime, rendererHost, list, listRules, setup } = createHarness()
+    const { runtime, rendererHost, list, listRuleSummaries, setup } = createHarness()
     const catalog = Promise.withResolvers<{ items: ManagedClientExtensionPackage[] }>()
     const rules = Promise.withResolvers<{ rules: [] }>()
     if (phase === 'catalog') list.mockReturnValueOnce(catalog.promise)
-    else listRules.mockReturnValueOnce(rules.promise)
+    else listRuleSummaries.mockReturnValueOnce(rules.promise)
     const reconcile = vi.spyOn(runtime.host, 'reconcile')
     const cleanup = setup() as () => void
     await drainTasks()

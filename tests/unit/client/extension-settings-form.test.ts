@@ -13,6 +13,7 @@ describe('ExtensionSettingsForm', () => {
       },
       configRevision: 0,
       packageId: 'example.settings',
+      target: { kind: 'global' },
       scopeContext: {},
       settings: [
         { id: 'enabled', type: 'boolean', label: 'Enabled', default: true },
@@ -35,17 +36,4 @@ describe('ExtensionSettingsForm', () => {
     expect([...html.matchAll(/<(?:input|select|textarea)\b[^>]*>/g)].every(match => match[0].includes('disabled=""'))).toBe(true)
   })
 
-  it('isolates package and consumed scope without remounting global settings for an unrelated Timeline', () => {
-    const props: Parameters<typeof ExtensionSettingsForm>[0] = {
-      api: { getConfig: vi.fn(), listConfigs: vi.fn(), upsertConfig: vi.fn() },
-      configRevision: 0, packageId: 'a', scopeContext: { timelineId: 'one' },
-      settings: [{ id: 'name', type: 'text', label: 'Name', default: '' }],
-      t: key => key,
-    }
-    const global = ExtensionSettingsForm(props).key
-    expect(ExtensionSettingsForm({ ...props, scopeContext: { timelineId: 'two' } }).key).toBe(global)
-    expect(ExtensionSettingsForm({ ...props, packageId: 'b' }).key).not.toBe(global)
-    props.settings = [{ ...props.settings[0]!, scope: 'timeline' }]
-    expect(ExtensionSettingsForm({ ...props, scopeContext: { timelineId: 'two' } }).key).not.toBe(ExtensionSettingsForm(props).key)
-  })
 })

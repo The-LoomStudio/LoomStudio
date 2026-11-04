@@ -1,10 +1,11 @@
+import { ToolCollapse } from '../../features/sessions/ui/agent-tool-blocks.js'
 import type { ReviseUserInput } from '../../features/attachments/user-input-editor.js'
 import { MessageAttachments } from '../../features/attachments/message-attachments.js'
 import { executionActivity } from '../../features/narrative-runtime/model/narrative-execution-view.js'
 import { createPortal } from 'react-dom'
 import { readConversationPosition } from '../../shared/ui/conversation-viewport/conversation-position.js'
 import { NarrativeExecutionFlow } from '../../features/narrative-runtime/ui/narrative-execution-flow.js'
-import { projectTimelineRounds, type TimelineSessionRound, type TimelineSessionCommunication } from '../../features/narrative-runtime/model/timeline-execution-projection.js'
+import type { TimelineSessionRound, TimelineSessionCommunication } from '../../features/narrative-runtime/model/timeline-execution-projection.js'
 import type { AgentTranscriptEntry } from '../../entities/index.js'
 import type { ActiveAgentRun } from '../../features/narrative-runtime/model/agent-run-observer.js'
 import { NarrativeCommunication, useCommunicationExpansion } from '../../features/narrative-runtime/ui/narrative-communication.js'
@@ -53,8 +54,9 @@ type NarrativeNodeView = NarrativeNode
 type NarrativeTimelineProps = {
   actionsHost?: HTMLElement | null
   workEntries?: AgentTranscriptEntry[]
+  connecting?: boolean
   activeRun?: ActiveAgentRun
-  presetName?: string
+  rounds: TimelineSessionRound[]
   inputMode?: 'roleplay' | 'discussion'
   onDiscuss?(): void
   onSendDiscussion?(content: string): Promise<boolean>
@@ -62,6 +64,7 @@ type NarrativeTimelineProps = {
   onRetryDiscussionInput?(entryId: string, content: string): Promise<boolean>
   onContinueRun?(): Promise<boolean>
   userIdentity?: UserIdentityView
+  communicationDisplay?: DisplayProjection
   displayProjection?: DisplayProjection
   displayOnlyNodeId?: string
   anchorNodeId?: string
@@ -86,14 +89,13 @@ type NarrativeTimelineProps = {
   timeline: NarrativeNodeView[]
   timelineId?: string
   scrollRestorationScope?: string
-  narrativeMode?: 'declared' | 'automatic'
   overscan?: number
 }
 
 export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const restoredPosition = useMemo(() => props.anchorNodeId || !props.scrollRestorationScope ? undefined
     : readConversationPosition({ view: 'timeline', scope: props.scrollRestorationScope }), [props.anchorNodeId, props.scrollRestorationScope])
-  const rounds = useMemo(() => projectTimelineRounds(props.workEntries ?? [], props.timeline, props.presetName ?? '尚未选择预设', props.activeRun, props.narrativeMode), [props.workEntries, props.timeline, props.presetName, props.activeRun, props.narrativeMode])
+  const { rounds } = props
   const communicationKeys = useMemo(() => rounds.flatMap(round => round.communications.filter(group => group.execution.steps.length > 0 || group.discussions.length > 0).map(group => `${round.candidateId ?? round.id}:${group.id}`)), [rounds])
   const [expandedCommunication, setExpandedCommunication] = useCommunicationExpansion(props.inputMode ?? 'roleplay', communicationKeys, props.scrollRestorationScope ?? props.timelineId)
   const resolvedUserName = renderTemplateMacros('{{user}}', props.macroContext).trim()
@@ -132,7 +134,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     role: props.t(readNarrativeNodeRole(props.timeline, index) === 'user' ? 'timeline.role.user' : 'timeline.role.assistant'),
   })), [props.t, props.timeline])
   const navigatorMarkers: NarrativeTimelineMarker[] = []
-  const anchorStatus = useNarrativeAnchorNavigation({
+  const { status: anchorStatus, cancel: cancelAnchorNavigation } = useNarrativeAnchorNavigation({
     timelineId: props.timelineId,
     nodeId: props.anchorNodeId ?? (restoredPosition?.following === false ? restoredPosition.anchorId : undefined),
     nodes: props.timeline,
@@ -161,7 +163,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }, [])
 
   useEffect(() => {
-    if (props.anchorNodeId) {
+    if (props.anchorNodeId && anchorStatus !== 'idle') {
       if (anchorStatus !== 'located') setActiveEntryId(undefined)
       return
     }
@@ -231,7 +233,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }
 
   function scheduleActiveEntryUpdate() {
-    if (props.anchorNodeId && anchorStatus !== 'located') return
+    if (props.anchorNodeId && anchorStatus !== 'located' && anchorStatus !== 'idle') return
     updateViewportFollow()
     if (activeEntryFrameRef.current) return
     activeEntryFrameRef.current = requestAnimationFrame(() => {
@@ -270,6 +272,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }
 
   function returnToLatest() {
+    cancelAnchorNavigation()
+    pendingAnchorScrollRef.current = undefined
     smooth.resume()
   }
 
@@ -281,8 +285,9 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     const key = communicationKey(round, communication)
     const activeExecution = [...communication.discussions].reverse().find(execution => execution.runId === props.activeRun?.runId)
       ?? (round.execution.runId === props.activeRun?.runId ? round.execution : communication.execution)
-    const activity = latest && communication === round.communications.at(-1) && props.activeRun
-      ? executionActivity(activeExecution) : undefined
+    const activity = latest && communication === round.communications.at(-1)
+      ? props.connecting ? '正在连接' : props.activeRun ? executionActivity(activeExecution) : undefined
+      : undefined
     if (!communication.execution.steps.length && !communication.discussions.length && !activity) return null
     const expanded = expandedCommunication[key] ?? false
     const selected = latest ? props.inputSwipe?.swipe.candidates.findIndex(candidate => candidate.id === props.inputSwipe?.swipe.selectedCandidateId) : undefined
@@ -295,16 +300,16 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
         {activity && <span className={styles.communicationActivity} role="status">{activity}</span>}
         <ChevronDown className={styles.communicationChevron} data-expanded={expanded} aria-hidden="true" />
       </button>
-      <div className={styles.communicationCollapse} data-expanded={expanded} inert={!expanded} aria-hidden={!expanded} id={`communication-${key}`}><div>
+      <ToolCollapse open={expanded} id={`communication-${key}`}>
       <div className={styles.communication}>
-      <NarrativeCommunication followWork key={key} candidate={communication} round={round.number} selected={selected !== undefined && selected >= 0 ? selected : undefined}
-        activeRunId={props.activeRun?.runId} actionsDisabled={props.busy || props.activeRun?.status === 'running'}
+      <NarrativeCommunication rendererHost={props.rendererHost} agentSessionId={props.timelineId} displayProjection={props.communicationDisplay} followWork key={key} candidate={communication} round={round.number} selected={selected !== undefined && selected >= 0 ? selected : undefined}
+        connecting={!!props.connecting && latest && communication === round.communications.at(-1)} activeRunId={props.activeRun?.runId} actionsDisabled={props.busy || props.activeRun?.status === 'running'}
         onSend={key === communicationKeys.at(-1) ? props.onSendDiscussion : undefined}
         editRunning={props.activeRun?.status === 'running'} onReviseInput={props.onReviseDiscussionInput}
         onRetryInput={props.onRetryDiscussionInput} onContinue={props.onContinueRun}
         onInspect={pauseFollowing} onReply={latest ? props.onDiscuss : undefined} onReturnCurrent={latest ? undefined : returnToLatest} />
       </div>
-    </div></div></section>
+    </ToolCollapse></section>
   }
 
   function renderRoundNode(entry: NarrativeNodeView, round: TimelineSessionRound, latest: boolean) {
@@ -456,6 +461,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
         <div className={styles.readingSurface} ref={contentRef}>
         <div ref={headerRef} className={styles.timelineHeader}>
           <DisplayProjectionStatus projection={props.displayProjection} retryLabel={props.t('textTransform.refresh')} />
+          <DisplayProjectionStatus projection={props.communicationDisplay} retryLabel={props.t('textTransform.refresh')} />
+          <DisplayProjectionStatus projection={props.timeline.length === 0 && props.openingDraft ? props.openingDisplay : undefined} retryLabel={props.t('textTransform.refresh')} />
           {anchorStatus === 'unavailable' ? <p role="status">{props.t('timeline.anchorUnavailable')}</p> : null}
           {anchorStatus === 'failed' ? <p role="alert">{props.t('timeline.anchorLoadFailed')}</p> : null}
           {props.hasOlder ? <button disabled={props.busy || anchorStatus === 'loading'} type="button" onClick={() => void props.onLoadOlder().catch(() => undefined)}>{props.t('timeline.loadOlder')}</button> : null}
@@ -477,7 +484,6 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                 >
                   {props.openingDisplay?.pending ? <div aria-busy="true" className={styles.displayPending} />
                     : <>
-                  <DisplayProjectionStatus projection={props.openingDisplay} retryLabel={props.t('textTransform.refresh')} />
                   <ConversationMarkdown
                     className={`${styles.messageBody} ${props.openingDraft.isPlaceholder ? styles.placeholderBody : ''}`}
                     codeBlockLabels={messageCodeBlockLabels(props.t)}
@@ -521,9 +527,17 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                   <NarrativeExecutionFlow key={round.execution.id} execution={round.execution} reading={false} hideReplies followWork onInspect={pauseFollowing}
                     renderNarrative={step => {
                       const node = round.nodes.find(node => node.id === step.id)
-                      return node ? renderRoundNode(node, round, latest) : <ConversationMarkdown
-                        role="assistant" value={displayText(props.displayProjection, step.id, step.content, true) ?? step.content} streaming={step.state === 'running'}
-                        macroContext={props.macroContext} codeBlockLabels={messageCodeBlockLabels(props.t)} />
+                      return node ? renderRoundNode(node, round, latest) : <article
+                        className={`${styles.message} ${styles.assistant}`}
+                        data-loom-component="chat-message" data-loom-role="narrative"
+                        data-loom-state="streaming" aria-busy={step.state === 'running'}>
+                        <NarrativeMessageHeader role="assistant" userName={userName} t={props.t} />
+                        <div className={styles.messageSurface} data-loom-slot="message-content">
+                          <ConversationMarkdown className={styles.messageBody}
+                            role="assistant" value={displayText(props.displayProjection, step.id, step.content, true) ?? step.content} streaming={step.state === 'running'}
+                            macroContext={props.macroContext} codeBlockLabels={messageCodeBlockLabels(props.t)} />
+                        </div>
+                      </article>
                     }} />
                 </section>
               </div>

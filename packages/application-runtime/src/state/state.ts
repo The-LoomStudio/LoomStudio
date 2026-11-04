@@ -448,29 +448,13 @@ export async function validateSnapshotAgainstDefinitions(
   if (target.scope === 'global') {
     return validateGlobalSnapshotAgainstDefinitions(ctx.documents, previous, snapshot)
   }
-  const definitions = await listDocuments<StateDefinitionContent>(ctx.documents, applicationDocumentTypes.stateDefinition)
   const runtimeContext = await readTimelineRuntimeContext(ctx, target.timelineId)
-  if (runtimeContext) {
-    for (const binding of runtimeContext.stateBindings) {
-      const value = readDotPath(snapshot, binding.path)
-      if (!value.found && binding.installationId && !readDotPath(previous, binding.path).found) continue
-      if (!value.found) throw new ApplicationStateError('state.schema_required', `Bound Timeline State is missing: timeline.${binding.path}`)
-      validateStateValue(value.value, binding.schema, `timeline.${binding.path}`)
-    }
-    return
-  }
-  const timeline = await ctx.narratives?.getTimeline(target.timelineId)
-  const cardId = timeline?.createdFrom?.cardId
-  if (!cardId) return
-  const card = await ctx.documents.get(cardId)
-  if (!card || card.type !== applicationDocumentTypes.cardSource || typeof card.content !== 'object' || card.content === null || Array.isArray(card.content)) return
-  const bindings = (card.content.timelineStateBindings ?? []) as Array<{ path: string; templateId: string }>
-  for (const binding of bindings) {
-    const definition = definitions.find(candidate => candidate.id === binding.templateId)
-    if (!definition || definition.content.kind !== 'timeline-template') continue
+  if (!runtimeContext) throw new ApplicationStateError('state.runtime_context_missing', 'Timeline Runtime Context is missing')
+  for (const binding of runtimeContext.stateBindings) {
     const value = readDotPath(snapshot, binding.path)
+    if (!value.found && binding.installationId && !readDotPath(previous, binding.path).found) continue
     if (!value.found) throw new ApplicationStateError('state.schema_required', `Bound Timeline State is missing: timeline.${binding.path}`)
-    validateStateValue(value.value, definition.content.schema, `timeline.${binding.path}`)
+    validateStateValue(value.value, binding.schema, `timeline.${binding.path}`)
   }
 }
 

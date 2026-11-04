@@ -68,7 +68,7 @@ Agent ToolResult 由 Agent Runtime 按工具传输协议交给后续 Provider St
 
 ## 实现与相关边界
 
-- [正文采集与宏展开](../../../../packages/application-runtime/src/cards/workspace.ts)
+- [正文采集与宏展开](../../../../packages/application-runtime/src/cards/card-bundle.ts)
 - [宏取值与诊断](../../../../packages/application-runtime/src/prompt/variables.ts)
 - [共享纯解析](../../../../packages/shared/src/macros.ts)
 - [提供者与来源组装](../../../../packages/application-runtime/src/prompt/macro-provider-registry.ts)

@@ -15,12 +15,7 @@
       "system": "你是 Loom City 的叙事代理。保持都市奇幻、轻微悬疑和第二人称叙事。"
     },
     "opening": {
-      "entries": [
-        {
-          "role": "assistant",
-          "content": "雨线车站的月台灯逐盏亮起，广播里传来一段被雨声切碎的报站。"
-        }
-      ]
+      "content": "雨线车站的月台灯逐盏亮起，广播里传来一段被雨声切碎的报站。"
     },
     "lore": {
       "entries": [
@@ -30,8 +25,13 @@
           "title": "雨线车站",
           "content": "雨线车站只在整点暴雨中显现，候车厅的钟永远慢三分钟。",
           "enabled": true,
-          "activation": { "kind": "always" },
-          "tags": ["city", "station"]
+          "activation": {
+            "kind": "always"
+          },
+          "tags": [
+            "city",
+            "station"
+          ]
         },
         {
           "id": "archive-keeper",
@@ -39,8 +39,18 @@
           "title": "档案管理员",
           "content": "档案管理员记得每一张被撕毁的车票，也记得它们原本要去往哪里。",
           "enabled": true,
-          "activation": { "kind": "keyword", "keywords": ["档案", "车票", "管理员"] },
-          "tags": ["city", "npc"]
+          "activation": {
+            "kind": "keyword",
+            "keywords": [
+              "档案",
+              "车票",
+              "管理员"
+            ]
+          },
+          "tags": [
+            "city",
+            "npc"
+          ]
         }
       ]
     }
@@ -61,13 +71,6 @@
           "category": "preset",
           "kind": "order",
           "body": "主排序覆盖层。编辑它只改变 SQL workspace 中的排序 profile，不会回写原始 artifact。",
-          "orderList": [
-            "preset-style-directive",
-            "sl-rainline-station",
-            "sl-archive-keeper",
-            "vs-narrative-history",
-            "vs-current-input"
-          ],
           "slotRanks": [
             {
               "zoneId": "preset.system",
@@ -127,7 +130,9 @@
           "body": "雨线车站只在整点暴雨中显现，候车厅的钟永远慢三分钟。",
           "enabled": true,
           "capabilities": {
-            "activation": { "kind": "always" },
+            "activation": {
+              "kind": "always"
+            },
             "projection": {
               "zoneId": "setting.stable",
               "slotKey": "lore:city-layers-main@lore.stable",
@@ -145,7 +150,14 @@
           "body": "档案管理员记得每一张被撕毁的车票，也记得它们原本要去往哪里。",
           "enabled": true,
           "capabilities": {
-            "activation": { "kind": "keyword", "keywords": ["档案", "车票", "管理员"] },
+            "activation": {
+              "kind": "keyword",
+              "keywords": [
+                "档案",
+                "车票",
+                "管理员"
+              ]
+            },
             "projection": {
               "zoneId": "setting.stable",
               "slotKey": "lore:city-layers-main@lore.stable",
@@ -179,16 +191,28 @@
           "id": "loom.example.character.identity",
           "templateVersion": 1,
           "componentKey": "identity",
-          "targetEntityTypeIds": ["character"],
+          "targetEntityTypeIds": [
+            "character"
+          ],
           "label": "角色身份",
           "schema": {
             "type": "object",
             "properties": {
-              "displayName": { "type": "string" },
-              "role": { "type": "string" },
-              "present": { "type": "boolean" }
+              "displayName": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              }
             },
-            "required": ["displayName", "role", "present"],
+            "required": [
+              "displayName",
+              "role",
+              "present"
+            ],
             "additionalProperties": false
           },
           "initial": {
@@ -201,16 +225,30 @@
           "id": "loom.example.character.vitals",
           "templateVersion": 1,
           "componentKey": "vitals",
-          "targetEntityTypeIds": ["character"],
+          "targetEntityTypeIds": [
+            "character"
+          ],
           "label": "生命状态",
           "schema": {
             "type": "object",
             "properties": {
-              "hp": { "type": "number", "minimum": 0 },
-              "maxHp": { "type": "number", "minimum": 1 },
-              "status": { "type": "string" }
+              "hp": {
+                "type": "number",
+                "minimum": 0
+              },
+              "maxHp": {
+                "type": "number",
+                "minimum": 1
+              },
+              "status": {
+                "type": "string"
+              }
             },
-            "required": ["hp", "maxHp", "status"],
+            "required": [
+              "hp",
+              "maxHp",
+              "status"
+            ],
             "additionalProperties": false
           },
           "initial": {
@@ -223,7 +261,9 @@
           "id": "loom.example.character.inventory",
           "templateVersion": 1,
           "componentKey": "inventory",
-          "targetEntityTypeIds": ["character"],
+          "targetEntityTypeIds": [
+            "character"
+          ],
           "label": "背包",
           "schema": {
             "type": "object",
@@ -232,28 +272,45 @@
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "x-loom-entity-ref": { "allowedTypeIds": ["item"] }
+                  "x-loom-entity-ref": {
+                    "allowedTypeIds": [
+                      "item"
+                    ]
+                  }
                 }
               }
             },
-            "required": ["items"],
+            "required": [
+              "items"
+            ],
             "additionalProperties": false
           },
-          "initial": { "items": [] }
+          "initial": {
+            "items": []
+          }
         },
         {
           "id": "loom.example.item.identity",
           "templateVersion": 1,
           "componentKey": "identity",
-          "targetEntityTypeIds": ["item"],
+          "targetEntityTypeIds": [
+            "item"
+          ],
           "label": "物品身份",
           "schema": {
             "type": "object",
             "properties": {
-              "displayName": { "type": "string" },
-              "description": { "type": "string" }
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
             },
-            "required": ["displayName", "description"],
+            "required": [
+              "displayName",
+              "description"
+            ],
             "additionalProperties": false
           },
           "initial": {
@@ -263,9 +320,18 @@
         }
       ],
       "entities": [
-        { "typeId": "character", "entityId": "archive_keeper" },
-        { "typeId": "character", "entityId": "night_conductor" },
-        { "typeId": "item", "entityId": "rainline-key" }
+        {
+          "typeId": "character",
+          "entityId": "archive_keeper"
+        },
+        {
+          "typeId": "character",
+          "entityId": "night_conductor"
+        },
+        {
+          "typeId": "item",
+          "entityId": "rainline-key"
+        }
       ],
       "componentMounts": [
         {
@@ -274,7 +340,10 @@
           "componentKey": "identity",
           "target": {
             "kind": "entity",
-            "entity": { "typeId": "character", "entityId": "archive_keeper" }
+            "entity": {
+              "typeId": "character",
+              "entityId": "archive_keeper"
+            }
           },
           "initial": {
             "displayName": "档案管理员",
@@ -287,7 +356,10 @@
           "componentKey": "identity",
           "target": {
             "kind": "entity",
-            "entity": { "typeId": "character", "entityId": "night_conductor" }
+            "entity": {
+              "typeId": "character",
+              "entityId": "night_conductor"
+            }
           },
           "initial": {
             "displayName": "夜班车长",
@@ -298,7 +370,10 @@
           "templateId": "loom.example.character.vitals",
           "templateVersion": 1,
           "componentKey": "vitals",
-          "target": { "kind": "entity-type", "typeId": "character" }
+          "target": {
+            "kind": "entity-type",
+            "typeId": "character"
+          }
         },
         {
           "templateId": "loom.example.character.inventory",
@@ -306,10 +381,18 @@
           "componentKey": "inventory",
           "target": {
             "kind": "entity",
-            "entity": { "typeId": "character", "entityId": "archive_keeper" }
+            "entity": {
+              "typeId": "character",
+              "entityId": "archive_keeper"
+            }
           },
           "initial": {
-            "items": [{ "typeId": "item", "entityId": "rainline-key" }]
+            "items": [
+              {
+                "typeId": "item",
+                "entityId": "rainline-key"
+              }
+            ]
           }
         },
         {
@@ -318,7 +401,10 @@
           "componentKey": "identity",
           "target": {
             "kind": "entity",
-            "entity": { "typeId": "item", "entityId": "rainline-key" }
+            "entity": {
+              "typeId": "item",
+              "entityId": "rainline-key"
+            }
           },
           "initial": {
             "displayName": "雨线钥匙",
@@ -337,11 +423,21 @@
       "schema": {
         "type": "object",
         "properties": {
-          "displayName": { "type": "string" },
-          "role": { "type": "string" },
-          "present": { "type": "boolean" }
+          "displayName": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "present": {
+            "type": "boolean"
+          }
         },
-        "required": ["displayName", "role", "present"],
+        "required": [
+          "displayName",
+          "role",
+          "present"
+        ],
         "additionalProperties": false
       },
       "initial": {
@@ -357,11 +453,23 @@
       "schema": {
         "type": "object",
         "properties": {
-          "hp": { "type": "number", "minimum": 0 },
-          "maxHp": { "type": "number", "minimum": 1 },
-          "status": { "type": "string" }
+          "hp": {
+            "type": "number",
+            "minimum": 0
+          },
+          "maxHp": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string"
+          }
         },
-        "required": ["hp", "maxHp", "status"],
+        "required": [
+          "hp",
+          "maxHp",
+          "status"
+        ],
         "additionalProperties": false
       },
       "initial": {

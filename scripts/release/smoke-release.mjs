@@ -144,12 +144,11 @@ try {
   const content = await rpc('official.listContent')
   assert.ok(content.packages[0].resources.every(resource => resource.available), 'Starter was not installed')
   const bundled = (await rpc('extensions.listPackages')).items
-  assert.deepEqual(bundled.map(item => item.packageId).sort(), ['official.loom-assistant', 'official.story-memory'], 'Unexpected official packages in release')
+  assert.deepEqual(bundled.map(item => item.packageId).sort(), ['official.story-memory'], 'Unexpected official packages in release')
   for (const item of bundled) {
     assert.deepEqual(item.sourceKinds, ['repository'], `${item.packageId} was not loaded from the official directory`)
     await assert.rejects(access(join(directory, 'extensions', item.packageId)), { code: 'ENOENT' }, `${item.packageId} was copied into user extensions`)
   }
-  assert.deepEqual(bundled.find(item => item.packageId === 'official.loom-assistant').modules, [])
   const storyMemory = bundled.find(item => item.packageId === 'official.story-memory')
   assert.deepEqual(storyMemory.modules.map(module => [module.moduleId, module.runtimeKind]).sort(), [['client', 'client'], ['server', 'server']])
   const clientModule = storyMemory.modules.find(module => module.moduleId === 'client')

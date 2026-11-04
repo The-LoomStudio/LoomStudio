@@ -45,7 +45,7 @@ Streaming domain lifecycle   -> owning Agent / Narrative feature
 | --- | --- | --- |
 | Server HTTP | Node `node:http` | HTTP listener、Session 认证、Origin 检查、请求体预算与请求排空/取消；RPC 请求交给下述 tRPC adapter。当前没有 Express、Fastify 或 Hono 平行层。 |
 | 主应用 RPC | `@trpc/server` / `@trpc/client` | 官方 adapter/client 负责 procedure 路由、请求响应协议、错误封装和跨端类型推导。业务逻辑仍由 Application Runtime、领域服务和 Store 拥有；不重复维护手写 RPC 方法表与传输协议。 |
-| SQLite | Node `node:sqlite` + `@loom-studio/data-engine` | Connection、migration 和 transaction 的统一入口。领域 Store 不各自创建数据库基础设施。 |
+| SQLite | Node `node:sqlite` + `@loom-studio/data-engine` | Connection、当前 schema 初始化和 transaction 的统一入口。领域 Store 不各自创建数据库基础设施。 |
 | Provider HTTP 与代理 | Undici | Application Runtime 的 Provider 请求和 `ProxyAgent`。普通 Server 路由优先使用平台现有 HTTP 能力。 |
 | ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩/解压。Card 另用现有 `zip-checksums.ts` 读取完整性元数据、配合 Node CRC32 验证实际数据；这不是第二套解压器，不另建重复编解码。 |
 | 扩展依赖版本判定 | `semver` | Server 的扩展下载/安装预览校验依赖版本范围；不提供自动版本求解或后台更新。 |

@@ -1,4 +1,4 @@
-import { isPromptResourceArtifact, type PromptResourceArtifact } from '@loom-studio/application-runtime/artifacts'
+import type { PromptResourceArtifact } from '@loom-studio/application-runtime/artifacts'
 import { unzipSync, zipSync } from 'fflate'
 import { validateBundlePath } from './card-bundle-files.js'
 import { isPromptResourceFilesIndex, projectPromptResourceFiles, restorePromptResourceFiles } from './prompt-resource-files.js'
@@ -30,19 +30,12 @@ export function decodePromptResourceZip(source: Uint8Array): PromptResourceArtif
   const manifestBytes = files['manifest.json']
   if (!manifestBytes) throw new Error('Prompt Resource ZIP is missing its manifest or resource')
   const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes))
-  const legacy = manifest.schema === 'loom.promptResource.zip.v1' && manifest.artifactPath === 'resource.json'
-  if (!legacy && !(manifest.schema === 'loom.promptResource.zip.v2' && manifest.artifactPath === 'index.json')) throw new Error('Invalid Prompt Resource ZIP manifest')
+  if (!(manifest.schema === 'loom.promptResource.zip.v2' && manifest.artifactPath === 'index.json')) throw new Error('Invalid Prompt Resource ZIP manifest')
   const artifactBytes = files[manifest.artifactPath]
   if (!artifactBytes) throw new Error('Prompt Resource ZIP is missing its manifest or resource')
   const stored = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(artifactBytes))
-  let artifact: PromptResourceArtifact
-  if (legacy) {
-    if (!isPromptResourceArtifact(stored)) throw new Error('Invalid Prompt Resource ZIP artifact')
-    artifact = stored
-  } else {
-    if (!isPromptResourceFilesIndex(stored)) throw new Error('Invalid Prompt Resource ZIP artifact')
-    artifact = restorePromptResourceFiles(stored, new Map(Object.entries(files)))
-  }
+  if (!isPromptResourceFilesIndex(stored)) throw new Error('Invalid Prompt Resource ZIP artifact')
+  const artifact = restorePromptResourceFiles(stored, new Map(Object.entries(files)))
   if (artifact.resourceKind !== manifest.resourceKind) throw new Error('Invalid Prompt Resource ZIP artifact')
   return artifact
 }

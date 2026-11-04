@@ -26,7 +26,7 @@ export function usePromptResourceState(input: PromptResourceStateInput) {
   const resourcesQuery = useQuery({
     queryKey: resourcesKey,
     retry: false,
-    queryFn: () => input.api.promptResources.list(),
+    queryFn: ({ signal }) => input.api.promptResources.list(undefined, signal),
   })
   const loreMountsQuery = useQuery({
     queryKey: loreMountsKey,

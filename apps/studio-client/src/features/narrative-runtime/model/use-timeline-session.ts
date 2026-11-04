@@ -8,12 +8,14 @@ import { useSessionRun, streamingEntry } from './use-session-run.js'
 
 /** Timeline execution stays observed when the sidebar selects another Session. */
 export function useTimelineSession(api: StudioApi, timelineId: string | undefined, branchId: string | undefined, runAction: (action: () => Promise<void>) => Promise<boolean>, refreshNarrative: () => Promise<void>, onCompleted?: (result: InvokeAgentTurnResult) => void) {
+  const [connectingSource, setConnectingSource] = useState<object>()
   const [session, setSession] = useState<AgentSession>()
   const [entries, setEntries] = useState<AgentTranscriptEntry[]>([])
   const source = useRef({ api, timelineId, branchId, selection: 0 })
   if (source.current.api !== api || source.current.timelineId !== timelineId || source.current.branchId !== branchId)
     source.current = { api, timelineId, branchId, selection: source.current.selection + 1 }
   const reading = useRef(0)
+  const pendingRead = useRef<{ source: object; promise: Promise<Awaited<ReturnType<typeof loadTranscript>> | undefined> } | undefined>(undefined)
   const lifecycle = useSessionRun({
     kind: 'timeline', api,
     isCurrent: run => run.selection === source.current.selection && run.api === source.current.api,
@@ -39,25 +41,34 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
       streamingId: `streaming-timeline-${runId}`, cursor: 0, status: 'running', observing: false }
   }
 
-  async function refresh() {
+  async function refresh(reusePending = false) {
     const target = source.current
-    if (!target.timelineId) return
+    const targetTimelineId = target.timelineId
+    if (!targetTimelineId) return
+    if (reusePending && pendingRead.current?.source === target) return pendingRead.current.promise
     const request = ++reading.current
-    const transcript = await loadTranscript(api, target.timelineId, true)
-    if (target !== source.current) return
-    if (request === reading.current) {
-      setSession(transcript.session)
-      // The Run observer owns in-flight deltas; a commit refresh must not erase them.
-      if (!observed.current?.observing || observed.current.status !== 'running')
-        setEntries(current => retainRunPresentation(current, transcript.entries))
-      else setEntries(current => {
-        const ids = new Set(current.map(item => item.id))
-        return [...current, ...transcript.entries.filter(item => !ids.has(item.id) && (item.entry.kind === 'user-interjection' || item.entry.kind === 'interjection-applied' || item.entry.kind === 'interjection-discarded'))]
-      })
+    const promise = read(targetTimelineId)
+    pendingRead.current = { source: target, promise }
+    try { return await promise }
+    finally { if (pendingRead.current?.promise === promise) pendingRead.current = undefined }
+
+    async function read(id: string) {
+      const transcript = await loadTranscript(api, id, true)
+      if (target !== source.current) return
+      if (request === reading.current) {
+        setSession(transcript.session)
+        // The Run observer owns in-flight deltas; a commit refresh must not erase them.
+        if (!observed.current?.observing || observed.current.status !== 'running')
+          setEntries(current => retainRunPresentation(current, transcript.entries))
+        else setEntries(current => {
+          const ids = new Set(current.map(item => item.id))
+          return [...current, ...transcript.entries.filter(item => !ids.has(item.id) && (item.entry.kind === 'user-interjection' || item.entry.kind === 'interjection-applied' || item.entry.kind === 'interjection-discarded'))]
+        })
+      }
+      // A newer read owns publication, but terminal recovery still needs this
+      // snapshot to ask the server for the observed Run's authoritative state.
+      return transcript
     }
-    // A newer read owns publication, but terminal recovery still needs this
-    // snapshot to ask the server for the observed Run's authoritative state.
-    return transcript
   }
 
   useEffect(() => {
@@ -68,8 +79,9 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
     setActiveRun(undefined)
     setRecovery(undefined)
     if (!timelineId) return
+    let restoring = true
     const restore = async () => {
-      const transcript = await refresh()
+      const transcript = await refresh(true).finally(() => { restoring = false })
       if (!transcript || target !== source.current) return
       const active = await resolveSessionRun(api, timelineId, transcript.entries)
       if (target !== source.current || observed.current) return
@@ -78,9 +90,14 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
       else if (active?.status === 'suspended') setRecovery({ target: 'narrative', status: 'suspended', error: active.error })
     }
     void runAction(restore)
+    let connected = false
     const unsubscribe = subscribeDataCommits(operations => {
       if (operations.some(item => item.entityId === timelineId || item.scope?.entityId === timelineId)) void runAction(async () => { await refresh() })
-    }, () => { void runAction(async () => { await refresh() }) })
+    }, () => {
+      const reusePending = !connected && restoring
+      connected = true
+      void runAction(async () => { await refresh(reusePending) })
+    })
     return () => { unsubscribe(); reading.current++; if (source.current === target) source.current = { ...target, selection: target.selection + 1 } }
   }, [api, timelineId, branchId])
 
@@ -89,13 +106,14 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
     if (activeRun?.status === 'suspended' && !request.retry) await lifecycle.abandon()
     const target = source.current
     starting.current = true
+    setConnectingSource(target)
     try {
       const started = await create(request)
       if (source.current !== target) return
       onStarted?.()
       await executeStarted(started.runId)
 
-    } finally { starting.current = false }
+    } finally { starting.current = false; setConnectingSource(current => current === target ? undefined : current) }
   }
 
   function follow(run: ObservedRun) {
@@ -123,7 +141,7 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
     setActiveRun(active)
     setRecovery(active?.status === 'suspended' ? { target: 'narrative', status: 'suspended', error: active.error } : undefined)
   }
-  return { acceptEntry: (entry: AgentTranscriptEntry) => setEntries(current => current.some(item => item.id === entry.id) ? current.map(item => item.id === entry.id ? entry : item) : [...current, entry]), session: session?.id === timelineId ? session : undefined, entries, activeRun, recovery, execute, executeStarted,
+  return { acceptEntry: (entry: AgentTranscriptEntry) => setEntries(current => current.some(item => item.id === entry.id) ? current.map(item => item.id === entry.id ? entry : item) : [...current, entry]), session: session?.id === timelineId ? session : undefined, entries, activeRun, connecting: connectingSource === source.current, recovery, execute, executeStarted,
     approve: lifecycle.approve, configure, refresh, refreshTask, reconnect: lifecycle.reconnect,
     pause: lifecycle.pause, resume: lifecycle.resume, abandon: lifecycle.abandon }
 }

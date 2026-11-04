@@ -1,0 +1,7 @@
+.tableScroll { max-height: 50vh; overflow: auto; }
+.table {
+  width: 100%; border-collapse: collapse; text-align: left;
+  th, td { padding: 0.6rem; border-bottom: 1px solid var(--loom-color-border); vertical-align: top; overflow-wrap: anywhere; }
+  small { display: block; opacity: 0.7; }
+  ul { margin: 0; padding-left: 1rem; }
+}

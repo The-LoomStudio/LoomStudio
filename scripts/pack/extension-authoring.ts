@@ -2,7 +2,7 @@ import { copyFile, lstat, mkdir, readFile, readdir, realpath, rm, writeFile } fr
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { parseExtensionManifest } from '../../packages/extension-sdk/extension-host/src/manifest.js'
 import { authoringResourceSchema } from '../../packages/shared/src/resource-authoring-contracts.js'
-import { isPromptResourceArtifact } from '../../packages/application-runtime/src/cards/workspace-codec.js'
+import { isPromptResourceArtifact } from '../../packages/application-runtime/src/cards/card-bundle-codec.js'
 import { loadResourceAuthoring } from '../../apps/studio-server/src/codecs/resource-authoring.js'
 import { encodeCardBundleZip, loadCardBundleFiles } from '../../apps/studio-server/src/codecs/card-bundle-zip.js'
 import { exportExtensionPackageZip } from '../../apps/studio-server/src/extensions/extension-package-installer.js'

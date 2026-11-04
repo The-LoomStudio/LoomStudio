@@ -1,9 +1,10 @@
+import { forgetDeletedSessionSummaries } from '../agents/session-summary.js'
 import { validateMessageAttachments } from '../agents/message-attachments.js'
 import { withCardFramework } from '../cards/card-framework.js'
-import { assertAgentSessionNotExecuting } from './agents-runtime.js'
+import { assertAgentSessionNotExecuting } from '../agents/session-execution.js'
+import { readAgentTurnVariables } from '../prompt/agent-turn-variables.js'
 import { readUserProfiles, resolveCurrentUserProfile, validateProfileAvatar } from '../profiles/user-profiles.js'
 import { createPlayerStateContribution, hasPlayerProfile } from '../profiles/player-state.js'
-import { readPlayerProfile } from '@loom-studio/shared'
 import { workspaceBinaryLimit } from './workspace-runtime.js'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { JsonObject } from '@loom-studio/shared'
@@ -16,7 +17,7 @@ import { expandTimelineStateBindings } from '../state/state-definition.js'
 import type { StateContributionSource } from '../state/state-contribution-registry.js'
 import { createVariableRenderContext, renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
 import { fromStoredResource } from '../prompt/prompt-resource-mapper.js'
-import type { PromptResourceNode } from '../cards/workspace-types.js'
+import type { PromptResourceNode } from '../prompt/prompt-resource-types.js'
 import { readAvailableExtensionInstallations, isExtensionResourceAvailable } from './extension-resource-access.js'
 import type { ExtensionStateInitializationContext } from '@loom-studio/extension-sdk'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
@@ -155,6 +156,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         participants.push(block)
       }
       const runtimeContext = await readTimelineRuntimeContext(ctx, timeline.id)
+      if (!runtimeContext) throw new Error('Timeline Runtime Context is missing')
       return { archive: {
         format: 'loom-timeline-archive.v2',
         agent: { session: (await agents.getSession(timeline.id))!, entries: await agents.listEntries(timeline.id), swipeGroups: await ctx.swipes.listForSession(timeline.id) },
@@ -166,7 +168,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         state: { scope, revisions },
         workspace: { revisions: workspaceRevisions, blobs: workspaceBlobs },
         participants,
-        ...(hasPlayerProfile(runtimeContext) ? { runtimeContext } : {}),
+        runtimeContext,
         macroConfigurations: (await listTimelinePresetConfigs(ctx.documents, timeline.id)).map(record => ({
           presetId: record.content.presetId, macroSelections: record.content.macroSelections,
         })),
@@ -175,7 +177,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
 
     importTimelineArchive: async (input: { source: string }) => {
       const archive = parseTimelineArchive(input.source)
-      const archivedAgent = archive.format === 'loom-timeline-archive.v2' ? archive.agent : undefined
+      const archivedAgent = archive.agent
       const narratives = requireNarratives(ctx)
       const timelineId = ctx.createId('timeline')
       const idMap: TimelineArchiveIdMap = {
@@ -184,25 +186,25 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         nodeIds: Object.fromEntries(archive.nodes.map(node => [node.id, ctx.createId('node')])),
         stateRevisionIds: Object.fromEntries(archive.state.revisions.map(revision => [revision.id, ctx.createId('state-revision')])),
       }
-      const entryIds = Object.fromEntries((archivedAgent?.entries ?? []).map(entry => [entry.id, ctx.createId('agent-entry')]))
+      const entryIds = Object.fromEntries(archivedAgent.entries.map(entry => [entry.id, ctx.createId('agent-entry')]))
       const narrativeIds: Record<string, string> = {}
       const runIds: Record<string, string> = {}
       const invocationIds: Record<string, string> = {}
-      const groupIds = Object.fromEntries((archivedAgent?.swipeGroups ?? []).map(group => [group.id, entryIds[group.id] ?? ctx.createId('swipe-group')]))
-      const candidateIds = Object.fromEntries((archivedAgent?.swipeGroups ?? []).flatMap(group => group.candidates.map(candidate => [candidate.id, ctx.createId('swipe-candidate')])))
-      for (const entry of archivedAgent?.entries ?? []) {
+      const groupIds = Object.fromEntries(archivedAgent.swipeGroups.map(group => [group.id, entryIds[group.id] ?? ctx.createId('swipe-group')]))
+      const candidateIds = Object.fromEntries(archivedAgent.swipeGroups.flatMap(group => group.candidates.map(candidate => [candidate.id, ctx.createId('swipe-candidate')])))
+      for (const entry of archivedAgent.entries) {
         if (entry.entry.kind === 'message' && entry.entry.narrativeId) narrativeIds[entry.entry.narrativeId] ??= idMap.nodeIds[entry.entry.narrativeId] ?? ctx.createId('narrative-message')
         if (entry.runId) runIds[entry.runId] ??= ctx.createId('agent-run')
         if (entry.entry.kind === 'run-state' && entry.entry.sourceRunId) runIds[entry.entry.sourceRunId] ??= ctx.createId('agent-run')
         if (entry.entry.kind === 'tool-invocation') invocationIds[entry.entry.invocationId] ??= ctx.createId('tool-invocation')
       }
-      for (const group of archivedAgent?.swipeGroups ?? []) {
+      for (const group of archivedAgent.swipeGroups) {
         for (const id of [...group.candidates.flatMap(candidate => candidate.runIds), ...(group.excludedRunIds ?? []), ...(group.activeRunId ? [group.activeRunId] : [])])
           runIds[id] ??= ctx.createId('agent-run')
       }
-      const archivedPresetId = archivedAgent?.session.agentPresetId
+      const archivedPresetId = archivedAgent.session.agentPresetId
       const preset = archivedPresetId ? await ctx.promptResources.getResource(archivedPresetId) : undefined
-      const workspaceIds = Object.fromEntries((archive.workspace?.revisions ?? []).map(revision => [revision.id, ctx.createId('workspace-revision')]))
+      const workspaceIds = Object.fromEntries((archive.workspace.revisions).map(revision => [revision.id, ctx.createId('workspace-revision')]))
       const remapReference = (value: string, field: string): string => {
         if (['narrativeId', 'logicalId'].includes(field)) return narrativeIds[value] ?? value
         if (['timelineId', 'agentSessionId'].includes(field) && value === archive.timeline.id) return timelineId
@@ -225,7 +227,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
           [key, ['arguments', 'rawInput', 'content', 'messages', 'processedPrompt', 'providerResult', 'toolContract'].includes(key) ? item : remap(item, key)])) as T
         return value
       }
-      const workspaceBlobs = new Map(await Promise.all((archive.workspace?.blobs ?? []).map(async blob => {
+      const workspaceBlobs = new Map(await Promise.all((archive.workspace.blobs).map(async blob => {
         if (!ctx.blobs) throw new Error('Blob Storage is required to import Workspace files')
         return [blob.id, await ctx.blobs.prepareWrite({ source: Buffer.from(blob.base64, 'base64'), mediaType: blob.mediaType, maxBytes: workspaceBinaryLimit })] as const
       })))
@@ -235,9 +237,20 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
       const root = roots[0]
       if (!root || roots.length !== 1) throw new Error('Timeline archive must have one root branch')
       const nodes = orderArchiveItems(archive.nodes, node => node.parentNodeId)
+      const retainedBlocks = archive.participants.map(block => ({
+        ...block, idMap: composeTimelineArchiveIdMap(block.idMap, idMap),
+      }))
+      const pendingId = timelineArchivePendingId(timelineId)
+      const receivedAt = ctx.now()
       const result = await ctx.dataEngine.transact(
         narrativeWriteContext(undefined, 'application.importTimelineArchive'),
         async dataTx => requireDocumentParticipant(ctx).participateTransaction(dataTx, async documents => {
+          // Receive opaque data with the core Timeline before any external participant runs.
+          if (retainedBlocks.length) await documents.write({
+            id: pendingId, type: applicationDocumentTypes.timelineArchivePending,
+            content: { timelineId, blocks: retainedBlocks, idMap, failures: [], createdAt: receivedAt, updatedAt: receivedAt } satisfies TimelineArchivePendingContent,
+            expectedVersion: 'new',
+          })
           const stateTx = ctx.states.transaction(dataTx)
           const narrativeTx = narratives.transaction(dataTx)
           const scope = stateTx.createScope({ kind: 'timeline', ownerId: timelineId })
@@ -247,14 +260,14 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
             snapshot: revision.snapshot, operations: revision.operations,
           })
           for (const blob of workspaceBlobs.values()) ctx.blobs!.participateWrite(dataTx, blob)
-          for (const revision of orderArchiveItems(archive.workspace?.revisions ?? [], item => item.parentRevisionId)) {
+          for (const revision of orderArchiveItems(archive.workspace.revisions, item => item.parentRevisionId)) {
             ctx.workspaces.transaction(dataTx).create({ id: workspaceIds[revision.id], timelineId,
               parentRevisionId: revision.parentRevisionId ? workspaceIds[revision.parentRevisionId] : undefined,
               entries: revision.entries.map(entry => entry.kind === 'file' && 'blobId' in entry.content
                 ? { ...entry, content: { ...entry.content, blobId: workspaceBlobs.get(entry.content.blobId)!.blob.id } } : entry),
             })
           }
-          const initial = narrativeTx.createTimeline({
+          narrativeTx.createTimeline({
             // Imported histories stay locked, even when the archive carries an opening window.
             id: timelineId, primaryBranchId: idMap.branchIds[root.id], title: archive.timeline.title,
             promptResourceIds: archive.timeline.promptResourceIds,
@@ -286,7 +299,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
               entryId: node.entryId ? entryIds[node.entryId] : undefined,
               source: node.source ? { ...remap(node.source), changesetId: dataTx.changesetId } : undefined,
               parentNodeId: node.parentNodeId ? idMap.nodeIds[node.parentNodeId] : undefined,
-              kind: node.kind, floor: node.floor, workspaceRevisionId: workspaceIds[node.workspaceRevisionId] ?? initial.branch.workspaceHeadRevisionId, body: node.body, stateRevisionId: idMap.stateRevisionIds[node.stateRevisionId]!,
+              kind: node.kind, floor: node.floor, workspaceRevisionId: workspaceIds[node.workspaceRevisionId]!, body: node.body, stateRevisionId: idMap.stateRevisionIds[node.stateRevisionId]!,
               createdAt: node.createdAt,
             })),
             branches: branches.map(branch => ({
@@ -296,10 +309,10 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
               parentBranchId: branch.parentBranchId ? idMap.branchIds[branch.parentBranchId] : undefined,
               forkedFromNodeId: branch.forkedFromNodeId ? idMap.nodeIds[branch.forkedFromNodeId] : undefined,
               stateHeadRevisionId: idMap.stateRevisionIds[branch.stateHeadRevisionId]!,
-              workspaceHeadRevisionId: workspaceIds[branch.workspaceHeadRevisionId] ?? initial.branch.workspaceHeadRevisionId,
+              workspaceHeadRevisionId: workspaceIds[branch.workspaceHeadRevisionId]!,
             })),
           })
-          for (const group of archivedAgent?.swipeGroups ?? []) {
+          for (const group of archivedAgent.swipeGroups) {
             ctx.swipes.transaction(dataTx).save({ ...remap(group), id: groupIds[group.id]!, timelineId, agentSessionId: timelineId,
               candidates: group.candidates.map(candidate => ({ ...remap(candidate), id: candidateIds[candidate.id]!, agentSessionId: timelineId })),
             } as NarrativeSwipeGroup)
@@ -320,31 +333,30 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         idMap,
         blocks: archive.participants,
       })
-      if (participantResult.unknownNamespaces.length > 0 || participantResult.failures.length > 0) {
+      if (retainedBlocks.length) {
         const pendingNamespaces = new Set([...participantResult.unknownNamespaces, ...participantResult.failures.map(failure => failure.namespace)])
-        const pendingBlocks = archive.participants.filter(block => pendingNamespaces.has(block.namespace))
-          .map(block => ({ ...block, idMap: composeTimelineArchiveIdMap(block.idMap, idMap) }))
-        await executeDocumentMutation(ctx.documents, undefined, 'application.importTimelineArchive.pendingParticipants', async documents => {
-          const id = timelineArchivePendingId(timelineId)
-          const existing = await documents.get(id)
-          const timestamp = ctx.now()
-          const content: TimelineArchivePendingContent = {
-            timelineId,
-            blocks: pendingBlocks,
-            idMap,
-            failures: participantResult.failures,
-            createdAt: existing?.content && typeof existing.content === 'object' && !Array.isArray(existing.content) && typeof (existing.content as { createdAt?: unknown }).createdAt === 'string'
-              ? (existing.content as { createdAt: string }).createdAt
-              : timestamp,
-            updatedAt: timestamp,
-          }
-          await documents.write({
-            id,
-            type: applicationDocumentTypes.timelineArchivePending,
-            content,
-            expectedVersion: existing?.version ?? 'new',
+        try {
+          await executeDocumentMutation(ctx.documents, undefined, 'application.importTimelineArchive.pendingParticipants', async documents => {
+            const existing = await readDocument<TimelineArchivePendingContent>(documents, pendingId, applicationDocumentTypes.timelineArchivePending)
+            const blocks = retainedBlocks.filter(block => pendingNamespaces.has(block.namespace))
+            if (!blocks.length) {
+              await documents.delete({ id: pendingId, expectedVersion: existing.version })
+            } else {
+              await documents.write({
+                id: pendingId, type: applicationDocumentTypes.timelineArchivePending,
+                content: { ...existing.content, blocks, failures: participantResult.failures, updatedAt: ctx.now() } satisfies TimelineArchivePendingContent,
+                expectedVersion: existing.version,
+              })
+            }
           })
-        })
+        } catch (error) {
+          // Core import and participant effects already happened. Keep the original blocks;
+          // a failed receipt update must not suggest repeating those effects is safe.
+          participantResult.failures.push(...retainedBlocks.map(block => ({
+            namespace: block.namespace,
+            message: `Timeline imported; archived data retained but participant completion could not be recorded. Do not repeat the import: ${error instanceof Error ? error.message : String(error)}`,
+          })))
+        }
       }
       return { timelineId, idMap, unknownParticipantNamespaces: participantResult.unknownNamespaces, participantFailures: participantResult.failures, mutation: { changesetId: result.commit.changesetId } }
     },
@@ -446,6 +458,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
     },
 
     deleteNarrativeTimeline: async (input: DeleteNarrativeTimelineInput, requestContext?: RuntimeRequestContext): Promise<DeleteNarrativeTimelineResult> => {
+      const deletedSessionIds = new Set<string>()
       const narratives = requireNarratives(ctx)
       const scope = await ctx.states.getScope({ kind: 'timeline', ownerId: input.timelineId })
       const documentParticipant = requireDocumentParticipant(ctx)
@@ -453,6 +466,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         narrativeWriteContext(requestContext, 'application.deleteNarrativeTimeline'),
         async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
           const timeline = narratives.transaction(dataTx).deleteTimeline(input)
+          deletedSessionIds.add(input.timelineId)
           await tombstoneExtensionStorageScope(documents, { kind: 'agent-session', agentSessionId: input.timelineId })
           if (ctx.agents) {
             const agents = ctx.agents.transaction(dataTx)
@@ -462,6 +476,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
               page = agents.listSessions({ timelineId: input.timelineId, limit: 100 })
               for (const session of page.sessions) {
                 agents.deleteSession({ agentSessionId: session.id })
+                deletedSessionIds.add(session.id)
                 await tombstoneExtensionStorageScope(documents, {
                   kind: 'agent-session',
                   agentSessionId: session.id,
@@ -482,6 +497,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
           return timeline
         }, { allowEmpty: true }),
       )
+      forgetDeletedSessionSummaries(ctx.agents, deletedSessionIds)
       return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
     },
 
@@ -522,6 +538,10 @@ async function createTimelineFromCard(
   history?: ImportNarrativeHistoryInput['messages'],
 ) {
   const narratives = requireNarratives(ctx)
+  if (input.agentPresetId !== undefined) {
+    const preset = await ctx.promptResources.getResource(input.agentPresetId)
+    if (!preset || preset.resourceKind !== 'preset') throw new Error('Selected Agent Preset is unavailable')
+  }
   const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
   if (input.expectedCardVersion !== undefined && input.expectedCardVersion !== card.version) {
     throw new Error('Card changed while choosing an opening; reload the Card before starting')
@@ -707,9 +727,10 @@ async function createTimelineFromCard(
         opening: { id: selectedOpening?.id, locked: history !== undefined },
         openingNode: openingContent.trim() ? { body: { format: 'loom-markdown.v1', raw: openingContent } } : undefined,
       })
-      if (framework.presetId) {
+      const agentPresetId = input.agentPresetId ?? framework.presetId
+      if (agentPresetId) {
         if (!ctx.agents) throw new Error('Agent store is unavailable')
-        ctx.agents.transaction(dataTx).updateSession({ agentSessionId: timelineId, agentPresetId: framework.presetId })
+        ctx.agents.transaction(dataTx).updateSession({ agentSessionId: timelineId, agentPresetId })
       }
       if (history === undefined) return created
       const nodes: NarrativeNode[] = []
@@ -758,33 +779,6 @@ export async function readStateInitializationResources(
   return resources
 }
 
-export async function readAgentTurnVariables(
-  ctx: Pick<ApplicationRuntimeContext, 'now' | 'states' | 'documents'>,
-  timeline?: JsonObject,
-  characterName?: string,
-  requirePlayerProfile = false,
-): Promise<VariableRenderContext> {
-  const globalSnapshot = await ctx.states.getGlobalSnapshot()
-  const global = structuredClone(globalSnapshot?.revision.snapshot ?? {}) as JsonObject
-  // ponytail: Legacy Timelines keep global profiles until an explicit history/branch migration is defined.
-  const user = requirePlayerProfile ? readPlayerProfile(timeline!)
-    : resolveCurrentUserProfile(await readUserProfiles(ctx.documents))
-  return createVariableRenderContext({
-    global,
-    ...(timeline ? { timeline } : {}),
-    computed: {
-      user: { name: user.name, description: user.description },
-      global: {
-        time: { now: ctx.now() },
-      },
-      ...(characterName ? {
-        char: { name: characterName },
-        bot: { name: characterName },
-      } : {}),
-    },
-  })
-}
-
 async function buildTimelineRuntimeContext(
   ctx: Pick<ApplicationRuntimeContext, 'documents' | 'now'>,
   input: {
@@ -817,7 +811,6 @@ async function buildTimelineRuntimeContext(
     sourceCardId: input.card.id,
     sourceCardVersion: input.card.version,
     cardName: input.cardContent.name,
-    fallbackUserName: input.cardContent.userName?.trim() || 'User',
     stateEntityTypes: structuredClone(input.materializedState.entityTypes),
     stateEntities: structuredClone(input.materializedState.entities),
     stateComponents: structuredClone(input.materializedState.components),

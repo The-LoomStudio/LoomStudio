@@ -122,6 +122,7 @@ describe('frontend audit controls', () => {
     const onUndo = vi.fn()
     const onRedo = vi.fn()
     render(() => useStudioShortcuts({
+      mobileDrawerOpen: false, closeMobileDrawer: vi.fn(),
       activePanel: null, assetMetadataOpen: false, busy: false, canRedo: false, canUndo: true,
       dockOpen: false, isImmersive: false, onRedo, onUndo, closeDock: vi.fn(), closePanel: vi.fn(),
       setAssetMetadataOpen: vi.fn(), togglePanelWindowMode: vi.fn(),

@@ -19,7 +19,7 @@ afterEach(async () => {
 })
 
 it('loads bindings only on inspection and closes a nested inspector without closing its parent', async () => {
-  const getBindings = vi.fn(async () => ({ cards: [{ id: 'card', name: '测试角色' }], loreMounts: [] }))
+  const getBindings = vi.fn(async () => ({ resourceId: 'lore', cards: [{ id: 'card', name: '测试角色' }], loreMounts: [] }))
   const closeParent = vi.fn()
   host = document.createElement('div'); document.body.append(host)
   root = createRoot(host)

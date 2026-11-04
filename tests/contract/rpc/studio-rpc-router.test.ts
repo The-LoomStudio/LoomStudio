@@ -18,9 +18,9 @@ describe('studio rpc router', () => {
     ['importCardBundle', { artifact: {
       schemaVersion: 4, artifactId: 'artifact-1', displayName: 'Artifact', card: { name: 'Card' }, contextAssets: [],
     } }],
-    ['updateCardPromptResources', { cardId: 'card-1', promptResourceIds: ['resource-1'] }],
-    ['replaceLoreMounts', { source: { kind: 'preset', id: 'preset-1' }, loreResourceIds: ['setting-1'] }],
-    ['replacePresetToolMounts', { presetId: 'preset-1', mounts: [] }],
+    ['updateCardPromptResources', { expectedVersion: 1, cardId: 'card-1', promptResourceIds: ['resource-1'] }],
+    ['replaceLoreMounts', { expectedMountIds: [], source: { kind: 'preset', id: 'preset-1' }, loreResourceIds: ['setting-1'] }],
+    ['replacePresetToolMounts', { expectedMountIds: [], presetId: 'preset-1', mounts: [] }],
   ])('passes rpc context into %s', async (method, input) => {
     const mutate = vi.fn(async (_input: unknown, _context: unknown) => ({}))
     const applicationRuntime = { [method]: mutate } as unknown as ApplicationRuntime
@@ -153,7 +153,7 @@ describe('studio rpc router', () => {
     const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
 
     await router.call('application.replacePresetToolMounts', {
-      presetId: 'preset-1',
+      presetId: 'preset-1', expectedMountIds: [],
       mounts: [{
         toolId: 'official/test_content',
         orderIndex: 0,
@@ -165,7 +165,7 @@ describe('studio rpc router', () => {
     }, context)
 
     expect(receivedInput).toEqual({
-      presetId: 'preset-1',
+      presetId: 'preset-1', expectedMountIds: [],
       mounts: [{
         toolId: 'official/test_content',
         orderIndex: 0,
@@ -282,7 +282,7 @@ describe('studio rpc router', () => {
     const replaceLoreMounts = vi.fn(async () => ({ mounts: [] }))
     const applicationRuntime = { replaceLoreMounts } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
-    const input = { source: { kind: 'preset', id: 'preset-1' }, ...list }
+    const input = { expectedMountIds: [], source: { kind: 'preset', id: 'preset-1' }, ...list }
     await router.call('application.replaceLoreMounts', input, context)
     expect(replaceLoreMounts).toHaveBeenCalledExactlyOnceWith(input, context)
   })

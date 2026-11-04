@@ -76,3 +76,15 @@
   color: var(--loom-color-text-muted);
   text-align: right;
 }
+
+.recovery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recovery p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: var(--loom-font-size-2);
+}

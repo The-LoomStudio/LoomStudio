@@ -33,7 +33,7 @@ describe('PromptBuild 1,000-node DFS compiler stress and SLA gate', () => {
         })
       } else {
         const nodeId = `node-${i}`
-        const capabilities: PromptContribution['capabilities'] = {
+        const capabilities: NonNullable<SourceNode['capabilities']> = {
           roleHint: 'system',
           activation: i % 3 === 0
             ? { kind: 'keyword', keywords: [`[keyword-${i % 20}]`] }

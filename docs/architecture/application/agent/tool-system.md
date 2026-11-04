@@ -29,6 +29,8 @@ Tool Prompt 中允许宏展开的字段只有 description、parameter descriptio
 
 `preset_tool_mounts` 是 Preset 到 Tool Definition 的权威关系，保存 `defaultEnabled`、Activation、Provider Tool order、Content zone / slot / rank / order hint、origin 和 Mount order。
 
+Tool/Lore 挂载全量替换要求 `expectedMountIds`，Store 在同一写事务内与完整当前集合比较；替换会重建挂载 ID，旧空集合也不能覆盖新挂载。新 Preset 与其默认 Tool Mount 在同一事务创建，初始化失败不会留下部分预设。
+
 Agent Preset 使用这一份挂载配置，不再叠加 Profile `toolOverrides`。候选集合按以下规则计算：
 
 ```text
@@ -229,4 +231,4 @@ toolMounts:
     defaultEnabled: true
 ```
 
-工具缺少执行注册、模块未激活或权限不足仍由现有执行边界处理，安装成功不能被描述为实际调用一定成功。其他资源的引用能力见[跨资源核对记录](../../../workbench/issues/extension-cross-resource-references.md)。
+工具缺少执行注册、模块未激活或权限不足仍由现有执行边界处理，安装成功不能被描述为实际调用一定成功。其他资源的引用能力见[跨资源核对记录](../../../archive/issues/extension-cross-resource-references.md)。

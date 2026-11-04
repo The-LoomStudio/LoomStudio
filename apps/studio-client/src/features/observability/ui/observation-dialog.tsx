@@ -25,7 +25,7 @@ export function ObservationRawData({ title, value, text, t, icon, children }: {
   return <ObservationDialogButton title={title} t={t} icon={icon}>{() => <>{children}<RawDataContent text={text ?? (value === undefined ? t('observation.missing') : JSON.stringify(value, null, 2))} t={t} /></>}</ObservationDialogButton>
 }
 
-function RawDataContent({ text, t }: { text: string; t: Translator }) {
+export function RawDataContent({ text, t }: { text: string; t: Translator }) {
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle')
   return <div className={styles.inspectorContent}>
     <div className={styles.inspectorActions}><Button size="small" onClick={async () => setCopied(await tryWriteClipboardText(text) ? 'copied' : 'failed')}><Copy size={14} />{t(copied === 'copied' ? 'observation.copied' : 'observation.copy')}</Button>

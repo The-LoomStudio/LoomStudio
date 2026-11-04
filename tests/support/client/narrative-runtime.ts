@@ -1,76 +1,44 @@
 import { afterEach, beforeEach, vi } from 'vitest'
-import type { FormEvent } from 'react'
+import { act, type FormEvent } from 'react'
+import { renderHook } from './render-hook.js'
+import { Window } from 'happy-dom'
 import { useNarrativeRuntime } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import type { DataOperation } from '../../../apps/studio-client/src/shared/api/data-commit-events.js'
 import type { AgentSession, AgentTranscriptEntry, InvokeAgentTurnResult } from '../../../apps/studio-client/src/entities/index.js'
 
-const hooks = vi.hoisted(() => ({
-  cursor: 0,
-  rootEffectSeen: false,
-  swipeEffect: undefined as (() => void) | undefined,
-  swipeDeps: undefined as unknown[] | undefined,
-  nextSwipeDeps: undefined as unknown[] | undefined,
-  rootDeps: undefined as unknown[] | undefined,
-  rootDispose: undefined as (() => void) | undefined,
-  rootEffect: undefined as (() => void | (() => void)) | undefined,
-  values: [] as unknown[],
-  commitEffect: undefined as (() => void | (() => void)) | undefined,
-  onCommit: undefined as ((operations: Array<{ entityType: string; entityId: string }>) => void) | undefined,
-  narrativeConnected: undefined as (() => void) | undefined,
-  sessionEffect: undefined as (() => void | (() => void)) | undefined,
-  sessionCommit: undefined as ((operations: DataOperation[]) => void) | undefined,
-  connected: undefined as (() => void) | undefined,
-  subscribingSessions: false,
-  mountEffects: [] as Array<() => void>,
-}))
-export { hooks }
+const events = vi.hoisted(() => ({ listeners: new Set<{ changed: (operations: DataOperation[]) => void; connected: () => void }>() }))
 vi.mock('../../../apps/studio-client/src/shared/api/data-commit-events.js', () => ({
-  subscribeDataCommits: (onCommit: typeof hooks.sessionCommit, connected: () => void) => {
-    if (hooks.subscribingSessions) {
-      hooks.sessionCommit = onCommit
-      hooks.connected = connected
-      return () => { hooks.sessionCommit = undefined }
-    }
-    hooks.onCommit = onCommit
-    hooks.narrativeConnected = connected
-    return () => { hooks.onCommit = undefined }
+  subscribeDataCommits: (changed: (operations: DataOperation[]) => void, connected: () => void) => {
+    const listener = { changed, connected }
+    events.listeners.add(listener)
+    return () => events.listeners.delete(listener)
   },
 }))
-vi.mock('react', async importOriginal => ({
-  ...await importOriginal<typeof import('react')>(),
-  useEffect: (effect: () => void, deps?: unknown[]) => {
-    if (deps?.length === 0) hooks.mountEffects.push(effect)
-    if (deps?.length === 3) {
-      if (!hooks.rootEffectSeen) { hooks.rootEffectSeen = true; hooks.rootEffect = effect }
-      else if (typeof deps[1] === 'string' && typeof deps[2] === 'string') hooks.commitEffect = effect
-    }
-    if (deps?.length === 2 && deps[1] === 'timeline') hooks.sessionEffect = effect
-    if (deps?.length === 2 && (deps[0] === undefined || typeof deps[0] === 'string')) {
-      hooks.swipeEffect = effect
-      hooks.nextSwipeDeps = deps
-    }
-  },
-  useState: (initial: unknown) => {
-    const index = hooks.cursor++
-    if (!(index in hooks.values)) hooks.values[index] = typeof initial === 'function' ? initial() : initial
-    return [hooks.values[index], (value: unknown) => {
-      hooks.values[index] = typeof value === 'function' ? value(hooks.values[index]) : value
-    }]
-  },
-  useRef: (initial: unknown) => {
-    const index = hooks.cursor++
-    if (!(index in hooks.values)) hooks.values[index] = { current: initial }
-    return hooks.values[index]
-  },
-}))
+export const hooks = {
+  onCommit: (operations: DataOperation[]) => act(() => { for (const listener of [...events.listeners]) listener.changed(operations) }),
+  narrativeConnected: () => act(() => { for (const listener of [...events.listeners]) listener.connected() }),
+}
+const mounted: Array<() => void> = []
+beforeEach(() => {
+  // HTTP/SSE integration keeps Node module transforms while mounting a real React root.
+  if (typeof document === 'undefined') {
+    const browser = new Window()
+    vi.stubGlobal('window', browser)
+    vi.stubGlobal('document', browser.document)
+    vi.stubGlobal('localStorage', browser.localStorage)
+  }
+  localStorage.clear()
+})
+afterEach(() => { for (const unmount of mounted.splice(0)) unmount(); events.listeners.clear(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
-beforeEach(() => { hooks.swipeEffect = undefined; hooks.swipeDeps = undefined; hooks.nextSwipeDeps = undefined; hooks.rootDispose?.(); hooks.rootDispose = undefined; hooks.rootDeps = undefined; hooks.rootEffect = undefined; hooks.rootEffectSeen = false; hooks.cursor = 0; hooks.values = []; hooks.commitEffect = undefined; hooks.onCommit = undefined
-  hooks.narrativeConnected = undefined
-  hooks.sessionEffect = undefined; hooks.sessionCommit = undefined; hooks.connected = undefined; hooks.subscribingSessions = false })
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+export async function settle<T>(action: () => T | Promise<T>): Promise<T> {
+  let result!: T
+  await act(async () => { result = await action() })
+  return result
+}
 
-export function fixture() {
+export async function fixture() {
   const timeline = {
     id: 'timeline', activeBranchId: 'branch', promptResourceIds: [],
     createdAt: '2026-09-23', updatedAt: '2026-09-23',
@@ -114,7 +82,7 @@ export function fixture() {
   }))
   const createRun = vi.fn<StudioApi['agentSessions']['createRun']>(async () => ({ runId: 'run' }))
   const submitInterjection = vi.fn<StudioApi['agentSessions']['submitInterjection']>(async request => {
-    const entry: AgentTranscriptEntry = { id: request.requestId, agentSessionId: request.agentSessionId, sequence: 1, createdAt: timeline.createdAt,
+    const entry: Awaited<ReturnType<StudioApi['agentSessions']['submitInterjection']>>['entry'] = { id: request.requestId, agentSessionId: request.agentSessionId, sequence: 1, createdAt: timeline.createdAt,
       entry: { kind: 'user-interjection', requestId: request.requestId, content: request.input, mode: request.mode, attachments: request.attachments, narrativeTarget: request.narrativeTarget } }
     // Model the server's accepted idle boundary; the client must not append a node itself.
     if (request.mode === 'narrative') {
@@ -149,7 +117,7 @@ export function fixture() {
         list: vi.fn<StudioApi['narratives']['list']>(async () => ({ timelines: [] })),
       },
       agentSessions: {
-        create: createSession, createRun, submitInterjection, subscribeRun, getTranscript, resumeRun, acknowledgeRunCompletion,
+        list: vi.fn(async () => ({ sessions: [] })), create: createSession, createRun, submitInterjection, subscribeRun, getTranscript, resumeRun, acknowledgeRunCompletion,
         update: vi.fn(async patch => { Object.assign(rootSession, patch); return { session: rootSession, mutation: { changesetId: 'configure-root' } } }),
         runState: vi.fn(async () => ({ runId: 'run', state: 'suspended' })),
       },
@@ -163,36 +131,39 @@ export function fixture() {
     },
     runLatestAction: action => action({ isCurrent: () => true } as never),
   }
+  let rendered: ReturnType<typeof renderHook<ReturnType<typeof useNarrativeRuntime>>> | undefined
+  const unmount = () => { rendered?.unmount(); rendered = undefined }
+  mounted.push(unmount)
   const render = () => {
-    hooks.cursor = 0; hooks.mountEffects = []; hooks.rootEffectSeen = false
-    const current = useNarrativeRuntime(input)
-    const deps = [input.api, current.timeline?.id, current.branch?.id]
-    if (!hooks.rootDeps || deps.some((value, index) => value !== hooks.rootDeps![index])) {
-      hooks.rootDispose?.()
-      hooks.rootDeps = deps
-      hooks.rootDispose = hooks.rootEffect?.() || undefined
-    }
-    const swipeDeps = hooks.nextSwipeDeps
-    if (swipeDeps && (!hooks.swipeDeps || swipeDeps.some((value, index) => value !== hooks.swipeDeps![index]))) {
-      hooks.swipeDeps = swipeDeps
-      hooks.swipeEffect?.()
-    }
-    return current
+    if (!rendered) rendered = renderHook(() => useNarrativeRuntime(input))
+    else rendered.rerender()
+    return new Proxy(rendered.current, {
+      get(target, key, receiver) {
+        const value = Reflect.get(target, key, receiver)
+        if (typeof value !== 'function') return value
+        return (...args: unknown[]) => {
+          let result: unknown
+          act(() => { result = value(...args) })
+          return result
+        }
+      },
+    })
   }
-  const loadRoot = async () => { render(); for (let i = 0; i < 12; i++) await Promise.resolve(); return render() }
+  const loadRoot = async () => { render(); await act(async () => {}); return render() }
   const event = { preventDefault: vi.fn() } as unknown as FormEvent
-  return { render, loadRoot, rootSession, rootEntries, rootGetTranscript, event, input, result, rootResult, appendInput, createTimeline, createSession, createRun, submitInterjection, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
+  await loadRoot()
+  return { render, loadRoot, unmount, rootSession, rootEntries, rootGetTranscript, event, input, result, rootResult, appendInput, createTimeline, createSession, createRun, submitInterjection, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
 }
 
 export async function primaryFixture() {
-  const f = fixture()
-  await f.render().createTimelineFromCard()
+  const f = await fixture()
+  await settle(() => f.render().createTimelineFromCard())
   await f.loadRoot()
   f.rootGetTranscript.mockResolvedValue({ session: f.rootSession, entries: f.rootEntries })
-  const primary = await f.render().createAgentSession('profile', true)
+  const primary = await settle(() => f.render().createAgentSession('profile', true))
   f.input.api.agentSessions.list = vi.fn(async () => ({ sessions: [primary!] }))
   f.getTranscript.mockResolvedValueOnce({ session: primary!, entries: [] })
-  await f.render().activateAgentSession(primary!)
+  await settle(() => f.render().activateAgentSession(primary!))
   f.getTranscript.mockClear()
   return f
 }

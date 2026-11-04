@@ -5,6 +5,7 @@ import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/stu
 import { act, createElement as h, createRef, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
+import { ObservationMessageCard } from '../../../apps/studio-client/src/features/observability/ui/observation-messages.js'
 import { ObservationSources } from '../../../apps/studio-client/src/features/observability/ui/observation-sources.js'
 import { ToolResult } from '../../../apps/studio-client/src/features/observability/ui/observation-content.js'
 import { ObservabilityWorkbench } from '../../../apps/studio-client/src/widgets/log-viewer/observability-workbench.js'
@@ -26,18 +27,17 @@ it('keeps the first tool response visible and allows the changes switch without 
   await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent?.includes('钟楼下的重逢'))!.click())
   const toggle = [...host.querySelectorAll('button')].find(item => item.textContent === '显示全部消息')!
   expect(toggle.disabled).toBe(false)
-  const input = [...host.querySelectorAll('details')].find(item => item.querySelector(':scope > summary')?.textContent?.startsWith('输入消息'))!
-  expect(input.open).toBe(false)
+  expect(host.textContent).toContain(t('observation.tokenOverview'))
   const tool = [...host.querySelectorAll('fieldset')].find(item => item.textContent?.includes('codeact_json'))!
-  expect(input.contains(tool)).toBe(false)
+  expect(tool.closest('details')).toBeNull()
   expect(tool.textContent).toContain("cannot read property '日期'")
   await act(async () => toggle.click())
-  expect([...host.querySelectorAll('details')].find(item => item.querySelector(':scope > summary')?.textContent?.startsWith('输入消息'))!.open).toBe(true)
+  expect(host.textContent).toContain(t('observation.sendOrder'))
   await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent === '只看变化消息')!.click())
   await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent?.includes('2 · 输出文本'))!.click())
   const output = [...host.querySelectorAll('fieldset')].find(item => item.textContent?.includes('雨水沿着钟楼'))!
   expect(output.closest('details')).toBeNull()
-  expect([...host.querySelectorAll('details')].find(item => item.querySelector(':scope > summary')?.textContent?.startsWith('输入消息'))!.open).toBe(false)
+  expect(host.textContent).toContain(t('observation.tokenOverview'))
 })
 
 it('expands recorded resource groups, keeps unused closed, and uses anchor IDs and authoring icon colors', async () => {
@@ -73,8 +73,10 @@ it('keeps entry content expanded and opens the full diff only in its dialog', as
   expect(diff.querySelector('button')?.getAttribute('aria-expanded')).toBe('true')
   expect(diff.querySelector('.cm-collapsedLines')).toBeNull()
   expect(diff.closest('dialog')).not.toBeNull()
-  await act(async () => host.querySelector('dialog')!.dispatchEvent(new Event('cancel', { cancelable: true })))
-  expect(host.querySelector('dialog')?.open).toBe(false)
+  const diffDialog = diff.closest('dialog')!
+  await act(async () => diffDialog.dispatchEvent(new Event('cancel', { cancelable: true })))
+  expect(diffDialog.open).toBe(false)
+  expect(host.querySelector('dialog')?.open).toBe(true)
   expect(host.querySelector('[data-loom-component="read-only-diff"]')).toBeNull()
 })
 
@@ -139,4 +141,62 @@ it('does not hide arbitrary ID fields or reinterpret unparseable tool text', asy
   expect(host.textContent).toContain(payload.warning)
   expect(host.textContent).toContain('{truncated')
   expect(host.querySelector('dialog')).toBeNull()
+})
+
+
+it('keeps long messages brief and exposes full content and raw evidence through the same info dialog', async () => {
+  const content = 'context '.repeat(500) + 'END_OF_MESSAGE'
+  await mount(h(ObservationMessageCard, { message: { id: 'long', role: 'system', content, raw: { role: 'system', content, evidence: 'raw-only-field' } }, tokens: 501, onSource: () => {}, t }))
+  expect(host.textContent).not.toContain('END_OF_MESSAGE')
+  expect(host.textContent).toContain('501 tokens')
+  expect([...host.querySelectorAll('button')].some(item => item.textContent === t('observation.expandText'))).toBe(false)
+  await act(async () => (host.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement).click())
+  expect(host.querySelector('dialog')?.textContent).toContain('END_OF_MESSAGE')
+  expect(host.querySelector('dialog')?.textContent).not.toContain('raw-only-field')
+  await act(async () => [...host.querySelectorAll('button')].find(item => item.textContent === t('observation.rawMessage'))!.click())
+  expect(host.querySelector('dialog')?.textContent).toContain('raw-only-field')
+})
+
+
+it('shows recorded roles in the source tree and keeps the tree visible behind source details', async () => {
+  const entry = { ...observationFixtures[0].steps[0].sources[0], id: 'session-entry', title: 'Message 6', included: true, injections: [
+    { id: 'assistant-part', role: 'assistant', rendered: 'Calling a tool' },
+    { id: 'tool-part', role: 'tool', rendered: 'Tool result' },
+  ] }
+  await mount(h(ObservationSources, { renderSourceIcon: input => h(ObservationSourceIcon, input), sources: [entry], selectedId: entry.id, onSelect: () => {}, scroller: createRef<HTMLElement>(), t }))
+  const leaf = [...host.querySelectorAll('button')].find(button => button.textContent?.includes('Message 6'))!
+  expect(leaf.closest('dialog')).toBeNull()
+  expect(leaf.closest('[hidden]')).toBeNull()
+  expect(leaf.textContent).toContain(t('observation.tokens.assistant'))
+  expect(leaf.textContent).toContain(t('observation.tokens.tool'))
+  expect(leaf.textContent).toContain(t('observation.tokenUnknown'))
+  expect(host.querySelector('dialog')?.open).toBe(true)
+})
+
+
+it('filters the existing source tree through the overview legend and clears that filter', async () => {
+  const base = observationFixtures[0].steps[0].sources[0]
+  const sources = [
+    { ...base, id: 'first', title: 'First source', included: true, injections: [{ id: 'one', targetAnchorId: '@a', rendered: 'alpha' }] },
+    { ...base, id: 'second', title: 'Second source', included: true, injections: [{ id: 'two', targetAnchorId: '@b', rendered: 'beta' }] },
+  ]
+  await mount(h(ObservationSources, { renderSourceIcon: input => h(ObservationSourceIcon, input), sources, onSelect: () => {}, scroller: createRef<HTMLElement>(), t }))
+  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent?.startsWith('@a'))!.click())
+  expect(host.textContent).toContain('First source')
+  expect(host.textContent).not.toContain('Second source')
+  await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === t('observation.clearTokenFilter'))!.click())
+  expect(host.textContent).toContain('Second source')
+})
+
+
+it('shows execution status in the message row and separates tool request from output in its dialog', async () => {
+  await mount(h(ObservationMessageCard, { message: { id: 'tool', role: 'tool', content: 'operation failed', exchanges: [{ callId: 'call', name: 'write', input: { path: '/example' }, result: 'operation failed', status: 'failed' }] }, onSource: () => {}, t }))
+  expect(host.textContent).toContain(t('observation.failed'))
+  expect(host.textContent).toContain('write')
+  await act(async () => (host.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement).click())
+  const dialog = host.querySelector('dialog')!
+  expect(dialog.textContent).toContain(t('observation.toolRequest'))
+  expect(dialog.textContent).toContain('/example')
+  expect(dialog.textContent).toContain(t('observation.toolOutput'))
+  expect(dialog.querySelector('[data-failed="true"]')?.textContent).toContain('operation failed')
 })

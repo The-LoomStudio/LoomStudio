@@ -15,7 +15,6 @@ export function useStudioDerivedState(
     providerAccountsLoaded: boolean
     agentChatSessionLoading: boolean
   },
-  route: { panel: string | null; cardId?: string },
 ) {
   const mediaRevision = useCardMediaRevision()
   return useMemo(() => {
@@ -47,5 +46,5 @@ export function useStudioDerivedState(
         || state.operationPending.session.pendingCount > 0
         || state.agentChatSessionLoading,
     }
-  }, [mediaRevision, route.cardId, route.panel, state])
+  }, [mediaRevision, state])
 }

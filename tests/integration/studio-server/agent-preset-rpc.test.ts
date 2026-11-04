@@ -49,14 +49,14 @@ describe('Agent preset RPC', () => {
       const mount = { toolId: tool.id, orderIndex: 0, defaultEnabled: true,
         activation: { kind: 'always' }, content: { targetAnchorId: '@chat.custom', localDepth: 12 } }
       const trpc = await authenticatedTrpc(port)
-      const saved = await trpc.application.replacePresetToolMounts.mutate({
+      const saved = await trpc.application.replacePresetToolMounts.mutate({ expectedMountIds: (await trpc.application.listPresetToolMounts.query({ presetId: agentPreset.id })).mounts.map(mount => mount.id),
         presetId: agentPreset.id, mounts: [mount],
       })
       const read = () => trpc.application.listPresetToolMounts.query({ presetId: agentPreset.id })
       expect((await read()).mounts).toEqual(saved.mounts)
       expect(saved.mounts[0]).toMatchObject(mount)
       for (const content of [{ zone: 'tools', slot: 'old', orderHint: 3 }, { targetAnchorId: 12 }, { localDepth: '12' }]) {
-        await expect(trpc.application.replacePresetToolMounts.mutate({
+        await expect(trpc.application.replacePresetToolMounts.mutate({ expectedMountIds: (await trpc.application.listPresetToolMounts.query({ presetId: agentPreset.id })).mounts.map(mount => mount.id),
           presetId: agentPreset.id, mounts: [{ ...mount,
             // @ts-expect-error deliberate invalid wire input
             content }],

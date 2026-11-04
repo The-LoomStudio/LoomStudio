@@ -35,7 +35,7 @@ async function fixture(mode: 'declared' | 'automatic' = 'automatic', openingCont
   const { providerProfile } = await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test'] })
   await runtime.updateAgentPreset({ agentPresetId: preset.id, expectedVersion: preset.version,
     model: { providerProfileId: providerProfile.id, modelId: 'test' } })
-  await runtime.replacePresetToolMounts({ presetId: preset.id, mounts: [{ toolId: 'official/read_state', orderIndex: 0, defaultEnabled: true }] })
+  await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id), presetId: preset.id, mounts: [{ toolId: 'official/read_state', orderIndex: 0, defaultEnabled: true }] })
   await callApplicationRpc(runtime, 'application.updateAgentSession', { agentSessionId: timeline.id, agentPresetId: preset.id, narrativeMode: mode })
   const append = async (content: string) => {
     const current = (await narratives.getBranch(target.branchId))!
@@ -57,6 +57,44 @@ async function fixture(mode: 'declared' | 'automatic' = 'automatic', openingCont
 }
 
 describe('unified Timeline Session', () => {
+  it('returns distinct exchange identities on repeated transcript reads', async () => {
+    const f = await fixture('declared')
+    try {
+      await f.discuss('First input', 'Same reply')
+      await f.discuss('Second input', 'Same reply')
+      const read = () => f.runtime.getAgentTranscriptPage({ agentSessionId: f.timeline.id, limit: 100 })
+      const page = await read()
+      const messages = page.entries.filter(item => item.entry.kind === 'message')
+      const inputs = messages.filter(item => item.entry.kind === 'message' && item.entry.role === 'user')
+      const replies = messages.filter(item => item.entry.kind === 'message' && item.entry.role === 'assistant')
+      expect(replies.map(item => item.timelinePosition?.exchangeId)).toEqual(inputs.map(item => item.id))
+      expect(replies.every(item => !!item.entry.streamId)).toBe(true)
+      expect(new Set(replies.map(item => item.entry.streamId)).size).toBe(2)
+      expect((await read()).entries).toEqual(page.entries)
+    } finally { f.engine.close() }
+  })
+
+  it('keeps accepted discussion input visible after a provider failure without material changes', async () => {
+    const f = await fixture('declared')
+    try {
+      await f.discuss('First input', 'First reply')
+      f.beforeRequest(async () => { throw new Error('Provider unavailable') })
+      await expect(f.runtime.invokeAgentTurn({ agentSessionId: f.timeline.id, input: 'Keep my latest input',
+        narrativeTarget: f.target })).rejects.toThrow('Provider unavailable')
+      const session = (await f.agents.getSession(f.timeline.id))!
+      const entries = await f.agents.listEntries(f.timeline.id)
+      const reachable = []
+      let cursor = session.headEntryId
+      while (cursor) {
+        const entry = entries.find(item => item.id === cursor)!
+        reachable.push(entry)
+        cursor = entry.parentEntryId
+      }
+      expect(reachable.some(item => item.entry.kind === 'message' && item.entry.role === 'user'
+        && item.entry.content === 'Keep my latest input')).toBe(true)
+    } finally { f.engine.close() }
+  })
+
   it.each(['OPENING', ''])('retries communication Narrative without a roleplay input after %j, preserving all adopted heads', async opening => {
     const f = await fixture('declared', opening)
     try {
@@ -224,4 +262,18 @@ describe('unified Timeline Session', () => {
     } finally { f.engine.close() }
   })
 
+})
+
+it('creates a new story with the chosen preset already bound to its main Session', async () => {
+  const f = await fixture()
+  try {
+    const { card } = await f.runtime.createCard({ name: 'Next story' })
+    const created = await callApplicationRpc(f.runtime, 'application.createNarrativeTimeline', { cardId: card.id, agentPresetId: f.preset.id })
+    if (!created || typeof created !== 'object' || Array.isArray(created) || !('timeline' in created)) throw new Error('Expected created Timeline')
+    const timeline = created.timeline
+    if (!timeline || typeof timeline !== 'object' || Array.isArray(timeline) || typeof timeline.id !== 'string') throw new Error('Expected Timeline ID')
+    const session = await f.agents.getSession(timeline.id)
+    expect(session?.agentPresetId).toBe(f.preset.id)
+    await expect(callApplicationRpc(f.runtime, 'application.createNarrativeTimeline', { cardId: card.id, agentPresetId: 'missing-preset' })).rejects.toThrow('Selected Agent Preset is unavailable')
+  } finally { f.engine.close() }
 })

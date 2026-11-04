@@ -104,6 +104,25 @@ function fixture() {
 beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = []; hooks.dirty = false })
 
 describe('Card editor effect lifecycle', () => {
+  it('shares an in-flight detail read without suppressing an explicit fresh read', async () => {
+    const view = fixture()
+    let resolve!: (value: { card: Card }) => void
+    view.get.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const state = view.render()
+    const first = state.readCardDetails('a')
+    expect(state.readCardDetails('a')).toBe(first)
+    expect(view.get).toHaveBeenCalledTimes(1)
+    const fresh = state.readCardDetails('a', true)
+    expect(fresh).not.toBe(first)
+    expect(view.get).toHaveBeenCalledTimes(2)
+    await fresh
+    resolve({ card: card('a', 'Older') })
+    await first
+    await state.readCardDetails('a')
+    expect(view.get).toHaveBeenCalledTimes(3)
+    view.unmount()
+  })
+
   it('preserves candidate IDs when editing titles and content, adding and deleting alternatives', async () => {
     let selected = { ...card('a', 'Original'), opening: {
       id: 'root-opening', title: 'Root', content: 'Root content',

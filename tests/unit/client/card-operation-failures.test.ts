@@ -194,7 +194,7 @@ describe('Card operation failure propagation', () => {
     render().setSelectedCardId('a')
     const pending = operation === 'media'
       ? render().updateCardMedia('a', 'avatar', new File(['image'], 'a.png', { type: 'image/png' }))
-      : render().replaceCardPromptResources('a', ['resource'])
+      : render().replaceCardPromptResources('a', ['resource'], cards[0]!.version)
     render().setSelectedCardId('b')
     resolve({ card: { ...cards[0]!, version: 2, media: { avatarAssetId: 'asset' }, promptResourceIds: ['resource'] }, mutation: { changesetId: 'commit' } })
     await expect(pending).rejects.toBe(failure)
@@ -348,7 +348,13 @@ describe('Card operation failure propagation', () => {
     }
     await render().refreshCards()
     render().setSelectedCardId(selectedId)
-    await expect(render().deleteCards(['deleted'])).rejects.toBe(failure)
+    const onCommitted = vi.fn((deletedIds: readonly string[]) => {
+      expect(deletedIds).toEqual(['deleted'])
+      expect(render().cards.map(card => card.id)).toEqual(['other'])
+      expect(render().selectedCardId).toBe(selectedId === 'deleted' ? undefined : 'other')
+    })
+    await expect(render().deleteCards(['deleted'], undefined, onCommitted)).rejects.toBe(failure)
+    expect(onCommitted).toHaveBeenCalledExactlyOnceWith(['deleted'])
     const current = render()
     expect(current.cards.map(card => card.id)).toEqual(['other'])
     expect(current.selectedCardId).toBe(selectedId === 'deleted' ? undefined : 'other')

@@ -14,9 +14,10 @@ type Props = {
   navigation: ReturnType<typeof useStudioNavigation>
   cardId: string
   busy: boolean
+  onDeleteCards: ReturnType<typeof useStudioState>['deleteCards']
 }
 
-export function StudioTimelineActions({ state, navigation, cardId, busy }: Props) {
+export function StudioTimelineActions({ state, navigation, cardId, busy, onDeleteCards }: Props) {
   const { t } = state
   const card = state.cards.find(item => item.id === cardId)
   const revision = useCardMediaRevision()
@@ -73,12 +74,7 @@ export function StudioTimelineActions({ state, navigation, cardId, busy }: Props
       timelines={state.allTimelines.filter(item => item.createdFrom?.cardId === cardId)
         .map(item => ({ id: item.id, title: item.title ?? t('sessions.untitledTimeline'),
           description: formatDateTime(item.createdAt), preview: item.latestPreview || item.openingPreview }))}
-      onSelectTimeline={id => void run(async () => {
-        if (id === timeline?.id) return
-        const branchId = await state.activateTimeline(id)
-        if (!branchId) return false
-        if (navigation.isCurrent()) navigation.openNarrative(id, branchId)
-      })}
+      onSelectTimeline={id => { if (id !== timeline?.id) void navigation.openNarrative(id) }}
       timeline={timeline ? {
         title: timeline.title ?? t('sessions.untitledTimeline'), branchId: state.branch?.id,
         branches: state.branches.map(branch => ({ id: branch.id, title: branch.title ?? t('branch.default') })),
@@ -132,14 +128,8 @@ export function StudioTimelineActions({ state, navigation, cardId, busy }: Props
       onRetryPreview={() => { void preview.refetch() }} onCancel={() => setDialog(undefined)}
       onConfirm={() => void run(async () => {
         if (!preview.isSuccess || preview.isFetching) return false
-        const deletedTimelineIds = includePlayData ? preview.data.timelines.map(item => item.id) : []
-        await state.deleteCards([cardId], { includePlayData, includePromptResources })
+        await onDeleteCards([cardId], { includePlayData, includePromptResources })
         useCharacterGalleryStore.getState().removeCards([cardId])
-        if (navigation.isCurrent()) {
-          if (timeline && deletedTimelineIds.includes(timeline.id)) state.resetToDraftTimeline()
-          navigation.clearDeletedCard(cardId, deletedTimelineIds)
-        }
-        await state.refreshAllTimelines()
       })} />
   </>
 }

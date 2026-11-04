@@ -25,7 +25,7 @@ describe('persisted Session attachment transport', () => {
       const requests: Record<string, unknown>[] = []
       const gateway = createOpenAICompatibleGateway({
         apiKey: 'test', modelId: 'vision',
-        providerProfile: { providerExtensionId: 'official.openai-compatible', displayName: 'test', config: {}, enabledModelIds: ['vision'] },
+        providerProfile: { id: 'test-provider', providerExtensionId: 'official.openai-compatible', displayName: 'test', config: {}, enabledModelIds: ['vision'] },
         mediaAssets: {
           get: async () => ({ id: attachment.assetId, kind: 'session-attachment', mediaType: attachment.mediaType, sizeBytes: attachment.sizeBytes }),
           read: async () => Buffer.from(png, 'base64'),
@@ -44,7 +44,7 @@ describe('persisted Session attachment transport', () => {
   it('fails on missing attachment storage instead of sending a text-only request', async () => {
     let called = false
     const gateway = createOpenAICompatibleGateway({ apiKey: 'test', modelId: 'vision',
-      providerProfile: { providerExtensionId: 'official.openai-compatible', displayName: 'test', config: {}, enabledModelIds: ['vision'] },
+      providerProfile: { id: 'test-provider', providerExtensionId: 'official.openai-compatible', displayName: 'test', config: {}, enabledModelIds: ['vision'] },
       fetch: async () => { called = true; throw new Error('must not send') },
     })
     await expect(gateway.invokeChat({ request: { messages: [{ role: 'user', content: 'look', attachments: [attachment] }] },

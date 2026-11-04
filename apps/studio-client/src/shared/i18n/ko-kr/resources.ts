@@ -1,6 +1,12 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'context.anchors.title': "앵커별 보기",
+  'context.anchors.hint': "그룹 안에서는 파일 트리 순서를 따릅니다. 그룹 순서는 탐색용이며 실제 위치는 사용하는 프리셋이 결정합니다. 조건부 항목은 후보이며 이번 실행에서 활성화되었다는 뜻은 아닙니다.",
+  'context.anchors.empty': "이 Lorebook에는 항목이 없습니다.",
+  'context.anchors.unassigned': "대상 앵커 없음",
+  'context.anchors.unassignedHint': "주입 대상이 없어 앵커에 주입되지 않습니다.",
+  'context.anchors.disabled': "비활성 (상위 항목 포함)",
   'promptResource.temporaryHint': "임시로 보는 중입니다. 현재 캐릭터에 자동으로 추가되지 않습니다.",
   'dashboard.open': '대시보드',
   'promptResource.processingWarning': '프롬프트 처리 중 경고가 발생하여 일부 Lore가 건너뛰어졌을 수 있습니다. 빌드 진단을 확인하세요.',
@@ -85,7 +91,6 @@ export const messages = {
   'context.anchorPicker.noAnchors': '앵커 없음',
   'context.anchorPicker.noResults': '일치하는 앵커 없음',
   'context.metadata.targetAnchorPlaceholder': '대상 앵커 입력 또는 선택 (예: @lore.stable)…',
-  'context.metadata.localDepth': '정렬 깊이 (Depth)',
   'context.metadata.localOrder': '정렬 순서 (Order)',
   'context.metadata.zoneId': '대상 앵커',
   'context.metadata.zonePlaceholder': '대상 앵커 입력 또는 선택 (예: @lore.stable)…',

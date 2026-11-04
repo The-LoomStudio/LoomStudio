@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
-import { normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
+import { normalizePromptResourceArtifact } from '../cards/card-bundle-codec.js'
 import { fromStoredResource, toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
 import type {
   InstallOfficialContentInput,

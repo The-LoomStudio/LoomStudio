@@ -1,19 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment happy-dom
+import { act, createElement } from 'react'
+import { createRoot } from 'react-dom/client'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RendererInstanceRoot } from '../../../apps/studio-client/src/features/extension-renderers/ui/renderer-surface-host.js'
 import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 import type { ClientRendererContext } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 
 const hooks = vi.hoisted(() => ({
-  effects: [] as (() => void | (() => void))[],
   themeListeners: new Set<(snapshot: unknown) => void>(),
-}))
-vi.mock('react', async original => ({
-  ...await original<typeof import('react')>(),
-  useMemo: (compute: () => unknown) => compute(),
-  useCallback: (callback: unknown) => callback,
-  useRef: (current: unknown) => ({ current }),
-  useState: (initial: unknown) => [initial, vi.fn()],
-  useEffect: (effect: () => void | (() => void)) => hooks.effects.push(effect),
 }))
 vi.mock('../../../apps/studio-client/src/features/extension-renderers/model/client-theme.js', () => ({
   readClientThemeSnapshot: () => ({}),
@@ -22,12 +16,20 @@ vi.mock('../../../apps/studio-client/src/features/extension-renderers/model/clie
     return () => hooks.themeListeners.delete(listener)
   },
 }))
-beforeEach(() => { hooks.effects = []; hooks.themeListeners.clear() })
+beforeEach(() => { hooks.themeListeners.clear() })
+const cleanups: Array<() => void> = []
+afterEach(() => { for (const close of cleanups.splice(0)) close() })
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 function fixture(update = vi.fn((_context: ClientRendererContext) => {}), sandbox = false) {
   const host = createClientRendererHost()
   const dispose = vi.fn()
-  const mount = vi.fn(() => ({ dispose, ...(sandbox ? { update } : {}) }))
+  const mount = vi.fn((root: HTMLElement) => {
+    const marker = document.createElement('span')
+    marker.dataset.testRenderer = 'mounted'
+    root.append(marker)
+    return { dispose, ...(sandbox ? { update } : {}) }
+  })
   host.register({
     owner: { kind: 'extension', packageId: 'test', moduleId: 'client' },
     definition: { id: 'tail', name: 'Tail', surface: 'narrative.timeline.tail', instanceScope: 'timeline' },
@@ -35,19 +37,20 @@ function fixture(update = vi.fn((_context: ClientRendererContext) => {}), sandbo
     ...(sandbox ? { sandboxMount: mount } : {}),
   })
   const registration = host.list('narrative.timeline.tail')[0]!
-  const tree = RendererInstanceRoot({
-    host, registration, revision: 1, scope: { kind: 'timeline', key: 'timeline' },
-  })
-  const root = { replaceChildren: vi.fn(), shadowRoot: null } as unknown as HTMLElement
-  tree.props.ref(root)
-  const cleanups: (() => void)[] = []
+  const container = document.createElement('div')
+  document.body.append(container)
+  const reactRoot = createRoot(container)
+  let root: HTMLElement
+  let closed = false
+  const scope = { kind: 'timeline', key: 'timeline' } as const
   function start() {
-    for (const effect of hooks.effects.splice(0)) {
-      const cleanup = effect()
-      if (cleanup) cleanups.push(cleanup)
-    }
+    act(() => reactRoot.render(createElement(RendererInstanceRoot, { host, registration, revision: 1, scope })))
+    root = container.firstElementChild as HTMLElement
   }
-  return { host, mount, update, dispose, root, start, close: () => cleanups.splice(0).forEach(cleanup => cleanup()) }
+  const close = () => { if (!closed) { act(() => reactRoot.unmount()); container.remove(); closed = true } }
+  cleanups.push(close)
+  return { host, mount, update, dispose, get root() { return root }, start, close }
+
 }
 
 describe('Renderer instance lifecycle', () => {
@@ -56,9 +59,10 @@ describe('Renderer instance lifecycle', () => {
     f.dispose.mockRejectedValue(new Error('Async dispose failed'))
     f.start()
     await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce())
+    expect((f.root.shadowRoot ?? f.root).querySelector('[data-test-renderer]')).not.toBeNull()
     f.close()
     expect(f.host.instances()).toHaveLength(0)
-    expect(f.root.replaceChildren).toHaveBeenCalled()
+    expect((f.root.shadowRoot ?? f.root).querySelector('[data-test-renderer]')).toBeNull()
     await vi.waitFor(() => expect(f.host.diagnostics()).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'renderer.dispose_failed', message: 'Async dispose failed' }),
     ])))
@@ -70,9 +74,10 @@ describe('Renderer instance lifecycle', () => {
     f.dispose.mockImplementation(() => { throw new Error('Dispose failed') })
     f.start()
     await vi.waitFor(() => expect(f.mount).toHaveBeenCalledOnce())
+    expect((f.root.shadowRoot ?? f.root).querySelector('[data-test-renderer]')).not.toBeNull()
     expect(() => f.close()).not.toThrow()
     expect(f.host.instances()).toHaveLength(0)
-    expect(f.root.replaceChildren).toHaveBeenCalled()
+    expect((f.root.shadowRoot ?? f.root).querySelector('[data-test-renderer]')).toBeNull()
     expect(hooks.themeListeners.size).toBe(0)
     expect(f.host.diagnostics()).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'renderer.dispose_failed', message: 'Dispose failed' }),

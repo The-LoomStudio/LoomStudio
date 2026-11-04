@@ -1,6 +1,6 @@
 # History Text Pipeline
 
-> 状态：已实现；Script 声明式贡献接入于 2026-10-26
+> 状态：已实现；Script 声明式贡献接入于 2026-10-26；可终止正则隔离与提取预算于 2026-11-04 接入
 
 LoomStudio 只对 `Narrative History` 与 `Agent Session History` 提供统一文本管线。Canonical Narrative Node 与 Agent Transcript 始终保留原文；Prompt、Display、Extractor 和扩展消费冻结后的 `HistoryProjectionSnapshot`。
 
@@ -42,6 +42,9 @@ Provider typed parts
 
 ## Extractor 与 Renderer
 
+> 2026-11-02 产品收束：不再将 Extractor 作为独立作者功能继续建设。自定义提取由脚本处理；跨组件共享的正式数据优先写入 State/变量。下述 Extractor 合同保留用于已有定义和消费者兼容，本次界面迁移不删除历史数据，也不增加结果自动持久化。
+
+
 Extractor 使用 `airp.textExtractor` Document 持久化，只消费官方 Projection Snapshot。第一版支持 `latest-valid`、`all-matches`、原始文本和 `key-value-lines` parser。较新的候选解析失败时，`latest-valid` 可以返回较旧有效值并标记 `stale`。
 
 Card-owned Extractor 读取来源角色的当前定义，更新与移除后不从 Timeline 快照恢复。Preset / Workspace / Extension / User Override Extractor 按当前消费上下文解析。`extractHistory` 只能执行当前上下文中有效、启用且 Target 匹配的 Extractor，不能拿其他 Card 或 Preset 的 ID 旁路读取当前 History。
@@ -63,14 +66,24 @@ Runtime Override 以 Source、Phase 与 Consumer 为键保存 `disabledRuleIds` 
 - Loom Script：见 [`../extensions/loom-script-runtime.md`](../extensions/loom-script-runtime.md)
 - Client Extension Data：`listExtensionRecords`、`getExtensionRecord`
 
-Studio 将定义编辑、预设使用配置和运行检查分离：文本资源面板编辑 Rule / Extractor 定义；预设配置的“正则 / 提取器”子 Tab 按来源 FileTree 调整 `textUses`，点击资源行按原 ID 打开定义编辑，不复制资源或改变归属。运行面板按明确的 Narrative 或 Agent Session 展示 Effective RuleSet、来源、Match、Diagnostic 与 Dry Run。来源用于标签和筛选，不为每个 Owner 建一套定义编辑器。Preview 与 Runtime Prompt Build 共用同一 Effective Pipeline 与 Projection 实现。
+Studio 的规则定义统一在扩展页「脚本 → 正则」管理。正则工具栏的「运行检查器」打开 SPA 浮层，按当前 Narrative 或 Agent Session 查看实际生效规则、阶段、匹配、诊断与管线结果；单条规则的「实时预览」仍用于编辑源码的样本测试，两者不可互相替代。旧正则页面只负责跳转到新入口，不再保留独立编辑页。历史提取器产物仍可出现在检查结果中，不代表恢复提取器的独立作者入口。
+
+## 样本来源与执行预算
+
+`previewLoomScript` 的 `source` 仍为脚本文本，新增可选 `previewSource: 'narrative' | 'agent-session'`；省略时兼容 Narrative。预览界面明确显示来源并允许选择；Agent-only 有效声明默认 Agent，其余按当前上下文默认，无法确定时为 Narrative。它只计算所选来源，不双跑，不保存或启用源码，不执行脚本 JavaScript。来源切换使旧请求失去发布资格。
+
+实际预览、History project/inspect/extract、Narrative prompt/display/classify 采样与 Agent prompt/classify 均通过 `history-text-isolation.ts` 执行纯投影/提取任务。每进程最多2个运行线程、16个排队任务；单任务5秒期限包含排队、启动、投影及其全部提取，线程 old-space 128MiB、young-space 16MiB。超时会等待真实线程终止后释放槽位；失败用 `text.execution_timeout`、`text.execution_busy` 或 `text.execution_failed` 明确拒绝，不伪装成成功的截断结果。没有 Rule 且没有 Extractor 时，直接走不含用户正则的纯核心路径。源码 Worker 使用现有 tsx 注册，部署 dist 使用编译后的 JS，不需要 tsx。
+
+每个 Extractor 的默认预算跨全部 Entry 累计：扫描10,000次匹配（含解析失败）、5,000个有效候选、1,000,000个捕获 UTF-16 单元、2,000,000个返回结构单位、100条诊断。捕获总量包括完整匹配和全部编号捕获，命名别名不重复计；返回每个 JSON 值/容器计1单位，字符串与对象键额外计 UTF-16 长度，包含来源ID与诊断。这些是逻辑量预算，不等同网络字节或 heap 字节。组合任务中多个 Extractor 的返回总和仍受2,000,000单位限制。
+
+超限抛 `text.extractor.budget_exceeded`，保留 `budget/limit/actual`，不吞入 `parse_failed`，不返回部分成功；`latest-valid` 只保留当前最优一条，同时累计扫描、候选和捕获成本，保持同深度首条及 stale 语义。原有投影 Entry/输入/输出/匹配预算与 display 可恢复诊断合同继续生效。Agent classification 隔离失败不能回退保存未经处理的 partial Narrative；原错误及失败 Run 状态保留。
 
 ## 当前限制
 
 - Agent Session 已持久化 `work-summary`、摘要策略与任务记录；历史读取按已采用摘要的退休边界选择有效工作段，保留原始 Transcript。摘要的来源校验与采用合同见[Agent Runtime](agent/runtime-and-session.md)。Pipeline 的 `archived` 仍是投影输入合同，没有通用的持久化 Entry Archive 状态，不能把摘要退休解释为删除或归档原记录；
 - 内置 `listRenderers` 仍只返回官方兼容 Renderer；专门 Runtime 面板从 Client Renderer Host 读取实际 Extension / Loom Script Registry；
 - Node Render Mount 第一版限制为每个 Node 64 个 Mount、20 万字符；
-- Regex 使用 JavaScript 原生 `RegExp`，由输入、输出、Entry 和 Match 预算限制资源消耗，尚未进入可中断的独立执行进程。
+- Regex 保留 JavaScript 原生 `RegExp` 语义，在 Node Worker 中执行；预算与失败行为见下节。线程 old-space 限制不是总 RSS 上限。
 - Extension-owned Rule / Extractor 由 Package 声明并经显式资源导入进入 Application Store；Module 启停只控制运行时 Renderer，不反向改写声明式资源或既有 Timeline 快照。
 
 ## Script 采用边界

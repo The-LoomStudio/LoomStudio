@@ -18,7 +18,7 @@ export function createStateContentRegistry() {
     register(handler: ExtensionStateContentHandler, owner: { packageId: string; target: ExtensionInstallationTarget; isAvailable?: Availability }) {
       if (!handler.id.startsWith(`${owner.packageId}/`) || !handler.contributionId.startsWith(`${owner.packageId}.`))
         throw new Error('State content handler must use its package namespace')
-      if ([handler.path, ...(handler.legacyPaths ?? [])].some(path => !path.startsWith('/') || path === '/' || /~(?![01])/u.test(path)))
+      if (!handler.path.startsWith('/') || handler.path === '/' || /~(?![01])/u.test(handler.path))
         throw new Error('State content handler requires a non-root JSON Pointer')
       const key = JSON.stringify([handler.id, owner.target])
       if (registrations.has(key)) throw new Error(`State content handler already registered: ${handler.id}`)
@@ -46,7 +46,7 @@ export function createStateContentRegistry() {
         if (isAvailable && !await isAvailable(input.target)) continue
         const signal = AbortSignal.any([input.signal, controller.signal])
         signal.throwIfAborted()
-        let path = handler.path
+        const path = handler.path
         const readPath = (pointer: string): unknown => {
           let value: unknown = input.value
           for (const part of pointer.slice(1).split('/').map(part => part.replace(/~1/g, '/').replace(/~0/g, '~'))) {
@@ -54,16 +54,7 @@ export function createStateContentRegistry() {
           }
           return value
         }
-        let value = readPath(path)
-        if (value === undefined) {
-          for (const legacyPath of handler.legacyPaths ?? []) {
-            const previous = readPath(legacyPath)
-            if (previous === undefined) continue
-            path = legacyPath
-            value = previous
-            break
-          }
-        }
+        const value = readPath(path)
         if (!isRecord(value)) throw new Error(`Adopted State content data is missing: ${path}`)
         const result = await handler.process({
           text: input.text, value: structuredClone(value) as JsonObject, signal,

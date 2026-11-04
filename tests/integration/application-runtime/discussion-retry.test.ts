@@ -229,42 +229,14 @@ describe('Timeline discussion retry', () => {
     } finally { vi.restoreAllMocks(); f.engine.close() }
   })
 
-  it.each(['LEGACY_INPUT', 'EDITED_LEGACY_INPUT'])('retries an effect-free legacy first Provider failure with input %s and keeps Swipe clean', async input => {
-    const f = await fixture(input !== 'LEGACY_INPUT')
+  it.each(['LEGACY_INPUT', 'EDITED_LEGACY_INPUT'])('rejects a missing material baseline for input %s', async input => {
+    const f = await fixture()
     try {
       const user = await appendLegacyFailure(f)
-      const target = { scope: 'timeline' as const, ...f.target }
-      const state = (await f.runtime.getStateSnapshot({ target })).snapshot
-      await f.runtime.applyStateMutation({ target, expectedRevisionId: state.revisionId, operations: [{ op: 'set', path: '/current', value: true }] })
-      const workspace = await f.runtime.getTimelineWorkspace(f.target)
-      await f.runtime.mutateTimelineWorkspace({ ...f.target, expectedRevisionId: workspace.id,
-        operations: [{ kind: 'create', entry: { id: 'current-file', kind: 'file', name: 'current.txt', content: { text: 'keep' } } }] })
-      const before = (await f.narratives.getBranch(f.target.branchId))!
-      f.queue.push(async () => text('RECOVERED_WORK'))
-      const result = await f.invoke(input, { entryId: user.id })
-      expect(result.entries.user.parentEntryId).toBe(user.parentEntryId)
-      expect(result.entries.user.roundId).toBe(user.roundId)
-      let branch = (await f.narratives.getBranch(f.target.branchId))!
-      expect(branch.stateHeadRevisionId).toBe(before.stateHeadRevisionId)
-      expect(branch.workspaceHeadRevisionId).toBe(before.workspaceHeadRevisionId)
-      const checkpoint = (await f.agents.findRunCheckpoint({ agentSessionId: f.timeline.id, runId: result.runId }))!
-      expect(checkpoint.entry.kind === 'run-state' && checkpoint.entry.recovery?.materialBaseline).toMatchObject({
-        headEntryId: user.parentEntryId ?? null, stateRevisionId: before.stateHeadRevisionId, workspaceRevisionId: before.workspaceHeadRevisionId,
-      })
-      const swipe = (await f.runtime.getNarrativeSwipes(f.target)).swipe!
-      expect(swipe).toMatchObject({ id: user.roundId, canGenerate: true })
-      f.queue.push(async () => text('SWIPED_WORK'))
-      await f.runtime.invokeAgentTurn({ agentSessionId: f.timeline.id, input: '', narrativeTarget: { ...f.target,
-        swipe: { groupId: swipe.id, expectedRevision: swipe.revision, mode: 'swipe' } } })
-      const messages = f.requests.at(-1) as Array<{ role: string; content?: unknown }>
-      expect(messages.filter(message => message.role === 'user' && message.content === input)).toHaveLength(1)
-      if (input !== 'LEGACY_INPUT') expect(JSON.stringify(messages)).not.toContain('"content":"LEGACY_INPUT"')
-      const canonical = (await f.agents.getEntryPage({ agentSessionId: f.timeline.id, limit: 100 })).entries
-      expect(canonical.some(entry => entry.runId === 'legacy-run')).toBe(false)
-      expect((await f.agents.listEntries(f.timeline.id)).some(entry => entry.id === user.id)).toBe(true)
-      branch = (await f.narratives.getBranch(f.target.branchId))!
-      expect(branch.stateHeadRevisionId).toBe(before.stateHeadRevisionId)
-      expect(branch.workspaceHeadRevisionId).toBe(before.workspaceHeadRevisionId)
+      const before = await f.narratives.getBranch(f.target.branchId)
+      await expect(f.invoke(input, { entryId: user.id })).rejects.toMatchObject({ code: 'agent.retry_baseline_missing' })
+      expect(await f.narratives.getBranch(f.target.branchId)).toEqual(before)
+      expect(f.requests).toHaveLength(0)
     } finally { f.engine.close() }
   })
 

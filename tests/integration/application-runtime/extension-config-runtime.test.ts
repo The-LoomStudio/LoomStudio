@@ -2,6 +2,7 @@ import { createAgentStore, createNarrativeStore, createPromptResourceStore } fro
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { extensionConfigDocumentId, extensionInstallationId, type ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import { describe, expect, it, vi } from 'vitest'
 
 function setup() {
@@ -104,6 +105,110 @@ describe('application Extension Config runtime', () => {
       await expect(runtime.upsertExtensionConfig({
         packageId: 'example.settings', scope: { kind: 'agent-session', agentSessionId: standalone.session.id }, key: 'enabled', value: true,
       })).resolves.toMatchObject({ config: { value: true } })
+    } finally { await engine.close() }
+  })
+
+  it('isolates one package key by installation target and scope, including stale update failures', async () => {
+    const { engine, documents, runtime } = setup()
+    const packageId = 'example.settings'
+    try {
+      const { card: cardA } = await runtime.createCard({ name: 'A' })
+      const { card: cardB } = await runtime.createCard({ name: 'B' })
+      const { timeline: timelineA } = await runtime.createNarrativeTimeline({ cardId: cardA.id })
+      const { timeline: timelineB } = await runtime.createNarrativeTimeline({ cardId: cardB.id })
+      const cases = [
+        { card: cardA, timeline: timelineA, label: 'A' },
+        { card: cardB, timeline: timelineB, label: 'B' },
+      ]
+      const configs = []
+      for (const item of cases) {
+        const target = { kind: 'card' as const, cardId: item.card.id }
+        const scopes: ExtensionStorageScope[] = [
+          { kind: 'card', cardId: item.card.id }, { kind: 'timeline', timelineId: item.timeline.id },
+        ]
+        for (const scope of scopes) {
+          const identity = { packageId, scope, key: 'layout' }
+          const global = await runtime.upsertExtensionConfig({ ...identity, value: `global-${item.label}-${scope.kind}` })
+          const local = await runtime.upsertExtensionConfig({ ...identity, target, value: `card-${item.label}-${scope.kind}` })
+          expect(global.config.id).toBe(extensionConfigDocumentId(packageId, scope, identity.key))
+          expect(local.config.id).toBe(extensionConfigDocumentId(packageId, scope, identity.key, target))
+          expect(global.config.id).not.toBe(local.config.id)
+          expect((await documents.get(global.config.id))!.meta.ownerInstallationId).toBeUndefined()
+          expect((await documents.get(local.config.id))!.meta.ownerInstallationId).toBe(extensionInstallationId(packageId, target))
+          expect(await runtime.getExtensionConfig(identity)).toEqual({ config: global.config })
+          expect(await runtime.getExtensionConfig({ ...identity, target: { kind: 'global' } })).toEqual({ config: global.config })
+          expect(await runtime.getExtensionConfig({ ...identity, target })).toEqual({ config: local.config })
+          expect(await runtime.listExtensionConfigs(identity)).toEqual({ configs: [global.config] })
+          expect(await runtime.listExtensionConfigs({ ...identity, target })).toEqual({ configs: [local.config] })
+          configs.push(global.config, local.config)
+        }
+      }
+      expect(new Set(configs.map(config => config.id)).size).toBe(8)
+      expect((await runtime.listExtensionConfigs({ packageId })).configs.map(config => config.id).sort())
+        .toEqual(configs.filter(config => typeof config.value === 'string' && config.value.startsWith('global-')).map(config => config.id).sort())
+      for (const item of cases) {
+        const target = { kind: 'card' as const, cardId: item.card.id }
+        expect((await runtime.listExtensionConfigs({ packageId, target })).configs).toHaveLength(2)
+      }
+      const identity = { packageId, target: { kind: 'card' as const, cardId: cardA.id }, scope: { kind: 'card' as const, cardId: cardA.id }, key: 'layout' }
+      const original = (await runtime.getExtensionConfig(identity)).config!
+      const updated = await runtime.upsertExtensionConfig({ ...identity, value: 'updated-A', expectedVersion: original.version })
+      await expect(runtime.upsertExtensionConfig({ ...identity, value: 'stale-A', expectedVersion: original.version })).rejects.toThrow()
+      await expect(runtime.upsertExtensionConfig({ ...identity, value: 'missing-version' })).rejects.toThrow('expectedVersion is required')
+      expect((await runtime.getExtensionConfig(identity)).config).toEqual(updated.config)
+      expect((await runtime.getExtensionConfig({ ...identity, target: { kind: 'global' } })).config!.value).toBe('global-A-card')
+      expect((await runtime.getExtensionConfig({ ...identity, target: { kind: 'card', cardId: cardB.id }, scope: { kind: 'card', cardId: cardB.id } })).config!.value).toBe('card-B-card')
+    } finally { await engine.close() }
+  })
+
+  it('rejects global and cross-Card scopes for every Card-targeted Config operation', async () => {
+    const { engine, agents, runtime } = setup()
+    try {
+      const { card } = await runtime.createCard({ name: 'Owner' })
+      const { card: otherCard } = await runtime.createCard({ name: 'Other' })
+      const { timeline } = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const { timeline: otherTimeline } = await runtime.createNarrativeTimeline({ cardId: otherCard.id })
+      const actor = { kind: 'system' as const, id: 'test' }
+      const own = await agents.createSession({ actor, agentPresetId: 'test-preset', timelineId: timeline.id })
+      const other = await agents.createSession({ actor, agentPresetId: 'test-preset', timelineId: otherTimeline.id })
+      const standalone = await agents.createSession({ actor, agentPresetId: 'test-preset' })
+      const target = { kind: 'card' as const, cardId: card.id }
+      const packageId = 'example.settings'
+      const invalidScopes: ExtensionStorageScope[] = [
+        { kind: 'global' }, { kind: 'card', cardId: otherCard.id },
+        { kind: 'timeline', timelineId: otherTimeline.id },
+        { kind: 'agent-session', agentSessionId: other.session.id },
+        { kind: 'agent-session', agentSessionId: standalone.session.id },
+      ]
+      for (const scope of invalidScopes) {
+        const identity = { packageId, target, scope, key: 'enabled' }
+        await expect(runtime.listExtensionConfigs(identity)).rejects.toThrow('outside this Card installation')
+        await expect(runtime.getExtensionConfig(identity)).rejects.toThrow('outside this Card installation')
+        await expect(runtime.upsertExtensionConfig({ ...identity, value: true })).rejects.toThrow('outside this Card installation')
+      }
+      const identity = { packageId, target, scope: { kind: 'agent-session' as const, agentSessionId: own.session.id }, key: 'enabled' }
+      const saved = await runtime.upsertExtensionConfig({ ...identity, value: true })
+      expect(await runtime.getExtensionConfig(identity)).toEqual({ config: saved.config })
+      expect(await runtime.listExtensionConfigs({ packageId, target })).toEqual({ configs: [saved.config] })
+    } finally { await engine.close() }
+  })
+
+  it('uses current absence and tombstone semantics instead of applying live-record CAS to recreation', async () => {
+    const { engine, documents, runtime } = setup()
+    try {
+      const identity = { packageId: 'example.settings', scope: { kind: 'global' as const }, key: 'enabled' }
+      expect(await runtime.getExtensionConfig(identity)).toEqual({ config: null })
+      const created = await runtime.upsertExtensionConfig({ ...identity, value: true, expectedVersion: 999 })
+      expect(created.config.version).toBe(1)
+      await documents.delete({ id: created.config.id, expectedVersion: created.config.version, actor: { kind: 'system', id: 'test' } })
+      expect(await runtime.getExtensionConfig(identity)).toEqual({ config: null })
+      expect(await runtime.listExtensionConfigs({ packageId: identity.packageId })).toEqual({ configs: [] })
+      const tombstone = (await documents.get(created.config.id, { includeTombstone: true }))!
+      const restored = await runtime.upsertExtensionConfig({ ...identity, value: false, expectedVersion: 999 })
+      expect(restored.config.id).toBe(created.config.id)
+      expect(restored.config.version).toBe(tombstone.version + 1)
+      expect(restored.config.value).toBe(false)
+      expect((await documents.get(restored.config.id))!.meta.tombstone).toBeUndefined()
     } finally { await engine.close() }
   })
 

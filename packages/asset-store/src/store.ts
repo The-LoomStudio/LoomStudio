@@ -25,13 +25,7 @@ export function createAssetStore(options: {
   createId(prefix: string): string
   now(): string
 }): AssetStore {
-  options.engine.migrate({
-    namespace: migrationNamespace,
-    migrations: [
-      { version: 1, migrate: migrateVersionOne },
-      { version: 2, migrate: database => { database.exec('ALTER TABLE media_assets ADD COLUMN owner_installation_id TEXT') } },
-    ],
-  })
+  options.engine.initializeSchema({ namespace: migrationNamespace, version: 2, initialize: initializeAssetSchema })
 
   return {
     blobs: options.blobs,
@@ -184,9 +178,9 @@ export function createAssetStore(options: {
   }
 }
 
-function migrateVersionOne(database: DatabaseSync): void {
+function initializeAssetSchema(database: DatabaseSync): void {
   database.exec(`
-    CREATE TABLE source_artifacts (
+CREATE TABLE source_artifacts (
       id TEXT PRIMARY KEY,
       blob_id TEXT NOT NULL REFERENCES stored_blobs(id),
       format TEXT NOT NULL,
@@ -196,7 +190,7 @@ function migrateVersionOne(database: DatabaseSync): void {
       importer_version TEXT
     );
 
-    CREATE TABLE media_assets (
+CREATE TABLE media_assets (
       id TEXT PRIMARY KEY,
       blob_id TEXT NOT NULL REFERENCES stored_blobs(id),
       kind TEXT NOT NULL,
@@ -208,11 +202,13 @@ function migrateVersionOne(database: DatabaseSync): void {
       owner_package_id TEXT,
       created_by_json TEXT NOT NULL,
       created_at TEXT NOT NULL
-    );
+    , owner_installation_id TEXT);
 
-    CREATE INDEX idx_source_artifacts_blob ON source_artifacts(blob_id);
-    CREATE INDEX idx_media_assets_blob ON media_assets(blob_id);
-    CREATE INDEX idx_media_assets_owner ON media_assets(owner_package_id, created_at);
+CREATE INDEX idx_source_artifacts_blob ON source_artifacts(blob_id);
+
+CREATE INDEX idx_media_assets_blob ON media_assets(blob_id);
+
+CREATE INDEX idx_media_assets_owner ON media_assets(owner_package_id, created_at);
   `)
 }
 

@@ -1,3 +1,6 @@
+import { listDocuments } from '../foundation/document-store.js'
+import { applicationDocumentTypes } from '../foundation/document-types.js'
+import type { CardSourceContent } from '../types.js'
 import { decideAgentApproval, mutationApprovalScope, parseAgentApprovalPolicy, type AgentApprovalPolicy } from './approval-policy.js'
 import { createWorkspaceRuntimeMethods } from '../runtime/workspace-runtime.js'
 import type { VfsEntry } from '../vfs/types.js'
@@ -9,7 +12,7 @@ import type { ToolExecutionScope } from './tool-registry.js'
 import { listPresetScriptAttachments } from '../vfs/script-attachments.js'
 import { createNarrativeReader } from '../narrative/access.js'
 import { projectNarrativeSample } from '../narrative/projection.js'
-import { isExtensionResourceAvailable } from '../runtime/extension-resource-access.js'
+import { isExtensionResourceAvailable, readAvailableExtensionInstallations } from '../runtime/extension-resource-access.js'
 import { createPromptRuntimeMethods } from '../runtime/prompt-runtime.js'
 import { narrativeWriteContext, promptResourceWriteContext } from '../runtime/context.js'
 import { getApplicationStateSnapshot, applyApplicationStateMutation } from '../state/state.js'
@@ -50,13 +53,30 @@ export async function createAgentToolScope(ctx: AgentToolScopeContext, input: {
     ? guardNarrativeWrite(ctx, input.narrativeSource, work) : work()
   scope.assertNarrativeSource = assertSource
   scope.withNarrativeWrite = writeSource
+  scope.globalResourceCatalog = async () => {
+    const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
+    const resources = new Map<string, string[]>()
+    for (const card of cards) {
+      const installations = await readAvailableExtensionInstallations(ctx.documents, card.id)
+      for (const id of card.content.promptResourceIds ?? []) {
+        const resource = await ctx.promptResources.getResource(id)
+        if (!resource || resource.tombstoned || !['preset', 'lore'].includes(resource.resourceKind) || !isExtensionResourceAvailable(resource.metadata.origin, installations)) continue
+        const owners = resources.get(id) ?? []
+        owners.push(`${card.content.name} (${card.id})`)
+        resources.set(id, owners)
+      }
+    }
+    return [...resources].map(([id, owners]) => ({ id, owners }))
+  }
   scope.vfsAttachments = () => listPresetScriptAttachments(ctx, presetId, scope.availableExtensionInstallations)
   const policy = parseAgentApprovalPolicy(input.approvalPolicy)
   const mutationHandler = requestContext?.agentRun?.onMutationApproval
   if (mutationHandler || policy) scope.approveMutation = async (preview, signal) => {
     signal.throwIfAborted()
-    const decision = await decideAgentApproval(policy, mutationApprovalScope(preview), mutationHandler ? () => mutationHandler(preview, signal) : undefined)
-    scope.observeToolEvent?.({ kind: 'mutation-approval', preview, decision, mode: policy?.[mutationApprovalScope(preview)] ?? 'ask' })
+    const approvalScope = mutationApprovalScope(preview)
+    const effectivePolicy = preview.authorScope === 'global' && policy?.[approvalScope] !== 'deny' ? { ...policy, [approvalScope]: 'ask' as const } : policy
+    const decision = await decideAgentApproval(effectivePolicy, mutationApprovalScope(preview), mutationHandler ? () => mutationHandler(preview, signal) : undefined)
+    scope.observeToolEvent?.({ kind: 'mutation-approval', preview, decision, mode: effectivePolicy?.[mutationApprovalScope(preview)] ?? 'ask' })
     return decision
   }
   const historyHandler = requestContext?.agentRun?.onHistoryReadApproval

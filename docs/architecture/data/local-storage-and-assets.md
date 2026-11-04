@@ -35,11 +35,11 @@ logs/
 
 正式运行的 data/cache/log 默认使用用户目录。扩展代码安装根默认是发行安装根 `installationRoot` 下的 `extensions/`，与 `data/extensions/` 中按 Package / 安装目标隔离的扩展文件数据分开。Server 的 `extensionInstalledDirectory` 可覆盖代码安装根；`extensionStateDirectory` 可将状态和开发链接改放到指定目录的 `state.json` / `dev-links.json`，默认仍使用上述 data/config 路径，见 [Server 组合根](../../../apps/studio-server/src/server.ts)。
 
-根开发命令通过 [开发路径配置](../../../scripts/lib/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。旧目录存在而新目录未就绪时，启动器拒绝静默建立空库；迁移操作见 [Getting Started](../../guide/getting-started.md)。测试使用注入的临时目录。
+根开发命令通过 [开发路径配置](../../../scripts/lib/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。启动器不迁移或恢复其他目录中的旧数据库；Store namespace 版本必须匹配当前代码。测试使用注入的临时目录。
 
 ## 2. SQLite 与 Blob 的权威边界
 
-SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。两者的公共工厂 `createAssetStore` / `createBlobStore` 均由 `@loom-studio/asset-store` 导出；字节实现位于本包 `src/blobs/`，合包不改变文件路径、Blob 身份或 `platform.blob-store` migration namespace。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
+SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。两者的公共工厂 `createAssetStore` / `createBlobStore` 均由 `@loom-studio/asset-store` 导出；字节实现位于本包 `src/blobs/`，合包不改变文件路径、Blob 身份或 `platform.blob-store` schema namespace。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
 
 Blob 写入使用 Node stream、staging file、同步计算 SHA-256、按 hash 原子 finalize，再在调用者事务中提交 `stored_blobs` metadata。同 hash 的两个 prepared 写入中，一方失败/丢弃绝不删除另一方已提交或共用的 finalized 字节。公开 API 只接受 `blobId`，不返回物理路径。当前允许暂留无引用的孤儿文件，不实现全量物理 GC。
 

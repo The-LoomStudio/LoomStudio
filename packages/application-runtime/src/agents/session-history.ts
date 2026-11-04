@@ -10,6 +10,7 @@ type Result = Extract<AgentTranscriptEntryData, { kind: 'tool-result' }>
 export type SessionHistoryBlock = {
   entry: AgentTranscriptEntry
   messages: ChatMessage[]
+  toolEvidence?: Array<{ callId: string; name: string; input: unknown; status: string }>
 }
 
 export function projectSessionHistory(
@@ -21,8 +22,8 @@ export function projectSessionHistory(
   const consumed = new Set<string>()
   const nativeIds = new Set<string>()
   const blocks: SessionHistoryBlock[] = []
-  const add = (entry: AgentTranscriptEntry, messages: ChatMessage[]) => {
-    if (messages.length) blocks.push({ entry, messages })
+  const add = (entry: AgentTranscriptEntry, messages: ChatMessage[], toolEvidence?: SessionHistoryBlock['toolEvidence']) => {
+    if (messages.length) blocks.push({ entry, messages, ...(toolEvidence?.length ? { toolEvidence } : {}) })
   }
   for (let index = 0; index < entries.length; index++) {
     const record = entries[index]!
@@ -47,6 +48,7 @@ export function projectSessionHistory(
         && entries[index]!.runId === record.runId)
       index--
       const messages: ChatMessage[] = []
+      const toolEvidence: NonNullable<SessionHistoryBlock['toolEvidence']> = []
       const native = group.filter(item =>
         item.call.transport === 'native-function' && item.call.providerItemId && item.result)
       if (native.length) {
@@ -59,6 +61,7 @@ export function projectSessionHistory(
             function: { name: call.exposedName, arguments: JSON.stringify(call.arguments ?? {}) },
           }
         })
+        native.forEach(({ call, result }, position) => toolEvidence.push({ callId: calls[position]!.id, name: call.exposedName, input: call.arguments ?? {}, status: result!.status }))
         messages.push({ role: 'assistant', tool_calls: calls })
         native.forEach(({ result }, position) => messages.push({
           role: 'tool', tool_call_id: calls[position]!.id, content: renderToolResult(result!),
@@ -91,7 +94,7 @@ export function projectSessionHistory(
             + (result ? `\n${renderToolResult(result)}` : ''),
         })
       }
-      add(record, messages)
+      add(record, messages, toolEvidence)
     } else if (data.kind === 'tool-result' && !consumed.has(data.invocationId)) {
       add(record, [{
         role: 'assistant',
@@ -133,7 +136,7 @@ export async function readSessionHistory(
 
 export function summaryRetiredThrough(summary: AgentTranscriptEntry): number {
   return summary.entry.kind === 'work-summary'
-    ? summary.entry.boundary?.retiredThroughSequence ?? summary.sequence : 0
+    ? summary.entry.boundary.retiredThroughSequence : 0
 }
 
 function escapeAttribute(value: string): string {

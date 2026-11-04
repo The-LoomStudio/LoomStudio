@@ -22,7 +22,7 @@ export function projectPresetComposition(nodes: AuthoringNode[], writeEntry: (no
       delete properties[key]
     }
     if (kind === 'message') {
-      const role = capabilities.roleHint === 'developer' ? 'system' : capabilities.roleHint ?? 'system'
+      const role = capabilities.roleHint ?? 'system'
       attrs += attr('role', String(role))
       delete capabilities.roleHint
     } else if (kind === 'virtual' && typeof capabilities.targetAnchorId === 'string') {

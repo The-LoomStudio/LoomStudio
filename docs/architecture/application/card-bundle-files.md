@@ -24,7 +24,7 @@ Card 与关联领域资源
 
 新导出的 PNG 不把 ZIP 附加在 IEND 后，而是用未压缩 iTXt 保存 ZIP 的标准 Base64。ZIP 自身已经压缩。PNG 主图用于展示，完整头像和可选背景仍保存在 ZIP 中；非 PNG 头像暂以默认 PNG 作为外层封面，包内保留原图。PNG 和 ZIP 不各自定义一套角色数据。
 
-继续读取旧 `loom` 压缩 iTXt JSON、ZIP v1 与 Polyglot PNG。现存 Polyglot 导出入口仍保留，但正常 PNG 导出使用新元数据载体。损坏的已识别 Loom 包直接报错，不尝试 ST 转换。没有 Loom 载荷的 PNG 才进入启用中的 ST 扩展转换 RPC；ST 扩展不需要适配新的 Loom 容器。
+PNG 导入只读取当前 `loom.bundle` Base64 iTXt 中的 ZIP v2 载荷，以及仍支持的 Polyglot PNG；旧压缩 `loom` iTXt JSON 和 ZIP v1 不再读取。Polyglot 导出仍是当前支持的容器能力。损坏的已识别 Loom 包直接报错，不尝试 ST 转换；没有 Loom 载荷的 PNG 才进入启用中的 ST 扩展转换 RPC，ST 扩展不需要适配新的 Loom 容器。
 
 PNG 图像处理仍可能删除元数据；本协议不保证社交平台重编码后保留角色载荷。
 
@@ -104,7 +104,7 @@ ST 扩展导入时只将世界书写入 Prompt Resource，不再复制进内联 
 
 ## 实现位置
 
-- [Card Artifact 与导入导出](../../../packages/application-runtime/src/cards/workspace.ts)
+- [Card Artifact 与导入导出](../../../packages/application-runtime/src/cards/card-bundle.ts)
 - [Card 文件投影](../../../apps/studio-server/src/codecs/card-bundle-files.ts)
 - [ZIP 容器](../../../apps/studio-server/src/codecs/card-bundle-zip.ts)
 - [ZIP 完整性元数据](../../../apps/studio-server/src/codecs/zip-checksums.ts)

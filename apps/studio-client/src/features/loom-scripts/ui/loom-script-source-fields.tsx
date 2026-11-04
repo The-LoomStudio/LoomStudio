@@ -3,9 +3,10 @@ import { parseLoomScriptSource, resolveLoomScriptSettings, resolveTextExtractorC
 import { useMemo, useRef, useState } from 'react'
 import { LongTextEditor, type LongTextEditorHandle } from '../../../shared/ui/long-text-editor/long-text-editor.js'
 import type { Translator } from '../../../shared/i18n/index.js'
+import { defaultScriptPreviewSource, type ScriptPreviewSource } from '../model/script-preview-source.js'
 import styles from './loom-script-source-fields.module.scss'
 
-export type ScriptPreviewInput = { source: string; text: string; phase: 'display' | 'prompt' | 'classify'; streaming?: boolean }
+export type ScriptPreviewInput = { source: string; text: string; phase: 'display' | 'prompt' | 'classify'; previewSource: ScriptPreviewSource; streaming?: boolean }
 export type ScriptPreviewResult = {
   output: string
   matches: Array<{ ruleId: string; match: string }>
@@ -17,6 +18,7 @@ export function LoomScriptSourceFields(props: {
   fileName: string
   source: string
   disabled?: boolean
+  previewContext?: ScriptPreviewSource
   onFileNameChange(value: string): void
   onSourceChange(value: string): void
   onPreview?(input: ScriptPreviewInput): Promise<ScriptPreviewResult>
@@ -26,20 +28,23 @@ export function LoomScriptSourceFields(props: {
   const requestRef = useRef(0)
   const [sample, setSample] = useState('')
   const [phase, setPhase] = useState<ScriptPreviewInput['phase']>('display')
+  const [selectedSource, setSelectedSource] = useState<ScriptPreviewSource>()
+  const defaultSource = useMemo(() => defaultScriptPreviewSource(props.source, props.previewContext), [props.source, props.previewContext])
+  const previewSource = selectedSource ?? defaultSource
   const [streaming, setStreaming] = useState(false)
   const [testing, setTesting] = useState(false)
-  const [result, setResult] = useState<{ source: string; text: string; phase: string; streaming?: boolean; value?: ScriptPreviewResult; error?: string }>()
+  const [result, setResult] = useState<{ source: string; text: string; phase: string; previewSource: ScriptPreviewSource; streaming?: boolean; value?: ScriptPreviewResult; error?: string }>()
   const parsed = useMemo(() => {
     try { return { metadata: parseLoomScriptSource(props.source) } }
     catch (cause) { return { error: cause instanceof Error ? cause.message : String(cause) } }
   }, [props.source])
   const rules = parsed.metadata?.contributions.filter(contribution => contribution.kind !== 'renderer') ?? []
-  const currentResult = result?.source === props.source && result.text === sample && result.phase === phase && result.streaming === streaming ? result : undefined
+  const currentResult = result?.source === props.source && result.text === sample && result.phase === phase && result.previewSource === previewSource && result.streaming === streaming ? result : undefined
 
   async function testRules() {
     if (!props.onPreview || testing) return
     const request = ++requestRef.current
-    const input = { source: props.source, text: sample, phase, streaming }
+    const input = { source: props.source, text: sample, phase, streaming, previewSource }
     setTesting(true)
     try {
       const value = await props.onPreview(input)
@@ -78,6 +83,7 @@ export function LoomScriptSourceFields(props: {
     {rules.length > 0 && props.onPreview && <details className={styles.testing}>
       <summary>规则测试</summary>
       <p className={styles.metaLine}>使用当前源码和配置默认值测试，不保存脚本、不执行 JavaScript。</p>
+      <label>样本来源<select aria-label="样本来源" value={previewSource} onChange={event => { requestRef.current++; setTesting(false); setResult(undefined); setSelectedSource(event.target.value as ScriptPreviewSource) }}><option value="narrative">Narrative</option><option value="agent-session">Agent</option></select></label>
       <label>处理阶段<select value={phase} onChange={event => { setPhase(event.target.value as ScriptPreviewInput['phase']); setStreaming(false) }}>
         <option value="display">显示</option><option value="prompt">提示词</option><option value="classify">分类</option>
       </select></label>

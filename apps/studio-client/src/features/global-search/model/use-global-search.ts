@@ -18,7 +18,9 @@ function useDebouncedQuery(value: string): string {
   return debounced
 }
 
-export function useGlobalSearch(input: { api: StudioApi; endpoint: string; open: boolean; t: Translator; currentCardId?: string; currentPresetId?: string }) {
+export type GlobalSearchInput = { api: StudioApi; endpoint: string; open: boolean; t: Translator; currentCardId?: string; currentPresetId?: string }
+
+export function useGlobalSearch(input: GlobalSearchInput) {
   const state = useGlobalSearchStore(store => store.byEndpoint[input.endpoint] ?? INITIAL_GLOBAL_SEARCH_STATE)
   const dispatch = useCallback((action: GlobalSearchAction) => {
     useGlobalSearchStore.getState().dispatch(input.endpoint, action)

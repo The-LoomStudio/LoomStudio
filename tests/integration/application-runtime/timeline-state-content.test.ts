@@ -81,7 +81,7 @@ describe('Timeline State content acceptance', () => {
         content: { target: { kind: 'preset', presetId: f.preset.id }, scriptDocumentId: 'counter-script', orderIndex: 0,
           origin: { kind: 'extension-package', packageId: 'example.counter', installationId: f.installationId, contributionId: 'script' } },
       })
-      await f.runtime.replacePresetToolMounts({
+      await f.runtime.replacePresetToolMounts({ expectedMountIds: (await f.runtime.listPresetToolMounts({ presetId: f.preset.id })).mounts.map(mount => mount.id),
         presetId: f.preset.id, mounts: [{ toolId: 'official/codeact_json', defaultEnabled: true, orderIndex: 0 }],
       })
       f.invoke.mockImplementationOnce(async () => {
@@ -127,7 +127,7 @@ describe('Timeline State content acceptance', () => {
           installationId: f.installationId, contributionId: 'instructions' } } } }],
       actor: { kind: 'kernel', id: 'test' },
     })
-    await f.runtime.replaceLoreMounts({ source: { kind: 'preset', id: f.preset.id }, loreResourceIds: [setting.id] })
+    await f.runtime.replaceLoreMounts({ expectedMountIds: (await f.runtime.listLoreMounts({ source: { kind: 'preset', id: f.preset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: f.preset.id }, loreResourceIds: [setting.id] })
     return setting.id
   }
 

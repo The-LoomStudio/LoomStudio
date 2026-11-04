@@ -4,6 +4,8 @@
 
 Provider Account 是 Application 层的用户配置，保存 Provider Extension ID、非敏感 config、Secret 引用和启用模型。Agent Preset 只保存可空的 Provider Model Selection，不直接保存 API Key。
 
+`updateProviderProfile` 要求调用方的 `expectedVersion`，模型集合及连接设置不能以服务端临时读取的版本覆盖旧编辑。连接保存可同时提交可选新凭据：先建立隔离 Secret，再以 CAS 更新 Profile 引用；Profile 提交失败删除本次新 Secret，旧连接保持。提交成功后清理旧 Secret；清理失败以 `credentialCleanupFailed` 单独反馈，不把已提交保存报成失败。省略 credential 表示保留原凭据。
+
 ```text
 Agent Preset model selection
   -> Provider Profile / Account

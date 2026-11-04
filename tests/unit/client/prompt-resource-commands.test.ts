@@ -71,7 +71,7 @@ function commandInput(overrides: {
     t: ((key: string) => key) as Translator,
     runMutation: async <T,>(action: () => Promise<T>) => action(),
     recordEdit: () => undefined,
-    promptResources: [],
+    loreMounts: [], presetToolMounts: [], promptResources: [],
     setPromptResources: () => undefined,
     setLoreMounts: () => undefined,
     setPresetToolMounts: () => undefined,

@@ -6,15 +6,6 @@
   min-width: 0;
 }
 
-.select {
-  background: var(--loom-color-surface-raised);
-  border: 1px solid var(--loom-color-border);
-  border-radius: 8px;
-  color: var(--loom-color-text);
-  min-width: 180px;
-  padding: 6px 30px 6px 10px;
-}
-
 .actions {
   display: flex;
   gap: 4px;

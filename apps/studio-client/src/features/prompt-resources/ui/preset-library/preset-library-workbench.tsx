@@ -62,7 +62,7 @@ export function PresetLibraryWorkbench(props: PresetLibraryWorkbenchProps) {
   }
   useEffect(() => {
     if (!presetId && lastOpened.current) {
-      const row = library.current?.querySelector<HTMLButtonElement>(`[data-preset-id="${CSS.escape(lastOpened.current)}"]`)
+      const row = library.current?.querySelector<HTMLButtonElement>(`[data-resource-id="${CSS.escape(lastOpened.current)}"]`)
       if (row) { row.focus({ preventScroll: true }); return }
     }
     heading.current?.focus()

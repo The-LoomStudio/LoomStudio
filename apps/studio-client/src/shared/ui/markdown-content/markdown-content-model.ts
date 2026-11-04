@@ -1,22 +1,39 @@
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
+import remarkGfm from 'remark-gfm'
+import type { Nodes } from 'mdast'
+
 const LOOM_TOKEN_PATTERN = /(\{\{[^\n{}]+\}\}|\{%[^\n%]+%\}|@(?:\/(?:[\p{L}\p{N}_.-]+\/?)*|[\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_.-]+)+))/gu
+const markdownParser = unified().use(remarkParse).use(remarkGfm)
 
 export function prepareLoomMarkdown(value: string): string {
-  let fence: string | undefined
+  if (value.search(LOOM_TOKEN_PATTERN) === -1) return value
+  return mapOutsideMarkdownCode(value, replaceLoomTokens)
+}
 
-  const processedLines = value.split('\n').map(line => {
-    const fenceMatch = line.match(/^\s{0,3}(```|~~~)/)
-    if (fenceMatch) {
-      fence = fence === fenceMatch[1] ? undefined : fence ?? fenceMatch[1]
-      return line
+/** Use Markdown's source offsets so fences and code-span delimiters stay literal. */
+export function mapOutsideMarkdownCode(
+  value: string,
+  transform: (text: string, start: number) => string,
+  tree: Nodes = markdownParser.parse(value),
+): string {
+  const ranges: Array<{ start: number; end: number }> = []
+  function visit(node: Nodes) {
+    if (node.type === 'code' || node.type === 'inlineCode') {
+      ranges.push({ start: node.position!.start.offset!, end: node.position!.end.offset! })
+    } else if ('children' in node) {
+      node.children.forEach(visit)
     }
-    if (fence) return line
-
-    return line.split(/(`+[^`]*`+)/g).map(part => (
-      part.startsWith('`') ? part : replaceLoomTokens(part)
-    )).join('')
-  })
-
-  return processedLines.join('\n')
+  }
+  visit(tree)
+  let cursor = 0
+  let output = ''
+  for (const range of ranges) {
+    output += transform(value.slice(cursor, range.start), cursor)
+    output += value.slice(range.start, range.end)
+    cursor = range.end
+  }
+  return output + transform(value.slice(cursor), cursor)
 }
 
 function replaceLoomTokens(value: string): string {

@@ -1,0 +1,38 @@
+.panel {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 0;
+  overflow-wrap: anywhere;
+
+  p { margin: 0; }
+}
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.records {
+  display: grid;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.record {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.paths {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+
+  dt { font-weight: 600; }
+  dd { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+}

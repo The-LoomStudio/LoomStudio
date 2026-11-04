@@ -12,7 +12,6 @@ export type AssetLayoutId = 'preset' | 'resources'
 type AssetViewMode = 'master-detail' | 'drilldown'
 type ContextCategory = 'lore' | 'logic' | 'runtime' | 'history'
 type PanelWindowMode = 'reference' | 'immersive'
-export type PresetView = 'assets' | 'tools'
 
 export type AssetViewState = {
   expandedIds?: string[]
@@ -38,7 +37,6 @@ type StudioLayoutData = {
   composerPinned: boolean
   panelWindowMode: PanelWindowMode
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
-  presetView: PresetView
   playSelectedDate: string | undefined
   railWidth: number
   textEditorMode: LongTextEditorMode
@@ -69,7 +67,6 @@ type StudioLayoutStore = StudioLayoutData & {
   setAssetViewMode(layoutId: AssetLayoutId, workspaceId: string, viewMode: AssetViewMode): void
   setContextCategory(category: ContextCategory): void
   setPanelWindowSize(panel: StudioPanelId, size: WindowSize): void
-  setPresetView(view: PresetView): void
   setRailWidth(width: number): void
   setTextEditorMode(mode: LongTextEditorMode): void
   setUiScale(scale: number): void
@@ -79,11 +76,6 @@ type StudioLayoutStore = StudioLayoutData & {
   toggleComposerPinned(): void
   togglePanelWindowMode(): void
   setPlaySelectedDate(date: string | undefined): void
-}
-
-type StudioPanelStore = {
-  activePanel: StudioPanelId | null
-  syncActivePanel(panel: StudioPanelId | null): void
 }
 
 const STORAGE_KEY = 'loom-studio-layout'
@@ -137,7 +129,6 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     composerPinned: true,
     panelWindowMode: 'reference',
     panelWindowSizes: {},
-    presetView: 'assets',
     railWidth: DEFAULT_RAIL_WIDTH,
     textEditorMode: 'source',
     uiScale: UI_SCALE_DEFAULT,
@@ -150,11 +141,6 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
   const defaults = createDefaultStudioLayout()
   if (!isRecord(value)) return defaults
 
-  const panelWindowMode: PanelWindowMode = value.panelWindowMode === 'immersive' ||
-    hasLegacyImmersiveMode(value.panelWindowModes)
-      ? 'immersive'
-      : 'reference'
-
   return {
     viewPreferences: isRecord(value.viewPreferences) ? Object.fromEntries(Object.entries(value.viewPreferences).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {},
     assetMetadataOpen: value.assetMetadataOpen === true,
@@ -164,26 +150,18 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     },
     assetPanes: defaults.assetPanes,
     contextCategory: isContextCategory(value.contextCategory) ? value.contextCategory : defaults.contextCategory,
-    dockOpen: value.dockOpen === true || readPanelId(value.activePanel) !== null,
+    dockOpen: value.dockOpen === true,
     dockPinned: value.dockPinned === undefined ? defaults.dockPinned : value.dockPinned === true,
     composerPinned: value.composerPinned === undefined ? defaults.composerPinned : value.composerPinned === true,
-    panelWindowMode,
+    panelWindowMode: value.panelWindowMode === 'immersive' ? 'immersive' : 'reference',
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
-    presetView: value.presetView === 'tools' ? 'tools' : defaults.presetView,
     railWidth: readRailWidth(value.railWidth),
     textEditorMode: value.textEditorMode === 'preview' ? 'preview' : defaults.textEditorMode,
     uiScale: readUiScale(value.uiScale),
-    // ponytail: Legacy storage cannot distinguish an explicit default from an automatically saved default.
-    uiScaleOverridden: typeof value.uiScaleOverridden === 'boolean'
-      ? value.uiScaleOverridden : readUiScale(value.uiScale) !== UI_SCALE_DEFAULT,
+    uiScaleOverridden: value.uiScaleOverridden === true,
     playSelectedDate: typeof value.playSelectedDate === 'string' ? value.playSelectedDate : undefined,
   }
 }
-
-export const useStudioPanelStore = create<StudioPanelStore>(set => ({
-  activePanel: null,
-  syncActivePanel: activePanel => set({ activePanel }),
-}))
 
 export const useStudioLayoutStore = create<StudioLayoutStore>()(
   persist(
@@ -241,7 +219,6 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
       setPanelWindowSize: (panel, size) => set(state => ({
         panelWindowSizes: { ...state.panelWindowSizes, [panel]: size },
       })),
-      setPresetView: presetView => set({ presetView }),
       setPlaySelectedDate: playSelectedDate => set({ playSelectedDate }),
       setRailWidth: railWidth => set({ railWidth: readRailWidth(railWidth) }),
       setTextEditorMode: textEditorMode => set({ textEditorMode }),
@@ -270,7 +247,6 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         dockPinned: state.dockPinned,
         panelWindowMode: state.panelWindowMode,
         panelWindowSizes: state.panelWindowSizes,
-        presetView: state.presetView,
         railWidth: state.railWidth,
         textEditorMode: state.textEditorMode,
         uiScale: state.uiScale,
@@ -304,7 +280,7 @@ function readAssetViews(value: unknown): Record<string, AssetViewState> {
   if (!isRecord(value)) return {}
   return Object.fromEntries(Object.entries(value).flatMap(([workspaceId, state]) => {
     if (!workspaceId || !isRecord(state)) return []
-    const viewMode = readAssetViewMode(state.viewMode)
+    const viewMode = isAssetViewMode(state.viewMode) ? state.viewMode : undefined
     if (!viewMode) return []
     const selectedId = typeof state.selectedId === 'string' && state.selectedId ? state.selectedId : undefined
     const expandedIds = Array.isArray(state.expandedIds)
@@ -321,32 +297,11 @@ function readAssetViews(value: unknown): Record<string, AssetViewState> {
 function readPanelWindowSizes(value: unknown): Partial<Record<StudioPanelId, WindowSize>> {
   if (!isRecord(value)) return {}
   return Object.fromEntries(STUDIO_PANEL_IDS.flatMap(panel => {
-    const size = value[panel] ?? value[legacyPanelId(panel)]
+    const size = value[panel]
     return isRecord(size) && isFinitePositiveNumber(size.width) && isFinitePositiveNumber(size.height)
       ? [[panel, { width: size.width, height: size.height }]]
       : []
   }))
-}
-
-function hasLegacyImmersiveMode(value: unknown): boolean {
-  return isRecord(value) && STUDIO_PANEL_IDS.some(panel =>
-    (value[panel] ?? value[legacyPanelId(panel)]) === 'immersive')
-}
-
-function readPanelId(value: unknown): StudioPanelId | null {
-  if (value === 'api') return 'model'
-  if (value === 'resources') return 'character'
-  if (value === 'editor') return 'resource'
-  return typeof value === 'string' && STUDIO_PANEL_IDS.includes(value as StudioPanelId)
-    ? value as StudioPanelId
-    : null
-}
-
-function legacyPanelId(panel: StudioPanelId): string {
-  if (panel === 'model') return 'api'
-  if (panel === 'character') return 'resources'
-  if (panel === 'resource') return 'editor'
-  return panel
 }
 
 function isContextCategory(value: unknown): value is ContextCategory {
@@ -355,13 +310,6 @@ function isContextCategory(value: unknown): value is ContextCategory {
 
 function isAssetViewMode(value: unknown): value is AssetViewMode {
   return value === 'master-detail' || value === 'drilldown'
-}
-
-function readAssetViewMode(value: unknown): AssetViewMode | undefined {
-  if (isAssetViewMode(value)) return value
-  if (value === 'split') return 'master-detail'
-  if (value === 'explorer' || value === 'editor') return 'drilldown'
-  return undefined
 }
 
 function isFinitePositiveNumber(value: unknown): value is number {

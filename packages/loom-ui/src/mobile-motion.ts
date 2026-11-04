@@ -4,8 +4,12 @@ export function mobileReleaseTarget(position: number, extent: number, velocity: 
   return Math.abs(velocity) >= 0.5 ? velocity > 0 : position >= extent * 0.4
 }
 export function mobileResistance(position: number, min: number, max: number): number {
-  if (position < min) return min - 24 * (1 - Math.exp((position - min) / 80))
-  if (position > max) return max + 24 * (1 - Math.exp((max - position) / 80))
+  const extent = max - min
+  if (extent <= 0) return min
+  // Scale resistance with the surface rather than using a fixed pixel cap.
+  const resistance = (distance: number) => extent * (1 - Math.exp(-distance * 0.15 / extent))
+  if (position < min) return min - resistance(min - position)
+  if (position > max) return max + resistance(position - max)
   return position
 }
 export function mobileMotionDuration(distance: number, velocity = 0): number {

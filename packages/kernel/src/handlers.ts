@@ -1,3 +1,4 @@
+import { publishCommitNotification } from './commit-notifications.js'
 import type {
   DataCommitFact,
   DataCommitOperation,
@@ -94,10 +95,9 @@ export function createBuiltinHandlers(kernel: Kernel,
       if (!isRecord(params)) throw new Error('docs.revertChangeset params must be an object')
       const targetChangesetId = readString(params, 'changesetId')
 
+      let result: Awaited<ReturnType<typeof options.documents.revertChangeset>>
       try {
-        const result = await options.documents.revertChangeset(toRevertChangesetInput(params, context))
-        eventBus.emit('docs.rollback.completed', summarizeDocumentRollback(targetChangesetId, result), context)
-        return result
+        result = await options.documents.revertChangeset(toRevertChangesetInput(params, context))
       } catch (error) {
         eventBus.emit('docs.rollback.failed', {
           targetChangesetId,
@@ -105,6 +105,26 @@ export function createBuiltinHandlers(kernel: Kernel,
         }, context)
         throw error
       }
+      publishCommitNotification(eventBus, options.diagnostics, 'docs.rollback.completed', () => summarizeDocumentRollback(targetChangesetId, result), context)
+      return result
+    },
+    'extensions.listRecoveryRecords': async () => requireExtensionManager(options).listRecoveryRecords(),
+    'extensions.listModuleBatches': () => requireExtensionManager(options).listModuleBatches(),
+    'extensions.getModuleBatch': (params: JsonValue | undefined) => requireExtensionManager(options).getModuleBatch(readString(params, 'batchId')),
+    'extensions.startModuleBatch': async (params: JsonValue | undefined) => {
+      if (!isRecord(params) || typeof params.enabled !== 'boolean' || !Array.isArray(params.modules)) throw new Error('Expected enabled and modules')
+      const modules = params.modules.map(item => ({ moduleId: readString(item, 'moduleId'), grants: readExtensionCapabilityGrants(item) }))
+      return requireExtensionManager(options).startModuleBatch({ packageId: readString(params, 'packageId'),
+        target: readOptionalExtensionTarget(params), enabled: params.enabled, modules })
+    },
+    'extensions.previewPackageResources': async (params: JsonValue | undefined) => {
+      const version = isRecord(params) ? params.expectedInstallationVersion : undefined
+      const cardVersion = isRecord(params) ? params.expectedCardVersion : undefined
+      if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) throw new Error('expectedInstallationVersion must be a positive integer')
+      if (cardVersion !== undefined && (typeof cardVersion !== 'number' || !Number.isSafeInteger(cardVersion) || cardVersion < 1)) throw new Error('expectedCardVersion must be a positive integer')
+      return requireExtensionManager(options).previewPackageResources({ packageId: readString(params, 'packageId'),
+        packageVersion: readString(params, 'packageVersion'), expectedInstallationVersion: version,
+        target: readOptionalExtensionTarget(params), ...(typeof cardVersion === 'number' ? { expectedCardVersion: cardVersion } : {}) })
     },
     'extensions.listPackages': (params: JsonValue | undefined) => {
       const target = readOptionalExtensionTarget(params)
@@ -148,6 +168,7 @@ export function createBuiltinHandlers(kernel: Kernel,
       const extensionPackage = await requireExtensionManager(options).updateCardPackage({
         cardId, packageId: readString(params, 'packageId'), packageVersion: readString(params, 'packageVersion'),
         expectedCardVersion: cardVersion, expectedInstallationVersion: installationVersion,
+        expectedPreviewFingerprint: readPreviewFingerprint(params),
       })
       eventBus.emit('extensions.changed', {
         packageId: extensionPackage.packageId, target: { kind: 'card', cardId }, action: 'updated',
@@ -275,6 +296,7 @@ export function createBuiltinHandlers(kernel: Kernel,
         packageId: readString(params, 'packageId'),
         packageVersion: readString(params, 'packageVersion'),
         expectedInstallationVersion,
+        expectedPreviewFingerprint: readPreviewFingerprint(params),
       })
     },
     'extensions.listCharacters': async (params: JsonValue | undefined) => {
@@ -324,7 +346,7 @@ export function createBuiltinHandlers(kernel: Kernel,
       }
       return await requireExtensionManager(options).importCardPackageResources({
         cardId: readString(params, 'cardId'), packageId: readString(params, 'packageId'), expectedCardVersion: cardVersion,
-        update: { packageVersion: readString(params, 'packageVersion'), expectedInstallationVersion: installationVersion },
+        update: { packageVersion: readString(params, 'packageVersion'), expectedInstallationVersion: installationVersion, expectedPreviewFingerprint: readPreviewFingerprint(params) },
       })
     },
     'extensions.removeCardPackageResources': async (params: JsonValue | undefined) => {
@@ -525,4 +547,10 @@ function summarizeDocumentRollback(targetChangesetId: string, result: { commit: 
     targetChangesetId,
     ...summarizeDocumentCommit(result.commit) as Record<string, JsonValue>,
   }
+}
+
+function readPreviewFingerprint(params: JsonValue | undefined): string | undefined {
+  if (!isRecord(params) || params.expectedPreviewFingerprint === undefined) return undefined
+  if (typeof params.expectedPreviewFingerprint !== 'string' || !params.expectedPreviewFingerprint) throw new Error('Expected preview fingerprint')
+  return params.expectedPreviewFingerprint
 }

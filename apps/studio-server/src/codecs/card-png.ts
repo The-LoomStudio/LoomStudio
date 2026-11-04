@@ -1,13 +1,10 @@
-import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { readFileSync } from 'node:fs'
 // Invariant: Always use hardware-accelerated native crc32 from node:zlib.
 // Pure JS 8-bit table computation regresses pipeline speed by >300x and blocks the event loop.
-import { crc32, deflateSync, inflateSync } from 'node:zlib'
+import { crc32 } from 'node:zlib'
 import { maxBundleBytes } from './card-bundle-zip.js'
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
-const loomKeyword = Buffer.from('loom', 'latin1')
-const maxArtifactBytes = 32 * 1024 * 1024
 const bundleKeyword = 'loom.bundle'
 // Boundary: Base64 expands binary size by 4/3; maxCardPngBytes protects against memory exhaustion during decoding.
 const maxBundleTextBytes = Math.ceil(maxBundleBytes / 3) * 4
@@ -55,15 +52,11 @@ export function readCardPngArchive(source: Uint8Array): Uint8Array | undefined {
   return archive
 }
 
-export function hasLegacyCardPng(source: Uint8Array): boolean {
-  return readPngChunks(source).some(chunk => chunk.type === 'iTXt' && readKeyword(chunk.data) === 'loom')
-}
-
 export function stripLoomCardPayload(source: Uint8Array): Uint8Array {
   return Buffer.concat([
     pngSignature,
     ...readPngChunks(source)
-      .filter(chunk => !['iTXt', 'tEXt', 'zTXt'].includes(chunk.type) || !['loom', bundleKeyword].includes(readKeyword(chunk.data)))
+      .filter(chunk => !['iTXt', 'tEXt', 'zTXt'].includes(chunk.type) || readKeyword(chunk.data) !== bundleKeyword)
       .map(chunk => chunk.raw),
   ])
 }
@@ -75,39 +68,6 @@ export function stripPngTextMetadata(source: Uint8Array): Uint8Array {
       .filter(chunk => !['iTXt', 'tEXt', 'zTXt'].includes(chunk.type))
       .map(chunk => chunk.raw),
   ])
-}
-
-// Compatibility: Legacy v1 Loom Card embeds deflated JSON with compressionFlag=1 under keyword 'loom'.
-export function encodeCardPng(source: Uint8Array, artifact: CardBundleArtifact): Uint8Array {
-  const chunks = readPngChunks(source)
-  const artifactJson = Buffer.from(JSON.stringify(normalizeCardBundleArtifact(artifact)), 'utf8')
-  if (artifactJson.byteLength > maxArtifactBytes) throw new Error(`Card Artifact exceeds ${maxArtifactBytes} bytes`)
-  const text = deflateSync(artifactJson)
-  const iTxtData = Buffer.concat([
-    loomKeyword,
-    Buffer.from([0, 1, 0, 0, 0]),
-    text,
-  ])
-  const output: Uint8Array[] = [pngSignature]
-  for (const chunk of chunks) {
-    if (chunk.type === 'iTXt' && readKeyword(chunk.data) === 'loom') continue
-    if (chunk.type === 'IEND') output.push(createChunk('iTXt', iTxtData))
-    output.push(chunk.raw)
-  }
-  return Buffer.concat(output)
-}
-
-export function decodeCardPng(source: Uint8Array): CardBundleArtifact {
-  for (const chunk of readPngChunks(source)) {
-    if (chunk.type !== 'iTXt' || readKeyword(chunk.data) !== 'loom') continue
-    const separators = readITxtSeparators(chunk.data)
-    if (separators.compressionFlag !== 1 || separators.compressionMethod !== 0) {
-      throw new Error('Unsupported Loom Card PNG compression')
-    }
-    const json = inflateSync(chunk.data.subarray(separators.textOffset), { maxOutputLength: maxArtifactBytes }).toString('utf8')
-    return normalizeCardBundleArtifact(JSON.parse(json) as CardBundleArtifact)
-  }
-  throw new Error('PNG does not contain a Loom Card iTXt chunk')
 }
 
 export function isPng(source: Uint8Array): boolean {

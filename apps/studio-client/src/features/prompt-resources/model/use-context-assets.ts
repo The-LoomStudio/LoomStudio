@@ -40,7 +40,6 @@ type ResourceDraft = {
 
 type ResourceScope = {
   resources: PromptResource[]
-  nodes: ContextAssetNode[]
   visible: PromptResource[]
   drafts: Map<string, ResourceDraft>
   queue: Promise<void>
@@ -53,7 +52,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
   activeScopeRef.current = input.scope
   const scope = scopesRef.current.get(input.scope) ?? {
     resources: input.resources,
-    nodes: input.resources.map(resource => resource.rootNode),
     visible: input.resources,
     drafts: new Map<string, ResourceDraft>(),
     queue: Promise.resolve(),
@@ -82,7 +80,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const current = previous.get(resource.id)
       return current && current.version > resource.version ? current : resource
     })
-    scope.nodes = scope.resources.map(resource => resource.rootNode)
     publishDrafts()
   }
 
@@ -120,14 +117,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   function readResourceId(assetId: string): string {
-    const root = scope.nodes.find(node => findContextAssetNode([node], assetId))
-    const resourceId = scope.resources.find(resource => resource.rootNode.id === root?.id)?.id
+    const resourceId = scope.resources.find(resource => findContextAssetNode([resource.rootNode], assetId))?.id
     if (!resourceId) throw new Error(`Prompt resource not found for asset: ${assetId}`)
     return resourceId
   }
 
   function firstChildPlacement(parentId: string) {
-    const firstChild = findContextAssetNode(scope.nodes, parentId)?.children?.[0]
+    const firstChild = findContextAssetNode(scope.resources.map(resource => resource.rootNode), parentId)?.children?.[0]
     return {
       targetAssetId: firstChild?.id ?? parentId,
       position: firstChild ? 'before' as const : 'inside' as const,
@@ -241,28 +237,28 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   function addContextAsset(parentId: string): Promise<string | undefined> {
-    return createContextAsset(parentId, () => addContextAssetNode(scope.nodes, parentId))
+    return createContextAsset(parentId, () => addContextAssetNode(scope.resources.map(resource => resource.rootNode), parentId))
   }
 
   function addContextAssetFolder(parentId: string): Promise<string | undefined> {
-    return createContextAsset(parentId, () => addContextAssetFolderNode(scope.nodes, parentId))
+    return createContextAsset(parentId, () => addContextAssetFolderNode(scope.resources.map(resource => resource.rootNode), parentId))
   }
 
   function addContextAssetAnchor(parentId: string): Promise<string | undefined> {
-    return createContextAsset(parentId, () => addContextAssetAnchorNode(scope.nodes, parentId))
+    return createContextAsset(parentId, () => addContextAssetAnchorNode(scope.resources.map(resource => resource.rootNode), parentId))
   }
 
   function addContextAssetMessageBlock(parentId: string, role: 'system' | 'user' | 'assistant' = 'system'): Promise<string | undefined> {
-    return createContextAsset(parentId, () => addContextAssetMessageBlockNode(scope.nodes, parentId, role))
+    return createContextAsset(parentId, () => addContextAssetMessageBlockNode(scope.resources.map(resource => resource.rootNode), parentId, role))
   }
 
   function addContextAssetMessageSequence(parentId: string): Promise<string | undefined> {
-    return createContextAsset(parentId, () => addContextAssetMessageSequenceNode(scope.nodes, parentId))
+    return createContextAsset(parentId, () => addContextAssetMessageSequenceNode(scope.resources.map(resource => resource.rootNode), parentId))
   }
 
   function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after'): Promise<void> {
     return enqueueMutation(async () => {
-      if (!canMoveContextAssetNode(scope.nodes, draggedId, targetId, position)) return
+      if (!canMoveContextAssetNode(scope.resources.map(resource => resource.rootNode), draggedId, targetId, position)) return
       const resourceId = readResourceId(draggedId)
       if (readResourceId(targetId) !== resourceId) throw new Error('Cross-resource prompt asset move is not supported')
       const result = await input.api.promptResources.moveAsset({
@@ -283,7 +279,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function duplicateContextAsset(id: string): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const creation = duplicateContextAssetNode(scope.nodes, id)
+      const creation = duplicateContextAssetNode(scope.resources.map(resource => resource.rootNode), id)
       if (!creation) return
       const { asset, targetAssetId, position } = creation
       const resourceId = readResourceId(id)
@@ -307,7 +303,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function deleteContextAsset(id: string, currentSelectedId?: string): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const mutation = deleteContextAssetNode(scope.nodes, id, currentSelectedId)
+      const mutation = deleteContextAssetNode(scope.resources.map(resource => resource.rootNode), id, currentSelectedId)
       if (!mutation) return
       const resourceId = readResourceId(id)
       const result = await input.api.promptResources.deleteAsset({
@@ -332,7 +328,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const creation = addContextAssetInZoneNode(scope.nodes, targetAssetId, zoneId)
+      const creation = addContextAssetInZoneNode(scope.resources.map(resource => resource.rootNode), targetAssetId, zoneId)
       if (!creation) return
       const { asset } = creation
 
@@ -383,7 +379,6 @@ function readPromptAssetPatch(node: ContextAssetNode) {
     enabled: node.enabled,
     label: node.label,
     meta: node.meta,
-    orderList: node.orderList,
     skeletonPatch: node.skeletonPatch,
     slotRanks: node.slotRanks,
   }

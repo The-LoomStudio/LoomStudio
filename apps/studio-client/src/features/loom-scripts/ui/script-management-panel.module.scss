@@ -75,3 +75,8 @@
   .mobileFilters { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px var(--script-inset); }
   .sidebar .toolbar, .sidebar .filterTabs { display: none; }
 }
+
+.ruleDepths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--loom-divider-space); }
+.ruleOptions { display: flex; flex-wrap: wrap; gap: var(--loom-divider-space); }
+.ruleOption { display: inline-flex; align-items: center; gap: var(--loom-page-header-padding); }
+@media (max-width: 600px) { .ruleDepths { grid-template-columns: 1fr; gap: 0; } }

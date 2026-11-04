@@ -1,58 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite'
 
-export const migrationNamespace = 'application.prompt-resource'
+export const schemaNamespace = 'application.prompt-resource'
 
-export function migrateVersionOne(database: DatabaseSync): void {
+export function initializePromptResourceSchema(database: DatabaseSync): void {
   database.exec(`
-    CREATE TABLE prompt_resources (
-      id TEXT PRIMARY KEY,
-      resource_kind TEXT NOT NULL,
-      root_node_id TEXT NOT NULL,
-      label TEXT NOT NULL,
-      version INTEGER NOT NULL CHECK (version > 0),
-      metadata_json TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      tombstoned INTEGER NOT NULL DEFAULT 0,
-      deleted_at TEXT,
-      deleted_by_json TEXT,
-      delete_reason TEXT,
-      FOREIGN KEY(id, root_node_id)
-        REFERENCES prompt_resource_nodes(resource_id, id)
-        DEFERRABLE INITIALLY DEFERRED
-    );
-
-    CREATE TABLE prompt_resource_nodes (
-      id TEXT PRIMARY KEY,
-      resource_id TEXT NOT NULL REFERENCES prompt_resources(id),
-      parent_id TEXT,
-      order_index INTEGER NOT NULL CHECK (order_index >= 0),
-      kind TEXT NOT NULL,
-      category TEXT,
-      label TEXT NOT NULL,
-      meta TEXT,
-      enabled INTEGER,
-      body TEXT,
-      capabilities_json TEXT,
-      extra_json TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(resource_id, id),
-      FOREIGN KEY(resource_id, parent_id) REFERENCES prompt_resource_nodes(resource_id, id)
-    );
-
-    CREATE TABLE global_setting_mounts (
-      id TEXT PRIMARY KEY,
-      setting_resource_id TEXT NOT NULL REFERENCES prompt_resources(id),
-      source_kind TEXT NOT NULL CHECK (source_kind IN ('manual', 'preset')),
-      source_id TEXT NOT NULL,
-      order_index INTEGER NOT NULL CHECK (order_index >= 0),
-      origin_json TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      UNIQUE(setting_resource_id, source_kind, source_id)
-    );
-
-    CREATE TABLE prompt_resource_node_revisions (
+CREATE TABLE prompt_resource_node_revisions (
       resource_id TEXT NOT NULL,
       resource_version INTEGER NOT NULL,
       node_id TEXT NOT NULL,
@@ -65,7 +17,7 @@ export function migrateVersionOne(database: DatabaseSync): void {
       PRIMARY KEY(resource_id, resource_version, node_id)
     );
 
-    CREATE TABLE prompt_resource_header_revisions (
+CREATE TABLE prompt_resource_header_revisions (
       resource_id TEXT NOT NULL,
       resource_version INTEGER NOT NULL,
       before_json TEXT,
@@ -76,21 +28,11 @@ export function migrateVersionOne(database: DatabaseSync): void {
       PRIMARY KEY(resource_id, resource_version)
     );
 
-    CREATE UNIQUE INDEX idx_prompt_resource_one_root
-      ON prompt_resource_nodes(resource_id) WHERE parent_id IS NULL;
-    CREATE INDEX idx_prompt_resources_kind_label ON prompt_resources(resource_kind, label);
-    CREATE INDEX idx_prompt_resource_nodes_parent_order ON prompt_resource_nodes(resource_id, parent_id, order_index, id);
-    CREATE INDEX idx_prompt_resource_nodes_kind ON prompt_resource_nodes(resource_id, kind);
-    CREATE INDEX idx_global_setting_mounts_source ON global_setting_mounts(source_kind, source_id, order_index, id);
-    CREATE INDEX idx_global_setting_mounts_setting ON global_setting_mounts(setting_resource_id);
-    CREATE INDEX idx_prompt_resource_revisions_changeset ON prompt_resource_node_revisions(changeset_id);
-    CREATE INDEX idx_prompt_resource_header_revisions_changeset ON prompt_resource_header_revisions(changeset_id);
-  `)
-}
+CREATE INDEX idx_prompt_resource_revisions_changeset ON prompt_resource_node_revisions(changeset_id);
 
-export function migrateVersionTwo(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE preset_tool_mounts (
+CREATE INDEX idx_prompt_resource_header_revisions_changeset ON prompt_resource_header_revisions(changeset_id);
+
+CREATE TABLE preset_tool_mounts (
       id TEXT PRIMARY KEY,
       preset_resource_id TEXT NOT NULL REFERENCES prompt_resources(id),
       tool_id TEXT NOT NULL,
@@ -98,35 +40,17 @@ export function migrateVersionTwo(database: DatabaseSync): void {
       default_enabled INTEGER NOT NULL CHECK (default_enabled IN (0, 1)),
       activation_json TEXT,
       provider_order REAL,
-      content_zone TEXT,
-      content_slot TEXT,
-      content_rank_key TEXT,
-      content_order_hint REAL,
       origin_json TEXT NOT NULL,
-      created_at TEXT NOT NULL,
+      created_at TEXT NOT NULL, target_anchor_id TEXT, local_depth REAL,
       UNIQUE(preset_resource_id, tool_id)
     );
 
-    CREATE INDEX idx_preset_tool_mounts_preset
+CREATE INDEX idx_preset_tool_mounts_preset
       ON preset_tool_mounts(preset_resource_id, order_index, id);
-    CREATE INDEX idx_preset_tool_mounts_tool ON preset_tool_mounts(tool_id);
-  `)
-}
 
-export function migrateVersionThree(database: DatabaseSync): void {
-  database.exec(`
-    ALTER TABLE preset_tool_mounts DROP COLUMN content_zone;
-    ALTER TABLE preset_tool_mounts DROP COLUMN content_slot;
-    ALTER TABLE preset_tool_mounts DROP COLUMN content_rank_key;
-    ALTER TABLE preset_tool_mounts DROP COLUMN content_order_hint;
-    ALTER TABLE preset_tool_mounts ADD COLUMN target_anchor_id TEXT;
-    ALTER TABLE preset_tool_mounts ADD COLUMN local_depth REAL;
-  `)
-}
+CREATE INDEX idx_preset_tool_mounts_tool ON preset_tool_mounts(tool_id);
 
-export function migrateVersionFour(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE prompt_resource_nodes_new (
+CREATE TABLE "prompt_resource_nodes" (
       id TEXT PRIMARY KEY,
       resource_id TEXT NOT NULL REFERENCES prompt_resources(id),
       parent_id TEXT,
@@ -146,18 +70,16 @@ export function migrateVersionFour(database: DatabaseSync): void {
         REFERENCES prompt_resource_nodes(resource_id, id)
     );
 
-    INSERT INTO prompt_resource_nodes_new SELECT * FROM prompt_resource_nodes;
-    DROP TABLE prompt_resource_nodes;
-    ALTER TABLE prompt_resource_nodes_new RENAME TO prompt_resource_nodes;
-
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_prompt_resource_one_root
+CREATE UNIQUE INDEX idx_prompt_resource_one_root
       ON prompt_resource_nodes(resource_id) WHERE parent_id IS NULL;
-    CREATE INDEX IF NOT EXISTS idx_prompt_resource_nodes_parent_order
+
+CREATE INDEX idx_prompt_resource_nodes_parent_order
       ON prompt_resource_nodes(resource_id, parent_id, order_index, id);
-    CREATE INDEX IF NOT EXISTS idx_prompt_resource_nodes_kind
+
+CREATE INDEX idx_prompt_resource_nodes_kind
       ON prompt_resource_nodes(resource_id, kind);
 
-    CREATE TABLE prompt_resources_new (
+CREATE TABLE "prompt_resources" (
       id TEXT PRIMARY KEY,
       resource_kind TEXT NOT NULL,
       root_node_id TEXT NOT NULL,
@@ -175,36 +97,57 @@ export function migrateVersionFour(database: DatabaseSync): void {
         DEFERRABLE INITIALLY DEFERRED
     );
 
-    INSERT INTO prompt_resources_new SELECT * FROM prompt_resources;
-    DROP TABLE prompt_resources;
-    ALTER TABLE prompt_resources_new RENAME TO prompt_resources;
-
-    CREATE INDEX IF NOT EXISTS idx_prompt_resources_kind_label
+CREATE INDEX idx_prompt_resources_kind_label
       ON prompt_resources(resource_kind, label);
-  `)
-}
 
-export function migrateVersionFive(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE global_setting_mounts_new (
+CREATE TABLE "global_lore_mounts" (
       id TEXT PRIMARY KEY,
-      setting_resource_id TEXT REFERENCES prompt_resources(id),
+      lore_resource_id TEXT REFERENCES prompt_resources(id),
       reference_json TEXT,
       source_kind TEXT NOT NULL CHECK (source_kind IN ('manual', 'preset')),
       source_id TEXT NOT NULL,
       order_index INTEGER NOT NULL CHECK (order_index >= 0),
       origin_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      CHECK (setting_resource_id IS NOT NULL OR reference_json IS NOT NULL),
-      UNIQUE(setting_resource_id, source_kind, source_id)
+      CHECK (lore_resource_id IS NOT NULL OR reference_json IS NOT NULL),
+      UNIQUE(lore_resource_id, source_kind, source_id)
     );
-    INSERT INTO global_setting_mounts_new
-      (id, setting_resource_id, reference_json, source_kind, source_id, order_index, origin_json, created_at)
-      SELECT id, setting_resource_id, NULL, source_kind, source_id, order_index, origin_json, created_at FROM global_setting_mounts;
-    DROP TABLE global_setting_mounts;
-    ALTER TABLE global_setting_mounts_new RENAME TO global_setting_mounts;
-    CREATE INDEX idx_global_setting_mounts_source ON global_setting_mounts(source_kind, source_id, order_index, id);
-    CREATE INDEX idx_global_setting_mounts_setting ON global_setting_mounts(setting_resource_id);
+
+CREATE INDEX idx_global_lore_mounts_source ON global_lore_mounts(source_kind, source_id, order_index, id);
+
+CREATE INDEX idx_global_lore_mounts_lore ON global_lore_mounts(lore_resource_id);
+
+CREATE VIRTUAL TABLE prompt_resource_node_search USING fts5(
+      label, meta, body, tokenize = 'trigram'
+    );
+
+CREATE TRIGGER prompt_resource_search_node_insert AFTER INSERT ON prompt_resource_nodes BEGIN
+      INSERT INTO prompt_resource_node_search (rowid, label, meta, body)
+        SELECT new.rowid, new.label, new.meta, new.body
+        FROM prompt_resources r WHERE r.id = new.resource_id AND r.resource_kind IN ('lore', 'preset');
+    END;
+
+CREATE TRIGGER prompt_resource_search_node_delete AFTER DELETE ON prompt_resource_nodes BEGIN
+      DELETE FROM prompt_resource_node_search WHERE rowid = old.rowid;
+    END;
+
+CREATE TRIGGER prompt_resource_search_node_update
+      AFTER UPDATE OF label, meta, body, resource_id ON prompt_resource_nodes BEGIN
+      DELETE FROM prompt_resource_node_search WHERE rowid = old.rowid;
+      INSERT INTO prompt_resource_node_search (rowid, label, meta, body)
+        SELECT new.rowid, new.label, new.meta, new.body
+        FROM prompt_resources r WHERE r.id = new.resource_id AND r.resource_kind IN ('lore', 'preset');
+    END;
+
+CREATE TRIGGER prompt_resource_search_header_update
+      AFTER UPDATE OF resource_kind ON prompt_resources
+      WHEN old.resource_kind IS NOT new.resource_kind BEGIN
+      DELETE FROM prompt_resource_node_search
+        WHERE rowid IN (SELECT rowid FROM prompt_resource_nodes WHERE resource_id = new.id);
+      INSERT INTO prompt_resource_node_search (rowid, label, meta, body)
+        SELECT n.rowid, n.label, n.meta, n.body FROM prompt_resource_nodes n
+        WHERE n.resource_id = new.id AND new.resource_kind IN ('lore', 'preset');
+    END;
   `)
 }
 
@@ -230,93 +173,4 @@ export function assertPromptResourceSchema(database: DatabaseSync): void {
   if (violations.length > 0) {
     throw new Error(`Prompt Resource SQLite schema contains ${violations.length} foreign key violations`)
   }
-}
-
-export { migrateLorePromptData as migrateVersionSix } from './lore-migration.js'
-
-export function migrateVersionSeven(database: DatabaseSync): void {
-  database.exec(`
-    CREATE VIRTUAL TABLE prompt_resource_node_search USING fts5(
-      label, meta, body, resource_label, tokenize = 'trigram'
-    );
-
-    INSERT INTO prompt_resource_node_search (rowid, label, meta, body, resource_label)
-      SELECT n.rowid, n.label, n.meta, n.body, r.label
-      FROM prompt_resource_nodes n JOIN prompt_resources r ON r.id = n.resource_id
-      WHERE r.resource_kind IN ('lore', 'preset');
-
-    CREATE TRIGGER prompt_resource_search_node_insert AFTER INSERT ON prompt_resource_nodes BEGIN
-      INSERT INTO prompt_resource_node_search (rowid, label, meta, body, resource_label)
-        SELECT new.rowid, new.label, new.meta, new.body, r.label
-        FROM prompt_resources r WHERE r.id = new.resource_id AND r.resource_kind IN ('lore', 'preset');
-    END;
-
-    CREATE TRIGGER prompt_resource_search_node_delete AFTER DELETE ON prompt_resource_nodes BEGIN
-      DELETE FROM prompt_resource_node_search WHERE rowid = old.rowid;
-    END;
-
-    CREATE TRIGGER prompt_resource_search_node_update
-      AFTER UPDATE OF label, meta, body, resource_id ON prompt_resource_nodes BEGIN
-      DELETE FROM prompt_resource_node_search WHERE rowid = old.rowid;
-      INSERT INTO prompt_resource_node_search (rowid, label, meta, body, resource_label)
-        SELECT new.rowid, new.label, new.meta, new.body, r.label
-        FROM prompt_resources r WHERE r.id = new.resource_id AND r.resource_kind IN ('lore', 'preset');
-    END;
-
-    CREATE TRIGGER prompt_resource_search_header_update
-      AFTER UPDATE OF label, resource_kind ON prompt_resources
-      WHEN old.label IS NOT new.label OR old.resource_kind IS NOT new.resource_kind BEGIN
-      DELETE FROM prompt_resource_node_search
-        WHERE rowid IN (SELECT rowid FROM prompt_resource_nodes WHERE resource_id = new.id);
-      INSERT INTO prompt_resource_node_search (rowid, label, meta, body, resource_label)
-        SELECT n.rowid, n.label, n.meta, n.body, new.label FROM prompt_resource_nodes n
-        WHERE n.resource_id = new.id AND new.resource_kind IN ('lore', 'preset');
-    END;
-  `)
-}
-
-export function migrateVersionEight(database: DatabaseSync): void {
-  database.exec(`
-    DROP TRIGGER prompt_resource_search_node_insert;
-    DROP TRIGGER prompt_resource_search_node_delete;
-    DROP TRIGGER prompt_resource_search_node_update;
-    DROP TRIGGER prompt_resource_search_header_update;
-    DROP TABLE prompt_resource_node_search;
-    CREATE VIRTUAL TABLE prompt_resource_node_search USING fts5(
-      label, meta, body, tokenize = 'trigram'
-    );
-
-    INSERT INTO prompt_resource_node_search (rowid, label, meta, body)
-      SELECT n.rowid, n.label, n.meta, n.body
-      FROM prompt_resource_nodes n JOIN prompt_resources r ON r.id = n.resource_id
-      WHERE r.resource_kind IN ('lore', 'preset');
-
-    CREATE TRIGGER prompt_resource_search_node_insert AFTER INSERT ON prompt_resource_nodes BEGIN
-      INSERT INTO prompt_resource_node_search (rowid, label, meta, body)
-        SELECT new.rowid, new.label, new.meta, new.body
-        FROM prompt_resources r WHERE r.id = new.resource_id AND r.resource_kind IN ('lore', 'preset');
-    END;
-
-    CREATE TRIGGER prompt_resource_search_node_delete AFTER DELETE ON prompt_resource_nodes BEGIN
-      DELETE FROM prompt_resource_node_search WHERE rowid = old.rowid;
-    END;
-
-    CREATE TRIGGER prompt_resource_search_node_update
-      AFTER UPDATE OF label, meta, body, resource_id ON prompt_resource_nodes BEGIN
-      DELETE FROM prompt_resource_node_search WHERE rowid = old.rowid;
-      INSERT INTO prompt_resource_node_search (rowid, label, meta, body)
-        SELECT new.rowid, new.label, new.meta, new.body
-        FROM prompt_resources r WHERE r.id = new.resource_id AND r.resource_kind IN ('lore', 'preset');
-    END;
-
-    CREATE TRIGGER prompt_resource_search_header_update
-      AFTER UPDATE OF resource_kind ON prompt_resources
-      WHEN old.resource_kind IS NOT new.resource_kind BEGIN
-      DELETE FROM prompt_resource_node_search
-        WHERE rowid IN (SELECT rowid FROM prompt_resource_nodes WHERE resource_id = new.id);
-      INSERT INTO prompt_resource_node_search (rowid, label, meta, body)
-        SELECT n.rowid, n.label, n.meta, n.body FROM prompt_resource_nodes n
-        WHERE n.resource_id = new.id AND new.resource_kind IN ('lore', 'preset');
-    END;
-  `)
 }

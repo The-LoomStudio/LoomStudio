@@ -1,8 +1,10 @@
 # 2026-10-26 综合审查修复与优化实施计划
 
-状态：待实施；两项方向已确认。本轮只核查消费者与编写计划，未修改业务代码。
+状态：部分实施；2026-11-04 BR-01/02、BP-02/04及W2（FR-R01/FR-R06）已完成，其他工作包未在这些修复中实施。下文原方案保留，完成状态以本段及关联实施报告为准。
 
-来源：[综合审查 Issue](../../archive/issues/full-stack-audit-2026-10-26.md)。审查报告已完成并归档，保存问题、复现证据与验证边界；本计划是当前修复与验收的承接入口，定义执行顺序、文件所有权和关闭条件。15 项确认问题、1 项精简与 5 项条件优化均未实施，归档报告不关闭这些后续。
+来源：[综合审查 Issue](../../archive/issues/full-stack-audit-2026-10-26.md)。审查报告已完成并归档，保存问题、复现证据与验证边界；本计划是当前修复与验收的承接入口，定义执行顺序、文件所有权和关闭条件。原登记15项确认问题中，已完成BR-01/02、BP-02/04、FR-R01/FR-R06六项；其余确认问题、1项精简与5项条件优化仍由各工作包承接，不因这些修复完成一并关闭。
+
+2026-11-04 实施更新：W5（BR-01/02）与W7（BP-02/04）已由[后端专项修复](../../archive/issues/backend-failure-concurrency-lifecycle-audit-2026-11-04.md)完成，含恢复、故障通知、分片/授权及双SSE验证；本次另获用户明确授权实施W2并已完成，结果见文末；其他条目不因此改变状态。
 
 ## 目标与授权边界
 
@@ -12,7 +14,7 @@
 
 - BP-01 保留 SVG 的上传、媒体显示和原始导出，在媒体 HTTP 响应处禁止脚本并隔离文档 origin。
 - BP-02 采用同一 `changesetId` 下按 payload 字节拆分通知的方向，先核实消费者合同。
-- 当前仅交付实施计划，不执行代码修复、迁移、提交或发布。下列工作包用于后续实施，不代表已实施。
+- 原规划阶段仅交付计划；2026-11-04后续用户分别授权已完成的W5/W7与本次W2代码修复。未授权的其他工作包不自动开工；没有迁移、提交或发布授权。
 
 基线为 Issue 记录的 `main` / `d3d4e7e934b1b47c4cb62d2e61906ce10852032c` 加当前未提交工作区。已有大量其他任务修改；开工只复核各包拥有文件的当前差异，不覆盖、不回滚。独立[官方扩展审查](../../archive/issues/official-extensions-audit-2026-10-26.md)的 8 项问题不并入本计划。
 
@@ -132,3 +134,50 @@ Provider 更新内部参数收窄仅在相关模块本就需要修改时顺带�
 **单个 operation summary 超限：非阻塞的已知边界。** 源码允许超长自定义 ID/type，但尚未发现真实使用需求或存量实例。本轮不为此增加 ID/type 长度限制、数据清点/迁移或另一套全量失效协议。分片函数遇到无法容纳的单项应明确失败，沿用本包已有的发布失败诊断与投影隔离，避免无限切分、截断身份或把已提交结果报成数据库失败；该极端情况下不保证完整通知。只有出现实际调用、数据或明确需求，再单独评估支持方式。此前把它列为 W7 阻塞条件的要求撤销。
 
 当前没有阻塞实施的未决产品方向。分片桥接、角色过滤、回滚完成与唯一 publisher 是已选拆分方向的必要配套；实施时如果发现必须更改上述权限/持久化/公共调用结果合同，应停在该包并报告具体证据。真实浏览器、Provider、发布与历史缓存撤回的未覆盖范围须如实保留，不能用本地测试或文档审查代替。
+
+
+## W2 执行设计（2026-11-04，已授权）
+
+目标：本次用户明确授权FR-R01安装配置身份隔离及FR-R06显式冲突恢复；不涉及其他W包，不改异常目录数据，真实环境审计延期。当前共享工作区包含大量其他任务差异，所有执行者必须增量编辑、保留他人修改，不提交/发布。
+
+已核实：StudioApi与Runtime已接收ExtensionInstallationTarget；SDK配置ID及ownerInstallationId已区分全局/角色安装，省略target仍默认global。当前Form未传target，而角色包和全局包共用同一入口。Runtime存储scope校验由extensions/storage-scope.ts拥有：card安装不允许global/他卡scope；timeline按createdFrom.cardId、session按关联timeline的createdFrom.cardId验证，不按当前浏览选卡推断。现有CAS拒绝旧版本，Form dirty阻止baseline更新却无显式恢复入口。
+
+继承决定：复用现有target、scope与CAS，不改持久化键、旧数据、权限或重建存储。冲突保留草稿，用户明确采用服务端值或重新应用草稿后才更换baseline；latest读失败应可重读且不能盲写。无新依赖/通用状态机；继续沿用原auto-save、Field反馈及Button体系，四语言词条一致。
+
+| 职责 | 精确写集 | 验收责任 |
+| --- | --- | --- |
+| preview_source_batch3 | extension-settings-form.tsx及必要同名scss；四语言extensions词条；原settings测试及必要真实DOM回归 | Form必填target，读写/重读/identity一致；API变化隔离；合法scope；冲突两种显式恢复、读失败重试、二次冲突、排队/晚回保护 |
+| regex_isolation_batch3 | 仅extension-config-runtime.test.ts或必要同目录隔离回归（生产代码只读） | 真实SQLite+Runtime证明全局/A/B命名空间、列表/读取/写入、CAS及非法跨卡scope；发现生产疑点先报告主Agent，不改权限合同 |
+| 主Agent | extension-workspace.tsx、studio-panel-registry.tsx、card-resource-directory.tsx的Form target接线、现有计划/后续清单/正式合同 | 工作台显式target、角色scope按安装card绑定、timeline/session归属仅用真实可确认关系；最终类型及跨模块集成 |
+
+主Agent将scopeContext增加timelineCardId、agentSessionCardId：前者来自当前NarrativeTimeline.createdFrom.cardId，后者仅在Session.timelineId匹配该Timeline时推导，不用当前浏览角色猜测。Card设置由包target.cardId确定；归属不明的timeline/session控件不可提交，后端保留权威检查。
+
+先稳定完整表单与接线，再跑各职责最小测试；主Agent集中Client类型检查，不重复已被可靠覆盖的后端研究。不用生产配置写入/浏览器压力或真实模型请求作为验收前置。不满足本包合同的新增问题回主Agent收敛。未决用户产品问题：无。此节是执行设计，不代表完成；实际结果另行回填。
+
+
+写集补充：定向调用点搜索发现当前脏区的角色资源目录也挂载同一Form。其扩展列表已固定card target，主Agent仅给该Form补相同card target，不修改目录文件、索引或DATA-01业务数据。必填target类型用于防止漏接新调用者。
+
+
+## W2 实施结果（2026-11-04）
+
+FR-R01与FR-R06已完成代码与定向验证；其他W包仍以各自状态为准。异常目录DATA-01没有修改，真实环境审计按用户要求延期。
+
+### 实际行为
+
+- 安装身份：Form必填`target`，list/get/upsert及冲突恢复重读均显式传入；字段身份包含局部API epoch、package、target及有效scope。同包全局/Card A/Card B不复用草稿、版本或晚回结果。未增加缓存、存储管理器或兼容层。
+- 两类入口：扩展工作台取包的target，全局包明确global，角色包的card scope绑定安装cardId；角色资源目录已有card定向列表，其Form也传相同card target。目录入口这里只改源码接线，不修改目录索引或业务数据。
+- 归属门控：Timeline归属取真实createdFrom.cardId；Session仅在关联当前Timeline时确认card归属，不用当前浏览角色猜测。Card安装的global/跨卡/未知归属scope不可提交；global安装保留原合法scope能力。后端现有权威校验不变。
+- 失败恢复：草稿与旧baseline保留，清旧提交队列并暂停typing、Enter、blur及timer的隐式提交；latest成功读取后才允许“使用服务端值”或“重新应用此草稿”。读失败保留草稿并可重读；latest不存在可明确采用默认值或重新创建。只有显式恢复动作才前推版本，二次冲突继续保留草稿并恢复，不静默覆盖。
+- 异步保护：成功只确认已提交快照，保存/恢复期间继续输入与排队不丢；target/API切换及卸载后，旧save/read不会污染新字段或继续提交旧队列。只读/不可用字段保持门控。恢复反馈使用现有Field/Button及四语言六条词条。
+
+### 证据与界限
+
+三文件合计**20项定向测试通过**：extension-settings-form（SSR1）、extension-settings-conflict（真实React DOM11）、extension-config-runtime（真实SQLite/Runtime8，含3项新身份边界回归）。没有重复相加。前端API仅在外部边界替身，核心Form/React状态/Effect与DOM保持真实；未启动浏览器或写真实扩展配置。原组件函数静态key调用因新增Hook改为真实DOM同合同验证，没有削弱身份断言。
+
+后端验证确认SDK ID与ownerInstallationId已有target命名空间；list/get/upsert按既有owner/scope工作，stale CAS拒绝且其他安装值不变。Card target的非法global/跨card/timeline/session与独立Session均拒绝，合法Session可读。**本次未改Runtime/SDK权限或持久化语义**：这些Application方法不新增“安装必须存在”检查；不存在/墓碑恢复沿用原写入合同，不宣称新的create-if-absent保护。前端仍须独立处理异步身份，不能依赖版本号排除跨身份问题。
+
+Client tsc --noEmit通过；拥有Diff空白检查通过。没有全仓测试、生产构建、真实安装Host/RPC/浏览器写入、模型调用、提交或发布。当前HMR继续沿用；主观按钮体验与真实跨标签页竞争按用户决定留后验收。源文件中的其他既有差异（如卸载文案）原样保留，不归于W2改动。
+
+### 当前关闭范围
+
+本包FR-R01/06关闭，归档报告仍保留修复前证据，后续清单不再把这两项列为待施工。真实环境验收延期不等于完成；不据此启动其他W包、自动迁移DATA-01或扩大审计。

@@ -23,7 +23,7 @@ async function fixture(attachment: ChatAttachment, invokeChat: NonNullable<Appli
   })
   await runtime.initialize()
   const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Attachment reader' })
-  if (codeAct) await runtime.replacePresetToolMounts({ presetId: preset.id, mounts: [{ toolId: 'official/codeact_json', defaultEnabled: true, orderIndex: 0 }] })
+  if (codeAct) await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.id })).mounts.map(mount => mount.id), presetId: preset.id, mounts: [{ toolId: 'official/codeact_json', defaultEnabled: true, orderIndex: 0 }] })
   const { providerProfile } = await runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test'] })
   const { agentPreset } = await runtime.updateAgentPreset({ name: 'Reader', agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version, model: { providerProfileId: providerProfile.id, modelId: 'test' } })
   const { session } = await runtime.createAgentSession({ agentPresetId: agentPreset.id })

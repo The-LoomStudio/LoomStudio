@@ -115,7 +115,7 @@ describe('Provider committed result publication', () => {
       .toEqual([kind === 'provider' ? f.saved : f.capability])
   })
 
-  it('discards a list started before a committed configuration change even when credentials fail', async () => {
+  it('keeps the previous connection when saving fails during a concurrent refresh', async () => {
     const f = fixture()
     await run(() => f.render().refreshProviderAccounts())
     const old = f.render().providerAccounts
@@ -123,13 +123,13 @@ describe('Provider committed result publication', () => {
     f.list.mockImplementationOnce(async () => { await pending.promise; return { providerProfiles: old } })
     f.list.mockResolvedValue({ providerProfiles: [f.saved] })
     const stale = start(() => f.render().refreshProviderAccounts())
-    f.credential.mockRejectedValue(f.failure)
+    f.api.providerAccounts.update.mockRejectedValue(f.failure)
     await expect(run(() => f.render().updateProviderConnection('provider', {
       displayName: 'Saved', baseUrl: 'https://example.test/v1', apiKey: 'secret',
     }))).rejects.toBe(f.failure)
     pending.resolve()
     await stale
-    expect(f.render().providerAccounts).toEqual([f.saved])
+    expect(f.render().providerAccounts).toEqual(old)
     expect(f.list).toHaveBeenCalledTimes(2)
   })
 
@@ -158,8 +158,7 @@ describe('Provider committed result publication', () => {
       else await expect(pending).rejects.toBe(f.failure)
       const current = f.render()
       expect(current.providerAccounts).toEqual(operation === 'delete' ? [] : [
-        operation === 'connection' || operation === 'ai-update'
-          ? { ...f.saved, credential: { configured: true } } : f.saved,
+        f.saved,
       ])
       expect(current.modelProfiles.map(model => model.providerModelId)).toEqual(operation === 'delete' ? [] : ['new-model'])
       expect(JSON.stringify(current.providerAccounts)).not.toContain('secret')
@@ -183,14 +182,17 @@ describe('Provider committed result publication', () => {
     expect(f.list).toHaveBeenCalledOnce()
   })
 
-  it('retains committed metadata but not successful credentials when credential replacement fails', async () => {
+  it('retains the old connection when the coordinated save fails', async () => {
     const f = fixture()
     await run(() => f.render().refreshProviderAccounts())
-    f.credential.mockRejectedValue(f.failure)
+    const original = f.render().providerAccounts
+    f.api.providerAccounts.update.mockRejectedValue(f.failure)
     await expect(run(() => f.render().updateProviderConnection('provider', {
       displayName: 'Saved', baseUrl: 'https://example.test/v1', apiKey: 'secret',
     }))).rejects.toBe(f.failure)
-    expect(f.render().providerAccounts).toEqual([f.saved])
+    expect(f.render().providerAccounts).toEqual(original)
+    expect(f.api.providerAccounts.update).toHaveBeenCalledWith({ providerProfileId: 'provider', expectedVersion: 1, displayName: 'Saved', config: { baseUrl: 'https://example.test/v1' }, credential: { apiKey: 'secret' } })
+    expect(f.credential).not.toHaveBeenCalled()
     expect(f.list).toHaveBeenCalledOnce()
   })
 
@@ -236,7 +238,7 @@ describe('Provider committed result publication', () => {
     const settings = mountSettings(api).render()
     await expect(run(() => settings.createModelProfile('provider', 'first'))).rejects.toBe(failure)
     await expect(run(() => settings.createModelProfile('provider', 'second'))).resolves.toBeUndefined()
-    expect(update).toHaveBeenNthCalledWith(2, { providerProfileId: 'provider', enabledModelIds: ['second'] })
+    expect(update).toHaveBeenNthCalledWith(2, { providerProfileId: 'provider', expectedVersion: 1, enabledModelIds: ['second'] })
   })
 
   it.each(['provider', 'capability'] as const)('loads all 101 %s profiles into the consuming Hook', async kind => {

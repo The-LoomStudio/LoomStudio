@@ -69,7 +69,7 @@ RPC 为 `application.searchResources` 和 `application.listGlobalSearchScopes`�
 
 ## 索引与一致性
 
-PromptResource migration 7 建立 FTS5 trigram 并回填既有定义；migration 8 从权威节点事务内重建为 label / meta / body 三列，移除旧 resource_label 索引和来源改名引发的整资源重建。历史 v7 数据通过升级路径处理。
+当前 Prompt Resource schema 在 `application.prompt-resource@9` 的最终 DDL 中建立 FTS5 trigram 和 `label / meta / body` 三列；节点及 Header 变化通过触发器维护索引。此前 v7→v8 的字段与索引调整属于历史 schema 演进，不代表当前 Store 会升级 v7 数据库；namespace 版本不匹配时拒绝打开。
 
 节点增删改及资源类别变化由 SQL 触发器随领域事务维护索引。整树替换、恢复和 Changeset revert 沿相同写入路径；事务回滚不发布部分索引。资源墓碑由查询排除，展示路径沿当前树关系计算。
 
@@ -91,6 +91,6 @@ cmdk 关闭内置过滤和排序，防止正文命中被标题过滤掉。错误
 
 ## 验证与历史
 
-Store 测试覆盖迁移回填、中文、目录分页和事务一致性；Runtime 测试覆盖携带 / 关联边界、扩展多安装、范围与排序；Client 定向测试覆盖 Token、缓存、键盘 / IME、持久恢复和高亮生命周期。真实大型资源库性能不属于这些测试的证明范围。
+Store 测试覆盖搜索、中文、目录分页与事务内索引维护；Runtime 测试覆盖携带 / 关联边界、扩展多安装、范围与排序；Client 定向测试覆盖 Token、缓存、键盘 / IME、持久恢复和高亮生命周期。真实大型资源库性能不属于这些测试的证明范围。
 
 实现过程和各轮检查记录保留于[已归档计划](../../archive/plans/global-resource-search-plan.md)。导航状态合同见[Navigation and Routing](../ui/navigation-and-routing.md)。

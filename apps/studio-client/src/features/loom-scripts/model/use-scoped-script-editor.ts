@@ -84,8 +84,7 @@ export function useScopedScriptEditor(props: Input) {
     try {
       setBusy(true)
       const source = await file.text()
-      const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: file.name, source })
-      await props.loomScriptsApi.createMount({ target: scriptOwner, scriptDocumentId: result.script.id, orderIndex: visibleMounts.length })
+      const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: file.name, source, mount: { target: scriptOwner, orderIndex: visibleMounts.length } })
       await refresh()
       await selectScript(result.script.id, result.script)
       notify.success(props.t('notify.success.imported'))
@@ -101,8 +100,7 @@ export function useScopedScriptEditor(props: Input) {
     if (!scriptOwner || !props.loomScriptsApi) return
     try {
       setBusy(true)
-      const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: 'script.loom.js', source: createScriptTemplate() })
-      await props.loomScriptsApi.createMount({ target: scriptOwner, scriptDocumentId: result.script.id, orderIndex: visibleMounts.length })
+      const result = await props.loomScriptsApi.import({ owner: scriptOwner, fileName: 'script.loom.js', source: createScriptTemplate(), mount: { target: scriptOwner, orderIndex: visibleMounts.length } })
       await refresh()
       await selectScript(result.script.id, result.script)
       notify.success(props.t('notify.success.saved'))

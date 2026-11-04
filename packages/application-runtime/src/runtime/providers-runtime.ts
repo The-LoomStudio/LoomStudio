@@ -39,6 +39,7 @@ import type {
 import {
   promptResourceWriteContext,
   requireAiCapabilities,
+  requireDocumentParticipant,
   requireSecrets,
   secretWriteContext,
 } from './context.js'
@@ -46,7 +47,7 @@ import { officialFakeModelId } from '@loom-studio/ai-gateway'
 export { officialFakeModelId } from '@loom-studio/ai-gateway'
 
 type ProvidersRuntimeContext = Pick<ApplicationRuntimeContext,
-  'aiCapabilities' | 'createId' | 'documents' | 'gateway' | 'now' | 'providerAdapters' | 'secrets'
+  'dataEngine' | 'aiCapabilities' | 'createId' | 'documents' | 'gateway' | 'now' | 'providerAdapters' | 'secrets'
 >
 
 export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
@@ -121,10 +122,10 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
     },
 
     updateProviderProfile: async (input: UpdateProviderProfileInput, requestContext?: RuntimeRequestContext): Promise<UpdateProviderProfileResult> => {
+      if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion! < 1) {
+        throw new Error('Provider updates require expectedVersion')
+      }
       if (input.tokenMultipliers !== undefined) {
-        if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion! < 1) {
-          throw new Error('Token multiplier updates require expectedVersion')
-        }
         for (const [modelId, multiplier] of Object.entries(input.tokenMultipliers)) {
           if (!modelId.trim() || typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier <= 0) {
             throw new Error('Token multipliers must be finite positive numbers keyed by model ID')
@@ -136,25 +137,61 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       const providerConfig = input.config === undefined
         ? existing.content.config
         : ctx.providerAdapters.validateAccountConfig(existing.content.providerExtensionId, input.config)
+      const enabledModelIds = input.enabledModelIds === undefined
+        ? existing.content.enabledModelIds
+        : normalizeProviderModelIds(existing.content.providerExtensionId, input.enabledModelIds)
+      const providerCredential = input.credential === undefined ? undefined
+        : ctx.providerAdapters.validateCredential(existing.content.providerExtensionId, input.credential)
+      const owner = { type: 'provider-profile', id: existing.id }
+      const secret = providerCredential ? await requireSecrets(ctx).create({
+        ...secretWriteContext(requestContext, 'application.updateProviderProfile.credential'),
+        owner,
+        purpose: 'provider.credentials',
+        label: input.displayName ?? existing.content.displayName,
+        plaintext: { values: providerCredential },
+      }) : undefined
       const timestamp = ctx.now()
-      const updated = await writeDocument<ProviderProfileContent>(ctx.documents, {
-        ...promptResourceWriteContext(requestContext),
-        reason: 'application.updateProviderProfile',
-        id: existing.id,
-        type: applicationDocumentTypes.providerProfile,
-        content: {
-          ...existing.content,
-          ...(input.tokenMultipliers !== undefined ? { tokenMultipliers: input.tokenMultipliers } : {}),
-          ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
-          config: providerConfig,
-          ...(input.enabledModelIds !== undefined
-            ? { enabledModelIds: normalizeProviderModelIds(existing.content.providerExtensionId, input.enabledModelIds) }
-            : {}),
-          updatedAt: timestamp,
-        },
-        expectedVersion: input.tokenMultipliers !== undefined ? input.expectedVersion! : existing.version,
-      })
-      return { providerProfile: await toProviderProfileView(ctx, updated) }
+      let updated
+      try {
+        updated = await writeDocument<ProviderProfileContent>(ctx.documents, {
+          ...promptResourceWriteContext(requestContext),
+          reason: 'application.updateProviderProfile',
+          id: existing.id,
+          type: applicationDocumentTypes.providerProfile,
+          content: {
+            ...existing.content,
+            ...(input.tokenMultipliers !== undefined ? { tokenMultipliers: input.tokenMultipliers } : {}),
+            ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+            config: providerConfig,
+            enabledModelIds,
+            ...(secret ? { secretRef: secret.metadata.ref } : {}),
+            updatedAt: timestamp,
+          },
+          expectedVersion: input.expectedVersion!,
+        })
+      } catch (error) {
+        if (secret) await requireSecrets(ctx).delete({
+          ...secretWriteContext(requestContext, 'application.updateProviderProfile.rollback'),
+          ref: secret.metadata.ref,
+          owner,
+        })
+        throw error
+      }
+      let credentialCleanupFailed = false
+      if (secret && existing.content.secretRef) {
+        try {
+          const cleanup = await requireSecrets(ctx).delete({
+            ...secretWriteContext(requestContext, 'application.updateProviderProfile.cleanup'),
+            ref: existing.content.secretRef,
+            owner,
+          })
+          credentialCleanupFailed = cleanup.cleanupPending
+        } catch {
+          // The connection is committed; cleanup failure must not imply a failed save.
+          credentialCleanupFailed = true
+        }
+      }
+      return { providerProfile: await toProviderProfileView(ctx, updated), credentialCleanupFailed }
     },
 
     replaceProviderCredential: async (input: ReplaceProviderCredentialInput, requestContext?: RuntimeRequestContext): Promise<ReplaceProviderCredentialResult> => {
@@ -200,20 +237,24 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
 
     deleteProviderProfile: async (input: DeleteProviderProfileInput, requestContext?: RuntimeRequestContext): Promise<DeleteProviderProfileResult> => {
       const existing = await readDocument<ProviderProfileContent>(ctx.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
-      await ctx.documents.delete({
+      const documentParticipant = requireDocumentParticipant(ctx)
+      const pending = await ctx.dataEngine.transact({
         ...promptResourceWriteContext(requestContext),
         reason: 'application.deleteProviderProfile',
-        id: existing.id, expectedVersion: existing.version,
-      })
-      let credentialCleanupPending = false
-      if (existing.content.secretRef) {
-        const deleted = await requireSecrets(ctx).delete({
-          ...secretWriteContext(requestContext, 'application.deleteProviderProfile.credential'),
-          ref: existing.content.secretRef,
-          owner: { type: 'provider-profile', id: existing.id },
+      }, async dataTx => {
+        await documentParticipant.participateTransaction(dataTx, async documents => {
+          await documents.delete({ id: existing.id, expectedVersion: existing.version })
         })
-        credentialCleanupPending = deleted.cleanupPending
-      }
+        return existing.content.secretRef
+          ? requireSecrets(ctx).registerDelete(dataTx, {
+              ref: existing.content.secretRef,
+              owner: { type: 'provider-profile', id: existing.id },
+            })
+          : undefined
+      })
+      const credentialCleanupPending = pending.value
+        ? (await pending.value.cleanup(secretWriteContext(requestContext, 'application.deleteProviderProfile.credential'))).cleanupPending
+        : false
       return { deleted: true as const, credentialCleanupPending }
     },
 
@@ -373,7 +414,7 @@ function normalizeProviderModelIds(providerExtensionId: string, modelIds: string
 }
 
 function isOfficialFakeProvider(providerExtensionId: string): boolean {
-  return providerExtensionId === 'official.fake' || providerExtensionId === 'fake'
+  return providerExtensionId === 'official.fake'
 }
 
 async function toProviderProfileView(

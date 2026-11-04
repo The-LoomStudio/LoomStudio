@@ -162,22 +162,45 @@ export type ExtensionPackageResourceRemovalResult = {
   mutation?: { changesetId: string }
 }
 
-export type RemovedExtensionPackage = { packageId: string; version: string; removed: true }
+export type RemovedExtensionPackage = { packageId: string; version: string; removed: true; resourcesRetained?: true }
 export type ImportedExtensionPackageResources = ExtensionPackageResourceImportResult
 export type RemovedExtensionPackageResources = ExtensionPackageResourceRemovalResult
-export type RemoteInstallPreview = { token: string; packages: Array<{ packageId: string; version: string; displayName: string; source?: import('@loom-studio/extension-sdk').ExtensionDownloadSource; commit?: string; replacing: boolean; modules?: Array<{ id: string; runtime: import('@loom-studio/extension-sdk').ExtensionModuleRuntime; capabilities: import('@loom-studio/extension-sdk').ExtensionModuleManifest['capabilities'] }> }> }
+export type RemoteInstallPreview = { token: string; packages: Array<{ packageId: string; version: string; displayName: string; description?: string; installedBytes?: number; source?: import('@loom-studio/extension-sdk').ExtensionDownloadSource; commit?: string; replacing: boolean; modules?: Array<{ id: string; runtime: import('@loom-studio/extension-sdk').ExtensionModuleRuntime; capabilities: import('@loom-studio/extension-sdk').ExtensionModuleManifest['capabilities'] }> }> }
 export type RemoteInstallResult = { installed: Array<{ packageId: string; version: string }>; failed?: { packageId: string; message: string; stage?: string; codeCommitted?: boolean; recovery?: { recordPath: string; backupDirectory: string; historyDirectory: string } } }
+export type ExtensionPackageResourcesPreview = {
+  packageId: string; installationId: string; packageVersion: string; expectedInstallationVersion: number; fingerprint: string
+  items: Array<{ kind: string; contributionId: string; resourceId?: string; name?: string; action: 'add' | 'update' | 'remove' | 'unchanged'; localChanges: 'unknown' | 'none' | 'modified'; references?: Array<{ kind: string; id: string; name?: string }> }>
+  warnings: string[]
+}
+export type ExtensionRecoveryRecord = {
+  id: string; packageId?: string; fromVersion?: string; toVersion?: string; stage?: string
+  recordPath: string; backupDirectory?: string; historyDirectory?: string; destination?: string; message?: string; valid: boolean
+}
+export type ExtensionModuleBatchInput = {
+  packageId: string; target?: ExtensionInstallationTarget; enabled: boolean
+  modules: Array<{ moduleId: string; grants?: ExtensionModuleCapabilityGrants }>
+}
+export type ExtensionModuleBatchResult = {
+  batchId: string; packageId: string; target: ExtensionInstallationTarget; enabled: boolean
+  state: 'queued' | 'running' | 'completed'
+  results: Array<{ moduleId: string; status: 'completed' | 'failed' | 'unchanged'; message?: string }>
+}
 export type ExtensionManagementService = {
+  previewPackageResources(input: { packageId: string; packageVersion: string; expectedInstallationVersion: number; target?: ExtensionInstallationTarget; expectedCardVersion?: number }): Promise<ExtensionPackageResourcesPreview>
+  listRecoveryRecords(): Promise<{ records: ExtensionRecoveryRecord[] }>
+  startModuleBatch(input: ExtensionModuleBatchInput): Promise<{ batchId: string }>
+  getModuleBatch(batchId: string): ExtensionModuleBatchResult
+  listModuleBatches(): { batches: ExtensionModuleBatchResult[] }
   previewRemoteInstall?(input: unknown): Promise<RemoteInstallPreview>
   previewPackageZip?(source: Uint8Array): Promise<RemoteInstallPreview>
   commitRemoteInstall?(token: string): Promise<RemoteInstallResult>
   checkRemoteUpdate?(packageId: string): Promise<{ changed: boolean; commit?: string; locked: boolean }>
   previewRemoteChange?(input: unknown): Promise<RemoteInstallPreview>
-  officialSetup?(): Promise<{ completed: boolean; items: Array<{ id: string; name: string; source: import('@loom-studio/extension-sdk').ExtensionDownloadSource }> }>
+  officialSetup?(): Promise<{ completed: boolean; items: Array<{ id: string; name: string; description?: string; installedVersion?: string; metadataError?: string; source: import('@loom-studio/extension-sdk').ExtensionDownloadSource }> }>
   finishOfficialSetup?(): Promise<{ completed: true }>
   listPackages(target?: ExtensionInstallationTarget): ManagedExtensionPackage[]
   installCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number }): Promise<ManagedExtensionPackage>
-  updateCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number }): Promise<ManagedExtensionPackage>
+  updateCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string }): Promise<ManagedExtensionPackage>
   uninstallCardPackage(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<RemovedExtensionPackage>
   installPackage(sourceDirectory: string): Promise<ManagedExtensionPackage>
   installPackageZip(source: Uint8Array): Promise<ManagedExtensionPackage>
@@ -187,9 +210,9 @@ export type ExtensionManagementService = {
   reloadModule(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ManagedExtensionModule>
   importPackageResources(packageId: string): Promise<ImportedExtensionPackageResources>
   exportPackage(input: { packageId: string; version: string }): Promise<{ packageId: string; version: string; archiveBase64: string }>
-  importCardPackageResources(input: { cardId: string; packageId: string; expectedCardVersion: number; update?: { packageVersion: string; expectedInstallationVersion: number } }): Promise<ImportedExtensionPackageResources>
+  importCardPackageResources(input: { cardId: string; packageId: string; expectedCardVersion: number; update?: { packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string } }): Promise<ImportedExtensionPackageResources>
   removeCardPackageResources(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<RemovedExtensionPackageResources>
-  updatePackageResources(input: { packageId: string; packageVersion: string; expectedInstallationVersion: number }): Promise<ImportedExtensionPackageResources>
+  updatePackageResources(input: { packageId: string; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string }): Promise<ImportedExtensionPackageResources>
   removePackageResources(packageId: string): Promise<RemovedExtensionPackageResources>
 }
 

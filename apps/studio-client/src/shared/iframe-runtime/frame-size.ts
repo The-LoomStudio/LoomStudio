@@ -23,9 +23,11 @@ export function observeFrameSize(report: (height: number) => void, maxHeight = 6
       body = document.body
       resize.observe(body)
     }
+    // Report document coordinates: an already scrolled iframe must not shrink
+    // its measured content by the viewport scroll offset.
     const box = body.getBoundingClientRect()
     const margin = parseFloat(getComputedStyle(body).marginBottom) || 0
-    const height = Math.max(32, Math.min(maxHeight, Math.ceil(Math.max(body.scrollHeight, box.height) + Math.max(0, box.top) + margin)))
+    const height = Math.max(32, Math.min(maxHeight, Math.ceil(Math.max(body.scrollHeight, box.height) + Math.max(0, box.top + window.scrollY) + margin)))
     if (height !== lastHeight) { lastHeight = height; report(height) }
   }
   mutations.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true })

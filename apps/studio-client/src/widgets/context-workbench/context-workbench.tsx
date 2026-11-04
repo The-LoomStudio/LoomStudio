@@ -20,8 +20,6 @@ import { loreRevealExpandedIds, readLoreTreeMeta, resolveLoreScope, resolveLoreT
 
 type ContextWorkbenchProps = {
   extensionInstallations?: import('../../entities/index.js').ListExtensionInstallationsResult['installations']
-  view?: 'lore' | 'macros' | 'text'
-  onViewChange?: (view: 'lore' | 'macros' | 'text') => void
   card?: Card
   resources: PromptResource[]
   loreMounts: LoreMount[]
@@ -45,7 +43,7 @@ type ContextWorkbenchProps = {
   onExportResourceZip?: (resourceId: string) => Promise<void>
   onImportResourceZip?: (file: File) => Promise<string | undefined>
   onReplaceLoreMounts: (source: LoreMountSource, loreResourceIds: string[]) => Promise<void>
-  onReplaceCardResources: (cardId: string, resourceIds: string[]) => Promise<void>
+  onReplaceCardResources: (cardId: string, resourceIds: string[], expectedVersion: number) => Promise<void>
   selectedResourceId?: string
   onSelectResource?: (resourceId: string, replace?: boolean) => void
   routeAssetId?: string
@@ -112,16 +110,19 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const revealKey = JSON.stringify([props.routeResourceId, props.routeAssetId, props.searchMatch?.requestId])
   const temporaryExpandedIds = temporaryExpansion?.key === revealKey ? temporaryExpansion.ids
     : target.target ? loreRevealExpandedIds(target.target.rootNode, props.routeAssetId) : []
-  const selectedId = target.temporary
+  const requestedSelectedId = target.temporary
     ? (temporarySelection && temporarySelection.resourceId === props.routeResourceId
       && temporarySelection.routeAssetId === props.routeAssetId
       && temporarySelection.requestId === props.searchMatch?.requestId
       ? temporarySelection.nodeId : props.routeAssetId ?? target.target!.rootNode.id)
     : explorerView.selectedId
-  const selectedNodeResource = selectedId ? loreResources.find(r => r.id === selectedId || Boolean(findContextAssetNode([r.rootNode], selectedId))) : undefined
-  const selectedResourceId = selectedNodeResource?.id ?? props.routeResourceId ?? props.selectedResourceId
-    ?? routeTargetResource?.id ?? internalSelectedResourceId
-    ?? (loreResources.find(r => cardResourceIds.has(r.id))?.id ?? (unavailableBoundIds.length === 0 ? loreResources[0]?.id : undefined))
+  const selectedNodeResource = requestedSelectedId ? targetResources.find(r => r.id === requestedSelectedId || Boolean(findContextAssetNode([r.rootNode], requestedSelectedId))) : undefined
+  const selectedResource = selectedNodeResource
+    ?? targetResources.find(resource => resource.id === (props.routeResourceId ?? props.selectedResourceId ?? internalSelectedResourceId))
+    ?? targetResources[0]
+  const selectedResourceId = selectedResource?.id
+  const selectedId = selectedNodeResource && requestedSelectedId !== selectedNodeResource.id
+    ? requestedSelectedId : selectedResource?.rootNode.id
   const tokenResource = targetResources.find(resource => resource.id === selectedResourceId)
   const tokenSnapshot = useResourceTokenSnapshot(tokenResource ? [tokenResource.rootNode] : [], `${props.workspaceId}:${selectedResourceId ?? ''}`)
 
@@ -189,9 +190,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   useEffect(() => {
     if (!props.routeAssetId || target.temporary) return
-    if (props.routeResourceId) props.onViewChange?.('lore')
     openAssetDetail('resources', props.workspaceId, props.routeAssetId)
-  }, [openAssetDetail, props.routeResourceId, props.routeAssetId, props.searchMatch?.requestId, target.temporary, props.workspaceId, props.onViewChange])
+  }, [openAssetDetail, props.routeResourceId, props.routeAssetId, props.searchMatch?.requestId, target.temporary, props.workspaceId])
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {
@@ -223,11 +223,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   useEffect(() => {
     if (target.temporary || target.unavailable) return
-    if (selectedId && findContextAssetNode(workbenchNodes, selectedId)) return
-    if (workbenchNodes[0]?.id) {
-      setSelectedId('resources', props.workspaceId, workbenchNodes[0].id)
-    }
-  }, [target.temporary, target.unavailable, props.workspaceId, selectedId, setSelectedId, workbenchNodes])
+    if (explorerView.selectedId !== selectedId) setSelectedId('resources', props.workspaceId, selectedId)
+  }, [target.temporary, target.unavailable, props.workspaceId, explorerView.selectedId, selectedId, setSelectedId])
 
   useEffect(() => {
     if (!target.temporary) return
@@ -304,11 +301,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       toolbar={(
         <PromptResourceToolbar
           tokenSnapshot={tokenSnapshot}
-          extensionInstallations={props.extensionInstallations}
-          hideSelect
-          hideSingleResourceActions
           resourceKind="lore"
-          resources={loreResources}
+          resources={targetResources}
           selectedResourceId={selectedResourceId}
           t={props.t}
           bindResourcesLabel={props.t(scopeFilter === 'global' ? 'context.globalBindings.action' : 'context.cardBindings.action')}
@@ -319,8 +313,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onRetryDraft={props.onRetryDraft}
           onDelete={handleDeleteResource}
           onDuplicate={props.onDuplicateResource}
-          onExport={props.onExportResource}
-          onExportZip={props.onExportResourceZip}
           onImport={props.onImportResource}
           onImportZip={props.onImportResourceZip}
           onSelect={handleSelectResource}
@@ -346,7 +338,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             displayNodes={displayNodes}
             expandedIds={target.temporary ? temporaryExpandedIds : explorerView.expandedIds}
             query={searchQuery}
-            scrollKey={`resources:${props.workspaceId}:${target.temporary ? props.routeResourceId : 'collection'}`}
+            scrollKey={`resources:${props.workspaceId}:${target.temporary ? props.routeResourceId : scopeFilter}`}
             selectedId={selectedId}
             t={props.t}
             virtualized
@@ -387,7 +379,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             title={props.t(scopeFilter === 'global' ? 'context.globalBindings.title' : 'context.cardBindings.title')}
             onChange={resourceIds => scopeFilter === 'global'
               ? props.onReplaceLoreMounts({ kind: 'manual', id: 'global' }, resourceIds.filter(id => !readonlyGlobalIds.has(id)))
-              : props.onReplaceCardResources(props.card!.id, resourceIds)}
+              : props.onReplaceCardResources(props.card!.id, resourceIds, props.card!.version)}
             onClose={() => setBindingOpen(false)}
           />
         </div>
@@ -413,7 +405,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onCommitNode={props.onCommitNode}
           onEditorModeChange={setTextEditorMode}
           onMetadataOpenChange={setMetadataOpen}
-          onSelectNodeId={handleSelectNode}
         />
       </div>
     </AssetWorkbenchLayout>

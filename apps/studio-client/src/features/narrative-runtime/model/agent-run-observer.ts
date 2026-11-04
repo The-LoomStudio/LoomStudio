@@ -121,35 +121,11 @@ export async function runAgentTurn(
           continue
         }
       }
-      const committedDuringRead = batch !== snapshot && batch.events.some(event =>
-        event.type === 'transcript-appended'
-        && event.entries.some(entry =>
-          entry.runId === runId && (entry.entry.kind === 'tool-invocation' || entry.entry.kind === 'reasoning'
-            || entry.entry.kind === 'message' && entry.entry.role === 'assistant')))
-      updateMessages(current => {
-        const committed = retainRunPresentation(current, transcript.entries.filter(entry => entry.runId === runId))
-        const committedIds = new Set(committed.map(entry => entry.id))
-        const placeholder = current.find(entry => entry.id === streamingId) ?? (snapshot.partialText && !committedDuringRead
-          ? { id: streamingId, runId, agentSessionId: run.sessionId, sequence: 0, createdAt: new Date().toISOString(), entry: { kind: 'message', role: 'assistant' as const, content: '' } } : undefined)
-        const entries = [
-          ...current.filter(entry => entry.runId !== runId && entry.id !== streamingId
-            && entry.id !== run.optimisticEntryId && !committedIds.has(entry.id)),
-          ...committed,
-        ].sort((a, b) => a.sequence - b.sequence)
-        if (snapshot.partialReasoning && !committedDuringRead) entries.push({
-          id: `streaming-reasoning-${runId}`, runId, agentSessionId: run.sessionId,
-          sequence: (entries.at(-1)?.sequence ?? 0) + 1, createdAt: new Date().toISOString(),
-          entry: { kind: 'reasoning', content: snapshot.partialReasoning, source: 'provider-native', visibility: 'collapsed', replay: 'omit' },
-        })
-        if (placeholder) entries.push({
-          ...placeholder, sequence: (entries.at(-1)?.sequence ?? 0) + 1,
-          entry: { kind: 'message', role: 'assistant', content: committedDuringRead ? '' : snapshot.partialText ?? '', state: 'partial' },
-        })
-        return !committedDuringRead && !snapshot.done
-          ? (snapshot.partialToolInputs ?? []).reduce((current, input) => appendToolInput(current, input, run),
-            snapshot.partialText || snapshot.partialToolInputs?.length ? settleReasoning(entries, runId) : entries)
-          : entries
-      })
+      updateMessages(current => retainRunPresentation(current, transcript.entries))
+      // Reuse the live event path, including identity, purpose and insertion boundary.
+      // A commit received after this snapshot will replace its matching streamId.
+      const committedStreams = new Set(transcript.entries.map(item => item.entry.streamId).filter(Boolean))
+      batch = { ...batch, events: [...(snapshot.partialEvents ?? []).filter(event => !committedStreams.has(event.streamId)), ...batch.events] }
       updateRun({ runId, status: batch.state })
     }
     onConnected()
@@ -171,18 +147,17 @@ export async function runAgentTurn(
         }
       }
       if (event.type === 'reasoning-delta' && streamingId) {
-        const id = `streaming-reasoning-${runId}`
+        const id = event.streamId ? `streaming-reasoning-${event.streamId}` : `streaming-reasoning-${runId}:${event.providerRunId}:${event.reasoningId}`
         updateMessages(entries => {
           const existing = entries.find(entry => entry.id === id)
-          if (existing) return entries.map(entry => entry.id === id && entry.entry.kind === 'reasoning'
-            ? { ...entry, entry: { ...entry.entry, content: `${entry.entry.content ?? ''}${event.delta}`, state: 'partial' } } : entry)
+          if (existing) return entries.map(entry => entry === existing && entry.entry.kind === 'reasoning'
+            ? { ...entry, id, presentationId: entry.presentationId ?? id, entry: { ...entry.entry, content: `${entry.entry.content ?? ''}${event.delta}`, state: 'partial' } } : entry)
           const placeholder = entries.find(entry => entry.id === streamingId && entry.entry.kind === 'message' && !entry.entry.content)
           const before = entries.filter(entry => entry !== placeholder)
-          const sequence = (before.at(-1)?.sequence ?? 0) + 1
           return [...before, { id, presentationId: `${id}:${event.providerRunId}`, agentSessionId: run.sessionId, runId,
-            sequence, createdAt: new Date().toISOString(),
-            entry: { kind: 'reasoning', content: event.delta, source: 'provider-native', visibility: 'collapsed', replay: 'omit' } },
-            ...(placeholder ? [{ ...placeholder, sequence: sequence + 1 }] : [])]
+            sequence: 0, streamAfterSequence: event.afterSequence, createdAt: new Date().toISOString(), roundId: event.roundId, candidateId: event.candidateId, timelinePosition: event.timelinePosition,
+            entry: { streamId: event.streamId, kind: 'reasoning', content: event.delta, source: 'provider-native', visibility: 'collapsed', replay: 'omit' } },
+            ...(placeholder ? [placeholder] : [])]
         })
       }
       if (event.type === 'text-delta' && streamingId) {
@@ -190,11 +165,11 @@ export async function runAgentTurn(
           const entries = settleReasoning(current, runId)
           const placeholder = entries.find(entry => entry.id === streamingId)
           const entry: AgentTranscriptEntry = {
-            id: streamingId, runId, agentSessionId: run.sessionId,
-            sequence: placeholder?.sequence ?? (entries.at(-1)?.sequence ?? 0) + 1,
+            id: streamingId, runId, agentSessionId: run.sessionId, roundId: event.roundId, candidateId: event.candidateId, timelinePosition: event.timelinePosition,
+            sequence: 0, streamAfterSequence: event.afterSequence,
             createdAt: placeholder?.createdAt ?? new Date().toISOString(),
             presentationId: placeholder?.presentationId ?? `${streamingId}:${event.providerRunId}`,
-            entry: { kind: 'message', role: 'assistant', state: 'partial', content: `${placeholder?.entry.kind === 'message' ? placeholder.entry.content : ''}${event.delta}` },
+            entry: { streamId: event.streamId, purpose: event.purpose, kind: 'message', role: 'assistant', state: 'partial', content: `${placeholder?.entry.kind === 'message' ? placeholder.entry.content : ''}${event.delta}` },
           }
           return placeholder ? entries.map(item => item.id === streamingId ? entry : item) : [...entries, entry]
         })
@@ -275,9 +250,9 @@ function appendToolInput(entries: AgentTranscriptEntry[], input: ToolInput, run:
       exposedName: input.toolName ?? entry.entry.exposedName },
   } : entry)
   return [...entries, {
-    id, agentSessionId: run.sessionId, runId: run.runId,
-    sequence: (entries.at(-1)?.sequence ?? 0) + 1, createdAt: new Date().toISOString(),
-    entry: { kind: 'tool-input', providerItemId: input.toolCallId, exposedName: input.toolName,
+    id, agentSessionId: run.sessionId, runId: run.runId, roundId: input.roundId, candidateId: input.candidateId, timelinePosition: input.timelinePosition,
+    sequence: 0, streamAfterSequence: input.afterSequence, createdAt: new Date().toISOString(),
+    entry: { streamId: input.streamId, kind: 'tool-input', providerItemId: input.toolCallId, exposedName: input.toolName,
       rawInput: input.delta, status: 'preparing' },
   }]
 }
@@ -294,18 +269,11 @@ function interruptToolInputs(entries: AgentTranscriptEntry[], runId: string): Ag
 
 export function retainRunPresentation(current: AgentTranscriptEntry[], incoming: AgentTranscriptEntry[]): AgentTranscriptEntry[] {
   const byId = new Map(current.map(entry => [entry.id, entry]))
-  const drafts = current.filter(entry => entry.entry.kind === 'tool-input')
   return incoming.map(entry => {
     const previous = byId.get(entry.id)
     const data = entry.entry
-    const draft = data.kind === 'tool-invocation' ? drafts.find(item => item.runId === entry.runId
-      && item.entry.kind === 'tool-input' && item.entry.providerItemId === (data.providerItemId ?? data.invocationId)) : undefined
-    const live = data.kind === 'reasoning' && data.source === 'provider-native'
-      ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming-reasoning-') && item.entry.kind === 'reasoning' && item.entry.content === data.content)
-      : data.kind === 'message' && data.role === 'assistant'
-        ? current.find(item => item.runId === entry.runId && item.id.startsWith('streaming') && item.entry.kind === 'message' && Boolean(item.entry.content) && item.entry.content === data.content)
-        : undefined
-    const presentationId = previous?.presentationId ?? draft?.id ?? live?.presentationId ?? live?.id
+    const live = data.streamId ? current.find(item => item.entry.streamId === data.streamId) : undefined
+    const presentationId = previous?.presentationId ?? live?.presentationId ?? live?.id
     return presentationId ? { ...entry, presentationId } : entry
   })
 }
@@ -317,23 +285,20 @@ export function mergeAgentRunEntries(
 ): AgentTranscriptEntry[] {
   const receivedIds = new Set(appended.map(entry => entry.id))
   const hasUser = appended.some(entry => entry.entry.kind === 'message' && entry.entry.role === 'user')
-  const committedStep = appended.some(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant' && entry.entry.purpose !== 'narrative'
-    || entry.entry.kind === 'tool-invocation')
-  const reasoningRuns = new Set(appended.filter(entry => entry.entry.kind === 'reasoning' && entry.entry.source === 'provider-native').map(entry => entry.runId))
   const placeholder = current.find(entry => entry.id === run.streamingId)
-  const committedRuns = new Set(appended.filter(entry => entry.entry.kind === 'tool-invocation'
-    || entry.entry.kind === 'message' && entry.entry.role === 'assistant' && entry.entry.purpose !== 'narrative').map(entry => entry.runId))
+  const committedStep = appended.some(entry => entry.entry.kind === 'message' && entry.entry.role === 'assistant'
+    && (entry.entry.purpose !== 'narrative' || placeholder?.entry.streamId !== undefined && entry.entry.streamId === placeholder.entry.streamId)
+    || entry.entry.kind === 'tool-invocation')
+  const committedStreams = new Set(appended.map(entry => entry.entry.streamId).filter(Boolean))
   const entries = [
     ...current.filter(entry => entry.id !== run.streamingId && !receivedIds.has(entry.id)
-      && !(entry.entry.kind === 'tool-input' && committedRuns.has(entry.runId))
-      && !(entry.id.startsWith('streaming-reasoning-') && reasoningRuns.has(entry.runId))
+      && !(entry.entry.streamId && committedStreams.has(entry.entry.streamId))
       && (!hasUser || entry.id !== run.optimisticEntryId)),
     ...retainRunPresentation(current, appended),
-  ].sort((a, b) => a.sequence - b.sequence)
+  ].sort((a, b) => (a.streamAfterSequence ?? a.sequence) - (b.streamAfterSequence ?? b.sequence))
   if (placeholder) {
     entries.push({
       ...placeholder,
-      sequence: (entries.at(-1)?.sequence ?? 0) + 1,
       entry: committedStep ? { kind: 'message', role: 'assistant', content: '', state: 'partial' } : placeholder.entry,
       presentationId: committedStep ? undefined : placeholder.presentationId,
     })

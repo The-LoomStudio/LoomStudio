@@ -1,4 +1,4 @@
-import { assertAgentSessionNotExecuting } from './agents-runtime.js'
+import { assertAgentSessionNotExecuting } from '../agents/session-execution.js'
 import { summaryRetiredThrough } from '../agents/session-history.js'
 import type { AgentTranscriptEntry, NarrativeBranch, NarrativeNode, NarrativeSwipeCandidate, NarrativeSwipeGroup } from '@loom-studio/application-data'
 import type { SqliteDataTransaction } from '@loom-studio/data-engine'
@@ -439,7 +439,8 @@ export async function finishNarrativeSwipeRun(
       } else {
         const prior = group.candidates.find(item => item.id === group.selectedCandidateId)
         const editing = candidate.editBaseRunCount !== undefined && prior?.id === candidate.id
-        const preserveCommunication = outcome === 'discarded'
+        // A failed discussion must not rewind accepted input when it changed no narrative material.
+        const preserveCommunication = (outcome === 'discarded' || outcome === 'failed')
           && branch.headNodeId === (editing ? prior.headNodeId : group.inputNodeId)
           && branch.stateHeadRevisionId === (editing ? prior.stateRevisionId : group.baselineStateRevisionId)
           && branch.workspaceHeadRevisionId === (editing ? prior.workspaceRevisionId : group.baselineWorkspaceRevisionId)

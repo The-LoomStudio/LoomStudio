@@ -3,7 +3,7 @@ import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 function createTestKernel() {
   const diagnostics = createInMemoryDiagnosticsRegistry()
@@ -324,4 +324,54 @@ describe('kernel rpc contract', () => {
 
     expect(result.items).toHaveLength(1)
   })
+})
+
+it('chunks large UTF-8 commits and rollback summaries within the registered budget', async () => {
+  const { kernel, documents, diagnostics } = createTestKernel()
+  await kernel.start()
+  const events: Array<{ name: string; payload: any; meta: any }> = []
+  kernel.getEventBus().subscribe(['data.changed', 'docs.changed', 'docs.rollback.completed', 'docs.rollback.failed'], event => { events.push(event) })
+  const result = await documents.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+    for (let i = 0; i < 1000; i++) await tx.write({ id: `正常\\\"文档-${i}`, type: 'test.note', content: {}, expectedVersion: 'new' })
+  })
+  for (const name of ['data.changed', 'docs.changed']) {
+    const chunks = events.filter(event => event.name === name)
+    expect(chunks.length).toBeGreaterThan(1)
+    expect(chunks.flatMap(event => event.payload.operations)).toHaveLength(1000)
+    chunks.forEach((event, index) => {
+      expect(event.payload.chunk).toEqual({ index, count: chunks.length })
+      expect(Buffer.byteLength(JSON.stringify(event.payload))).toBeLessThanOrEqual(65536)
+      expect(event.meta.definitionVersion).toBe(2)
+      if (name === 'docs.changed') expect(event.payload.documents.map((doc: any) => doc.id)).toEqual(event.payload.operations.map((op: any) => op.documentId))
+    })
+  }
+  await kernel.callRpc('docs.revertChangeset', { changesetId: result.commit.changesetId })
+  const completed = events.filter(event => event.name === 'docs.rollback.completed')
+  expect(completed.length).toBeGreaterThan(1)
+  expect(completed.flatMap(event => event.payload.operations)).toHaveLength(1000)
+  expect(completed.every(event => event.payload.targetChangesetId === result.commit.changesetId && Buffer.byteLength(JSON.stringify(event.payload)) <= 65536)).toBe(true)
+  expect(events.some(event => event.name === 'docs.rollback.failed')).toBe(false)
+  expect(diagnostics.list()).toHaveLength(0)
+})
+
+
+it('reports notification failure without changing successful revert results or skipping docs projection', async () => {
+  const { kernel, diagnostics } = createTestKernel()
+  await kernel.start()
+  const events = kernel.getEventBus()
+  const emit = events.emit.bind(events)
+  const delivered: string[] = []
+  events.subscribe(['docs.changed', 'docs.rollback.failed'], event => { delivered.push(event.name) })
+  const spy = vi.spyOn(events, 'emit').mockImplementation((name, payload, context) => {
+    if (name === 'data.changed' || name === 'docs.rollback.completed') throw new Error('notification unavailable')
+    return emit(name, payload, context)
+  })
+  try {
+    const created = await kernel.callRpc<{ changesetId: string }>('docs.write', { id: 'test:notify-failure', type: 'test.note', content: {}, expectedVersion: 'new' })
+    await expect(kernel.callRpc('docs.revertChangeset', { changesetId: created.changesetId })).resolves.toHaveProperty('changesetId')
+    expect(delivered).toEqual(['docs.changed', 'docs.changed'])
+    expect(diagnostics.list().every(item => item.code === 'event.commit_notification_failed' && item.message.includes('committed'))).toBe(true)
+    expect(diagnostics.list().length).toBeGreaterThan(0)
+    expect(await kernel.getDocumentStore().get('test:notify-failure')).toBeNull()
+  } finally { spy.mockRestore() }
 })

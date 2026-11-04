@@ -29,7 +29,7 @@ React 负责局部组件状态。TanStack Query 负责缓存型远端状态，Zu
 ## 2. Server 与跨端默认能力
 
 - HTTP 使用 Node `node:http`，主应用 RPC 使用 `@trpc/server` / `@trpc/client`；业务端复用 `shared/api/studio-api.ts`，不平行实现传输协议。动态扩展 RPC 仍经 Kernel adapter。
-- SQLite 使用 `node:sqlite` 和 `@loom-studio/data-engine`，领域 Store 不各自管理 connection、migration 或 transaction。
+- SQLite 使用 `node:sqlite` 和 `@loom-studio/data-engine`，领域 Store 不各自管理 connection、schema 初始化或 transaction。
 - Provider HTTP 与代理复用 Undici；ZIP 编解码复用 fflate。
 - Zod 当前用于 tRPC 输入、AI Gateway 配置和 Shared Lore Mount RPC；新增跨端结构化边界且没有既有 parser 时优先评估，可信内部纯函数继续使用 TypeScript 类型。
 - 跨端 JSON DTO、Schema 和纯逻辑进入 `@loom-studio/shared`；Shared 不依赖 React、数据库、Node 专属 API 或 Application Runtime。

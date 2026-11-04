@@ -47,6 +47,7 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
       resources: {
         store: scope.promptResources,
         ids: scope.vfsResourceIds,
+        globalCatalog: scope.globalResourceCatalog,
         access: () => 'read' as const,
         ...(scope.writePromptResource ? { write: scope.writePromptResource } : {}),
         ...(scope.configurePromptResource ? { configure: scope.configurePromptResource } : {}),

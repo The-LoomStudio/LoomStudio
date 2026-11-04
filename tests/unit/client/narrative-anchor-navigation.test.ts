@@ -46,13 +46,15 @@ function fixture() {
     timelineId: 'timeline-a', nodeId: 'target', nodes: [{ id: 'latest' }],
     hasOlder: true, busy: false, onLoadOlder: load, onLocate,
   }
+  let cancel = () => {}
   const render = () => {
     hooks.cursor = 0
-    const status = useNarrativeAnchorNavigation(input)
+    const navigation = useNarrativeAnchorNavigation(input)
+    cancel = navigation.cancel
     for (const effect of hooks.effects.splice(0)) effect()
-    return status
+    return navigation.status
   }
-  return { input, render, load, requests, onLocate }
+  return { input, render, load, requests, onLocate, cancel: () => cancel() }
 }
 
 describe('explicit Narrative anchor history navigation', () => {
@@ -132,4 +134,19 @@ describe('explicit Narrative anchor history navigation', () => {
     expect(f.render()).toBe('located')
     expect(f.onLocate.mock.calls).toEqual([['new-anchor']])
   })
+})
+
+it('abandons a delayed anchor but allows a newly selected anchor', async () => {
+  const f = fixture()
+  f.render()
+  f.cancel()
+  f.input.nodes = [{ id: 'target' }, ...f.input.nodes]
+  f.requests[0]!.resolve()
+  await f.requests[0]!.promise
+  expect(f.render()).toBe('idle')
+  expect(f.onLocate).not.toHaveBeenCalled()
+  expect(f.load).toHaveBeenCalledTimes(1)
+  f.input.nodeId = 'latest'
+  expect(f.render()).toBe('located')
+  expect(f.onLocate).toHaveBeenCalledWith('latest')
 })

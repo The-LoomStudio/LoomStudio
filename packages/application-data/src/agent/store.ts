@@ -43,32 +43,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
   const { engine } = options
   const nextId = options.createId ?? createId
   const now = options.now ?? nowIso
-  engine.migrate({
-    namespace: migrationNamespace,
-    migrations: [
-      { version: 1, migrate: migrateVersionOne },
-      { version: 2, migrate: migrateVersionTwo },
-      { version: 3, migrate: migrateVersionThree },
-      { version: 4, migrate: migrateVersionFour },
-      { version: 5, migrate: migrateVersionFive },
-      { version: 6, migrate: migrateVersionSix },
-      { version: 7, migrate: db => { db.exec('ALTER TABLE agent_sessions ADD COLUMN summary_policy_json TEXT') } },
-      { version: 8, migrate: db => { db.exec(`CREATE TABLE agent_summary_tasks (
-        task_id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id),
-        data_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE INDEX agent_summary_tasks_session ON agent_summary_tasks(agent_session_id, created_at);`) } },
-      { version: 9, migrate: db => { db.exec(`
-        ALTER TABLE agent_sessions ADD COLUMN kind TEXT NOT NULL DEFAULT 'agent';
-        ALTER TABLE agent_sessions ADD COLUMN narrative_mode TEXT;
-        ALTER TABLE agent_sessions ADD COLUMN preset_id TEXT;
-        UPDATE agent_sessions SET preset_id = agent_preset_id;
-        ALTER TABLE agent_sessions DROP COLUMN agent_preset_id;
-        ALTER TABLE agent_sessions RENAME COLUMN preset_id TO agent_preset_id;
-        ALTER TABLE agent_transcript_entries ADD COLUMN round_id TEXT;
-        ALTER TABLE agent_transcript_entries ADD COLUMN candidate_id TEXT;
-      `) } },
-    ],
-  })
+  engine.initializeSchema({ namespace: migrationNamespace, version: 9, initialize: initializeAgentSchema })
 
   function transaction(tx: SqliteDataTransaction): AgentTransaction {
     const { database } = tx
@@ -513,54 +488,17 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
   }
 }
 
-function migrateVersionOne(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, agent_preset_id TEXT NOT NULL, title TEXT, head_message_id TEXT, message_count INTEGER NOT NULL DEFAULT 0 CHECK (message_count >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, tombstoned INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, deleted_by_json TEXT, delete_reason TEXT);
-    CREATE TABLE agent_messages (id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), parent_message_id TEXT REFERENCES agent_messages(id), sequence INTEGER NOT NULL CHECK (sequence > 0), run_id TEXT, message_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE (agent_session_id, sequence));
-    CREATE TABLE agent_tool_calls (agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), tool_call_id TEXT NOT NULL, assistant_message_id TEXT NOT NULL REFERENCES agent_messages(id), result_message_id TEXT REFERENCES agent_messages(id), PRIMARY KEY (agent_session_id, tool_call_id));
-    CREATE INDEX idx_agent_messages_session_sequence ON agent_messages(agent_session_id, sequence);
-    CREATE INDEX idx_agent_messages_session_run ON agent_messages(agent_session_id, run_id);
-  `)
-}
 
-function migrateVersionTwo(database: DatabaseSync): void {
-  database.exec(
-    `DELETE FROM agent_tool_calls; DELETE FROM agent_messages; DELETE FROM agent_sessions; ALTER TABLE agent_sessions RENAME COLUMN agent_preset_id TO agent_profile_id;`,
-  )
-}
 
-function migrateVersionThree(database: DatabaseSync): void {
-  database.exec(`
-    DROP TABLE agent_tool_calls;
-    DROP TABLE agent_messages;
-    DROP TABLE agent_sessions;
-    CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, agent_profile_id TEXT NOT NULL, title TEXT, head_entry_id TEXT, entry_count INTEGER NOT NULL DEFAULT 0 CHECK (entry_count >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, tombstoned INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, deleted_by_json TEXT, delete_reason TEXT);
-    CREATE TABLE agent_transcript_entries (id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), parent_entry_id TEXT REFERENCES agent_transcript_entries(id), sequence INTEGER NOT NULL CHECK (sequence > 0), run_id TEXT, entry_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE (agent_session_id, sequence));
-    CREATE TABLE agent_tool_invocations (agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), invocation_id TEXT NOT NULL, tool_id TEXT NOT NULL, invocation_entry_id TEXT NOT NULL REFERENCES agent_transcript_entries(id), result_entry_id TEXT REFERENCES agent_transcript_entries(id), PRIMARY KEY (agent_session_id, invocation_id));
-    CREATE INDEX idx_agent_entries_session_sequence ON agent_transcript_entries(agent_session_id, sequence);
-    CREATE INDEX idx_agent_entries_session_run ON agent_transcript_entries(agent_session_id, run_id);
-  `)
-}
 
-function migrateVersionFour(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS agent_tool_invocations (agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), invocation_id TEXT NOT NULL, tool_id TEXT NOT NULL, invocation_entry_id TEXT NOT NULL REFERENCES agent_transcript_entries(id), result_entry_id TEXT REFERENCES agent_transcript_entries(id), PRIMARY KEY (agent_session_id, invocation_id));
-    CREATE INDEX IF NOT EXISTS idx_agent_entries_session_sequence ON agent_transcript_entries(agent_session_id, sequence);
-    CREATE INDEX IF NOT EXISTS idx_agent_entries_session_run ON agent_transcript_entries(agent_session_id, run_id);
-  `)
-}
 
-function migrateVersionFive(database: DatabaseSync): void {
-  database.exec(`
-    ALTER TABLE agent_sessions ADD COLUMN timeline_id TEXT;
-    CREATE INDEX IF NOT EXISTS idx_agent_sessions_timeline ON agent_sessions(timeline_id);
-    CREATE INDEX IF NOT EXISTS idx_agent_sessions_updated ON agent_sessions(updated_at);
-  `)
-}
 
-function migrateVersionSix(database: DatabaseSync): void {
-  database.exec('ALTER TABLE agent_sessions RENAME COLUMN agent_profile_id TO agent_preset_id')
-}
+
+
+
+
+
+
 
 function insertEntry(
   database: DatabaseSync,
@@ -862,7 +800,7 @@ function validateTranscriptEntry(
   }
   if (value.kind === 'work-summary') {
     validateContent(value.content)
-    if (value.boundary !== undefined) {
+    {
       const boundary = value.boundary
       if (!isRecord(boundary) || !Number.isSafeInteger(boundary.sourceThroughSequence)
         || !Number.isSafeInteger(boundary.retiredThroughSequence)
@@ -1160,6 +1098,7 @@ function syncTimelineBranch(database: DatabaseSync, tx: SqliteDataTransaction, t
 
 function timelineEntryIdentity(database: DatabaseSync, session: AgentSession, item: { entry: AgentTranscriptEntryData; runId?: string; roundId?: string; candidateId?: string }, entryId: string) {
   if (session.kind !== 'timeline') return {}
+  if (item.roundId) return { roundId: item.roundId, candidateId: item.candidateId }
   if (item.entry.kind === 'message' && item.entry.role === 'user' && item.entry.purpose === 'narrative') return { roundId: entryId }
   const hasSwipes = database.prepare("SELECT 1 FROM sqlite_master WHERE name = 'narrative_swipe_groups'").get()
   if (item.runId && hasSwipes) {
@@ -1167,20 +1106,35 @@ function timelineEntryIdentity(database: DatabaseSync, session: AgentSession, it
       FROM narrative_swipe_groups g, json_each(g.metadata_json, '$.candidates') candidate,
         json_each(candidate.value, '$.runIds') run
       WHERE g.timeline_id = ? AND g.deleted_at IS NULL AND run.value = ?
-        AND json_extract(g.metadata_json, '$.closed') = 0 LIMIT 1`).get(session.id, item.runId)
+        LIMIT 1`).get(session.id, item.runId)
     if (attempt) return { roundId: item.roundId ?? String(attempt.group_id), candidateId: item.candidateId ?? String(attempt.candidate_id) }
   }
   if (item.roundId || item.candidateId) return { roundId: item.roundId, candidateId: item.candidateId }
-  const row = database.prepare(`WITH RECURSIVE path AS (
-    SELECT * FROM agent_transcript_entries WHERE id = ?
-    UNION ALL SELECT e.* FROM agent_transcript_entries e JOIN path p ON e.id = p.parent_entry_id
-  ) SELECT round_id FROM path WHERE json_extract(entry_json, '$.kind') = 'message'
-    AND json_extract(entry_json, '$.role') = 'user' AND json_extract(entry_json, '$.purpose') = 'narrative'
-    ORDER BY sequence DESC LIMIT 1`).get(session.headEntryId ?? null)
-  const roundId = row?.round_id ? String(row.round_id) : undefined
-  if (!roundId || !hasSwipes) return { roundId }
-  const groupRow = database.prepare(`SELECT metadata_json FROM narrative_swipe_groups WHERE id = ? AND timeline_id = ? AND deleted_at IS NULL
-    AND json_extract(metadata_json, '$.closed') = 0`).get(roundId, session.id)
-  const group = groupRow ? JSON.parse(String(groupRow.metadata_json)) : undefined
-  return { roundId, candidateId: group?.activeCandidateId as string | undefined }
+  // Unscoped imports/manual edits have no execution identity; never borrow the latest input.
+  return {}
+}
+
+
+function initializeAgentSchema(database: DatabaseSync): void {
+  database.exec(`
+CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, title TEXT, head_entry_id TEXT, entry_count INTEGER NOT NULL DEFAULT 0 CHECK (entry_count >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, tombstoned INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, deleted_by_json TEXT, delete_reason TEXT, timeline_id TEXT, summary_policy_json TEXT, kind TEXT NOT NULL DEFAULT 'agent', narrative_mode TEXT, agent_preset_id TEXT);
+
+CREATE TABLE agent_transcript_entries (id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), parent_entry_id TEXT REFERENCES agent_transcript_entries(id), sequence INTEGER NOT NULL CHECK (sequence > 0), run_id TEXT, entry_json TEXT NOT NULL, created_at TEXT NOT NULL, round_id TEXT, candidate_id TEXT, UNIQUE (agent_session_id, sequence));
+
+CREATE TABLE agent_tool_invocations (agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), invocation_id TEXT NOT NULL, tool_id TEXT NOT NULL, invocation_entry_id TEXT NOT NULL REFERENCES agent_transcript_entries(id), result_entry_id TEXT REFERENCES agent_transcript_entries(id), PRIMARY KEY (agent_session_id, invocation_id));
+
+CREATE INDEX idx_agent_entries_session_sequence ON agent_transcript_entries(agent_session_id, sequence);
+
+CREATE INDEX idx_agent_entries_session_run ON agent_transcript_entries(agent_session_id, run_id);
+
+CREATE INDEX idx_agent_sessions_timeline ON agent_sessions(timeline_id);
+
+CREATE INDEX idx_agent_sessions_updated ON agent_sessions(updated_at);
+
+CREATE TABLE agent_summary_tasks (
+        task_id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id),
+        data_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+
+CREATE INDEX agent_summary_tasks_session ON agent_summary_tasks(agent_session_id, created_at);
+  `)
 }

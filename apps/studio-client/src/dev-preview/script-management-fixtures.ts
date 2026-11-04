@@ -1,3 +1,4 @@
+import { parseLoomScriptSource, resolveLoomScriptSettings, resolveTextTransformContributionRule } from '@loom-studio/shared/loom-scripts'
 import type { LoomScript, LoomScriptMount, LoomScriptOwner } from '../entities/index.js'
 import type { StudioApi } from '../shared/api/studio-api.js'
 
@@ -19,8 +20,8 @@ export function createScriptManagementPreviewApi(scene: 'normal' | 'empty' | 'ma
     script('status', 'Alice Character Status', { kind: 'extension', packageId: 'example.status', installationId: 'preview' })]
   if (scene === 'many') for (let i = 0; i < 30; i++) scripts.push(script(`helper-${i}`, `角色创作辅助脚本 ${i + 1} · 较长名称展示`, { kind: 'user' }))
   const mounts: LoomScriptMount[] = scene === 'empty' ? [] : [
-    { id: 'global', version: 1, scriptDocumentId: 'scene-card', target: { kind: 'user' }, enabled: false, orderIndex: 0, grantedCapabilities: [], origin: {}, createdAt: now, updatedAt: now },
-    { id: 'role', version: 1, scriptDocumentId: 'scene-card', target: { kind: 'card', cardId: 'preview-card' }, enabled: true, orderIndex: 0, grantedCapabilities: ['runtime.client'], adoptedDocumentVersion: 1, origin: {}, createdAt: now, updatedAt: now },
+    { id: 'global', version: 1, scriptDocumentId: 'scene-card', target: { kind: 'user' }, enabled: false, runtimeRevision: 0, orderIndex: 0, grantedCapabilities: [], origin: {}, createdAt: now, updatedAt: now },
+    { id: 'role', version: 1, scriptDocumentId: 'scene-card', target: { kind: 'card', cardId: 'preview-card' }, enabled: true, orderIndex: 0, grantedCapabilities: ['runtime.client'], adoptedDocumentVersion: 2, adoptedSettings: {}, runtimeRevision: 1, origin: {}, createdAt: now, updatedAt: now },
   ]
   function findScript(id: string) { const value = scripts.find(item => item.id === id); if (!value) throw new Error('示例脚本不存在'); return value }
   function findMount(id: string, version: number) { const value = mounts.find(item => item.id === id); if (!value || value.version !== version) throw new Error('示例采用版本冲突'); return value }
@@ -34,6 +35,14 @@ export function createScriptManagementPreviewApi(scene: 'normal' | 'empty' | 'ma
       value.version = 1
       sources.set(value.id, input.source)
       scripts.push(value)
+      if (input.mount) {
+        const metadata = input.fileName.endsWith('.md') ? parseLoomScriptSource(input.source) : undefined
+        const rule = metadata?.contributions.find(item => item.kind === 'text-transform')
+        mounts.push({ id: crypto.randomUUID(), version: 1, scriptDocumentId: value.id,
+          target: structuredClone(input.mount.target), enabled: false,
+          orderIndex: input.mount.orderIndex ?? (rule?.kind === 'text-transform' ? resolveTextTransformContributionRule(rule, resolveLoomScriptSettings(metadata?.settings)).orderIndex : undefined) ?? 0,
+          grantedCapabilities: [], settings: {}, runtimeRevision: 0, origin: {}, createdAt: now, updatedAt: now })
+      }
       return { script: structuredClone(value), mutation }
     },
     update: async input => {
@@ -45,20 +54,27 @@ export function createScriptManagementPreviewApi(scene: 'normal' | 'empty' | 'ma
       return { script: structuredClone(value), mutation }
     },
     createMount: async input => {
-      const mount: LoomScriptMount = { ...input, id: crypto.randomUUID(), version: 1, enabled: false, grantedCapabilities: [], origin: {}, createdAt: now, updatedAt: now }
+      const mount: LoomScriptMount = { ...input, id: crypto.randomUUID(), version: 1, enabled: false, runtimeRevision: 0, grantedCapabilities: [], origin: {}, createdAt: now, updatedAt: now }
       mounts.push(mount)
       return { mount: structuredClone(mount), mutation }
     },
     updateMount: async input => {
       const mount = findMount(input.mountId, input.expectedVersion)
+      const activating = input.enabled && !mount.enabled
+      if (input.enabled !== mount.enabled) mount.runtimeRevision++
       Object.assign(mount, { enabled: input.enabled, grantedCapabilities: [...input.grantedCapabilities], version: mount.version + 1 })
-      if (mount.enabled && mount.adoptedDocumentVersion === undefined) mount.adoptedDocumentVersion = findScript(mount.scriptDocumentId).version
+      if (activating) {
+        mount.adoptedDocumentVersion = input.pinnedDocumentVersion ?? mount.pinnedDocumentVersion ?? findScript(mount.scriptDocumentId).version
+        mount.adoptedSettings = {}
+      }
       return { mount: structuredClone(mount), mutation }
     },
     refreshMount: async input => {
       const mount = findMount(input.mountId, input.expectedVersion)
       mount.version++
-      mount.adoptedDocumentVersion = findScript(mount.scriptDocumentId).version
+      mount.adoptedDocumentVersion = mount.pinnedDocumentVersion ?? findScript(mount.scriptDocumentId).version
+      mount.adoptedSettings = {}
+      mount.runtimeRevision++
       return { mount: structuredClone(mount), mutation }
     },
   }

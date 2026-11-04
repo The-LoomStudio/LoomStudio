@@ -1,4 +1,5 @@
 import { branchTranscriptEntries, pendingInterjections, withInterjectionLock } from './interjections.js'
+import { projectTimelinePositions } from './timeline-position.js'
 import { attachmentMessage, mountMessageAttachments } from './message-attachments.js'
 import { recordUserInteraction } from '@loom-studio/application-data'
 import { cloneToolSchema } from './tool-schema.js'
@@ -69,6 +70,7 @@ export type AgentRunProgress = {
   providerStep: number
   toolCount: number
   suspended: boolean
+  transcriptStarted?: boolean
 }
 
 export type NativeToolLoopResult = {
@@ -279,6 +281,7 @@ type NativeToolLoopInput = {
   recoveryRequest: InvokeAgentTurnInput
   materialBaseline?: AgentRunRecoveryCheckpoint['materialBaseline']
   retryRoundId?: string
+  transcriptIdentity?: { roundId: string; candidateId: string }
   processedPrompt?: AgentRunRecoveryCheckpoint['processedPrompt']
   promptExtensionLeases?: AgentRunRecoveryCheckpoint['promptExtensionLeases']
   userInput: string
@@ -395,6 +398,7 @@ async function runToolLoop(
     })
   }
   const userEntryId = input.resumeUserEntry?.id ?? input.ctx.createId('agent-entry')
+  let streamTimelinePosition: AgentTranscriptEntry['timelinePosition']
   function recovery(phase: AgentRunRecoveryCheckpoint['phase'], messages: ChatMessage[], nextProviderStep: number) {
     return encodeRunRecovery({
       version: 1, phase, executor: { pid: process.pid, id: input.runId },
@@ -443,6 +447,7 @@ async function runToolLoop(
         ...(initialReceipt ? [{ kind: 'interjection-applied' as const, requestId: initialReceipt.requestId }] : []),
         { kind: 'run-state', state: 'running', recovery: recovery('provider', providerMessages, 1) },
       ], userEntryId)
+  progress.transcriptStarted = true
   const userEntry = input.resumeUserEntry ?? initial.entries[0]!
 
   try {
@@ -537,6 +542,15 @@ async function runToolLoop(
             runId: input.requestContext.agentRun.runId,
             providerRunId: event.runId,
             providerStep: step,
+            ...(event.type !== 'usage' ? {
+              ...input.transcriptIdentity,
+              afterSequence: session.entryCount,
+              streamId: `${input.runId}:${step}:${event.type === 'reasoning-delta' ? 'reasoning' : event.type === 'text-delta' ? 'text' : `tool:${event.toolCallId}`}`,
+              ...(session.kind === 'timeline' ? { timelinePosition: {
+                anchorNodeId: input.toolExecutionScope?.narrativeSource?.cursorNodeId ?? input.toolExecutionScope?.narrativeSource?.nodeId ?? undefined,
+                exchangeId: streamTimelinePosition?.exchangeId,
+              }, purpose: narrativeOutput && (narrativeState.declared || narrativeOutput.mode === 'automatic' && input.purpose === 'narrative') ? 'narrative' as const : 'discussion' as const } : {}),
+            } : {}),
           })
         },
       })
@@ -547,7 +561,7 @@ async function runToolLoop(
       const logicalProviderResult = narrativeOutput && pendingAssistantContent
         ? { ...providerResult, message: { ...providerResult.message, content: pendingAssistantContent + (providerResult.message.content ?? '') } }
         : providerResult
-      const { classified, contentScan, invocationPairs, providerMessage: decodedProviderMessage } = decodeToolResponse({
+      const { classified, contentScan, invocationPairs, providerMessage: decodedProviderMessage } = await decodeToolResponse({
         providerResult: logicalProviderResult, sessionId: session.id, classificationRules: input.classificationRules ?? [],
         byExposedName, contentTools, createInvocationId: () => input.ctx.createId('tool-invocation'),
       })
@@ -824,10 +838,17 @@ async function runToolLoop(
       }
     })
     // Whitespace from a provider is not a valid partial assistant message.
+    if (typeof error === 'object' && error !== null && 'code' in error
+      && typeof error.code === 'string' && error.code.startsWith('text.')) streamedText = ''
     if (narrativeOutput && streamedText) {
       const scanned = pushLoomContentChunk(createLoomContentScannerState(), streamedText,
         { knownToolNames: contentTools.map(tool => tool.definition.name) })
-      streamedText = classifyAssistantContent(scanned.state.text, session.id, input.classificationRules ?? []).text
+      try {
+        streamedText = (await classifyAssistantContent(scanned.state.text, session.id, input.classificationRules ?? [])).text
+      } catch {
+        // Failed classification cannot authorize publishing unprocessed partial Narrative.
+        streamedText = ''
+      }
     }
     if (!streamedText.trim()) streamedText = ''
     const partialNarrative = Boolean(narrativeOutput && streamedText && (narrativeState.declared
@@ -966,7 +987,6 @@ async function runToolLoop(
   }
 
   async function consumeInterjections(): Promise<boolean> {
-    await input.beforeInterjections?.()
     return withInterjectionLock(input.agents, session.id, consumeInterjectionsLocked)
   }
 
@@ -976,6 +996,7 @@ async function runToolLoop(
     const pending = pendingInterjections(history).filter(item => !item.entry.narrativeTarget
       || item.entry.narrativeTarget.branchId === input.branchId)
     if (!pending.length) return false
+    await input.beforeInterjections?.()
     input.requestContext?.abortSignal?.throwIfAborted()
     const branch = input.recoveryRequest.narrativeTarget ? await input.ctx.narratives!.getBranch(input.branchId) : undefined
     const selectedHistory = branchTranscriptEntries(history, session.kind === 'timeline' ? branch?.headEntryId : (await input.agents.getSession(session.id))?.headEntryId)
@@ -1100,6 +1121,18 @@ async function runToolLoop(
     return withInterjectionLock(input.agents, session.id, () => appendLocked(entries, firstId, takeover))
   }
 
+  async function withTimelinePositions(entries: AgentTranscriptEntry[]) {
+    if (session.kind !== 'timeline') return entries
+    const head = await input.agents.getSession(session.id)
+    const projected = projectTimelinePositions(
+      branchTranscriptEntries(await input.agents.listEntries(session.id), head!.headEntryId),
+      await input.ctx.narratives!.listNodes(session.id),
+    )
+    streamTimelinePosition = projected.at(-1)?.timelinePosition
+    const positions = new Map(projected.map(entry => [entry.id, entry.timelinePosition]))
+    return entries.map(entry => ({ ...entry, timelinePosition: positions.get(entry.id) }))
+  }
+
   async function appendLocked(entries: AgentTranscriptEntryData[], firstId?: string, takeover?: NonNullable<RuntimeRequestContext['agentRun']>['continuation']) {
     // Narrative tools can append to this same Timeline Session within the current Run.
     // Rebase only over our own entries; foreign writes must still hit the count guard.
@@ -1114,7 +1147,7 @@ async function runToolLoop(
           session = current
           // Tool-owned writes are already committed, but bypass this loop's append event.
           if (appended.length) input.requestContext?.agentRun?.onEvent({
-            type: 'transcript-appended', runId: input.requestContext.agentRun.runId, entries: appended,
+            type: 'transcript-appended', runId: input.requestContext.agentRun.runId, entries: await withTimelinePositions(appended),
           })
         }
       }
@@ -1141,12 +1174,18 @@ async function runToolLoop(
       entries: entries.map((entry, index) => {
         const id = index === 0 && firstId ? firstId : input.ctx.createId('agent-entry')
         if (entry === adopted) narrativeState.consumedEntryId = id
-        return { id, runId: input.runId, ...(input.retryRoundId ? { roundId: input.retryRoundId } : {}), entry }
+        const streamKind = entry.kind === 'reasoning' && entry.source === 'provider-native' ? 'reasoning'
+          : entry.kind === 'message' && entry.role === 'assistant' ? 'text'
+          : entry.kind === 'tool-invocation' && entry.providerItemId ? `tool:${entry.providerItemId}` : undefined
+        if (streamKind && progress.providerStep > 0) entry = { ...entry, streamId: `${input.runId}:${progress.providerStep}:${streamKind}` }
+        return { id, runId: input.runId, ...input.transcriptIdentity,
+          ...(!input.transcriptIdentity && input.retryRoundId ? { roundId: input.retryRoundId } : {}), entry }
       }).map((item, _index, all) => {
         if (item.entry.kind === 'message' && item.entry.editBaseline) return { ...item, entry: { ...item.entry,
           editBaseline: { ...item.entry.editBaseline, headEntryId: all[_index - 1]?.id ?? session.headEntryId ?? null } } }
-        if (item.entry.kind !== 'run-state' || !item.entry.recovery || !narrativeOutput) return item
-        const checkpoint: JsonObject = { ...item.entry.recovery, narrativeOutput: { ...narrativeState } }
+        if (item.entry.kind !== 'run-state' || !item.entry.recovery) return item
+        const checkpoint: JsonObject = { ...item.entry.recovery,
+          ...(narrativeOutput ? { narrativeOutput: { ...narrativeState } } : {}) }
         if (adopted) {
           delete checkpoint.pendingAssistantContent
           delete checkpoint.partialEntryId
@@ -1157,6 +1196,7 @@ async function runToolLoop(
         return { ...item, entry: { ...item.entry, recovery: checkpoint } }
       }),
     }
+    let committed = false
     try {
       const transact = () => input.ctx.dataEngine.transact(write, async dataTx => {
             const agents = input.agents.transaction(dataTx)
@@ -1205,19 +1245,22 @@ async function runToolLoop(
         ? await (adopted && input.toolExecutionScope?.withNarrativeWrite
           ? input.toolExecutionScope.withNarrativeWrite(transact) : transact())
         : await input.agents.appendEntries(write)
+      committed = true
       if (adopted) {
         pendingAssistantContent = ''
         continuationAssistantEntryId = undefined
       }
       session = result.session
       lastChangesetId = result.commit.changesetId
+      const committedEntries = await withTimelinePositions(result.entries)
       input.requestContext?.agentRun?.onEvent({
         type: 'transcript-appended',
         runId: input.requestContext.agentRun.runId,
-        entries: result.entries,
+        entries: committedEntries,
       })
-      return { entries: result.entries, changesetId: lastChangesetId }
+      return { entries: committedEntries, changesetId: lastChangesetId }
     } catch (error) {
+      if (committed) throw error
       if (narrativeSource) narrativeSource.cursorNodeId = previousCursorNodeId
       narrativeState.declared = previousNarrativeState.declared
       narrativeState.logicalId = previousNarrativeState.logicalId

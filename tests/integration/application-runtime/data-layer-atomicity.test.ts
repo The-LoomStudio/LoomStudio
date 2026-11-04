@@ -178,9 +178,9 @@ async function createDeleteFixture() {
   })
   const setting = await runtime.createPromptResource({ resourceKind: 'lore', name: 'Atomic Setting' })
   const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Atomic Preset' })
-  await runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.resource.id }, loreResourceIds: [setting.resource.id] })
+  await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.resource.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: preset.resource.id }, loreResourceIds: [setting.resource.id] })
   const card = await runtime.createCard({ name: 'Atomic Card' })
-  await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [setting.resource.id] })
+  await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: card.card.id })).card.version, cardId: card.card.id, promptResourceIds: [setting.resource.id] })
   const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
   return {
     ...fixture,

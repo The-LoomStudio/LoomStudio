@@ -32,11 +32,13 @@ type StoredTranscriptEntry = StudioRpcOutputs['application']['getAgentTranscript
 type StoredEntryData = StoredTranscriptEntry['entry']
 type ClientEntryData = Exclude<StoredEntryData, { kind: 'reasoning' }>
   | (Extract<StoredEntryData, { kind: 'reasoning' }> & { state?: 'partial' | 'completed' })
-  | { kind: 'tool-input'; providerItemId: string; exposedName?: string; rawInput: string; status: 'preparing' | 'interrupted' }
+  | { streamId?: string; kind: 'tool-input'; providerItemId: string; exposedName?: string; rawInput: string; status: 'preparing' | 'interrupted' }
 
 export type AgentTranscriptEntry = Omit<StoredTranscriptEntry, 'entry'> & {
   /** Client-only identity retained when streamed reasoning, text or a tool becomes a saved entry. */
   presentationId?: string
+  /** Server-provided insertion boundary; draft sequence is never persisted. */
+  streamAfterSequence?: number
   entry: ClientEntryData
 }
 

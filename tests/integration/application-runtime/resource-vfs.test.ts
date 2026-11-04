@@ -161,6 +161,56 @@ function findTreeNode<T extends { id: string; children?: T[] }>(root: T, id: str
 }
 
 describe('domain-backed resource VFS', () => {
+  it('grants global resources only after approval, keeps locks and writes through the versioned store', async () => {
+    const f = await fixture()
+    try {
+      let allow = false
+      let owners = ['角色甲', '角色乙']
+      const previews: import('../../../packages/application-runtime/src/vfs/types.js').VfsMutationPreview[] = []
+      const options: ResourceVfsOptions = {
+        projections: [],
+        resources: { store: f.store, ids: [], access: f.access,
+          globalCatalog: async () => [{ id: f.resource.id, owners }],
+          write: async input => {
+            const result = await f.store.mutateResource({ actor: { kind: 'kernel', id: 'test' },
+              resourceId: input.resourceId, expectedVersion: input.expectedVersion,
+              mutations: [{ kind: 'node.update', nodeId: input.nodeId, patch: { body: input.body } }] })
+            return { version: result.resource.version, changesetId: result.commit.changesetId }
+          },
+        },
+        approveMutation: async preview => { previews.push(preview); return { decision: allow ? 'allow' : 'deny' } },
+      }
+      const fs = createResourceVfs(options)
+      expect(await fs.ls(['/resources'], signal)).not.toContain('爱丽丝')
+      await expect(fs.setAuthorMode([true, 'global'], signal)).rejects.toMatchObject({ code: 'vfs.denied' })
+      expect(await fs.ls(['/resources'], signal)).not.toContain('爱丽丝')
+      allow = true
+      await fs.setAuthorMode([true], signal)
+      expect(await fs.ls(['/resources'], signal)).not.toContain('爱丽丝')
+      await fs.setAuthorMode([true, 'global'], signal)
+      expect(previews.at(-1)?.authorScope).toBe('global')
+      const listing = await fs.ls(['/resources', { format: 'json' }], signal) as VfsListing
+      const root = listing.entries[0]!.path.replace(/\/$/, '')
+      const path = `${root}/人设.md`
+      await expect(fs.read([`${root}/未来.md`], signal)).rejects.toMatchObject({ code: 'vfs.locked' })
+      await expect(fs.read([`${root}/不可见.md`], signal)).rejects.toThrow()
+      await fs.read([path], signal)
+      allow = false
+      await expect(fs.write([path, '全局修改'], signal)).rejects.toMatchObject({ code: 'vfs.denied' })
+      allow = true
+      await fs.write([path, '全局修改'], signal)
+      expect(previews.at(-1)?.before).toContain('角色甲、角色乙')
+      expect((await f.store.getResource(f.resource.id))?.rootNode.children?.find(n => n.id === 'personality')?.body).toBe('全局修改')
+      await fs.read([path], signal)
+      owners = []
+      await expect(fs.write([path, '不应写入'], signal)).rejects.toThrow()
+      await fs.setAuthorMode([false], signal)
+      expect(await fs.ls(['/resources'], signal)).not.toContain('爱丽丝')
+      const nextRun = createResourceVfs(options)
+      expect(await nextRun.ls(['/resources'], signal)).not.toContain('爱丽丝')
+    } finally { f.engine.close() }
+  })
+
   it('hides disabled entries and metadata in play mode across listing, search and exact reads', async () => {
     const f = await fixture()
     try {

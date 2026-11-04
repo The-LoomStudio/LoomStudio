@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+/** Author resources use tree order; runtime and Tool contribution depths are separate contracts. */
+export function stripPromptAuthorDepth<T>(capabilities: T): T {
+  if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities) || !Object.hasOwn(capabilities, 'localDepth')) return capabilities
+  const { localDepth: _depth, ...rest } = capabilities as T & { localDepth?: unknown }
+  return rest as T
+}
+
 /** The Session inlet expands native messages; all other anchors receive text. */
 export function promptAnchorOutput(anchorId: string): 'text' | 'messages' {
   return anchorId === '@chat.session' ? 'messages' : 'text'
@@ -78,6 +85,7 @@ export const listLoreMountsResultSchema = z.object({
 })
 
 export const replaceLoreMountsInputSchema = z.object({
+  expectedMountIds: z.array(z.string().min(1)),
   source: loreMountSourceSchema,
   loreResourceIds: z.array(z.string()).optional(),
   mounts: z.array(z.union([

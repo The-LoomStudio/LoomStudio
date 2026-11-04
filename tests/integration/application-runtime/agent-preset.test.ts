@@ -32,7 +32,7 @@ describe('Agent preset resource', () => {
       })
       await install(artifact)
       const { mounts } = await runtime.listPresetToolMounts({ presetId: id })
-      await runtime.replacePresetToolMounts({
+      await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: id })).mounts.map(mount => mount.id),
         presetId: id, mounts: [{ toolId: mounts[0]!.toolId, orderIndex: mounts[0]!.orderIndex, defaultEnabled: true }],
       })
       const before = (await runtime.getAgentPreset({ agentPresetId: id })).agentPreset
@@ -73,7 +73,7 @@ describe('Agent preset resource', () => {
       const { mounts } = await runtime.listPresetToolMounts({ presetId: unbound.id })
       expect(mounts.length).toBeGreaterThan(0)
       expect(mounts.every(mount => !mount.defaultEnabled)).toBe(true)
-      await runtime.replacePresetToolMounts({
+      await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: unbound.id })).mounts.map(mount => mount.id),
         presetId: unbound.id,
         mounts: [{ toolId: mounts[0]!.toolId, orderIndex: mounts[0]!.orderIndex, defaultEnabled: true }],
       })

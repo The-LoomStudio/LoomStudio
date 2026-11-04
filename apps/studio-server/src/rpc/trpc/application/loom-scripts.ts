@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { loomScriptSettingsSchema } from '@loom-studio/shared/loom-scripts'
 import type { ApplicationRuntime, LoomScriptOwner } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
-import { loomScriptMountTargetSchema, createLoomScriptMountInputSchema, listLoomScriptMountsInputSchema, loomScriptOwnerSchema, updateLoomScriptMountInputSchema } from '@loom-studio/shared/loom-scripts'
+import { initialLoomScriptMountInputSchema, loomScriptMountTargetSchema, createLoomScriptMountInputSchema, listLoomScriptMountsInputSchema, loomScriptOwnerSchema, updateLoomScriptMountInputSchema } from '@loom-studio/shared/loom-scripts'
 import {
   isRecord,
   readNumber,
@@ -11,13 +11,22 @@ import {
 } from '../../rpc-params.js'
 import { jsonInput, procedure } from '../context.js'
 
+const scriptConfigScope = z.discriminatedUnion('kind', [z.object({ kind: z.literal('global') }),
+  z.object({ kind: z.literal('card'), cardId: z.string() }), z.object({ kind: z.literal('timeline'), timelineId: z.string() }),
+  z.object({ kind: z.literal('agent-session'), agentSessionId: z.string() })])
+
 export const loomScriptsProcedures = {
   deleteLoomScript: procedure.input(z.strictObject({ scriptDocumentId: z.string(), expectedVersion: z.number().int() }))
     .mutation(async ({ ctx, input }) => { const result = await ctx.runtime.deleteLoomScript(input, ctx.request); await ctx.services?.scripts?.resolve(); return result }),
   reorderLoomScripts: procedure.input(z.strictObject({ groups: z.array(z.strictObject({ owner: loomScriptOwnerSchema, scriptIds: z.array(z.string()), groupOrder: z.number().int().optional() })), target: loomScriptMountTargetSchema.optional() }))
     .mutation(async ({ ctx, input }) => { const result = await ctx.runtime.reorderLoomScripts(input, ctx.request); await ctx.services?.scripts?.resolve(); return result }),
-  previewLoomScript: procedure.input(jsonInput(params => z.strictObject({ source: z.string(), text: z.string().max(100000), phase: z.enum(['display', 'prompt', 'classify']).optional(), streaming: z.boolean().optional(), settings: loomScriptSettingsSchema.optional() }).parse(params)))
+  previewLoomScript: procedure.input(jsonInput(params => z.strictObject({ source: z.string(), text: z.string().max(100000), previewSource: z.enum(['narrative', 'agent-session']).optional(), phase: z.enum(['display', 'prompt', 'classify']).optional(), streaming: z.boolean().optional(), settings: loomScriptSettingsSchema.optional() }).parse(params)))
     .query(({ ctx, input }) => ctx.runtime.previewLoomScript(input)),
+  listLoomScriptConfigs: procedure.input(z.object({ mountId: z.string(), runtimeRevision: z.number().int(), scope: scriptConfigScope }))
+    .query(({ ctx, input }) => ctx.runtime.listLoomScriptConfigs(input)),
+  upsertLoomScriptConfig: procedure.input(z.object({ mountId: z.string(), runtimeRevision: z.number().int(), scope: scriptConfigScope,
+    key: z.string(), value: z.json(), expectedVersion: z.number().int().optional() }))
+    .mutation(({ ctx, input }) => ctx.runtime.upsertLoomScriptConfig(input, ctx.request)),
   getLoomScriptSettings: procedure.input(jsonInput(params => ({ mountId: readString(params, 'mountId') })))
     .query(({ ctx, input }) => ctx.runtime.getLoomScriptSettings(input)),
   deleteLoomScriptMount: procedure.input(jsonInput(params => ({ mountId: readString(params, 'mountId'), expectedVersion: readNumber(params, 'expectedVersion') })))
@@ -27,11 +36,14 @@ export const loomScriptsProcedures = {
       return result
     }),
   'importLoomScript': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['importLoomScript']>[0] => {
-    return { owner: readOwner(params, 'owner'), fileName: readString(params, 'fileName'), source: readString(params, 'source') }
+    return { owner: readOwner(params, 'owner'), fileName: readString(params, 'fileName'), source: readString(params, 'source'), mount: initialLoomScriptMountInputSchema.optional().parse(isRecord(params) ? params.mount : undefined) }
   })).mutation(({ ctx, input }) => ctx.runtime.importLoomScript(input, ctx.request)),
   'updateLoomScript': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['updateLoomScript']>[0] => {
     return { scriptDocumentId: readString(params, 'scriptDocumentId'), expectedVersion: readNumber(params, 'expectedVersion'), fileName: readString(params, 'fileName'), source: readString(params, 'source') }
   })).mutation(({ ctx, input }) => ctx.runtime.updateLoomScript(input, ctx.request)),
+  'getLoomScriptSummary': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['getLoomScriptSummary']>[0] => {
+    return { scriptDocumentId: readString(params, 'scriptDocumentId') }
+  })).query(({ ctx, input }) => ctx.runtime.getLoomScriptSummary(input)),
   'getLoomScript': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['getLoomScript']>[0] => {
     return { scriptDocumentId: readString(params, 'scriptDocumentId') }
   })).query(({ ctx, input }) => ctx.runtime.getLoomScript(input)),

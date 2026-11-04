@@ -234,6 +234,7 @@ describe('studio server media asset data plane', () => {
       expect(exported.status).toBe(200)
       const png = new Uint8Array(await exported.arrayBuffer())
       expect(readPolyglotArchive(png)).toBeUndefined()
+      const exportedBundle = await decodeCardBundleZip(readCardPngArchive(png)!)
       const files = unzipSync(readCardPngArchive(png)!)
       const root = join(dir, 'author-files')
       for (const [path, bytes] of Object.entries(files)) {
@@ -256,9 +257,11 @@ describe('studio server media asset data plane', () => {
         expect(restored.artifact.state?.contribution.templates).toEqual(artifact.state?.contribution.templates)
         expect(restored.artifact.state?.contribution.entities).toEqual(artifact.state?.contribution.entities)
         expect(restored.artifact.state?.contribution.componentMounts).toEqual(artifact.state?.contribution.componentMounts)
-        expect(restored.artifact.textTransformRules).toEqual(artifact.textTransformRules)
-        expect(restored.artifact.textExtractors).toEqual(artifact.textExtractors)
-        expect(restored.artifact.scriptAttachments).toEqual(artifact.scriptAttachments)
+        expect(restored.artifact.textTransformRules).toEqual(exportedBundle.artifact.textTransformRules)
+        expect(restored.artifact.textExtractors).toEqual(exportedBundle.artifact.textExtractors)
+        const scriptSources = (value: CardBundleArtifact) => value.scriptAttachments?.map(({ script, orderIndex }) => ({ script, orderIndex }))
+        expect(exportedBundle.artifact.scriptAttachments?.some(item => item.script.fileName.endsWith('.md'))).toBe(true)
+        expect(scriptSources(restored.artifact)).toEqual(scriptSources(exportedBundle.artifact))
         const reexport = await authenticatedFetch(otherPort, `/cards/${imported.card.id}/export.png`)
         expect(reexport.status).toBe(200)
         const reexportArchive = readCardPngArchive(new Uint8Array(await reexport.arrayBuffer()))!

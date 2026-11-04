@@ -1,4 +1,5 @@
 import { parseLoomScriptSource } from '@loom-studio/shared/loom-scripts'
+import { summarizePackageResource, type PackageResourceSummary } from '@loom-studio/shared'
 import type { ManagedExtensionPackage } from '../../../entities/extension.js'
 import { createSessionFetch } from '../../../shared/api/session-fetch.js'
 
@@ -47,9 +48,15 @@ export async function readPackageResource(url: string, signal: AbortSignal): Pro
   return response.text()
 }
 
+export async function readPackageResourceSummary(url: string, kind: Exclude<PackageResourceKind, 'background'>, signal: AbortSignal): Promise<PackageResourceSummary> {
+  const response = await sessionFetch(`${url}?preview=summary&kind=${encodeURIComponent(kind)}`, { signal })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json() as Promise<PackageResourceSummary>
+}
+
 type PreviewSection = { label: string; body?: string; source?: string }
 export type ResourceFact = { kind: 'runtime' | 'capabilities' | 'parameters' | 'targets' | 'phases' | 'pattern' | 'effect' | 'strategy'; value: string }
-export type PackageResourcePreview = { title?: string; description?: string; sections: PreviewSection[]; facts?: ResourceFact[]; swatches?: string[]; source: string }
+export type PackageResourcePreview = PackageResourceSummary & { sections: PreviewSection[]; facts?: ResourceFact[]; source: string }
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid resource content')
@@ -57,11 +64,13 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 export function previewPackageResource(entry: PackageResourceEntry, source: string): PackageResourcePreview {
+  if (entry.kind === 'background') throw new Error('Background resources do not have a text preview')
+  const summary = summarizePackageResource(entry.kind, source)
   if (entry.kind === 'script') {
     const metadata = parseLoomScriptSource(source)
-    return { title: metadata.name, facts: [{ kind: 'runtime', value: metadata.runtime }, ...(metadata.requestedCapabilities.length ? [{ kind: 'capabilities' as const, value: metadata.requestedCapabilities.join(' · ') }] : [])], sections: [], source }
+    return { ...summary, facts: [{ kind: 'runtime', value: metadata.runtime }, ...(metadata.requestedCapabilities.length ? [{ kind: 'capabilities' as const, value: metadata.requestedCapabilities.join(' · ') }] : [])], sections: [], source }
   }
-  if (entry.kind === 'theme' || entry.kind === 'style') return { sections: [], source, swatches: [...new Set([...source.matchAll(/--loom-color-(?:background|surface|text|accent):\s*(#[a-fA-F0-9]{3,8})\s*;/g)].map(match => match[1]!))] }
+  if (entry.kind === 'theme' || entry.kind === 'style') return { ...summary, sections: [], source }
   const value = record(JSON.parse(source))
   if (entry.kind !== 'preset' && entry.kind !== 'lore' && entry.kind !== 'prompt') {
     const facts: ResourceFact[] = []
@@ -76,12 +85,10 @@ export function previewPackageResource(entry: PackageResourceEntry, source: stri
       const properties = (schema as Record<string, unknown>).properties
       if (properties && typeof properties === 'object') facts.push({ kind: 'parameters', value: Object.keys(properties).join(' · ') || '—' })
     }
-    return { facts, title: typeof value.name === 'string' ? value.name : undefined,
-      description: typeof value.description === 'string' ? value.description : undefined, sections: [], source: JSON.stringify(value, null, 2) }
+    return { ...summary, facts, sections: [], source: JSON.stringify(value, null, 2) }
   }
   const files = value.schema === 'loom.promptResource.files.v1'
   const root = record(value.rootNode)
-  const metadata = files ? record(root.metadata) : root
   const sections: PreviewSection[] = []
   function visit(raw: unknown, ancestors: string[], depth: number) {
     if (depth > 128) throw new Error('Prompt resource tree exceeds 128 levels')
@@ -98,6 +105,5 @@ export function previewPackageResource(entry: PackageResourceEntry, source: stri
     }
   }
   visit(root, [], 0)
-  return { title: typeof metadata.label === 'string' ? metadata.label : undefined,
-    description: typeof metadata.meta === 'string' ? metadata.meta : undefined, sections, source }
+  return { ...summary, sections, source }
 }

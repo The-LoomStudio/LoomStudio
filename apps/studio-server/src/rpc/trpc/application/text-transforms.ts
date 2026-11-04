@@ -18,6 +18,9 @@ import {
 import { jsonInput, procedure } from '../context.js'
 
 export const textTransformsProcedures = {
+  'listTextTransformRuleSummaries': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['listTextTransformRuleSummaries']>[0] => {
+    return { owner: readOptionalRuleOwner(params) }
+  })).query(({ ctx, input }) => ctx.runtime.listTextTransformRuleSummaries(input)),
   'listTextTransformRules': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['listTextTransformRules']>[0] => {
     return { owner: readOptionalRuleOwner(params) }
   })).query(({ ctx, input }) => ctx.runtime.listTextTransformRules(input)),
@@ -37,6 +40,7 @@ export const textTransformsProcedures = {
       expectedVersion: readOptionalNumber(params, 'expectedVersion'),
     }
   })).mutation(({ ctx, input }) => ctx.runtime.deleteTextTransformRule(input, ctx.request)),
+  'listTextExtractorSummaries': procedure.query(({ ctx }) => ctx.runtime.listTextExtractorSummaries()),
   'listTextExtractors': procedure.query(({ ctx }) => ctx.runtime.listTextExtractors()),
   'getTextExtractor': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['getTextExtractor']>[0] => {
     return { extractorId: readString(params, 'extractorId') }

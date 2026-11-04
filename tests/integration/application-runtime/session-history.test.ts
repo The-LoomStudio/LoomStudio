@@ -97,7 +97,7 @@ describe('Session tool history projection', () => {
     }).messages).toEqual([])
     expect(() => compilePromptDataModel({
       ...input, contributions: [{ ...contribution, sourceRef: { ...contribution.sourceRef, kind: 'lore' } }],
-    })).toThrow(/must come from Session/)
+    })).toThrow(/Session message sequence cannot receive text contributions/)
   })
 
   it('retains Content source and multiple results without evaluating macros or replaying code', () => {
@@ -172,4 +172,12 @@ describe('Session tool history projection', () => {
       expect((await store.getSession(session.id))!.entryCount).toBe(items.length)
     } finally { engine.close() }
   })
+})
+
+
+it('keeps execution evidence beside replay messages without adding status fields to model input', () => {
+  const entries = records([observation, call('a'), call('b'), result('a'), result('b', 'denied')])
+  const block = projectSessionHistory(entries, new Map())[0]!
+  expect(block.toolEvidence).toMatchObject([{ callId: 'a', status: 'completed', input: { text: 'saved' } }, { callId: 'b', status: 'denied' }])
+  expect(block.messages[1]).toEqual({ role: 'tool', tool_call_id: 'a', content: 'SAVED:a' })
 })

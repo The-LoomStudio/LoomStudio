@@ -1,3 +1,5 @@
+import { messages as extensionsFlow } from './en-us/extensions-flow.js'
+import { messages as extensionReview } from './en-us/extension-review.js'
 import { messages as observation } from './en-us/observation.js'
 import { messages as userProfile } from './en-us/user-profile.js'
 import { messages as common } from './en-us/common.js'
@@ -26,6 +28,8 @@ export const enUS = {
   ...state,
   ...prompt,
   ...extensions,
+  ...extensionsFlow,
+  ...extensionReview,
   ...settings,
   ...textTransforms,
   ...logs,

@@ -384,11 +384,11 @@ describe('Studio Server Extension Package resources', () => {
       const manualSource = { kind: 'manual', id: 'global' }
       const localSource = { kind: 'preset', id: localPreset.resource.id }
       for (const source of [manualSource, localSource]) {
-        await callRpc(port, 'application.replaceLoreMounts', { source, loreResourceIds: [loreId] })
+        await callRpc(port, 'application.replaceLoreMounts', { expectedMountIds: (await callRpc<{ mounts: Array<{ id: string }> }>(port, 'application.listLoreMounts', { source: source })).mounts.map(mount => mount.id), source, loreResourceIds: [loreId] })
       }
       const manualMounts = await callRpc(port, 'application.listLoreMounts', { source: manualSource })
       const localMounts = await callRpc(port, 'application.listLoreMounts', { source: localSource })
-      await callRpc(port, 'application.replacePresetToolMounts', {
+      await callRpc(port, 'application.replacePresetToolMounts', { expectedMountIds: (await callRpc<{ mounts: Array<{ id: string }> }>(port, 'application.listPresetToolMounts', { presetId: localPreset.resource.id })).mounts.map(mount => mount.id),
         presetId: localPreset.resource.id,
         mounts: [{
           toolId: 'example.package-resources/content_echo',
@@ -409,7 +409,7 @@ describe('Studio Server Extension Package resources', () => {
       const profileBefore = await callRpc(port, 'application.getAgentPreset', { agentPresetId: profile.agentPreset.id })
       const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', { agentPresetId: profile.agentPreset.id })
       const card = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'External Card' })
-      await callRpc(port, 'application.updateCardPromptResources', {
+      await callRpc(port, 'application.updateCardPromptResources', { expectedVersion: (await callRpc<{ card: { version: number } }>(port, 'application.getCard', { cardId: card.card.id })).card.version,
         cardId: card.card.id, promptResourceIds: [loreId, packagePresetId],
       })
       const timeline = await callRpc<{ timeline: { id: string } }>(port, 'application.createNarrativeTimeline', { cardId: card.card.id })

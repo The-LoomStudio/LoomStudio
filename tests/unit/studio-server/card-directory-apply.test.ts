@@ -123,7 +123,7 @@ describe('Card directory Runtime integration', () => {
   it('keeps shared-write failures recoverable without overwriting DB or disk', async () => {
     const f = await setup()
     const other = await f.runtime.createCard({ name: 'Other' })
-    await f.runtime.updateCardPromptResources({ cardId: other.card.id, promptResourceIds: f.card.promptResourceIds! })
+    await f.runtime.updateCardPromptResources({ expectedVersion: (await f.runtime.getCard({ cardId: other.card.id })).card.version, cardId: other.card.id, promptResourceIds: f.card.promptResourceIds! })
     await f.save()
     const oldBaseline = await f.baseline()
     await writeFile(f.promptBody, 'Unapproved shared edit')

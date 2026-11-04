@@ -1,13 +1,14 @@
 import { InfoDialog } from '../../shared/ui/info-dialog/info-dialog.js'
 import type { UserBackgroundLibrary } from '../../features/backgrounds/model/use-user-backgrounds.js'
 import { useMemo, useState } from 'react'
-import { Button } from '@loom-studio/ui'
+import { Button, SearchField } from '@loom-studio/ui'
 import { useQuery } from '@tanstack/react-query'
-import { BookOpen, Bot, FileText, Folder, Image, Regex } from 'lucide-react'
+import { BookOpen, Bot, FileText, Image, Regex, ChevronRight } from 'lucide-react'
 import type { ListPromptResourcesResult, PromptResource } from '../../entities/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import { FileTree, type FileTreeNode } from '../../shared/ui/file-tree/file-tree.js'
+import type { FileTreeNode } from '../../shared/ui/file-tree/file-tree.js'
+import { ResourceListRow } from '../../shared/ui/resource-list/resource-list-row.js'
 import styles from './user-resources-panel.module.scss'
 
 export type UserResourceRuleItem = { id: string; name: string; owner: { kind: string } }
@@ -29,14 +30,9 @@ export function buildUserResourceTree(
   const nodes: FileTreeNode[] = groups.map(group => ({
     id: `user:${group.id}`, label: group.title, kind: 'folder', meta: String(group.items.length),
     children: group.items.map(resource => {
-      const visit = (node: PromptResource['rootNode']): FileTreeNode => {
-        resourcesByNode.set(node.id, resource)
-        return {
-          id: node.id, label: node.label, kind: node.children?.length ? 'folder' : 'entry',
-          ...(node.children?.length ? { children: node.children.map(visit) } : {}),
-        }
-      }
-      return visit(resource.rootNode)
+      const node = resource.rootNode
+      resourcesByNode.set(node.id, resource)
+      return { id: node.id, label: node.label, kind: 'entry' }
     }),
   }))
   nodes.push({
@@ -51,6 +47,7 @@ export function buildUserResourceTree(
 }
 
 export function UserResourcesPanel(props: {
+  active?: boolean
   backgroundLibrary?: Pick<UserBackgroundLibrary, 'backgrounds' | 'error' | 'refresh' | 'loading'>
   onOpenBackground?(id: string): void
   api: StudioApi['textTransforms']
@@ -62,15 +59,20 @@ export function UserResourcesPanel(props: {
   onOpenResource(resource: PromptResource, nodeId: string): void
   onOpenRule(ruleId: string): void
 }) {
+  const active = props.active ?? true
   const rules = useQuery({
     queryKey: ['user-resources', props.endpoint, 'rules'],
-    queryFn: () => props.api.listRules(),
+    queryFn: () => props.api.listRuleSummaries({ kind: 'workspace' }),
+    enabled: active,
   })
-  const [expandedIds, setExpandedIds] = useState(['user:presets', 'user:settings', 'user:other', 'user:rules', 'user:backgrounds'])
+  const [query, setQuery] = useState('')
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const { nodes, resourcesByNode } = useMemo(
-    () => buildUserResourceTree(props.resources, rules.data?.rules ?? [], props.t, props.backgroundLibrary?.backgrounds),
-    [props.resources, rules.data?.rules, props.t, props.backgroundLibrary?.backgrounds],
+    () => active ? buildUserResourceTree(props.resources, rules.data?.rules ?? [], props.t, props.backgroundLibrary?.backgrounds) : { nodes: [], resourcesByNode: new Map<string, PromptResource>() },
+    [active, props.resources, rules.data?.rules, props.t, props.backgroundLibrary?.backgrounds],
   )
+
+  if (!active) return null
 
   return <section aria-label={props.t('rail.user')} className={styles.panel}>
     {props.backgroundLibrary?.loading ? <p role="status">{props.t('appearance.backgroundLoading')}</p> : null}
@@ -84,25 +86,37 @@ export function UserResourcesPanel(props: {
       <p>{props.t('promptResource.invalidResourcesHelp')}</p>
       <Button onClick={() => { void props.onRefresh?.().catch(() => undefined) }}>{props.t('appError.reload')}</Button>
     </div> : null}
-    <FileTree
-      ariaLabel={props.t('rail.user')}
-      expandedIds={expandedIds}
-      getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
-      getDragLabel={node => node.label}
-      moreActionsLabel={props.t('context.actionMore')}
-      nodes={nodes}
-      onExpandedIdsChange={setExpandedIds}
-      onSelect={node => {
-        const resource = resourcesByNode.get(node.id)
-        if (resource) props.onOpenResource(resource, node.id)
-        else if (node.id.startsWith('user:background:')) props.onOpenBackground?.(node.id.slice('user:background:'.length))
-        else if (node.id.startsWith('user:rule:')) props.onOpenRule(node.id.slice('user:rule:'.length))
-      }}
-      renderIcon={node => node.id.startsWith('user:background') ? <Image size={16} aria-hidden="true" /> : node.id.startsWith('user:rule:') ? <Regex size={16} aria-hidden="true" />
-        : node.id === 'user:presets' ? <Bot size={16} aria-hidden="true" />
-          : node.id === 'user:settings' ? <BookOpen size={16} aria-hidden="true" />
-            : node.kind === 'folder' ? <Folder size={16} aria-hidden="true" /> : <FileText size={16} aria-hidden="true" />}
-    />
+    <div className={styles.search}><SearchField aria-label="搜索我的资源" placeholder="搜索我的资源" clearLabel="清除搜索" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} /></div>
+    {nodes.map(group => {
+      const items = (group.children ?? []).filter(item => `${group.label} ${item.label}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+      if (query.trim() && !items.length) return null
+      const Icon = group.id === 'user:presets' ? Bot : group.id === 'user:lore' ? BookOpen : group.id === 'user:rules' ? Regex : group.id === 'user:backgrounds' ? Image : FileText
+      const groupKey = `${group.id}-${!!query.trim()}-${!!group.children?.length}`
+      return <details className={styles.group} key={groupKey} open={openGroups[groupKey] ?? items.length > 0} onToggle={event => {
+        const open = event.currentTarget.open
+        setOpenGroups(previous => previous[groupKey] === open ? previous : { ...previous, [groupKey]: open })
+      }}>
+        <summary><Icon size={18} aria-hidden="true" /><strong>{group.label}</strong><span>{items.length}</span><ChevronRight size={16} className={styles.disclosure} aria-hidden="true" /></summary>
+        <div className={styles.items}>
+          {items.map(item => {
+            const resource = resourcesByNode.get(item.id)
+            const background = props.backgroundLibrary?.backgrounds.find(value => item.id === `user:background:${value.id}`)
+            return <ResourceListRow key={item.id} name={item.label}
+              icon={background ? <img src={background.image} alt="" loading="lazy" /> : <Icon size={24} />}
+              metadata={<span>{group.label}</span>}
+              onOpen={() => {
+                if (resource) props.onOpenResource(resource, item.id)
+                else if (background) props.onOpenBackground?.(background.id)
+                else if (item.id.startsWith('user:rule:')) props.onOpenRule(item.id.slice('user:rule:'.length))
+              }}
+            />
+          })}
+          {!items.length && <p className={styles.empty}>暂无{group.label}</p>}
+        </div>
+      </details>
+    })}
+    {query.trim() && !nodes.some(group => group.children?.some(item => `${group.label} ${item.label}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) && <p className={styles.empty}>没有匹配的资源</p>}
+
   </section>
 }
 

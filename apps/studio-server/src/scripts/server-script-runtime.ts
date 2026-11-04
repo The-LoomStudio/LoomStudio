@@ -1,3 +1,5 @@
+import { createScriptConfigClient, type ExtensionStorageScope } from '@loom-studio/extension-sdk'
+import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import { createExtensionHost, type ExtensionHostOptions, type ExtensionModuleSummary } from '@loom-studio/extension-host'
 import type { Diagnostic } from '@loom-studio/diagnostics'
 import type { EventCapabilityCategory, ExtensionInstallationTarget, ExtensionModuleManifest, ServerExtensionModule } from '@loom-studio/extension-sdk'
@@ -6,10 +8,11 @@ import type { EventCapabilityCategory, ExtensionInstallationTarget, ExtensionMod
 export const serverScriptCapabilities = [
   'runtime.server', 'assets.publish', 'assets.read', 'ai.invoke', 'macros.provide',
   'prompt.process', 'narrative.context.provide', 'state.contribute', 'state.read',
-  'state.write', 'state.processContent',
+  'state.write', 'state.processContent', 'configs.read', 'configs.write',
 ] as const
 
 export type ServerScriptRun = {
+  installationId?: string
   mountId: string
   mountVersion?: number
   target?: ExtensionInstallationTarget
@@ -49,7 +52,7 @@ type RunningScript = {
   module?: ExtensionModuleSummary
 }
 
-export function createServerScriptRuntime(options: { hostOptions: ExtensionHostOptions; prepareSource?(run: ServerScriptRun, signal: AbortSignal): Promise<string> }) {
+export function createServerScriptRuntime(options: { hostOptions: ExtensionHostOptions; configs?: Pick<ApplicationRuntime, 'listLoomScriptConfigs' | 'upsertLoomScriptConfig'>; configScope?(): ExtensionStorageScope; prepareSource?(run: ServerScriptRun, signal: AbortSignal): Promise<string> }) {
   const running = new Map<string, RunningScript>()
   const loading = new Map<string, { signature: string; controller: AbortController }>()
   let desired = new Map<string, ServerScriptRun>()
@@ -117,7 +120,7 @@ export function createServerScriptRuntime(options: { hostOptions: ExtensionHostO
 
     const moduleCapabilities: NonNullable<ExtensionModuleManifest['capabilities']> = {}
     for (const capability of capabilities) {
-      if (capability !== 'runtime.server' && !capability.startsWith('events.subscribe:')) moduleCapabilities[capability] = true
+      if (capability !== 'runtime.server' && !capability.startsWith('configs.') && !capability.startsWith('events.subscribe:')) moduleCapabilities[capability] = true
     }
     moduleCapabilities['events.subscribe'] = capabilities.flatMap(value => {
       const category = eventCapability(value)
@@ -146,7 +149,24 @@ export function createServerScriptRuntime(options: { hostOptions: ExtensionHostO
           const url = `data:text/javascript;base64,${Buffer.from(source).toString('base64')}#${instanceId}`
           const loaded = await import(/* @vite-ignore */ url) as Partial<ServerExtensionModule>
           if (typeof loaded.activate !== 'function') throw new Error('Server Script must export activate(ctx)')
-          return { activate: context => { assertCurrent(); return loaded.activate!({ ...context, scriptSettings: Object.freeze(structuredClone(run.settings ?? {})) }) } }
+          return { activate: context => { assertCurrent(); return loaded.activate!({ ...context, scriptSettings: Object.freeze(structuredClone(run.settings ?? {})),
+            storage: { ...context.storage, configs: {
+              list: () => { throw new Error('Scripts use ctx.configs for owner-isolated configuration') },
+              get: () => { throw new Error('Scripts use ctx.configs for owner-isolated configuration') },
+              upsert: () => { throw new Error('Scripts use ctx.configs for owner-isolated configuration') },
+              delete: () => { throw new Error('Scripts use ctx.configs for owner-isolated configuration') },
+            } },
+            ...(options.configs ? { configs: createScriptConfigClient({ signal: controller.signal,
+              defaultScope: () => options.configScope?.() ?? (run.target?.kind === 'card' ? { kind: 'card', cardId: run.target.cardId } : { kind: 'global' }),
+              assertScope: (_scope, write) => {
+                assertCurrent()
+                const capability = write ? 'configs.write' : 'configs.read'
+                if (!run.grantedCapabilities.includes(capability) || !run.script.requestedCapabilities.includes(capability)) throw new Error(`Script capability not granted: ${capability}`)
+              },
+              list: scope => options.configs!.listLoomScriptConfigs({ scope, mountId: run.mountId, runtimeRevision: run.mountVersion ?? 0 }),
+              upsert: query => options.configs!.upsertLoomScriptConfig({ ...query, mountId: run.mountId, runtimeRevision: run.mountVersion ?? 0 }),
+              onError: error => { console.error('Server Script Config subscription stopped', error) },
+            }) } : {}), }) } }
         },
       })
       const module = await host.activate(packageId(run), run.mountId, run.target)

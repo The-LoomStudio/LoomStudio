@@ -5,7 +5,7 @@ import type { ExtensionInstallationContent } from '../types.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments } from '../foundation/document-store.js'
-import { listScriptTextTransformRules } from './loom-script-text-migration.js'
+import { listScriptTextTransformRules } from './script-text-resources.js'
 import type {
   LoomScriptContent,
   LoomScriptOwner,
@@ -26,7 +26,7 @@ export async function snapshotLoomScriptMounts(
   const unavailableMounts: UnavailableLoomScriptMount[] = []
   const snapshots = await Promise.all(mounts.map(async mount => {
     const script = await readLoomScriptRevision(ctx.documents, mount.content.scriptDocumentId,
-      mount.content.enabled ? mount.content.adoptedDocumentVersion ?? mount.content.pinnedDocumentVersion : mount.content.pinnedDocumentVersion)
+      mount.content.enabled ? mount.content.adoptedDocumentVersion! : mount.content.pinnedDocumentVersion)
     if (!script) {
       unavailableMounts.push({
         mountId: mount.id, scriptDocumentId: mount.content.scriptDocumentId, enabled: mount.content.enabled,
@@ -37,8 +37,8 @@ export async function snapshotLoomScriptMounts(
     }
     return {
       mountId: mount.id,
-      mountVersion: mount.content.runtimeRevision ?? mount.version,
-      settings: structuredClone(mount.content.adoptedSettings ?? resolveLoomScriptSettings(script.content.settings ?? [], mount.content.enabled ? mount.content.settings ?? {} : {})),
+      mountVersion: mount.content.runtimeRevision,
+      settings: structuredClone(mount.content.enabled ? mount.content.adoptedSettings! : resolveLoomScriptSettings(script.content.settings ?? [], {})),
       target: mount.content.target,
       enabled: mount.content.enabled,
       orderIndex: mount.content.orderIndex,
@@ -107,6 +107,7 @@ export async function resolveLoomScriptRendererMounts(
     const bytes = await ctx.blobs!.read(script.content.source.blobId)
     return {
       mountId: snapshot.mountId,
+      ...(owner.kind === 'extension' ? { installationId: owner.installationId } : {}),
       enabled: snapshot.enabled,
       mountVersion: snapshot.mountVersion,
       target: snapshot.target,

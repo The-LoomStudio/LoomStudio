@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { formatEntityReference, parseResourceLink } from '@loom-studio/shared'
 import type { StudioApi } from '../api/studio-api.js'
-import { useStudioPanelStore, useStudioLayoutStore, type StudioPanelId } from './studio-layout-store.js'
+import { useStudioLayoutStore, type StudioPanelId } from './studio-layout-store.js'
 import { isStudioTool } from './studio-tool.js'
 import { readStudioRoute } from './studio-route.js'
 import { buildStudioTargetLink, resolveStudioTarget } from './studio-target.js'
 import {
   persistStudioWorkspace, resolveStudioWorkspace, restoreStudioWorkspace, STUDIO_ENTRY,
-  studioHistoryState, type StudioWorkspace,
+  studioHistoryState, textTransformSearch, type StudioWorkspace,
 } from './studio-workspace.js'
 
 export function useStudioNavigation(input: { endpoint: string; api: StudioApi }) {
@@ -20,14 +20,24 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
   const current = useRef(workspace)
   current.current = workspace
   const [targetError, setTargetError] = useState<{ uri: string; message: string }>()
-  const cardSelection = useRef(0)
+  const targetRequest = useRef(0)
+  const [targetRevision, setTargetRevision] = useState(0)
+  const settledReading = useRef<{ endpoint: string; timelineId?: string; branchId?: string; previewCardId?: string }>({ endpoint: input.endpoint })
+  if (settledReading.current.endpoint !== input.endpoint) settledReading.current = { endpoint: input.endpoint }
+  const requestKey = (position: StudioWorkspace) => JSON.stringify([input.endpoint, position.panel, position.timelineId, position.branchId, position.previewCardId, position.resourceId, position.assetId, position.targetUri])
+  const beginTargetNavigation = () => {
+    const request = ++targetRequest.current
+    const key = requestKey(current.current)
+    return () => request === targetRequest.current && key === requestKey(current.current)
+  }
 
-  const publish = useCallback((next: StudioWorkspace, replace = false) => {
+  const publish = useCallback((next: StudioWorkspace, replace = false, preserveRequest = false) => {
+    if (!preserveRequest) targetRequest.current++
     const previous = current.current
     if (previous.targetUri === undefined) {
       const remember = useStudioLayoutStore.getState().rememberPanelPosition
-      if (previous.panel) remember(JSON.stringify([input.endpoint, previous.cardId, previous.panel]), { search: previous.search, resourceId: previous.resourceId, assetId: previous.assetId })
-      if (previous.tool) remember(JSON.stringify([input.endpoint, previous.cardId, previous.tool]), { search: previous.toolSearch ?? '' })
+      if (previous.panel) remember(JSON.stringify([input.endpoint, previous.cardId, 'panel', previous.panel]), { search: previous.search, resourceId: previous.resourceId, assetId: previous.assetId })
+      if (previous.tool) remember(JSON.stringify([input.endpoint, previous.cardId, 'tool', previous.tool]), { search: previous.toolSearch ?? '' })
     }
     current.current = next
     persistStudioWorkspace(input.endpoint, next)
@@ -37,11 +47,10 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
   useEffect(() => {
     if (location.pathname !== STUDIO_ENTRY || location.search || location.hash
       || !location.state?.studioWorkspace || location.state.studioWorkspace.endpoint !== input.endpoint) {
-      void publish(workspace, true)
+      void publish(workspace, true, true)
     } else {
       persistStudioWorkspace(input.endpoint, workspace)
     }
-    useStudioPanelStore.getState().syncActivePanel(workspace.panel)
   }, [workspace, input.endpoint, location.pathname, location.search, location.hash, location.state, publish])
 
   useEffect(() => {
@@ -49,14 +58,23 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
     setTargetError(undefined)
     let active = true
     const uri = workspace.targetUri
+    const request = targetRequest.current
+    const initialTool = current.current.tool
+    const initialToolSearch = current.current.toolSearch
     void resolveStudioTarget(input.api, uri).then(target => {
-      if (!active) return
-      void publish({ ...workspace, ...target, ...(isStudioTool(target.panel) ? { tool: target.panel, toolSearch: target.search, panel: workspace.panel, search: workspace.search } : { tool: undefined, toolSearch: undefined }), targetUri: undefined, referenceUri: undefined }, true)
+      if (!active || request !== targetRequest.current || current.current.targetUri !== uri) return
+      const latest = current.current
+      const toolChanged = latest.tool !== initialTool || latest.toolSearch !== initialToolSearch
+      const tool = isStudioTool(target.panel) && !toolChanged ? target.panel : latest.tool
+      void publish({ ...latest, ...target,
+        ...(isStudioTool(target.panel) ? { panel: latest.panel, search: latest.search } : {}),
+        tool, toolSearch: isStudioTool(target.panel) && !toolChanged ? target.search : latest.toolSearch,
+        targetUri: undefined, referenceUri: undefined }, true, true)
     }, error => {
-      if (active) setTargetError({ uri, message: error instanceof Error ? error.message : String(error) })
+      if (active && request === targetRequest.current) setTargetError({ uri, message: error instanceof Error ? error.message : String(error) })
     })
     return () => { active = false }
-  }, [workspace, input.api, publish])
+  }, [workspace.targetUri, input.api, publish, targetRevision])
 
   const openReference = useCallback((uri: string) => {
     if (parseResourceLink(uri)) return publish({ ...current.current, referenceUri: uri })
@@ -77,12 +95,13 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
   }, [openReference, publish])
 
   const openPanel = useCallback((panel: StudioPanelId, target: { cardId?: string; assetId?: string; search?: string } = {}) => {
-    if (panel === 'sessions') return publish({ ...current.current, tool: 'recent', toolSearch: 'historyTab=timelines' })
+    if (panel === 'sessions') return publish({ ...current.current, tool: 'recent', toolSearch: 'historyTab=timelines' }, false, true)
+    if (panel === 'text-transform') return publish({ ...current.current, tool: 'extensions', toolSearch: textTransformSearch(new URLSearchParams(target.search)) }, false, true)
     if (isStudioTool(panel)) return publish({ ...current.current, tool: panel,
-      toolSearch: target.search ?? (current.current.tool === panel ? current.current.toolSearch : useStudioLayoutStore.getState().panelPositions[JSON.stringify([input.endpoint, current.current.cardId, panel])]?.search) })
+      toolSearch: target.search ?? (current.current.tool === panel ? current.current.toolSearch : useStudioLayoutStore.getState().panelPositions[JSON.stringify([input.endpoint, current.current.cardId, 'tool', panel])]?.search) }, false, true)
     if (panel === 'preset') panel = 'agent'
     const previous = current.current
-    const remembered = useStudioLayoutStore.getState().panelPositions[JSON.stringify([input.endpoint, target.cardId ?? previous.cardId, panel])]
+    const remembered = useStudioLayoutStore.getState().panelPositions[JSON.stringify([input.endpoint, target.cardId ?? previous.cardId, 'panel', panel])]
     const restore = target.cardId === undefined && target.assetId === undefined ? remembered : undefined
     return publish({
       ...previous, panel, tool: undefined, toolSearch: undefined, extensionWorkspace: undefined, ...target, targetUri: undefined, referenceUri: undefined,
@@ -97,22 +116,28 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
   }), [publish])
   const returnToReading = useCallback(() => publish({
     ...current.current, panel: null, tool: undefined, toolSearch: undefined,
+    timelineId: settledReading.current.timelineId, branchId: settledReading.current.branchId, previewCardId: settledReading.current.previewCardId,
     extensionWorkspace: undefined, resourceId: undefined, assetId: undefined,
     referenceUri: undefined, targetUri: undefined, search: '',
   }), [publish])
-  const closeTool = useCallback(() => publish({ ...current.current, tool: undefined, toolSearch: undefined }, true), [publish])
+  const closeTool = useCallback(() => publish({ ...current.current, tool: undefined, toolSearch: undefined }, true, true), [publish])
   const togglePanel = useCallback((panel: StudioPanelId) => {
     if (isStudioTool(panel)) return current.current.tool === panel ? closeTool() : openPanel(panel)
     if (current.current.panel === panel) return closePanel()
     return openPanel(panel)
   }, [closePanel, closeTool, openPanel])
 
+  const openUri = (uri: string, replace = false) => {
+    setTargetRevision(value => value + 1)
+    return publish({ ...current.current, tool: undefined, toolSearch: undefined, targetUri: uri, referenceUri: undefined }, replace)
+  }
+
   return {
-    closePanel, togglePanel, openPanel, returnToReading,
+    closePanel, togglePanel, openPanel, returnToReading, beginTargetNavigation,
     closeTool,
     openStoryExtensions: () => publish({
       ...current.current, tool: 'extensions', toolSearch: 'extensionView=participation',
-    }),
+    }, false, true),
     openExtensionWorkspace: () => publish({
       ...current.current, panel: 'extensions', extensionWorkspace: true, tool: undefined, toolSearch: undefined,
       resourceId: undefined, assetId: undefined, search: '', referenceUri: undefined, targetUri: undefined,
@@ -130,8 +155,8 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
       if (target.branchId) search.set('memoryBranch', target.branchId)
       return publish({ ...current.current, panel: 'memory', search: search.toString(), targetUri: undefined, referenceUri: undefined })
     },
-    goBack: () => navigate(-1),
-    goForward: () => navigate(1),
+    goBack: () => { targetRequest.current++; return navigate(-1) },
+    goForward: () => { targetRequest.current++; return navigate(1) },
     locationKey: location.key,
     historyAction,
     isCurrent: () => current.current === workspace,
@@ -141,20 +166,16 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
     referenceUri: workspace.referenceUri,
     openReference,
     closeReference: () => publish({ ...current.current, referenceUri: undefined }, true),
-    openUri: (uri: string, replace = false) => publish({ ...current.current, tool: undefined, toolSearch: undefined, targetUri: uri, referenceUri: undefined }, replace),
+    openUri,
     openPath: (path: string) => {
       const url = new URL(path, globalThis.location.origin)
-      const routePanel = readStudioRoute(url.pathname).panel
-      const panel = routePanel === 'sessions' ? 'recent' : routePanel
-      if (routePanel === 'play' && url.searchParams.has('sessionId')) {
-        url.searchParams.set('historyTab', 'sessions')
-        return publish({ ...current.current, tool: 'recent', toolSearch: url.searchParams.toString() })
-      }
+      const panel = readStudioRoute(url.pathname).panel
+      if (panel === 'text-transform') return openPanel(panel, { search: url.searchParams.toString() })
       if (isStudioTool(panel)) return publish({ ...current.current, tool: panel,
-        toolSearch: url.searchParams.size ? url.searchParams.toString() : undefined })
+        toolSearch: url.searchParams.size ? url.searchParams.toString() : undefined }, false, true)
       const target = url.searchParams.get('target')
       return target
-        ? publish({ ...current.current, targetUri: target, referenceUri: undefined })
+        ? openUri(target)
         : publish({ ...current.current, ...readStudioRoute(url.pathname), tool: undefined, toolSearch: undefined, extensionWorkspace: undefined, search: url.searchParams.toString(), referenceUri: undefined })
     },
     openNarrative: (timelineId?: string, branchId?: string, replace = false) => publish({
@@ -162,20 +183,30 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
       nodeId: undefined, targetUri: undefined, referenceUri: undefined,
     }, replace),
     openCardPreview: (cardId: string) => publish({
-      ...current.current, tool: undefined, toolSearch: undefined, cardId, timelineId: undefined, branchId: undefined,
+      ...current.current, tool: undefined, toolSearch: undefined, previewCardId: cardId, timelineId: undefined, branchId: undefined,
       nodeId: undefined, targetUri: undefined, referenceUri: undefined,
     }),
-    updateNarrativeContext: (timelineId: string, branchId: string, cardId?: string) => publish({
-      ...current.current, timelineId, branchId, cardId: cardId ?? current.current.cardId,
-    }, true),
-    clearDeletedCard: (cardId: string, deletedTimelineIds: readonly string[]) => {
-      if (current.current !== workspace) return
-      const deletedTimeline = Boolean(current.current.timelineId && deletedTimelineIds.includes(current.current.timelineId))
-      return publish({
-        ...current.current,
-        cardId: current.current.cardId === cardId ? undefined : current.current.cardId,
+    isNarrativeCurrent: () => current.current.timelineId === workspace.timelineId && current.current.branchId === workspace.branchId && current.current.previewCardId === workspace.previewCardId && current.current.targetUri === workspace.targetUri,
+    updateNarrativeContext: (timelineId: string, branchId: string) => {
+      settledReading.current = { endpoint: input.endpoint, timelineId, branchId, previewCardId: current.current.previewCardId }
+      if (current.current.timelineId === timelineId && current.current.branchId === branchId) return
+      return publish({ ...current.current, timelineId, branchId }, true, true)
+    },
+    acceptPreview: (previewCardId?: string) => {
+      settledReading.current = { endpoint: input.endpoint, previewCardId }
+    },
+    clearDeletedCards: (cardIds: readonly string[], deletedTimelineIds: readonly string[]) => {
+      const latest = current.current
+      const deletedTimeline = Boolean(latest.timelineId && deletedTimelineIds.includes(latest.timelineId))
+      const deletedCard = Boolean(latest.cardId && cardIds.includes(latest.cardId))
+      const deletedPreview = Boolean(latest.previewCardId && cardIds.includes(latest.previewCardId))
+      if (settledReading.current.timelineId && deletedTimelineIds.includes(settledReading.current.timelineId)) settledReading.current = { endpoint: input.endpoint }
+      if (settledReading.current.previewCardId && cardIds.includes(settledReading.current.previewCardId)) settledReading.current.previewCardId = undefined
+      if (!deletedTimeline && !deletedCard && !deletedPreview) return
+      return publish({ ...latest,
+        ...(deletedCard ? { cardId: undefined } : {}),
+        ...(deletedPreview ? { previewCardId: undefined } : {}),
         ...(deletedTimeline ? { timelineId: undefined, branchId: undefined, nodeId: undefined } : {}),
-        panel: null, targetUri: undefined, referenceUri: undefined, resourceId: undefined, assetId: undefined, search: '',
       }, true)
     },
     clearDeletedTimeline: (timelineId: string, cardId?: string) => {
@@ -183,17 +214,8 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
       return publish({
         ...current.current, panel: null, timelineId: undefined, branchId: undefined, nodeId: undefined,
         resourceId: undefined, assetId: undefined, targetUri: undefined, referenceUri: undefined, search: '',
-        cardId: cardId ?? current.current.cardId,
+        previewCardId: cardId ?? current.current.previewCardId,
       }, true)
-    },
-    selectCard: async (cardId: string, activate: () => Promise<{ timelineId: string; branchId: string } | null | undefined>) => {
-      const request = ++cardSelection.current
-      const before = current.current
-      const activated = await activate()
-      if (activated === undefined || request !== cardSelection.current || before !== current.current) return
-      return publish({
-        ...before, cardId, timelineId: activated?.timelineId, branchId: activated?.branchId, nodeId: undefined,
-      })
     },
     clearResourceTarget: (resourceId?: string) => {
       const latest = current.current
@@ -203,13 +225,13 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
         referenceUri: undefined, targetUri: undefined,
       }, true)
     },
-    openResource: (panel: 'resource' | 'preset' | 'agent', resourceId: string, nodeId: string, replace = false) => publish({
-      ...current.current, panel: panel === 'preset' ? 'agent' : panel, tool: undefined, toolSearch: undefined, extensionWorkspace: undefined, resourceId, assetId: nodeId, referenceUri: undefined, targetUri: undefined,
+    openResource: (panel: 'resource' | 'preset' | 'agent', resourceId: string, nodeId: string, replace = false, preserveTool = false) => publish({
+      ...current.current, panel: panel === 'preset' ? 'agent' : panel, tool: preserveTool ? current.current.tool : undefined, toolSearch: preserveTool ? current.current.toolSearch : undefined, extensionWorkspace: undefined, resourceId, assetId: nodeId, referenceUri: undefined, targetUri: undefined,
     }, replace),
     searchQuery: new URLSearchParams(workspace.search).get('q') ?? '',
     searchParams: new URLSearchParams(workspace.search),
     toolSearchParams: new URLSearchParams(workspace.toolSearch),
-    setToolSearchParams: (params: URLSearchParams) => publish({ ...current.current, toolSearch: params.toString() }, true),
+    setToolSearchParams: (params: URLSearchParams) => publish({ ...current.current, toolSearch: params.toString() }, true, true),
     setSearchParams: (params: URLSearchParams) => publish({ ...current.current, search: params.toString() }, true),
     setSearchQuery: (value: string) => {
       const params = new URLSearchParams(current.current.search)

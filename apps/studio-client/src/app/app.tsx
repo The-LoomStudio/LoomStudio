@@ -63,12 +63,13 @@ import '../styles/global.css'
 import { isProviderOperationError } from '../shared/notifications/provider-error.js'
 import { useAppearanceStore } from '../shared/studio-shell/appearance-store.js'
 import { formatEntityReference, type GlobalSearchHit } from '@loom-studio/shared'
-import { useGlobalSearch } from '../features/global-search/model/use-global-search.js'
-import { GlobalSearchDialog } from '../widgets/global-search/global-search-dialog.js'
+import { useGlobalSearchStore } from '../features/global-search/model/global-search-store.js'
+import { GlobalSearchOverlay } from '../features/global-search/ui/global-search-overlay.js'
 import { findNodeById } from '../shared/ui/file-tree/file-tree-model.js'
 import { applyEffectiveMotion, initializeMotionPreference, useEffectiveMotion } from '../shared/hooks/use-motion-preference.js'
 import { useThemeRuntime } from '../features/themes/model/use-theme-runtime.js'
 import { createAppearanceCss } from '../features/themes/model/appearance-parameters.js'
+import { useStudioAutofocus } from '../shared/studio-shell/use-studio-autofocus.js'
 
 const ResourceReferenceDialog = lazy(async () => ({ default: (await import('../features/resource-references/resource-reference-dialog.js')).ResourceReferenceDialog }))
 const StudioDashboard = lazy(async () => ({ default: (await import('./studio-dashboard.js')).StudioDashboard }))
@@ -87,6 +88,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const narrativeInputRef = useRef<HTMLTextAreaElement>(null)
   const appearance = useAppearanceStore()
   const state = useStudioState(props.transportLogger)
+  const latestState = useRef(state)
+  latestState.current = state
   const userBackgrounds = useUserBackgrounds(state.api.userBackgrounds, state.endpoint, state.t)
   const [onboardingComplete, setOnboardingComplete] = useState(readOnboardingComplete)
   const [summaryCoverage, setSummaryCoverage] = useState<{ sessionId: string; coverage?: SummaryCoverage }>()
@@ -106,7 +109,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     notify[input.level ?? 'info'](input.message, { description: '扩展通知', details: `来源：${owner}`, duration: 4000 })
   }), [])
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs, notify: notifications.show })
-  const extensionCardContext = useExtensionCardContext(state.api, appearanceCardId, state.selectedCardDetails, `${clientExtensions.refreshSequence}:${state.cards.find(card => card.id === appearanceCardId)?.version ?? ''}`)
+  const extensionCardContext = useExtensionCardContext(state.api, appearanceCardId, state.selectedCardDetails, `${clientExtensions.refreshSequence}:${state.cards.find(card => card.id === appearanceCardId)?.version ?? ''}`, state.readCardDetails)
   const themeController = useThemeRuntime({ packages: clientExtensions.packages, ready: clientExtensions.refreshSequence > 0 || !!clientExtensions.error, authorize: clientExtensions.enable })
   const reportedExtensionError = useRef<string | undefined>(undefined)
   const extensionConnectionError = clientExtensions.connectionError?.message
@@ -157,6 +160,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation({ endpoint: state.endpoint, api: state.api })
   const [overlaysReady, setOverlaysReady] = useState(false)
+  useStudioAutofocus(overlaysReady, narrativeInputRef, appearance.focusComposerOnStartup)
   const onStartupDismissed = useCallback(() => setOverlaysReady(true), [])
   const [referenceVisited, setReferenceVisited] = useState(false)
   useEffect(() => {
@@ -177,19 +181,20 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     window.addEventListener('keydown', onSearchShortcut)
     return () => window.removeEventListener('keydown', onSearchShortcut)
   }, [searchOpen])
-  async function openSearchResult(hit: GlobalSearchHit) {
+  async function openSearchResult(hit: GlobalSearchHit, query: string) {
     setSearchOpen(false)
     const target = hit.target
+    const isCurrent = navigation.beginTargetNavigation()
     try {
       if (target.type === 'card') await navigation.openUri(formatEntityReference({ kind: 'entity', type: 'card', id: target.cardId }))
       else if (target.type === 'resource') {
         const resource = await state.refreshPromptResource(target.resourceId)
-        if (!navigation.isCurrent()) return
+        if (!isCurrent()) return
         if (!resource || !findNodeById([resource.rootNode], target.nodeId)) throw new Error(state.t('navigation.targetUnavailable'))
         if (target.resourceKind === 'preset') uiState.setSelectedPresetId(target.resourceId)
-        setSearchMatch(previous => ({ resourceId: target.resourceId, nodeId: target.nodeId, query: globalSearch.query, requestId: (previous?.requestId ?? 0) + 1 }))
-        await navigation.setSearchQuery('')
-        await navigation.openResource(target.resourceKind === 'preset' ? 'preset' : 'resource', target.resourceId, target.nodeId)
+        setSearchMatch(previous => ({ resourceId: target.resourceId, nodeId: target.nodeId, query, requestId: (previous?.requestId ?? 0) + 1 }))
+        navigation.setSearchQuery('')
+        await navigation.openResource(target.resourceKind === 'preset' ? 'preset' : 'resource', target.resourceId, target.nodeId, false, true)
       } else if (target.type === 'timeline') await navigation.openNarrative(target.timelineId)
       else await openAgentSession(target.sessionId)
       setRecentSearch(current => ({ endpoint: state.endpoint, items: [hit, ...(current.endpoint === state.endpoint ? current.items : []).filter(item => item.id !== hit.id)].slice(0, 8) }))
@@ -198,13 +203,15 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     }
   }
   async function openAgentSession(sessionId: string) {
-    const activated = await state.activateAgentSession(sessionId, navigation.isCurrent)
-    if (!activated || !navigation.isCurrent()) return
+    const isCurrent = navigation.beginTargetNavigation()
+    const activated = await state.activateAgentSession(sessionId, isCurrent)
+    if (!activated || !isCurrent()) return
+    const closeSourceTool = navigation.route.tool && navigation.isCurrent()
+    if (closeSourceTool) void navigation.closeTool()
     if (activated.session.timelineId) {
       void navigation.updateNarrativeContext(activated.session.timelineId, activated.branchId ?? '')
     }
     uiState.setAgentPanelOpen(true)
-    if (navigation.route.tool) void navigation.closeTool()
   }
   function onTextTransformsChanged() {
     uiState.bumpLoomScriptRefreshToken()
@@ -212,7 +219,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   }
   const [navigationRetry, setNavigationRetry] = useState(0)
   const [navigationFailure, setNavigationFailure] = useState<{ target: string; message: string }>()
-  const narrativeTarget = JSON.stringify([state.endpoint, navigation.route.timelineId, navigation.route.branchId])
+  const narrativeTarget = JSON.stringify([state.endpoint, navigation.route.timelineId, navigation.route.branchId, navigation.route.previewCardId])
   const uiScale = useStudioLayoutStore(current => current.uiScale)
   const uiScaleOverridden = useStudioLayoutStore(current => current.uiScaleOverridden)
   useEffect(() => {
@@ -225,11 +232,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const setUiScale = useStudioLayoutStore(current => current.setUiScale)
   const composerPinned = useStudioLayoutStore(current => current.composerPinned)
   const toggleComposerPinned = useStudioLayoutStore(current => current.toggleComposerPinned)
-  const derived = useStudioDerivedState(state, navigation.route)
+  const derived = useStudioDerivedState(state)
   const { assetWorkspaceId, cardsBusy, providerBusy, agentPresetBusy, activePresetId,
     sourceCardId, canOpenTimelineSource,
     sessionBusy, agentChatBusy, mutationBusy } = derived
-  const globalSearch = useGlobalSearch({ api: state.api, endpoint: state.endpoint, open: searchOpen, t: state.t, currentCardId: appearanceCardId, currentPresetId: activePresetId })
+  const globalSearchQuery = useGlobalSearchStore(store => store.byEndpoint[state.endpoint]?.query ?? '')
   const contextWorkspaceId = JSON.stringify([state.endpoint, assetWorkspaceId])
   function inspectDisplayRules(diagnostics: NonNullable<ReturnType<typeof useDisplayProjection>>['diagnostics']) {
     const presetId = diagnostics?.find(item => item.presetId)?.presetId
@@ -247,11 +254,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       : undefined,
     refreshToken: uiState.loomScriptRefreshToken,
   })
-  const narrativeStreamingEntries = useMemo(() => projectTimelineRounds(state.narrativeWorkEntries,
-    state.narrativeNodes, '', state.narrativeActiveRun, state.narrativeAgentSession?.narrativeMode)
+  const narrativePresetName = state.agentPresets.find(preset => preset.id === state.narrativeAgentSession?.agentPresetId)?.rootNode.label ?? '尚未选择预设'
+  const narrativeRounds = useMemo(() => projectTimelineRounds(state.narrativeWorkEntries,
+    state.narrativeNodes, narrativePresetName, state.narrativeActiveRun),
+  [state.narrativeWorkEntries, state.narrativeNodes, narrativePresetName, state.narrativeActiveRun])
+  const narrativeStreamingEntries = useMemo(() => narrativeRounds
     .flatMap(round => round.execution.steps.flatMap(step => step.kind === 'narrative' && step.state === 'running'
       ? [{ id: step.id, text: step.content, role: 'assistant' as const, streaming: true }] : [])),
-  [state.narrativeWorkEntries, state.narrativeNodes, state.narrativeActiveRun, state.narrativeAgentSession?.narrativeMode])
+  [narrativeRounds])
   const narrativeDisplay = useDisplayProjection({
     onInspect: inspectDisplayRules,
     api: state.textTransformsApi,
@@ -259,6 +269,16 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     source: state.narrativeTimeline && state.branch ? { kind: 'narrative', timelineId: state.narrativeTimeline.id, branchId: state.branch.id } : undefined,
     consumerAgentSessionId: state.narrativeAgentSession?.id,
     entries: [...state.narrativeNodes.map(node => ({ id: node.id, text: node.body.raw })), ...narrativeStreamingEntries],
+    revision: activePresetId,
+    refreshToken: uiState.loomScriptRefreshToken,
+  })
+  const communicationDisplay = useDisplayProjection({
+    onInspect: inspectDisplayRules,
+    api: state.textTransformsApi,
+    endpoint: state.endpoint,
+    source: state.narrativeAgentSession ? { kind: 'agent-session', sessionId: state.narrativeAgentSession.id } : undefined,
+    entries: state.narrativeWorkEntries.flatMap(message => message.entry.kind === 'message' && typeof message.entry.content === 'string'
+      ? [{ id: message.id, text: message.entry.content, role: message.entry.role, streaming: isTransientAgentEntryId(message.id) || message.entry.state === 'partial' }] : []),
     revision: activePresetId,
     refreshToken: uiState.loomScriptRefreshToken,
   })
@@ -277,9 +297,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const narrativeNavigating = navigation.targetPending
     || navigation.route.timelineId !== state.narrativeTimeline?.id
     || Boolean(navigation.route.branchId && navigation.route.branchId !== state.branch?.id)
+    || Boolean(!navigation.route.timelineId && navigation.route.previewCardId
+      && (state.selectedCardId !== navigation.route.previewCardId || state.selectedCardDetails?.id !== navigation.route.previewCardId))
   const visitedCardId = onboardingComplete && !narrativeNavigating && !navigation.route.panel && !navigation.route.targetUri
     ? state.narrativeTimeline?.createdFrom?.cardId
-      ?? (navigation.route.cardId === state.selectedCardDetails?.id ? navigation.route.cardId : undefined)
+      ?? (navigation.route.previewCardId === state.selectedCardDetails?.id ? navigation.route.previewCardId : undefined)
     : undefined
   const recentCharacters = useRecentCharacters(state.endpoint, visitedCardId,
     visitedCardId ? state.narrativeTimeline?.id : undefined,
@@ -368,7 +390,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
 
   function focusHistoryAsset(target: Awaited<ReturnType<typeof state.undoEdit>>) {
     if (!target) return
-    useStudioLayoutStore.getState().openAssetDetail(target.layoutId, assetWorkspaceId, target.assetId)
+    useStudioLayoutStore.getState().openAssetDetail(target.layoutId, contextWorkspaceId, target.assetId)
   }
 
   async function applyHistoryAction(action: typeof state.undoEdit) {
@@ -476,24 +498,57 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     if (navigation.route.targetUri !== undefined) return
     setNavigationFailure(undefined)
     const requestId = ++timelineRouteRequestRef.current
+    const isCurrent = () => requestId === timelineRouteRequestRef.current && navigation.isNarrativeCurrent()
     if (!navigation.route.timelineId) {
-      if (state.narrativeTimeline) state.resetToDraftTimeline()
-      return
+      state.resetToDraftTimeline()
+      const previewCardId = navigation.route.previewCardId
+      if (previewCardId && state.startup.ready('cards')) {
+        if (!state.cards.some(card => card.id === previewCardId)) {
+          setNavigationFailure({ target: narrativeTarget, message: state.t('navigation.targetUnavailable') })
+        } else {
+          state.setSelectedCardId(previewCardId)
+          navigation.acceptPreview(previewCardId)
+        }
+      } else if (!previewCardId) navigation.acceptPreview()
+      return () => { timelineRouteRequestRef.current++ }
     }
-    if (state.agentChatSessionReady && navigation.route.timelineId === state.narrativeTimeline?.id && (!navigation.route.branchId || navigation.route.branchId === state.branch?.id)) return
-
-    void state.activateTimeline(navigation.route.timelineId, navigation.route.branchId).then(branchId => {
-      if (requestId !== timelineRouteRequestRef.current) return
+    if (state.agentChatSessionReady && navigation.route.timelineId === state.narrativeTimeline?.id && (!navigation.route.branchId || navigation.route.branchId === state.branch?.id)) {
+      navigation.updateNarrativeContext(state.narrativeTimeline.id, state.branch!.id)
+      return () => { timelineRouteRequestRef.current++ }
+    }
+    void state.activateTimeline(navigation.route.timelineId, navigation.route.branchId, isCurrent).then(branchId => {
+      if (!isCurrent()) return
       if (!branchId) setNavigationFailure({ target: narrativeTarget, message: state.t('navigation.targetUnavailable') })
-      else if (branchId !== navigation.route.branchId) navigation.updateNarrativeContext(navigation.route.timelineId!, branchId)
+      else navigation.updateNarrativeContext(navigation.route.timelineId!, branchId)
     })
     return () => { timelineRouteRequestRef.current++ }
-  }, [narrativeTarget, navigation.route.targetUri, navigationRetry])
+  }, [narrativeTarget, navigation.route.targetUri, navigationRetry, state.startup.ready('cards')])
+
+  async function deleteCards(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }) {
+    const source = state.api
+    let committed = false
+    try {
+      await state.deleteCards(cardIds, options, deletedCardIds => {
+        committed = true
+        const latest = latestState.current
+        if (source !== latest.api) return
+        const timelines = [...latest.allTimelines, ...latest.cardTimelines, ...(latest.narrativeTimeline ? [latest.narrativeTimeline] : [])]
+        const deletedTimelineIds = options?.includePlayData
+          ? timelines.filter(timeline => timeline.createdFrom?.cardId && deletedCardIds.includes(timeline.createdFrom.cardId)).map(timeline => timeline.id)
+          : []
+        if (latest.narrativeTimeline && deletedTimelineIds.includes(latest.narrativeTimeline.id)) latest.resetToDraftTimeline()
+        navigation.clearDeletedCards(deletedCardIds, deletedTimelineIds)
+      })
+    } finally {
+      if (committed && source === latestState.current.api) await latestState.current.refreshAllTimelines()
+    }
+  }
+
   const resourcePanels = StudioResourcePanels({ state, currentCard: extensionCardContext.card, uiState, navigation, assetWorkspaceId,
-    globalSearchQuery: globalSearch.query,
-    searchMatch: !globalSearch.query.trim() ? undefined : searchMatch?.query === globalSearch.query ? searchMatch
-      : navigation.route.resourceId && navigation.route.assetId ? { resourceId: navigation.route.resourceId, nodeId: navigation.route.assetId, query: globalSearch.query, requestId: 0 } : undefined })
-  const panels = createStudioPanels({ state, recentCharacters, openRecentCharacter, extensionCardContext, uiState, navigation, rendererHost, clientExtensions, themeController, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentPresetBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, openAgentSession, onTextTransformsChanged, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds(), userBackgrounds })
+    globalSearchQuery,
+    searchMatch: !globalSearchQuery.trim() ? undefined : searchMatch?.query === globalSearchQuery ? searchMatch
+      : navigation.route.resourceId && navigation.route.assetId ? { resourceId: navigation.route.resourceId, nodeId: navigation.route.assetId, query: globalSearchQuery, requestId: 0 } : undefined })
+  const panels = createStudioPanels({ state, onDeleteCards: deleteCards, recentCharacters, openRecentCharacter, extensionCardContext, uiState, navigation, rendererHost, clientExtensions, themeController, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentPresetBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, openAgentSession, onTextTransformsChanged, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds(), userBackgrounds })
 
   const studio = (
     <StudioPage
@@ -512,10 +567,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       headerActions={headerActions}
       onOpenDashboard={() => { setDashboardVisited(true); setDashboardOpen(true) }}
       onOpenSearch={() => setSearchOpen(true)}
-      searchQuery={globalSearch.query.trim()}
+      searchQuery={globalSearchQuery.trim()}
       onClearSearch={() => {
-        globalSearch.showResults()
-        globalSearch.setInputValue('')
+        const { dispatch } = useGlobalSearchStore.getState()
+        dispatch(state.endpoint, { type: 'mode', mode: 'results' })
+        dispatch(state.endpoint, { type: 'input', value: '' })
         setSearchMatch(undefined)
       }}
       modelConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
@@ -587,7 +643,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       canUndo={state.canUndoEdit}
       characterControl={appearanceCardId ? <StudioTimelineActions
         key={JSON.stringify([state.endpoint, appearanceCardId, state.narrativeTimeline?.id])}
-        state={state} navigation={navigation} cardId={appearanceCardId}
+        state={state} navigation={navigation} cardId={appearanceCardId} onDeleteCards={deleteCards}
         busy={sessionBusy || cardsBusy || mutationBusy || narrativeNavigating || Boolean(state.runRecovery)
           || state.agentActiveRun?.status === 'running' || state.agentActiveRun?.status === 'suspended'} /> : undefined}
       onRedo={() => { void applyHistoryAction(state.redoEdit) }}
@@ -649,18 +705,20 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
           <SelectionToolbar key={JSON.stringify(['selection-toolbar', state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}
             containerRef={narrativeSelectionRef} inputRef={narrativeInputRef} t={state.t}
             onQuote={text => state.setInput(appendQuote(state.input, text))} />
-          <ContentErrorBoundary resetKey={state.branch?.id} fallback={error => <p role="alert">{error.message}</p>}><NarrativeTimeline actionsHost={timelineActionsHost} scrollRestorationScope={JSON.stringify([state.endpoint, state.narrativeTimeline?.id, state.branch?.id])} narrativeMode={state.narrativeAgentSession?.narrativeMode}
+          <ContentErrorBoundary resetKey={state.branch?.id} fallback={error => <p role="alert">{error.message}</p>}><NarrativeTimeline actionsHost={timelineActionsHost} scrollRestorationScope={JSON.stringify([state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}
             inputMode={state.narrativeInputMode}
             onSendDiscussion={state.sendDiscussionInput}
             onDiscuss={() => { state.setNarrativeInputMode('discussion'); narrativeInputRef.current?.focus() }}
             onReviseDiscussionInput={state.narrativeTimeline ? (entryId, expected, originalAttachments, content, attachments) => state.reviseUserInput(state.narrativeTimeline!.id, entryId, expected, originalAttachments, content, attachments) : undefined}
             onRetryDiscussionInput={state.retryDiscussionInput}
             onContinueRun={state.resumeNarrativeRun}
+            connecting={state.narrativeConnecting}
             workEntries={state.narrativeWorkEntries}
             activeRun={state.narrativeActiveRun}
-            presetName={state.agentPresets.find(preset => preset.id === state.narrativeAgentSession?.agentPresetId)?.rootNode.label}
+            rounds={narrativeRounds}
             userIdentity={state.userIdentity}
             displayProjection={narrativeDisplay}
+            communicationDisplay={communicationDisplay}
             displayOnlyNodeId={state.displayOnlyNarrativeNodeId}
             key={JSON.stringify(['narrative-timeline', state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}
             anchorNodeId={navigation.nodeAnchorId}
@@ -694,7 +752,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
                 onApply={state.narrativeTimeline ? () => { void state.replaceOpening() } : undefined}
                 disabled={sessionBusy || narrativeNavigating} t={state.t} />
               : undefined}
-            onStartStory={!state.narrativeTimeline && state.selectedCardDetails?.id === state.selectedCardId
+            onStartStory={!narrativeNavigating && !state.narrativeTimeline && state.selectedCardDetails?.id === state.selectedCardId
               ? () => {
                 const isCurrent = navigation.isCurrent
                 void state.createTimelineFromCard().then(activated => {
@@ -814,12 +872,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         onInstalled={async () => {
           await Promise.all([clientExtensions.refresh(), state.refreshResourceConsumers()])
         }} />
-      {navigation.targetError || navigationFailure?.target === narrativeTarget ? (
+      {(navigation.targetError || navigationFailure?.target === narrativeTarget) && !navigation.route.tool ? (
         <AppStatusPage eyebrow="LOOM STUDIO" title={state.t('pageError.title')} description={navigation.targetError ?? navigationFailure?.message ?? ""} actions={<>
           {navigationFailure?.target === narrativeTarget ? <button type="button" onClick={() => setNavigationRetry(value => value + 1)}>{state.t('appError.reload')}</button> : null}
           <button type="button" onClick={() => {
             setNavigationFailure(undefined)
-            void navigation.openNarrative()
+            void navigation.returnToReading()
           }}>{state.t('navigation.returnToWorkspace')}</button>
         </>} />
       ) : studio}
@@ -852,9 +910,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
           if (target) void navigation.openPanel(target)
         }} />
       </Suspense></ContentErrorBoundary> : null}
-      <GlobalSearchDialog open={searchOpen} search={globalSearch} recent={recentSearch.endpoint === state.endpoint ? recentSearch.items : []} t={state.t}
+      <GlobalSearchOverlay key={state.endpoint} api={state.api} endpoint={state.endpoint} open={searchOpen} t={state.t}
+        currentCardId={appearanceCardId} currentPresetId={activePresetId}
+        recent={recentSearch.endpoint === state.endpoint ? recentSearch.items : []}
         onClose={() => setSearchOpen(false)} onOpenPanel={panel => { setSearchOpen(false); void navigation.openPanel(panel) }}
-        onOpenResult={hit => { void openSearchResult(hit) }} />
+        onOpenResult={(hit, query) => { void openSearchResult(hit, query) }} />
       <RendererFocusSurface host={rendererHost} scope={{ kind: 'workspace', key: 'workspace' }} />
       </>}
       <NotificationToaster label={state.t('notification.label')} />

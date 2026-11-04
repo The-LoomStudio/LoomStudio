@@ -64,14 +64,14 @@ export function createWorkspaceStore(options: { engine: SqliteDataEngine; create
   const { engine } = options
   const nextId = options.createId ?? createId
   const now = options.now ?? nowIso
-  engine.migrate({ namespace: 'application.workspace', migrations: [{ version: 1, migrate: db => db.exec(`
+  engine.initializeSchema({ namespace: 'application.workspace', version: 1, initialize: db => db.exec(`
     CREATE TABLE workspace_revisions (
       id TEXT PRIMARY KEY, timeline_id TEXT NOT NULL, parent_revision_id TEXT,
       entries_json TEXT NOT NULL, created_at TEXT NOT NULL,
       FOREIGN KEY(parent_revision_id) REFERENCES workspace_revisions(id)
     );
     CREATE INDEX workspace_revisions_timeline ON workspace_revisions(timeline_id);
-  `) }] })
+  `) })
   type RevisionRow = { id: string; timeline_id: string; parent_revision_id: string | null; entries_json: string; created_at: string }
   const fromRow = (row: RevisionRow): WorkspaceRevision => ({
     id: row.id, timelineId: row.timeline_id, parentRevisionId: row.parent_revision_id ?? undefined,

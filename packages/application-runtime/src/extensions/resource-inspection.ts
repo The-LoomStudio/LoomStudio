@@ -1,4 +1,4 @@
-import { listScriptTextTransformRules } from '../scripts/loom-script-text-migration.js'
+import { listScriptTextTransformRules } from '../scripts/script-text-resources.js'
 import { isRecord, type JsonObject } from '@loom-studio/shared'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'

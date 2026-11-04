@@ -47,7 +47,7 @@ describe('studio server Agent Turn RPC', () => {
         resourceKind: 'lore',
         name: 'Guide Knowledge',
       })
-      const updatedPreset = await callRpc<{ mounts: Array<{ loreResourceId: string }> }>(port, 'application.replaceLoreMounts', {
+      const updatedPreset = await callRpc<{ mounts: Array<{ loreResourceId: string }> }>(port, 'application.replaceLoreMounts', { expectedMountIds: (await callRpc<{ mounts: Array<{ id: string }> }>(port, 'application.listLoreMounts', { source: { kind: 'preset', id: preset.id } })).mounts.map(mount => mount.id),
         source: { kind: 'preset', id: preset.id },
         loreResourceIds: [setting.resource.id],
       })
@@ -75,7 +75,7 @@ describe('studio server Agent Turn RPC', () => {
       expect(profiles.agentPresets.map(item => item.id)).toContain(agentPreset.agentPreset.id)
 
       const card = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'External references' })
-      await callRpc(port, 'application.updateCardPromptResources', { cardId: card.card.id, promptResourceIds: [preset.id] })
+      await callRpc(port, 'application.updateCardPromptResources', { expectedVersion: (await callRpc<{ card: { version: number } }>(port, 'application.getCard', { cardId: card.card.id })).card.version, cardId: card.card.id, promptResourceIds: [preset.id] })
       const timeline = await callRpc<{ timeline: { id: string } }>(port, 'application.createNarrativeTimeline', { cardId: card.card.id })
       const cardBefore = await callRpc(port, 'application.getCard', { cardId: card.card.id })
       const timelineBefore = await callRpc(port, 'application.getNarrativeTimeline', { timelineId: timeline.timeline.id })

@@ -13,6 +13,8 @@ type UsePromptResourceCommandsInput = {
     changesetId: string
     anchor?: { documentId: string; subjectId?: string }
   }): void
+  loreMounts: LoreMount[]
+  presetToolMounts: PresetToolMount[]
   promptResources: PromptResource[]
   setPromptResources: (update: (current: PromptResource[]) => PromptResource[]) => void
   setLoreMounts: (update: (current: LoreMount[]) => LoreMount[]) => void
@@ -36,19 +38,11 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
   } = input
 
   async function updatePresetModel(config: Parameters<StudioApi['agentPresets']['update']>[0]) {
-    let committed: PromptResource | undefined
-    try {
-      return await runMutation(async () => {
-        const result = await api.agentPresets.update(config)
-        committed = result.agentPreset
-        setPromptResources(current => current.map(resource => resource.id === result.agentPreset.id && resource.version <= result.agentPreset.version ? result.agentPreset : resource))
-        return result.agentPreset
-      })
-    } catch (error) {
-      // The operation reporter surfaces refresh failures without retrying a committed write.
-      if (committed) return committed
-      throw error
-    }
+    return runMutation(async () => {
+      const result = await api.agentPresets.update(config)
+      setPromptResources(current => current.map(resource => resource.id === result.agentPreset.id && resource.version <= result.agentPreset.version ? result.agentPreset : resource))
+      return result.agentPreset
+    })
   }
 
   async function updatePresetMacros(resourceId: string, config: { expectedVersion: number; macros: Record<string, string>; macroOptions?: import('@loom-studio/shared').MacroOptions }) {
@@ -128,12 +122,13 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
     source: LoreMountSource,
     selections: string[] | Array<{ id: string } | { loreResourceId: string }>,
     mode: 'resourceIds' | 'mounts' = 'resourceIds',
+    expectedMountIds = input.loreMounts.filter(mount => mount.source.kind === source.kind && (mount.source.id ?? 'global') === (source.id ?? 'global')).map(mount => mount.id),
   ): Promise<void> {
     await runMutation(async () => {
       const result = await api.promptResources.replaceLoreMounts(
         mode === 'mounts'
-          ? { source, mounts: selections as Array<{ id: string } | { loreResourceId: string }> }
-          : { source, loreResourceIds: selections as string[] },
+          ? { source, expectedMountIds, mounts: selections as Array<{ id: string } | { loreResourceId: string }> }
+          : { source, expectedMountIds, loreResourceIds: selections as string[] },
       )
       setLoreMounts(current => [
         ...current.filter(mount => mount.source.kind !== source.kind || (source.kind === 'preset' ? mount.source.id !== source.id : mount.source.id !== (source.id ?? 'global'))),
@@ -143,9 +138,9 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
     })
   }
 
-  async function replacePresetToolMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void> {
+  async function replacePresetToolMounts(presetId: string, mounts: PresetToolMountInput[], expectedMountIds = input.presetToolMounts.filter(mount => mount.presetResourceId === presetId).map(mount => mount.id)): Promise<void> {
     await runMutation(async () => {
-      const result = await api.promptResources.replacePresetToolMounts({ presetId, mounts })
+      const result = await api.promptResources.replacePresetToolMounts({ presetId, mounts, expectedMountIds })
       setPresetToolMounts(current => [
         ...current.filter(mount => mount.presetResourceId !== presetId),
         ...result.mounts,

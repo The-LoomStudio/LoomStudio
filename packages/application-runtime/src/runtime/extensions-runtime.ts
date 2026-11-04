@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto'
 import { resolvePackageIcon, assertPackageDependencyRevisions, resolveDeclaredPackageDependencies } from '../extensions/package-dependency.js'
 import { resolveAgentToolReference, assertToolReferenceRevisions, assertToolDependencyConsumers, withToolDependencySnapshot, type ResolvedAgentToolReference } from '../extensions/tool-reference.js'
 import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
 import type { DocumentRecord, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
 import { isDeepStrictEqual } from 'node:util'
+import { validateApplicationExtensionStorageScope } from '../extensions/storage-scope.js'
 import { parseExtensionInstallationSource } from '../extensions/installation-source.js'
-import type { SqliteDataTransaction } from '@loom-studio/data-engine'
 import type { JsonValue } from '@loom-studio/shared'
 import { extensionConfigDocumentId, extensionStorageTokenPattern } from '@loom-studio/extension-sdk'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
@@ -24,15 +25,12 @@ import {
 import {
   isPromptResourceArtifact,
   normalizePortableExtensionPayloadArtifact,
-} from '../cards/workspace-codec.js'
-import type {
-  PortableExtensionPayloadArtifact,
-  PortableExtensionPayloadContent,
-  PromptResourceArtifact,
-} from '../cards/workspace-types.js'
+} from '../cards/card-bundle-codec.js'
+import type { PortableExtensionPayloadArtifact, PortableExtensionPayloadContent } from '../extensions/portable-payload-types.js'
+import type { PromptResourceArtifact } from '../prompt/prompt-resource-types.js'
 import { normalizeCardContent, toCardSource } from '../cards/card.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
-import { listScriptTextTransformRuleDocuments, prepareTextTransformScript, readPackagedTextRuleScript, writePreparedTextTransformScript } from '../scripts/loom-script-text-migration.js'
+import { listScriptTextTransformRuleDocuments, prepareTextTransformScript, readPackagedTextRuleScript, writePreparedTextTransformScript } from '../scripts/script-text-resources.js'
 import type { LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 import {
   listMappedResources,
@@ -54,6 +52,10 @@ import type {
   ExtensionStorageScope,
   GetPortableExtensionPayloadInput,
   GetPortableExtensionPayloadResult,
+  PreviewExtensionPackageResourcesInput,
+  PreviewExtensionPackageResourcesResult,
+  UninstallExtensionInstallationInput,
+  UninstallExtensionInstallationResult,
   ImportExtensionPackageResourcesInput,
   ImportExtensionPackageResourcesResult,
   ListPortableExtensionPayloadsInput,
@@ -79,7 +81,7 @@ import {
   listAgentToolEntries,
   refreshAgentToolRegistry,
   toAgentToolContent,
-} from './agents-runtime.js'
+} from '../agents/tool-catalog.js'
 
 type ExtensionsRuntimeContext = Pick<ApplicationRuntimeContext,
   'agentTools' | 'agents' | 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources' | 'validatePackageAsset'
@@ -307,6 +309,21 @@ export function createExtensionsRuntimeMethods(ctx: ExtensionsRuntimeContext) {
     importExtensionPackageResources: (input: ImportExtensionPackageResourcesInput, requestContext?: RuntimeRequestContext): Promise<ImportExtensionPackageResourcesResult> =>
       importExtensionPackageResourcesInternal(ctx, input, requestContext, requireDocumentParticipant(ctx)),
 
+    previewExtensionPackageResources: (input: PreviewExtensionPackageResourcesInput): Promise<PreviewExtensionPackageResourcesResult> =>
+      importExtensionPackageResourcesInternal(ctx, input, undefined, requireDocumentParticipant(ctx), true),
+
+    uninstallExtensionInstallation: async (input: UninstallExtensionInstallationInput, requestContext?: RuntimeRequestContext): Promise<UninstallExtensionInstallationResult> => {
+      assertNonEmpty(input.packageId, 'packageId')
+      const installationId = extensionInstallationId(input.packageId, input.target ?? { kind: 'global' })
+      const result = await withToolDependencySnapshot(ctx, async (mounts, assertFresh, resources) => executeDocumentMutation(ctx.documents, requestContext, 'application.uninstallExtensionInstallation', async documents => {
+        assertFresh()
+        await readDocument<ExtensionInstallationContent>(documents, installationId, applicationDocumentTypes.extensionInstallation)
+        await assertToolDependencyConsumers({ documents, mounts, resources, validatePackageAsset: ctx.validatePackageAsset, packageId: input.packageId, target: input.target ?? { kind: 'global' } })
+        await documents.delete({ id: installationId, expectedVersion: input.expectedInstallationVersion })
+      }))
+      return { packageId: input.packageId, installationId, uninstalled: true, resourcesRetained: true, mutation: result.mutation }
+    },
+
     removeExtensionPackageResources: (input: RemoveExtensionPackageResourcesInput, requestContext?: RuntimeRequestContext): Promise<RemoveExtensionPackageResourcesResult> =>
       removeExtensionPackageResourcesInternal(ctx, input, requestContext, requireDocumentParticipant(ctx)),
   }
@@ -425,42 +442,6 @@ function assertApplicationExtensionConfigOwner(packageId: string, document: Docu
   if (document.type !== applicationDocumentTypes.extensionConfig || document.meta.ownerExtensionId !== packageId
     || document.meta.ownerInstallationId !== applicationStorageOwnerId(packageId, target)) {
     throw new Error(`Extension Config is not owned by package ${packageId}: ${document.id}`)
-  }
-}
-
-async function validateApplicationExtensionStorageScope(
-  ctx: ExtensionsRuntimeContext,
-  scope: ExtensionStorageScope,
-  target?: ExtensionInstallationTarget,
-  dataTx?: SqliteDataTransaction,
-  documents: Pick<DocumentTransaction, 'get'> = ctx.documents,
-): Promise<void> {
-  if (target?.kind === 'card' && (scope.kind === 'global' || (scope.kind === 'card' && scope.cardId !== target.cardId))) throw new Error('Storage scope is outside this Card installation')
-  if (scope.kind === 'global') return
-  if (scope.kind === 'card') {
-    const card = await documents.get(scope.cardId)
-    if (!card || card.type !== applicationDocumentTypes.cardSource || card.meta.tombstone) throw new Error(`Card not found: ${scope.cardId}`)
-    return
-  }
-  if (scope.kind === 'timeline') {
-    const timeline = dataTx
-      ? ctx.narratives?.transaction(dataTx).getTimeline(scope.timelineId)
-      : await ctx.narratives?.getTimeline(scope.timelineId)
-    if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${scope.timelineId}`)
-    if (target?.kind === 'card' && timeline.createdFrom?.cardId !== target.cardId) throw new Error('Timeline is outside this Card installation')
-    return
-  }
-  const session = dataTx
-    ? ctx.agents?.transaction(dataTx).getSession(scope.agentSessionId)
-    : await ctx.agents?.getSession(scope.agentSessionId)
-  if (!session || session.deletedAt) throw new Error(`Agent Session not found: ${scope.agentSessionId}`)
-  if (target?.kind === 'card') {
-    const timeline = session.timelineId
-      ? dataTx
-        ? ctx.narratives?.transaction(dataTx).getTimeline(session.timelineId)
-        : await ctx.narratives?.getTimeline(session.timelineId)
-      : undefined
-    if (!timeline || timeline.deletedAt || timeline.createdFrom?.cardId !== target.cardId) throw new Error('Session is outside this Card installation')
   }
 }
 
@@ -636,15 +617,23 @@ function validateExtensionPromptNodeIds(packageId: string, node: PromptResourceA
   for (const child of node.children ?? []) validateExtensionPromptNodeIds(packageId, child, seen)
 }
 
+async function importExtensionPackageResourcesInternal(ctx: ExtensionsRuntimeContext, input: ImportExtensionPackageResourcesInput, requestContext: RuntimeRequestContext | undefined, documentParticipant: SqliteDocumentStore): Promise<ImportExtensionPackageResourcesResult>
+async function importExtensionPackageResourcesInternal(ctx: ExtensionsRuntimeContext, input: PreviewExtensionPackageResourcesInput, requestContext: undefined, documentParticipant: SqliteDocumentStore, preview: true): Promise<PreviewExtensionPackageResourcesResult>
 async function importExtensionPackageResourcesInternal(
   ctx: ExtensionsRuntimeContext,
   input: ImportExtensionPackageResourcesInput,
   requestContext: RuntimeRequestContext | undefined,
   documentParticipant: SqliteDocumentStore,
-): Promise<ImportExtensionPackageResourcesResult> {
+  preview = false,
+): Promise<ImportExtensionPackageResourcesResult | PreviewExtensionPackageResourcesResult> {
   assertNonEmpty(input.packageId, 'packageId')
   assertNonEmpty(input.packageVersion, 'packageVersion')
   const target = input.target ?? { kind: 'global' }
+  const previewSnapshot = input.update && (preview || input.update.expectedPreviewFingerprint)
+    ? await readExtensionPreviewSnapshot(ctx, input) : undefined
+  if (input.update?.expectedPreviewFingerprint && previewSnapshot?.fingerprint !== input.update.expectedPreviewFingerprint) {
+    throw new Error('Extension resources changed; preview the package update again')
+  }
   const dependencyChecks = await resolveDeclaredPackageDependencies({ packageId: input.packageId, target, dependencies: input.dependencies, documents: ctx.documents })
   let archiveBlobId: string | undefined
   if (target.kind === 'card') {
@@ -720,6 +709,9 @@ async function importExtensionPackageResourcesInternal(
   const storedScriptById = new Map(storedScripts.map(script => [script.id, script]))
   const storedScriptMounts = (await listDocumentsIncludingTombstones<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount))
     .filter(mount => owns(mount.content.origin))
+  const isInstallationScriptMount = (mount: LoomScriptMountContent) => target.kind === 'card'
+    ? mount.target.kind === 'card' && mount.target.cardId === target.cardId
+    : mount.target.kind === 'user'
   const storedScriptMountById = new Map(storedScriptMounts.map(mount => [mount.id, mount]))
   const desiredScriptMountIds = new Set<string>()
   const packageScriptMountId = (id: string) => localId(`${input.packageId}/script-adoption/${id}`)
@@ -960,6 +952,46 @@ async function importExtensionPackageResourcesInternal(
     }
   }
 
+  for (const mount of storedScriptMounts) {
+    if (isInstallationScriptMount(mount.content) && storedRules.some(rule => rule.scriptDocumentId === mount.content.scriptDocumentId
+      && rule.content.origin && transformRuleDrafts.has(rule.content.origin.contributionId))) desiredScriptMountIds.add(mount.id)
+  }
+  if (preview) {
+    if (!input.update || !previewSnapshot) throw new Error('Extension resource preview requires an explicit update')
+    const items: PreviewExtensionPackageResourcesResult['items'] = []
+    const addPlan = (kind: string, desired: Array<{ id: string; name?: string }>, existing: Array<{ id: string; contributionId: string; name?: string; deleted?: boolean }>) => {
+      for (const item of desired) {
+        const previous = existing.find(record => record.contributionId === item.id)
+        items.push({ kind, contributionId: item.id, ...(previous ? { resourceId: previous.id } : {}), name: item.name,
+          action: previous && !previous.deleted ? 'update' : 'add', localChanges: previous ? 'unknown' : 'none' })
+      }
+      for (const previous of existing) if (!previous.deleted && !desired.some(item => item.id === previous.contributionId)) {
+        items.push({ kind, contributionId: previous.contributionId, resourceId: previous.id, name: previous.name, action: 'remove', localChanges: 'unknown' })
+      }
+    }
+    for (const kind of new Set([...input.promptResources.map(item => item.contribution.resourceKind), ...existingPromptResources.filter(item => owns(item.origin)).map(item => item.resourceKind)])) {
+      addPlan(kind, input.promptResources.filter(item => item.contribution.resourceKind === kind).map(item => ({ id: item.contribution.id, name: promptArtifacts.get(item.contribution.id)?.rootNode.label })),
+        existingPromptResources.filter(item => owns(item.origin) && item.resourceKind === kind).map(item => ({ id: item.id, contributionId: item.origin?.kind === 'extension-package' ? item.origin.contributionId : item.id, name: item.rootNode.label, deleted: item.tombstoned })))
+    }
+    addPlan('agent-tool', input.agentTools.map(item => ({ id: item.contribution.id, name: agentToolDefinitions.get(item.contribution.id)?.name })), storedAgentTools.filter(item => owns(item.origin)).map(item => ({ id: item.id, contributionId: item.origin?.kind === 'extension-package' ? item.origin.contributionId : item.id, name: item.name })))
+    addPlan('text-transform-rule', input.transformRules.map(item => ({ id: item.contribution.id, name: transformRuleDrafts.get(item.contribution.id)?.name })), storedRules.filter(item => owns(item.content.origin)).map(item => ({ id: item.id, contributionId: item.content.origin!.contributionId, name: item.content.name, deleted: Boolean(item.meta.tombstone) })))
+    addPlan('text-extractor', input.textExtractors.map(item => ({ id: item.contribution.id, name: textExtractorDrafts.get(item.contribution.id)?.name })), storedExtractors.filter(item => owns(item.content.origin)).map(item => ({ id: item.id, contributionId: item.content.origin!.contributionId, name: item.content.name, deleted: Boolean(item.meta.tombstone) })))
+    addPlan('loom-script', scripts.map(item => ({ id: item.contribution.id })), storedScripts.filter(item => !storedRules.some(rule => rule.scriptDocumentId === item.id)).map(item => ({ id: item.id, contributionId: scripts.find(script => scriptDocumentId(script.contribution.id) === item.id)?.contribution.id ?? item.id, deleted: Boolean(item.meta.tombstone) })))
+    addPlan('loom-script-mount', [...desiredScriptMountIds].map(id => ({ id })), storedScriptMounts.map(item => ({ id: item.id, contributionId: item.id, deleted: Boolean(item.meta.tombstone) })))
+    for (const item of items) if (item.kind === 'loom-script-mount' && item.action === 'update' && storedRules.some(rule => storedScriptMountById.get(item.resourceId!)?.content.scriptDocumentId === rule.scriptDocumentId)) item.action = 'unchanged'
+    for (const rule of input.transformRules) {
+      const existing = storedRules.find(item => item.content.origin?.contributionId === rule.contribution.id && owns(item.content.origin))
+      if (!existing || !storedScriptMounts.some(mount => mount.content.scriptDocumentId === existing.scriptDocumentId && isInstallationScriptMount(mount.content) && !mount.meta.tombstone)) {
+        items.push({ kind: 'loom-script-mount', contributionId: rule.contribution.id, action: 'add', localChanges: 'none' })
+      }
+    }
+    for (const item of items) if (item.resourceId) item.references = previewSnapshot.references(item.resourceId)
+    return { packageId: input.packageId, installationId, packageVersion: input.packageVersion,
+      expectedInstallationVersion: input.update.expectedInstallationVersion, fingerprint: previewSnapshot.fingerprint, items,
+      warnings: ['Local changes are unknown: no reliable author baseline is stored.', 'Historical removed Scripts and Script mounts may use their stored resource ID as contributionId because author IDs are not retained.', 'Reference inspection matches stored resource IDs in Documents and Prompt resources; matches may include textual mentions, and running or external consumers are not exhaustive.', 'Existing declared resources are overwritten by the current update contract, including identical content.'] }
+  }
+  if (input.update?.expectedPreviewFingerprint && (await readExtensionPreviewSnapshot(ctx, input)).fingerprint !== input.update.expectedPreviewFingerprint) throw new Error('Extension resources changed; preview the package update again')
+
   if ((missingScripts.length > 0 || missingTransformRules.length > 0) && !ctx.blobs) throw new Error('Blob Store is required for extension Loom Scripts')
   const preparedTransformRules = await Promise.all(missingTransformRules.map(async item => {
     const contributionId = item.contribution.id
@@ -967,7 +999,7 @@ async function importExtensionPackageResourcesInternal(
     const existing = storedRules.find(rule => rule.id === ruleId)
     const rule = { ...transformRuleDrafts.get(contributionId)!, origin: origin(contributionId), createdAt: existing?.content.createdAt ?? timestamp, updatedAt: timestamp }
     const scriptId = existing?.scriptDocumentId ?? ctx.createId('loom-script')
-    const mountId = storedScriptMounts.find(mount => mount.content.scriptDocumentId === scriptId && mount.content.origin.legacyRuleId === ruleId)?.id ?? ctx.createId('loom-script-mount')
+    const mountId = storedScriptMounts.find(mount => mount.content.scriptDocumentId === scriptId && isInstallationScriptMount(mount.content))?.id ?? ctx.createId('loom-script-mount')
     const packaged = readPackagedTextRuleScript(item.artifact)
     const prepared = packaged ? { metadata: packaged.metadata,
       prepared: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(packaged.source), mediaType: loomScriptMediaType(packaged.fileName) }),
@@ -975,10 +1007,6 @@ async function importExtensionPackageResourcesInternal(
     return { ruleId, scriptId, mountId, rule, expectedVersion: existing?.version,
       ...prepared, ...(packaged ? { fileName: packaged.fileName, primaryContributionId: packaged.primaryContributionId, settings: packaged.settings, groupOrder: packaged.groupOrder } : {}) }
   }))
-  for (const mount of storedScriptMounts) {
-    if (mount.content.origin.legacyRuleId && storedRules.some(rule => rule.id === mount.content.origin.legacyRuleId
-      && rule.content.origin && transformRuleDrafts.has(rule.content.origin.contributionId))) desiredScriptMountIds.add(mount.id)
-  }
   const preparation = await Promise.allSettled(missingScripts.map(async item => ({
     id: item.contribution.id,
     blob: await ctx.blobs!.prepareWrite({ source: new TextEncoder().encode(item.source), mediaType: loomScriptMediaType(item.contribution.source) }),
@@ -995,6 +1023,7 @@ async function importExtensionPackageResourcesInternal(
     assertFresh()
     const resourceTx = ctx.promptResources.transaction(dataTx)
     return documentParticipant.participateTransaction(dataTx, async documents => {
+      if (input.update?.expectedPreviewFingerprint && (await readExtensionPreviewSnapshot({ ...ctx, documents, promptResources: { ...ctx.promptResources, listResources: async input => resourceTx.listResources(input) } }, input)).fingerprint !== input.update.expectedPreviewFingerprint) throw new Error('Extension resources changed; preview the package update again')
       await assertToolReferenceRevisions(documents, [...resolvedToolMounts.values()].flat())
       await assertPackageDependencyRevisions(documents, [...iconChecks, ...dependencyChecks])
       if (input.update) await assertToolDependencyConsumers({ documents, mounts: dependencyMounts, resources: dependencyResources, validatePackageAsset: ctx.validatePackageAsset,
@@ -1105,7 +1134,11 @@ async function importExtensionPackageResourcesInternal(
         newlyCreatedPromptIds.add(item.contribution.id)
       }
       for (const item of missingAgentTools) {
-        const definition = agentToolDefinitions.get(item.contribution.id)!
+        const original = agentToolDefinitions.get(item.contribution.id)!
+        const definition = original.prompt?.loreRefs ? { ...original, prompt: { ...original.prompt,
+          loreRefs: original.prompt.loreRefs.map(ref => promptResourceIds.has(ref.resourceId)
+            ? { resourceId: promptResourceIds.get(ref.resourceId)!, nodeId: localId(ref.nodeId) } : ref),
+        } } : original
         await writeDocument<AgentToolContent>(documents, {
           id: definition.id,
           type: applicationDocumentTypes.agentTool,
@@ -1148,6 +1181,8 @@ async function importExtensionPackageResourcesInternal(
           content: {
             owner: { kind: 'extension', packageId: input.packageId, installationId },
             ...scriptMetadata.get(item.id)!,
+            loreResourceReferences: Object.fromEntries(promptResourceIds),
+            loreNodeReferences: Object.fromEntries([...nodeIds].map(id => [id, localId(id)])),
             source: { blobId: blob.id, mediaType: loomScriptMediaType(scripts.find(script => script.contribution.id === item.id)!.contribution.source), fileName: scripts.find(script => script.contribution.id === item.id)!.contribution.source.split('/').at(-1)! },
             sourceDigest: blob.sha256, createdAt: existing?.content.createdAt ?? timestamp, updatedAt: timestamp,
           },
@@ -1182,6 +1217,12 @@ async function importExtensionPackageResourcesInternal(
             content: {
               target: { kind: 'preset', presetId: promptResourceIds.get(item.contribution.id)! },
               scriptDocumentId: scriptId, enabled: Boolean(existing && !existing.meta.tombstone && sameCapabilities && existing.content.enabled),
+              ...(existing && !existing.meta.tombstone ? {
+                runtimeRevision: existing.content.runtimeRevision,
+                settings: existing.content.settings,
+                adoptedDocumentVersion: existing.content.adoptedDocumentVersion,
+                adoptedSettings: existing.content.adoptedSettings,
+              } : { runtimeRevision: 0 }),
               orderIndex: mount.orderIndex ?? orderIndex,
               grantedCapabilities: existing && !existing.meta.tombstone
                 ? existing.content.grantedCapabilities.filter(capability => metadata.requestedCapabilities.includes(capability)) : [],
@@ -1194,8 +1235,8 @@ async function importExtensionPackageResourcesInternal(
         if (!newlyCreatedPromptIds.has(item.contribution.id) || item.contribution.resourceKind !== 'preset') continue
         const presetResourceId = promptResourceIds.get(item.contribution.id)!
         if (input.update) {
-          resourceTx.replaceLoreMounts({ source: { kind: 'preset', id: presetResourceId }, mounts: [] })
-          resourceTx.replacePresetToolMounts({ presetResourceId, mounts: [] })
+          resourceTx.replaceLoreMounts({ expectedMountIds: resourceTx.listLoreMounts({ source: { kind: 'preset', id: presetResourceId } }).map(mount => mount.id), source: { kind: 'preset', id: presetResourceId }, mounts: [] })
+          resourceTx.replacePresetToolMounts({ expectedMountIds: resourceTx.listPresetToolMounts({ presetResourceId }).map(mount => mount.id), presetResourceId, mounts: [] })
         }
         for (const [orderIndex, mount] of (item.contribution.loreMounts ?? []).entries()) {
           const reference = mount.reference ?? { kind: 'package' as const, contributionId: mount.resourceId! }
@@ -1260,23 +1301,9 @@ async function removeExtensionPackageResourcesInternal(
 ): Promise<RemoveExtensionPackageResourcesResult> {
   assertNonEmpty(input.packageId, 'packageId')
   const installationId = extensionInstallationId(input.packageId, input.target ?? { kind: 'global' })
-  if (input.uninstall && input.expectedInstallationVersion === undefined) throw new Error('Uninstall requires the expected installation version')
   if (input.expectedInstallationVersion !== undefined) {
     const installation = await readDocument<ExtensionInstallationContent>(ctx.documents, installationId, applicationDocumentTypes.extensionInstallation)
     if (installation.version !== input.expectedInstallationVersion) throw new Error('Extension installation changed before resource removal')
-  }
-  if (input.uninstall) {
-    const result = await withToolDependencySnapshot(ctx, async (dependencyMounts, assertFresh, dependencyResources) => executeDocumentMutation(ctx.documents, requestContext, 'application.uninstallExtension', async documents => {
-      assertFresh()
-      await assertToolDependencyConsumers({ documents, mounts: dependencyMounts, resources: dependencyResources, validatePackageAsset: ctx.validatePackageAsset, packageId: input.packageId, target: input.target ?? { kind: 'global' } })
-      await documents.delete({ id: installationId, expectedVersion: input.expectedInstallationVersion! })
-    }))
-    return {
-      packageId: input.packageId,
-      promptResourceIds: [], agentToolIds: [], textTransformRuleIds: [], textExtractorIds: [],
-      detachedReferences: { cards: 0, timelines: 0, presetToolMounts: 0 },
-      mutation: result.mutation,
-    }
   }
   const owns = (candidate: ExtensionResourceOriginCandidate | undefined) =>
     matchesExtensionInstallation(candidate, input.packageId, installationId)
@@ -1382,15 +1409,8 @@ function remapInstalledPromptNodeIds(
   root: PromptResourceArtifact['rootNode'],
   localId: (id: string) => string,
 ): void {
-  const ids = new Set<string>()
-  const collect = (node: PromptResourceArtifact['rootNode']) => {
-    ids.add(node.id)
-    node.children?.forEach(collect)
-  }
-  collect(root)
   const remap = (node: PromptResourceArtifact['rootNode']) => {
     node.id = localId(node.id)
-    if (node.orderList) node.orderList = node.orderList.map(id => ids.has(id) ? localId(id) : id)
     node.children?.forEach(remap)
   }
   remap(root)
@@ -1428,4 +1448,47 @@ function indexExtensionResourceOrigins<T>(
     if (resource.tombstoned) restorableVersions.set(contributionId, resource.version)
   }
   return { ids, restorableVersions, versions }
+}
+
+async function readExtensionPreviewSnapshot(
+  ctx: { documents: DocumentTransaction; promptResources: ExtensionsRuntimeContext['promptResources'] },
+  input: ImportExtensionPackageResourcesInput,
+) {
+  const installationId = extensionInstallationId(input.packageId, input.target ?? { kind: 'global' })
+  const documents = await collectPages(cursor => ctx.documents.list({ includeTombstone: true, cursor, limit: 100 }))
+  const resources = await listMappedResources(ctx.promptResources, undefined, { includeTombstone: true })
+  const owns = (value: unknown): boolean => {
+    if (!isObject(value)) return false
+    return matchesExtensionInstallation(value, input.packageId, installationId)
+      || (value.kind === 'extension' && value.packageId === input.packageId && value.installationId === installationId)
+  }
+  const ownedDocuments = documents.filter(document => document.id === installationId || (isObject(document.content)
+    && (owns(document.content.origin) || owns(document.content.owner) || owns(document.content.textResourceOrigin))))
+  const ownedResources = resources.filter(resource => owns(resource.origin))
+  const ids = new Set([...ownedDocuments.map(item => item.id), ...ownedResources.map(item => item.id),
+    ...ownedDocuments.flatMap(item => isObject(item.content) && isObject(item.content.textResourceIds) ? Object.values(item.content.textResourceIds).filter((id): id is string => typeof id === 'string') : [])])
+  const contains = (value: unknown, id: string): boolean => {
+    if (value === id) return true
+    if (Array.isArray(value)) return value.some(item => contains(item, id))
+    return isObject(value) && Object.values(value).some(item => contains(item, id))
+  }
+  const consumers = [
+    ...documents.map(document => ({ kind: document.type, id: document.id, version: document.version, content: document.content })),
+    ...resources.map(resource => ({ kind: resource.resourceKind, id: resource.id, version: resource.version, content: resource })),
+  ]
+  const references = (id: string) => consumers.filter(item => item.id !== id && contains(item.content, id)).map(item => ({ kind: item.kind, id: item.id }))
+  const relevantConsumers = consumers.filter(item => !ids.has(item.id) && [...ids].some(id => contains(item.content, id)))
+  const { update, ...candidate } = input
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical)
+    if (isObject(value)) return Object.fromEntries(Object.keys(value).sort().filter(key => value[key] !== undefined).map(key => [key, canonical(value[key])]))
+    return value
+  }
+  const fingerprint = createHash('sha256').update(JSON.stringify(canonical({
+    candidate, expectedInstallationVersion: update?.expectedInstallationVersion,
+    documents: ownedDocuments.sort((a, b) => a.id.localeCompare(b.id)),
+    resources: ownedResources.sort((a, b) => a.id.localeCompare(b.id)),
+    references: relevantConsumers.sort((a, b) => a.id.localeCompare(b.id)),
+  }))).digest('hex')
+  return { fingerprint, references }
 }

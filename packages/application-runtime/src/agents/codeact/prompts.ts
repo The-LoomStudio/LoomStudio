@@ -9,9 +9,9 @@ parentId、orderIndex 和内部 ID 不属于这个文件；Metadata 修改、移
 
 const methods: Record<typeof codeActMethodNames[number], string> = {
   setAuthorMode: `### ctx.setAuthorMode
-调用：await ctx.setAuthorMode(true) 申请作者视图；false 返回游玩视图。
+调用：await ctx.setAuthorMode(true) 申请已挂载资源的作者视图；await ctx.setAuthorMode(true, 'global') 申请全局角色资源作者视图；false 返回游玩视图。
 默认游玩视图只提供可读取的设定正文，不列出或读取 disabled 条目、停用子树与 Metadata，也不允许修改设定资源。
-true 必须经宿主用户审批；没有审批处理器则拒绝。授权仅限当前 Run 的已挂载资源，访问锁和隐藏权限仍生效，写入仍须单独审批。不用于普通续写剧情。
+true 必须经宿主用户审批；没有审批处理器则拒绝。授权仅限当前 Run。默认范围只有已挂载资源；global 需单独确认，可在 /resources 中发现所有角色已有的 Preset / Lore，目录名标明关联角色，共享资源只列一次。全局修改仍逐次审批，访问锁和隐藏权限仍生效。不能创建角色卡、读其他聊天或故事状态。不用于普通续写剧情。
 关闭模式会清除读取基线，但不能抹去模型已经看过的内容。`,
   ls: `### ctx.ls
 用途：发现当前允许视图内的一层目录；目录名称以 / 结尾，不是递归树。
@@ -41,7 +41,7 @@ true 必须经宿主用户审批；没有审批处理器则拒绝。授权仅限
 /attachments 是当前预设拥有并挂载的脚本附件，读取不会执行脚本。
 只有获批的作者视图才显示 disabled 和 Metadata；locked 可发现但不可读取。路径从列表原样复用：空格、中文和方括号是合法字符，不额外转义；不要自行 URL 编码或解码。
 /narrative/<floor>.md 是当前绑定分支的固定楼层地址，例如 /narrative/32.md；可通过列表、采样 nodes[].path 或追加回执发现。修改后楼层路径保持不变，缺号不会重排；读取后目标改变时必须重新读取，不能沿用旧写入基线。
-不能读取宿主文件、未挂载资源、历史 Narrative 或 Session；观察到的旧路径被另一对象占用时会报错，不自动改绑。`,
+不能读取宿主文件、未授权资源、历史 Narrative 或 Session；获批的全局作者范围只额外开放角色卡的 Preset / Lore；观察到的旧路径被另一对象占用时会报错，不自动改绑。`,
   readValue: `### ctx.readValue
 用途：直接读取 State 的 JavaScript/JSON 值，不解析 YAML，不丢失数字、布尔值、数组或对象类型。
 调用：await ctx.readValue(path)

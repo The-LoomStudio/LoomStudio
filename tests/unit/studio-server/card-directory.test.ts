@@ -6,12 +6,16 @@ import * as fs from 'node:fs/promises'
 import { createCardDirectoryService } from '../../../apps/studio-server/src/resource-directories/card-directory.js'
 import { decodeCardBundleFiles, type CardBundleFilesInput } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
 
-const fault = vi.hoisted(() => ({ remaining: 0, cleanup: false }))
+const fault = vi.hoisted(() => ({ remaining: 0, cleanup: false, pendingCleanup: false }))
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   return {
     ...actual,
     rm: async (path: string, options: Parameters<typeof actual.rm>[1]) => {
+      if (fault.pendingCleanup && path.endsWith('/pending') && !options?.force) {
+        fault.pendingCleanup = false
+        throw new Error('simulated pending cleanup failure')
+      }
       if (fault.cleanup && path.endsWith('/.loom/card-directories/card-1')) {
         fault.cleanup = false
         throw new Error('simulated cleanup failure')
@@ -29,6 +33,7 @@ const roots: string[] = []
 afterEach(async () => {
   fault.remaining = 0
   fault.cleanup = false
+  fault.pendingCleanup = false
   vi.restoreAllMocks()
   for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true })
 })
@@ -301,4 +306,20 @@ describe('card resource directories', () => {
     await expect(service.previewCard('card-1')).rejects.toThrow('symbolic link')
     expect(await fs.readdir(join(root, 'elsewhere'))).toEqual([])
   })
+})
+
+it('returns saved with a cleanup warning and recovers without overwriting later external edits', async () => {
+  const { root, bundle, service, save, directory } = await setup()
+  await save()
+  bundle.artifact.card.description = 'Saved after'
+  fault.pendingCleanup = true
+  expect(await save()).toMatchObject({ changedFiles: expect.any(Number), cleanupWarning: expect.stringContaining('Directory saved') })
+  const pending = join(root, '.loom/card-directories/card-1/pending')
+  const journal = JSON.parse(await fs.readFile(join(pending, 'journal.json'), 'utf8'))
+  expect(JSON.parse(await fs.readFile(join(root, '.loom/card-directories/card-1/baseline.json'), 'utf8'))).toEqual(journal.after)
+  expect(await fs.readFile(join(directory, 'card/description.md'), 'utf8')).toBe('Saved after')
+  await fs.writeFile(join(directory, 'card/description.md'), 'Later IDE edit')
+  await service.recoverCard('card-1')
+  expect(await fs.readFile(join(directory, 'card/description.md'), 'utf8')).toBe('Later IDE edit')
+  await expect(fs.stat(pending)).rejects.toMatchObject({ code: 'ENOENT' })
 })

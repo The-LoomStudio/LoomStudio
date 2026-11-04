@@ -18,41 +18,6 @@ export type DiscussionRetry = {
   entryCount: number
 }
 
-async function readLegacyProviderFailureBaseline(
-  ctx: RetryContext, user: AgentTranscriptEntry, latestUser: AgentTranscriptEntry | undefined,
-  afterUser: AgentTranscriptEntry[], branch: NarrativeBranch, entryCount: number,
-): Promise<AgentRunMaterialBaseline> {
-  const checkpoint = afterUser.find(entry => entry.entry.kind === 'run-state' && entry.entry.recovery)
-  const recovery = checkpoint?.entry.kind === 'run-state' ? checkpoint.entry.recovery : undefined
-  const latestState = afterUser.find(entry => entry.entry.kind === 'run-state')
-  const output = recovery?.narrativeOutput
-  if (latestUser?.id !== user.id || !recovery || recovery.userEntryId !== user.id
-    || recovery.phase !== 'provider' || recovery.nextProviderStep !== 1
-    || recovery.acceptedContent !== undefined || recovery.partialEntryId !== undefined || recovery.pendingAssistantContent !== undefined
-    || output !== undefined && (typeof output !== 'object' || output === null || Array.isArray(output) || output.declared !== false
-      || output.logicalId !== undefined || output.consumedEntryId !== undefined)
-    || latestState?.entry.kind !== 'run-state' || !['failed', 'aborted', 'discarded'].includes(latestState.entry.state)
-    || afterUser.some(entry => entry.runId !== user.runId || !['run-state', 'request-measurement', 'reasoning'].includes(entry.entry.kind)))
-    throw retryError('baseline_missing', 'This older input has no baseline and its failed first Provider request cannot be proven free of tool or assistant effects')
-  const narratives = requireNarratives(ctx)
-  const node = branch.headNodeId ? await narratives.getNode(branch.headNodeId) : undefined
-  let found = !branch.headNodeId
-  let cursor = user.parentEntryId
-  while (!found && cursor) {
-    const prefix = await requireAgents(ctx).getEntryPage({ agentSessionId: user.agentSessionId, cursor, limit: 100 })
-    if (prefix.session.entryCount !== entryCount || prefix.session.headEntryId !== branch.headEntryId)
-      throw retryError('conflict', 'Agent history changed while checking the older input')
-    found = Boolean(node?.entryId && prefix.entries.some(entry => entry.id === node.entryId))
-    cursor = prefix.nextCursor
-  }
-  if (!found) throw retryError('baseline_missing', 'Narrative changed after this older input; its original material baseline is unavailable')
-  return {
-    timelineId: branch.timelineId, branchId: branch.id,
-    headNodeId: branch.headNodeId ?? null, headEntryId: user.parentEntryId ?? null,
-    stateRevisionId: branch.stateHeadRevisionId, workspaceRevisionId: branch.workspaceHeadRevisionId,
-  }
-}
-
 export async function readDiscussionRetry(ctx: RetryContext, input: InvokeAgentTurnInput, request?: RuntimeRequestContext, allowSuspended = false): Promise<DiscussionRetry | undefined> {
   if (!input.retry) return undefined
   if (input.contextMode === 'isolated' || input.resume || request?.agentRun?.continuation || input.narrativeTarget?.inputNodeId || input.narrativeTarget?.swipe)
@@ -66,7 +31,6 @@ export async function readDiscussionRetry(ctx: RetryContext, input: InvokeAgentT
     throw retryError('invalid_target', 'Retry requires the currently adopted Timeline branch')
   let cursor: string | undefined
   let latestUser: AgentTranscriptEntry | undefined
-  const afterUser: AgentTranscriptEntry[] = []
   const states = new Map<string, string>()
   do {
     const history = await agents.getEntryPage({ agentSessionId: session.id, cursor, limit: 100 })
@@ -76,7 +40,6 @@ export async function readDiscussionRetry(ctx: RetryContext, input: InvokeAgentT
       if (entry.runId && entry.entry.kind === 'run-state' && !states.has(entry.runId)) states.set(entry.runId, entry.entry.state)
       if (entry.entry.kind === 'run-state' && entry.entry.sourceRunId && !states.has(entry.entry.sourceRunId)) states.set(entry.entry.sourceRunId, 'transferred')
       if (entry.entry.kind === 'message' && entry.entry.role === 'user') { latestUser = entry; break }
-      afterUser.push(entry)
     }
     cursor = history.nextCursor
   } while (!latestUser && cursor)
@@ -89,9 +52,9 @@ export async function readDiscussionRetry(ctx: RetryContext, input: InvokeAgentT
   const recovery = checkpoint?.entry.kind === 'run-state' ? checkpoint.entry.recovery : undefined
   if (!user.entry.editBaseline && recovery?.materialBaseline && recovery.userEntryId !== user.id)
     throw retryError('baseline_missing', 'The saved material baseline does not identify this user input')
-  const baseline = user.entry.editBaseline ? parseAgentRunMaterialBaseline(user.entry.editBaseline) : recovery?.materialBaseline
-    ? parseAgentRunMaterialBaseline(recovery.materialBaseline)
-    : await readLegacyProviderFailureBaseline(ctx, user, latestUser, afterUser, page.branch, session.entryCount)
+  if (!user.entry.editBaseline && !recovery?.materialBaseline)
+    throw retryError('baseline_missing', 'The original discussion material baseline is missing')
+  const baseline = parseAgentRunMaterialBaseline(user.entry.editBaseline ?? recovery?.materialBaseline)
   if (baseline.timelineId !== session.id || baseline.branchId !== page.branch.id || baseline.headEntryId !== (user.parentEntryId ?? null))
     throw retryError('invalid_target', 'The original discussion baseline does not match this branch')
   if (latestUser?.id !== user.id) {

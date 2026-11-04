@@ -79,7 +79,7 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
   - Studio 的底层发动机，管理内部的核心服务（RPC 注册、事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
   - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
 - 📦 [`packages/data-engine/`](../../packages/data-engine/README.md)
-  - 共享 SQLite connection、transaction、namespaced migration、Commit Journal 与提交后通知。
+  - 共享 SQLite connection、transaction、namespaced schema 初始化、Commit Journal 与提交后通知。
   - 正式架构说明：[`architecture/data/README.md`](../architecture/data/README.md)。
 - 📦 [`packages/secret-store/`](../../packages/secret-store/README.md)
   - 平台通用 Secret metadata、受控使用边界与凭证后端接口；SQLite 不保存 Secret 明文，真实系统凭证后端由 Server 组合根注入。
@@ -122,7 +122,7 @@ STBridge 与 The World 的开发基准分别为各自的独立仓库；用户确
 
 ## 🛠️ 工程脚本: `scripts/`
 
-[`scripts/`](../../scripts/) 存放面向全仓的基础设施维护、数据迁移、开发沙箱重置、官方内容打包与架构/文档核查脚本。**严禁将未成形的随手试错代码散落在该目录**。
+[`scripts/`](../../scripts/) 存放面向全仓的基础设施维护、开发沙箱重置、官方内容打包与架构/文档核查脚本。**严禁将未成形的随手试错代码散落在该目录**。
 
 ### 核心脚本分类与常用命令
 
@@ -130,8 +130,7 @@ STBridge 与 The World 的开发基准分别为各自的独立仓库；用户确
    - `pnpm refactor:migrate-imports` (`scripts/dev/migrate-imports.ts`): 在跨包重构或别名调整时，自动化扫描并迁移源码中的模块导入路径。
    - `pnpm audit:unused` (`knip`): 静态分析未引用的孤儿导出、文件与无用依赖。
 
-2. **数据迁移与环境管理**
-   - `pnpm data:migrate` (`scripts/data/migrate-data-directory.ts`): 离线检查并迁移旧版存储目录至 `data/`。
+2. **开发环境管理**
    - `pnpm data:reset` (`scripts/data/reset-dev-data.ts`): 在本地开发沙箱被脏数据污染时，自动备份现有数据后安全重置 `data/`。
 
 3. **官方内容与范例打包**

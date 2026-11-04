@@ -1,0 +1,13 @@
+.root {
+  margin-block: 1rem;
+  summary { cursor: pointer; }
+  p { font-size: 0.875rem; opacity: 0.8; }
+}
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-block: 0.25rem;
+  > p { flex-basis: 100%; margin: 0; }
+}

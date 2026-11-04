@@ -1,14 +1,40 @@
-import { describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createTextExtractionArtifact,
   extractHistory,
+  HistoryExtractionBudgetExceededError,
   projectHistoryEntries,
   type HistoryTextEntry,
   type TextExtractorEntry,
   type TextTransformRuleEntry,
 } from '@loom-studio/application-runtime'
 
+vi.mock('node:crypto', async importOriginal => {
+  const original = await importOriginal<typeof import('node:crypto')>()
+  return { ...original, createHash: vi.fn(original.createHash) }
+})
+
 const source = { kind: 'agent-session', sessionId: 'session-1' } as const
+
+it('hashes each matched step input once, skips unmatched steps and preserves match identities', async () => {
+  const original = await vi.importActual<typeof import('node:crypto')>('node:crypto')
+  vi.mocked(createHash).mockClear()
+  const result = projectHistoryEntries({ source, phase: 'prompt', entries: [entry('sample', 0, 'aaa')], rules: [
+    rule({ id: 'replace', orderIndex: 0, matcher: { kind: 'regex', pattern: 'a', flags: 'g' }, effect: { kind: 'replace', replacement: 'b' } }),
+    rule({ id: 'mark', orderIndex: 1, matcher: { kind: 'regex', pattern: 'b', flags: 'g' }, effect: { kind: 'mark', markerType: 'sample' } }),
+    rule({ id: 'unmatched', orderIndex: 2, matcher: { kind: 'regex', pattern: 'z', flags: 'g' } }),
+  ] })
+  expect(result.matches).toHaveLength(6)
+  expect(createHash).toHaveBeenCalledTimes(8)
+  const expected = [['replace', 'aaa', 0], ['mark', 'bbb', 1]].flatMap(([id, text, stepIndex]) => {
+    const digest = original.createHash('sha256').update(String(text)).digest('hex')
+    return Array.from({ length: 3 }, (_, occurrenceIndex) => `match:${original.createHash('sha256').update(JSON.stringify([
+      ['agent-session', 'session-1', ''], 'prompt', 'sample', id, 1, stepIndex, occurrenceIndex, digest,
+    ])).digest('hex')}`)
+  })
+  expect(result.matches.map(match => match.matchId)).toEqual(expected)
+})
 
 function rule(input: Partial<TextTransformRuleEntry> & Pick<TextTransformRuleEntry, 'id'>): TextTransformRuleEntry {
   const { id, ...overrides } = input
@@ -33,7 +59,97 @@ function entry(id: string, sequence: number, text: string): HistoryTextEntry<typ
   return { id, source, sequence, text, role: 'assistant' }
 }
 
+function extractor(overrides: Partial<TextExtractorEntry> = {}): TextExtractorEntry {
+  return {
+    id: 'probe', version: 1, name: 'Probe', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0,
+    targets: ['agent-session'], matcher: { kind: 'regex', pattern: '[\\s\\S]+', flags: '' },
+    strategy: 'all-matches', parser: 'key-value-lines', createdAt: '', updatedAt: '', ...overrides,
+  }
+}
+
 describe('history text projection', () => {
+  it.each(['u', 'v'])('terminates Unicode %s empty extraction matches without splitting surrogate pairs', flags => {
+    const snapshot = projectHistoryEntries({ source, phase: 'display', entries: [entry('message', 1, '😀')], rules: [] })
+    const result = extractHistory({ snapshot, extractor: extractor({ matcher: { kind: 'regex', pattern: '(?:)', flags }, parser: 'text' }) })
+    expect(result.values).toEqual(['', ''])
+    expect(result.sourceEntryIds).toEqual(['message', 'message'])
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it('fails cumulative overlapping capture growth before returning a partial extraction', () => {
+    const snapshot = projectHistoryEntries({ source, phase: 'display', entries: [entry('message', 1, 'a'.repeat(100))], rules: [] })
+    expect(() => extractHistory({ snapshot,
+      extractor: extractor({ matcher: { kind: 'regex', pattern: '(?=(.+))', flags: '', contentGroup: 1 }, parser: 'text' }),
+      budget: { maxCapturedCharacters: 5_000 },
+    })).toThrowError(expect.objectContaining({ code: 'text.extractor.budget_exceeded', budget: 'maxCapturedCharacters', actual: 5_005 }))
+    expect(extractHistory({ snapshot,
+      extractor: extractor({ matcher: { kind: 'regex', pattern: '(?=(.+))', flags: '', contentGroup: 1 }, parser: 'text' }),
+      budget: { maxCapturedCharacters: 5_050 },
+    }).values).toHaveLength(100)
+  })
+
+  it('counts invalid matches and diagnostics across entries and never converts budget errors to parse failures', () => {
+    const snapshot = projectHistoryEntries({ source, phase: 'display', entries: [entry('old', 1, 'x x'), entry('new', 2, 'x x')], rules: [] })
+    const input = { snapshot, extractor: extractor({ matcher: { kind: 'regex', pattern: 'x', flags: '' } }) }
+    expect(() => extractHistory({ ...input, budget: { maxScannedMatches: 3 } }))
+      .toThrowError(expect.objectContaining({ code: 'text.extractor.budget_exceeded', budget: 'maxScannedMatches', actual: 4 }))
+    expect(() => extractHistory({ ...input, budget: { maxDiagnostics: 3 } }))
+      .toThrowError(expect.objectContaining({ code: 'text.extractor.budget_exceeded', budget: 'maxDiagnostics', actual: 4 }))
+    expect(extractHistory({ ...input, budget: { maxScannedMatches: 4, maxDiagnostics: 4 } }).diagnostics).toHaveLength(4)
+  })
+
+  it('accumulates captures and candidates across entries, including latest-valid candidates', () => {
+    const snapshot = projectHistoryEntries({ source, phase: 'display', entries: [entry('old', 1, 'a a'), entry('new', 2, 'a a')], rules: [] })
+    const input = { snapshot, extractor: extractor({ matcher: { kind: 'regex', pattern: 'a', flags: '' }, parser: 'text', strategy: 'latest-valid' }) }
+    expect(() => extractHistory({ ...input, budget: { maxCapturedCharacters: 3 } }))
+      .toThrowError(expect.objectContaining({ budget: 'maxCapturedCharacters', actual: 4 }))
+    expect(() => extractHistory({ ...input, budget: { maxCandidates: 3 } }))
+      .toThrowError(expect.objectContaining({ budget: 'maxCandidates', actual: 4 }))
+    expect(extractHistory(input)).toMatchObject({ values: ['a'], sourceEntryIds: ['new'], stale: false })
+  })
+
+  it('bounds complete returned structure including source IDs, object keys and diagnostics', () => {
+    const snapshot = projectHistoryEntries({ source, phase: 'display', entries: [entry('message', 1, 'x: y')], rules: [] })
+    const input = { snapshot, extractor: extractor() }
+    // Base result: 58 units; value object/key/string: 4; source ID string: 8.
+    expect(extractHistory({ ...input, budget: { maxResultUnits: 70 } }).values).toEqual([{ x: 'y' }])
+    expect(() => extractHistory({ ...input, budget: { maxResultUnits: 69 } }))
+      .toThrowError(expect.objectContaining({ budget: 'maxResultUnits', actual: 70 }))
+    const invalid = { ...input, extractor: extractor({ outputSchema: { type: 'object', required: ['missing'] } }) }
+    expect(() => extractHistory({ ...invalid, budget: { maxResultUnits: 70 } })).toThrow(HistoryExtractionBudgetExceededError)
+  })
+
+  it('preserves latest-valid first-match order and stale status while retaining only the selected candidate', () => {
+    const snapshot = projectHistoryEntries({ source, phase: 'display', entries: [entry('old', 1, 'x: old'), entry('new', 2, 'invalid\nx: first\nx: second')], rules: [] })
+    const result = extractHistory({ snapshot, extractor: extractor({ matcher: { kind: 'regex', pattern: '[^\\n]+', flags: '' }, strategy: 'latest-valid' }) })
+    expect(result).toMatchObject({ values: [{ x: 'first' }], sourceEntryIds: ['new'], stale: false })
+    expect(result.diagnostics).toHaveLength(1)
+  })
+
+  it('preserves own special keys in key-value extraction, including repeated keys', () => {
+    const snapshot = projectHistoryEntries({ source, phase: 'display', entries: [entry('message', 1,
+      'x: 1\n__proto__: first\nconstructor: own\ntoString: text\n__proto__: last')], rules: [] })
+    const result = extractHistory({ snapshot, extractor: extractor() })
+    expect(result.values).toEqual([JSON.parse('{"x":"1","__proto__":"last","constructor":"own","toString":"text"}')])
+    expect(Object.prototype.hasOwnProperty.call(result.values[0], '__proto__')).toBe(true)
+    expect(Object.getPrototypeOf(result.values[0]!)).toBe(Object.prototype)
+    expect(result.diagnostics).toEqual([])
+  })
+
+  it.each(['constructor', 'toString', '__proto__'])('requires an own %s output property', key => {
+    const extract = (text: string) => extractHistory({
+      snapshot: projectHistoryEntries({ source, phase: 'display', entries: [entry('message', 1, text)], rules: [] }),
+      extractor: extractor({ outputSchema: { type: 'object', required: [key] } }),
+    })
+    const missing = extract('x: 1')
+    expect(missing.values).toEqual([])
+    expect(missing.diagnostics).toMatchObject([{ code: 'text.extractor.parse_failed', message: `Extractor output is missing required property: ${key}` }])
+    const present = extract(`${key}: own`)
+    expect(present.values).toHaveLength(1)
+    expect(Object.prototype.hasOwnProperty.call(present.values[0], key)).toBe(true)
+    expect(present.diagnostics).toEqual([])
+  })
+
   it.each(['u', 'v'])('advances zero-width %s matches across complete Unicode code points', flags => {
     for (const phase of ['display', 'prompt'] as const) {
       for (const text of ['Hello', '😀 Hello']) {

@@ -27,7 +27,7 @@ Preset Entry 和 Lore Entry 使用同一 Prompt Resource 节点基础。Source P
 
 实现入口：
 
-- [Source 采集](../../../packages/application-runtime/src/cards/workspace.ts)
+- [Source 采集](../../../packages/application-runtime/src/cards/card-bundle.ts)
 - [Agent Turn 来源集合](../../../packages/application-runtime/src/agents/agent-turn.ts)
 - [Activation 求值](../../../packages/application-runtime/src/prompt/prompt-activation.ts)
 - [本地 Prompt 编译](../../../packages/application-runtime/src/prompt/prompt-build-pipeline.ts)
@@ -57,11 +57,13 @@ Document、Prompt Resource、State、Narrative 等 Store 共享 SQLite Data Engi
 | State | 不可变 Snapshot Revision、Parent、幂等键与 Head CAS；State Undo 生成补偿 Revision |
 | Narrative | 不可变 Node 与 Branch Head；Fork 引用既有 Node，当前末尾使用 Branch 最新 State / Workspace Head，历史节点优先使用来源 Branch / Node 恢复点，缺失时才使用节点提交时引用；不是通用对象 revert |
 
-Narrative Node 持久化 `kind: 'user-input' | 'narrative'`，区分用户输入与剧情内容，独立于 Agent Transcript 的 `role` 和节点 `source`。正文输入及 Swipe 输入版本写为 `user-input`；开场白与正文追加默认写为 `narrative`。编辑复制、分支读取、采样与 Timeline 归档保留 kind，UI 不再根据邻居、Run 或 Swipe 状态推断身份。v8 迁移只按 `application.appendNarrativeInput` 提交记录和 Swipe 明确记录的输入节点回填；缺少证据的旧节点及缺少 kind 的旧归档保持默认剧情分类，不根据文本内容猜测。`narrative` 表达内容用途，不保证其作者一定是 AI。
+Narrative Node 持久化 `kind: 'user-input' | 'narrative'`，区分用户输入与剧情内容，独立于 Agent Transcript 的 `role` 和节点 `source`。正文输入及 Swipe 输入版本写为 `user-input`；开场白与正文追加默认写为 `narrative`。编辑复制、分支读取、采样与 Timeline 归档保留 kind，UI 不再根据邻居、Run 或 Swipe 状态推断身份。当前数据库 schema 不回填旧 Node：namespace 版本不匹配时拒绝打开；Timeline Archive v2 校验要求每个节点显式提供 kind。`narrative` 表达内容用途，不保证其作者一定是 AI。
 
 Timeline UI 正文编辑属于当前分支：以开始编辑时的 Branch Head 和原正文作为并发基线，在同一 Changeset 中复制目标节点至末节点的路径，仅替换目标正文，并切换该分支 Head。后续正文、节点 State Revision、分支 State Head 和来源信息保持不变；其他分支继续引用原路径。不触发回滚、生成或 State 重算。被替换路径使用新节点 ID，普通历史编辑保留原 ID 用于历史引用。唯一例外是仍开放且只有单个节点的初始化开场：同步更新 opening.nodeId、标记 custom 并保留作者候选 id，删除旧开场节点，使编辑后的自编开场仍可替换；已关闭窗口不重新打开。
 
 归档恢复按节点父链与分支记录分别恢复拓扑。`forkedFromNodeId` 是历史分叉来源，不保证仍处于父分支当前路径；正文编辑保留下来的历史节点允许一同归档。UI 保存失败保留草稿，分支 Head 或原文变化时拒绝旧保存，不自动强制覆盖。
+
+Card 资源引用全量替换要求调用方 Card `expectedVersion`。资源树创建支持由 Runtime 把子树展开成同一事务的多个单节点 mutation；Store 仍拒绝嵌套 children 的单个 node.create，后代失败回滚整棵新子树。
 
 Changeset 是提交事实，不是能够恢复任意领域对象的完整快照。跨 Store 的原子提交需要领域流程显式组合；共享 Changeset ID 不能代替各 Store 的恢复数据和冲突检查。基础合同见 [Data Architecture](../data/README.md)。
 
@@ -91,4 +93,10 @@ Session 已能显式持久化 `work-summary` 并用它建立后续工作段，�
 
 正文节点记录提交时的 Workspace 版本；推进到下一节点前，另外记录原末尾最终的 State/Workspace 恢复点。Swipe、重试、失败恢复采用候选或基线的三类引用。历史分支复制已有恢复点，Timeline Archive 携带工作树历史和所引用的二进制字节。删除 Timeline 后公共读写入口不可访问其工作树，历史版本和 Blob 随既有保留策略保留，不做孤立清理。
 
-`NarrativeNode.floor` 是路径内的持久位置，从 1 开始；新节点沿父节点加一，编辑复制和分支保持原值，存档允许保留缺号。楼号不是跨分支的身份；按楼号读取先固定实际节点，再应用原有范围授权和预算。采样返回 `floor` 以及 `missingFloors`，原 `position` 仍是返回窗口序号。旧数据库按既有祖先路径补号，旧存档缺少楼号时同样补齐；不重编号已有持久楼号。
+`NarrativeNode.floor` 是路径内的持久位置，从 1 开始；新节点沿父节点加一，编辑复制和分支保持原值，存档允许保留缺号。楼号不是跨分支的身份；按楼号读取先固定实际节点，再应用原有范围授权和预算。采样返回 `floor` 以及 `missingFloors`，原 `position` 仍是返回窗口序号。Timeline Archive v2 要求显式楼号且不推算缺失值；旧数据库 namespace 版本不匹配时拒绝打开。
+
+## 归档接收与后处理
+
+Timeline Archive的原始参与者块及ID映射随核心Timeline同事务持久接收，再调用参与者恢复。成功后更新/清理待处理记录；该收据写失败仍返回已导入Timeline和明确警告，原始块保留，不自动重放可能已完成的扩展副作用。参与者与核心数据库不承诺整条链原子；活跃数据与保留块冲突继续明确报错。
+
+目录保存以baseline提交为成功边界，后续pending清理失败返回已保存警告并保留journal供恢复，不回滚已保存文件或后来的IDE修改。

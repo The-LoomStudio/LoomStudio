@@ -1,5 +1,5 @@
-import { ArrowLeft, ArrowRight, Columns2, FilePenLine, Maximize2, Minimize2 } from 'lucide-react'
-import { useRef, type ReactNode, type RefCallback } from 'react'
+import { Columns2, FilePenLine, Maximize2, Minimize2 } from 'lucide-react'
+import { type ReactNode, type RefCallback } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type AssetLayoutId, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
@@ -12,7 +12,6 @@ export function StudioWindowHeader(props: {
   assetWorkspaceId: string
   leading?: ReactNode
   main?: ReactNode
-  onPanelHistory(direction: 'back' | 'forward'): void
   t: Translator
 }) {
   const activeAssetLayoutId = readAssetLayoutId(props.activePanel)
@@ -22,17 +21,11 @@ export function StudioWindowHeader(props: {
   const activeAssetPane = useStudioLayoutStore(state => activeAssetLayoutId === null
     ? null
     : (state.assetPanes[activeAssetLayoutId][props.assetWorkspaceId] ?? 'explorer'))
-  const activeAssetSelectedId = useStudioLayoutStore(state => activeAssetLayoutId === null
-    ? undefined
-    : (state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE).selectedId)
   const panelWindowMode = useStudioLayoutStore(state => state.panelWindowMode)
-  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const definition = STUDIO_PANEL_PRESENTATION[props.activePanel]
   const ActivePanelIcon = definition.Icon
-  const canGoBackAsset = activeAssetLayoutId !== null && activeAssetViewMode === 'drilldown' && activeAssetPane === 'detail'
-  const assetForwardRef = useRef<{ layoutId: AssetLayoutId; workspaceId: string; selectedId?: string } | undefined>(undefined)
   const isImmersive = panelWindowMode === 'immersive'
 
   return (
@@ -43,57 +36,6 @@ export function StudioWindowHeader(props: {
       data-loom-component="window-header"
     >
       {props.leading}
-      <div className={styles.headerNavigation} data-loom-component="navigation-history">
-        <button
-          aria-label={props.t('navigation.back')}
-          className={styles.headerNavigationButton}
-          title={props.t('navigation.back')}
-          type="button"
-          onClick={() => {
-            const nav = useStudioLayoutStore.getState().workbenchNavigation
-            if (nav?.canGoBack() && nav.goBack()) {
-              return
-            }
-            if (canGoBackAsset && activeAssetLayoutId) {
-              assetForwardRef.current = {
-                layoutId: activeAssetLayoutId,
-                workspaceId: props.assetWorkspaceId,
-                selectedId: activeAssetSelectedId,
-              }
-              setAssetPane(activeAssetLayoutId, props.assetWorkspaceId, 'explorer')
-              return
-            }
-            assetForwardRef.current = undefined
-            props.onPanelHistory('back')
-          }}
-        >
-          <ArrowLeft aria-hidden="true" />
-        </button>
-        <button
-          aria-label={props.t('navigation.forward')}
-          className={styles.headerNavigationButton}
-          title={props.t('navigation.forward')}
-          type="button"
-          onClick={() => {
-            const nav = useStudioLayoutStore.getState().workbenchNavigation
-            if (nav?.canGoForward?.() && nav.goForward?.()) {
-              return
-            }
-            const forward = assetForwardRef.current
-            if (activeAssetLayoutId && activeAssetViewMode === 'drilldown' && activeAssetPane === 'explorer'
-              && forward?.layoutId === activeAssetLayoutId && forward.workspaceId === props.assetWorkspaceId
-              && forward.selectedId === activeAssetSelectedId) {
-              assetForwardRef.current = undefined
-              setAssetPane(activeAssetLayoutId, props.assetWorkspaceId, 'detail')
-              return
-            }
-            props.onPanelHistory('forward')
-          }}
-        >
-          <ArrowRight aria-hidden="true" />
-        </button>
-      </div>
-
       <div className={styles.headerMain}>
         {props.main ?? (
           <div className={styles.headerTitle}>

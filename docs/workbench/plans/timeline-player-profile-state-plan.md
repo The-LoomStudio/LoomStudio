@@ -71,7 +71,7 @@
 
 主 Agent 负责 State / Runtime / 消费集成，启动窗口与作者候选 UI 采用互不重叠的委派写集，分别提供定向验证。
 
-1. **内置合同与作者引用**：新增 `packages/shared/src/player-state.ts`、`packages/application-runtime/src/profiles/player-state.ts`；接入 shared 导出、`state/state-contribution.ts`、`runtime/cards-runtime.ts`、`cards/workspace.ts` / `workspace-codec.ts` 的校验。验收作者仅引用内置实体也能保存、导出和导入，且不能覆盖内置定义。
+1. **内置合同与作者引用**：新增 `packages/shared/src/player-state.ts`、`packages/application-runtime/src/profiles/player-state.ts`；接入 shared 导出、`state/state-contribution.ts`、`runtime/cards-runtime.ts`、`cards/card-bundle.ts` / `workspace-codec.ts` 的校验。验收作者仅引用内置实体也能保存、导出和导入，且不能覆盖内置定义。
 2. **初始化与服务端宏**：修改 `types.ts` 的 `CreateNarrativeTimelineInput`、`runtime/narrative-runtime.ts`、`apps/studio-server/src/rpc/trpc/application/timeline.ts`。将内置组件完整纳入 Runtime Context；核对 `runtime/agents-runtime.ts`、`runtime/macros-runtime.ts` 及扩展中途采用 / 初始化的既有消费者。不要重建 State Store 或另设资料 RPC。
 3. **启动及客户端消费**：修改 `features/extension-renderers/ui/new-story-extensions.tsx`、`features/narrative-runtime/model/use-narrative-runtime.ts`、`app/use-studio-state.ts` 和消息头接线；增加一份故事资料查询。本地宏渲染复用既有 `user` / 快照输入，无需修改渲染器。区分绑定故事的聊天与无故事聊天，避免全局替换所有消息头身份。
 4. **作者入口和说明收口**：修改 `features/state-variables/ui/state-authoring-panel.tsx` 的内置候选及装配预览、状态来源展示、四语言用户资料文案；更新 `docs/architecture/application/user-profiles.md`、`state-and-variables.md`。State 编辑完成后刷新同一资料查询。

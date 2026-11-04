@@ -52,7 +52,7 @@ describe('extension Tool references', () => {
       await runtime.importExtensionPackageResources({ ...pkg('example.consumer', external()), dependencies: deps })
       const installationId = extensionInstallationId('example.provider', { kind: 'global' })
       const version = (await documents.get(installationId))!.version
-      await expect(runtime.removeExtensionPackageResources({ packageId: 'example.provider', uninstall: true, expectedInstallationVersion: version })).rejects.toThrow('cannot be uninstalled')
+      await expect(runtime.uninstallExtensionInstallation({ packageId: 'example.provider', expectedInstallationVersion: version })).rejects.toThrow('cannot be uninstalled')
       await expect(runtime.importExtensionPackageResources({ ...provider(), packageVersion: '2.0.0', update: { expectedInstallationVersion: version } })).rejects.toThrow('cannot be updated')
       expect((await documents.get(installationId))?.version).toBe(version)
     } finally { await engine.close() }
@@ -70,7 +70,7 @@ describe('extension Tool references', () => {
       const result = await runtime.importExtensionPackageResources(consumer)
       expect((await promptResources.listPresetToolMounts({ presetResourceId: result.promptResources[0]!.resourceId }))[0]?.toolId).toBe(installedExtensionContributionId('example.provider', consumer.target, 'example.provider/read'))
       const installation = await documents.get(extensionInstallationId('example.provider', consumer.target))
-      await expect(runtime.removeExtensionPackageResources({ packageId: 'example.provider', target: consumer.target, uninstall: true, expectedInstallationVersion: installation!.version })).rejects.toThrow('cannot be uninstalled')
+      await expect(runtime.uninstallExtensionInstallation({ packageId: 'example.provider', target: consumer.target, expectedInstallationVersion: installation!.version })).rejects.toThrow('cannot be uninstalled')
       await expect(runtime.importExtensionPackageResources({ ...pkg('example.global-consumer', external('card')), dependencies: deps })).rejects.toThrow('requires the current Card')
     } finally { await engine.close() }
   })
@@ -83,9 +83,9 @@ describe('extension Tool references', () => {
       await runtime.importExtensionPackageResources({ ...provider(), target: { kind: 'card', cardId: b.id } })
       await runtime.importExtensionPackageResources({ ...pkg('example.card-global', external()), dependencies: deps, target: { kind: 'card', cardId: a.id } })
       const global = await documents.get(extensionInstallationId('example.provider', { kind: 'global' }))
-      await expect(runtime.removeExtensionPackageResources({ packageId: 'example.provider', uninstall: true, expectedInstallationVersion: global!.version })).rejects.toThrow('cannot be uninstalled')
+      await expect(runtime.uninstallExtensionInstallation({ packageId: 'example.provider', expectedInstallationVersion: global!.version })).rejects.toThrow('cannot be uninstalled')
       const separate = await documents.get(extensionInstallationId('example.provider', { kind: 'card', cardId: b.id }))
-      await runtime.removeExtensionPackageResources({ packageId: 'example.provider', target: { kind: 'card', cardId: b.id }, uninstall: true, expectedInstallationVersion: separate!.version })
+      await runtime.uninstallExtensionInstallation({ packageId: 'example.provider', target: { kind: 'card', cardId: b.id }, expectedInstallationVersion: separate!.version })
       expect(await documents.get(separate!.id)).toBeNull()
     } finally { await engine.close() }
   })
@@ -103,7 +103,7 @@ describe('extension Tool references', () => {
       await expect(runtime.checkExtensionDependencyConsumers({ packageId: 'example.provider', nextVersion: '2.0.0' })).rejects.toThrow('cannot be updated')
       await expect(runtime.checkExtensionDependencyConsumers({ packageId: 'example.provider', nextVersion: '1.1.0' })).resolves.toBeUndefined()
       const global = await documents.get(extensionInstallationId('example.provider', { kind: 'global' }))
-      await expect(runtime.removeExtensionPackageResources({ packageId: 'example.provider', uninstall: true, expectedInstallationVersion: global!.version })).rejects.toThrow('cannot be uninstalled')
+      await expect(runtime.uninstallExtensionInstallation({ packageId: 'example.provider', expectedInstallationVersion: global!.version })).rejects.toThrow('cannot be uninstalled')
       await expect(runtime.importExtensionPackageResources({ ...pkg('example.wrong-scope', external('card')), target: consumer.target, dependencies: consumer.dependencies })).rejects.toThrow('target mismatch')
       await expect(runtime.importExtensionPackageResources({ ...pkg('example.global'), dependencies: [{ id: 'example.provider', version: '^1.0.0', target: 'card' }] })).rejects.toThrow('Global extension cannot depend')
     } finally { await engine.close() }

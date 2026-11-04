@@ -34,7 +34,7 @@ it('restores a view after remount and rejects an unavailable saved tab', async (
   expect(host.textContent).toBe('second')
 })
 it('remembers independently mounted tabs at four depths', async () => {
-  function Level({ depth }: { depth: number }) {
+  function Level({ depth }: { depth: number }): ReturnType<typeof h> {
     const [view, setView] = useWorkbenchView(`test.level.${depth}`, 'first', ['first', 'second'])
     return h('div', null,
       h('button', { 'data-depth': depth, onClick: () => setView(current => current === 'first' ? 'second' : 'first') }, view),

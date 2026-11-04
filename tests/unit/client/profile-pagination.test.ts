@@ -18,23 +18,29 @@ const saved = { ...original, version: 2, name: 'Saved' }
 function fixture() {
   const api = { agentTools: { list: vi.fn(async () => ({ tools: [original] })), update: vi.fn<StudioApi['agentTools']['update']>(async () => ({ tool: saved })) } }
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const source = { api: api as unknown as StudioApi, endpoint: '/first', resources: [] as AgentPreset[] }
+  const source = { api: api as unknown as StudioApi, endpoint: '/first', ready: false, resources: [] as AgentPreset[] }
   const hook = renderHook(() => ({
     ...useAgentTools({ ...source, runAction: action => action() }),
-    ...useAgentPresets({ resources: source.resources }),
+    ...useAgentPresets({ resources: source.resources, ready: source.ready }),
   }), child => createElement(QueryClientProvider, { client }, child))
   cleanups.push(() => { hook.unmount(); client.clear() })
   return { api, client, source, hook }
 }
 
 describe('Agent catalog consumers', () => {
-  it('retains an explicit Profile selection as the resource projection changes', () => {
+  it('keeps selection while loading and replaces a missing Preset after the catalog succeeds', () => {
     const f = fixture()
     act(() => f.hook.current.selectAgentPreset('selected'))
     f.source.resources = [{ id: 'new-preset', resourceKind: 'preset' }, { id: 'lore', resourceKind: 'lore' }] as AgentPreset[]
     f.hook.rerender()
     expect(f.hook.current.selectedAgentPresetId).toBe('selected')
     expect(f.hook.current.agentPresets.map(preset => preset.id)).toEqual(['new-preset'])
+    f.source.ready = true
+    f.hook.rerender()
+    expect(f.hook.current.selectedAgentPresetId).toBe('new-preset')
+    f.source.resources = []
+    f.hook.rerender()
+    expect(f.hook.current.selectedAgentPresetId).toBeUndefined()
     expect(f.api.agentTools.list).not.toHaveBeenCalled()
   })
 

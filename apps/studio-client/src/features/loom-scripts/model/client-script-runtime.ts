@@ -1,3 +1,5 @@
+import { createScriptConfigClient } from '@loom-studio/extension-sdk'
+import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { ClientExtensionActivationContext, ClientExtensionModule, ClientNotification, RegisteredClientBackground } from '@loom-studio/extension-sdk'
 import type { ExtensionHostLogWriter } from '@loom-studio/logging'
 import type { ResolvedLoomScriptRendererMount, ManagedClientExtensionPackage } from '../../../entities/index.js'
@@ -9,6 +11,7 @@ import { createClientWorkerModule } from '../../../shared/worker-runtime/client-
 
 export type ClientScriptRuntimeOptions = {
   rendererHost: ClientRendererHost
+  configs?: Pick<StudioApi['loomScripts'], 'listConfigs' | 'upsertConfig'>
   data: ClientExtensionDataApi
   logger?: ExtensionHostLogWriter
   listBackgrounds?(): readonly RegisteredClientBackground[]
@@ -42,7 +45,7 @@ export function createClientScriptRuntime(options: ClientScriptRuntimeOptions) {
       }
       signal.throwIfAborted()
       if (!module?.activate) throw new Error('Loom Script must export activate(ctx)')
-      return { activate: context => module.activate(scriptContext(context, entry.mount, options.rendererHost, options.listBackgrounds)) }
+      return { activate: context => module.activate(scriptContext(context, entry.mount, options.rendererHost, options.listBackgrounds, options.configs)) }
     },
   })
   return {
@@ -105,12 +108,12 @@ function assertAuthorized(mount: ResolvedLoomScriptRendererMount) {
   if (!mount.grantedCapabilities.includes(runtimeCapability)) throw new Error(`Loom Script ${runtimeCapability} is not granted`)
   const missing = mount.script.requestedCapabilities.filter(capability => !mount.grantedCapabilities.includes(capability))
   if (missing.length) throw new Error(`Loom Script capabilities are not granted: ${missing.join(', ')}`)
-  const supported = new Set([runtimeCapability, 'state.read', 'events.subscribe:state', 'ui.notify', 'narrative.read', 'assets.read'])
+  const supported = new Set([runtimeCapability, 'state.read', 'events.subscribe:state', 'ui.notify', 'narrative.read', 'assets.read', 'configs.read', 'configs.write'])
   const unsupported = mount.script.requestedCapabilities.filter(capability => !supported.has(capability))
   if (unsupported.length) throw new Error(`Loom Script Client Host does not support: ${unsupported.join(', ')}`)
 }
 
-function scriptContext(context: ClientExtensionActivationContext, mount: ResolvedLoomScriptRendererMount, rendererHost: ClientRendererHost, listBackgrounds?: ClientScriptRuntimeOptions['listBackgrounds']): ClientExtensionActivationContext {
+function scriptContext(context: ClientExtensionActivationContext, mount: ResolvedLoomScriptRendererMount, rendererHost: ClientRendererHost, listBackgrounds?: ClientScriptRuntimeOptions['listBackgrounds'], configs?: ClientScriptRuntimeOptions['configs']): ClientExtensionActivationContext {
   function requireCapability(capability: string) {
     context.signal.throwIfAborted()
     if (!mount.script.requestedCapabilities.includes(capability) || !mount.grantedCapabilities.includes(capability)) {
@@ -142,7 +145,23 @@ function scriptContext(context: ClientExtensionActivationContext, mount: Resolve
       extract: async input => { const query = structuredClone(input); assertHistory(query.source); const result = await context.history.extract(query); assertHistory(query.source); return result },
     },
     assets: { url: assetId => { requireCapability('assets.read'); return `/assets/${encodeURIComponent(assetId)}` } },
-    configs: { list: unavailable, get: unavailable, upsert: unavailable, subscribe: unavailable },
+    configs: configs ? createScriptConfigClient({
+      signal: context.signal,
+      defaultScope: () => {
+        const scope = rendererHost.scopeSnapshot()
+        return scope.timelineId ? { kind: 'timeline', timelineId: scope.timelineId } : scope.cardId ? { kind: 'card', cardId: scope.cardId } : { kind: 'global' }
+      },
+      assertScope: (target, write) => {
+        requireCapability(write ? 'configs.write' : 'configs.read')
+        const scope = rendererHost.scopeSnapshot()
+        if (target.kind === 'card' && target.cardId !== scope.cardId
+          || target.kind === 'timeline' && target.timelineId !== scope.timelineId
+          || target.kind === 'agent-session' && target.agentSessionId !== scope.agentSessionId) throw new Error('Config target is outside the current Script context')
+      },
+      list: scope => configs.listConfigs({ mountId: mount.mountId, runtimeRevision: mount.mountVersion ?? 0, scope }),
+      upsert: query => configs.upsertConfig({ ...query, mountId: mount.mountId, runtimeRevision: mount.mountVersion ?? 0 }),
+      onError: error => { console.error('Script Config subscription stopped', error) },
+    }) : { list: unavailable, get: unavailable, upsert: unavailable, subscribe: unavailable },
     records: { list: unavailable, get: unavailable },
     imports: { commit: unavailable },
     rpc: { call: unavailable },

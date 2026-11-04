@@ -236,7 +236,14 @@ export function createCardDirectoryService(options: {
     }
     for (const op of state.operations) await assertHash(root, `${directory(id)}/${op.path}`, op.after)
     await replace(root, `${metadata(id)}/baseline.json`, json(state.next))
-    await fs.rm(pendingPath, { recursive: true })
+    try {
+      await fs.rm(pendingPath, { recursive: true })
+    } catch (error) {
+      return {
+        directory: state.preview.directory, changedFiles: state.operations.length,
+        cleanupWarning: `Directory saved; pending cleanup failed. Run directory recovery before saving again: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
     return { directory: state.preview.directory, changedFiles: state.operations.length }
   }
 

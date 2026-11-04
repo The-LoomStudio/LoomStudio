@@ -18,16 +18,9 @@ import {
   validateResourceKind,
 } from './tree.js'
 import {
-  migrateVersionOne,
-  migrateVersionTwo,
-  migrateVersionThree,
-  migrateVersionFour,
-  migrateVersionFive,
-  migrateVersionSix,
-  migrateVersionSeven,
-  migrateVersionEight,
   assertPromptResourceSchema,
-  migrationNamespace,
+  schemaNamespace,
+  initializePromptResourceSchema,
 } from './schema.js'
 import {
   applyAddPresetToolMount,
@@ -52,25 +45,16 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
   const nextId = options.createId ?? createId
   const now = options.now ?? nowIso
   const { engine } = options
-  engine.migrate({
-    namespace: migrationNamespace,
-    migrations: [
-      { version: 1, migrate: migrateVersionOne },
-      { version: 2, migrate: migrateVersionTwo },
-      { version: 3, migrate: migrateVersionThree },
-      { version: 4, migrate: migrateVersionFour },
-      { version: 5, migrate: migrateVersionFive },
-      { version: 6, migrate: migrateVersionSix },
-      { version: 7, migrate: migrateVersionSeven },
-      { version: 8, migrate: migrateVersionEight },
-    ],
-  })
+  engine.initializeSchema({ namespace: schemaNamespace, version: 9, initialize: initializePromptResourceSchema })
   const database = engine.database
   assertPromptResourceSchema(database)
   initializeSearchFunctions(database)
 
   function transaction(tx: SqliteDataTransaction): PromptResourceTransaction {
     return {
+      listResources: input => listResources(database, input),
+      listLoreMounts: input => listMounts(database, input),
+      listPresetToolMounts: input => listPresetToolMounts(database, input),
       createResource: input => applyCreateResource(database, tx, input, nextId, now),
       mutateResource: input => applyMutateResource(database, tx, input, now),
       deleteResource: input => applyDeleteResource(database, tx, input, now),

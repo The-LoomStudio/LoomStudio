@@ -25,7 +25,7 @@ Package 根入口通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构
 | `types.ts`                                      | 公共 Application 合同                                  |
 | `foundation/application-context.ts`            | Store、Gateway、Registry、Logger、Clock 等内部基础设施 |
 | `foundation/document-types.ts`                 | 第一方 Application Document Types                      |
-| `cards/card.ts`、`cards/workspace.ts`、`cards/workspace-codec.ts` | Card、Bundle、Artifact 和 Prompt Resource 导入导出、编解码与 SillyTavern 兼容转换 |
+| `cards/card.ts`、`cards/card-bundle.ts`、`cards/card-bundle-codec.ts` | Card、Bundle、Artifact 和 Prompt Resource 导入导出、编解码与 SillyTavern 兼容转换 |
 | `prompt/prompt-builder.ts`、`prompt/prompt-build-pipeline.ts` | Composition 类型与宽松 DFS 编译器（缺失项跳过、宏保留警告不阻断） |
 | `prompt/prompt-activation.ts`、`prompt/variables.ts` | Activation 和只读变量宏                            |
 | `narrative/sampling.ts`                        | Narrative 历史采样器（支持 tail / range 截取与节点/字符预算控制） |
@@ -61,7 +61,7 @@ Package 根入口通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构
 - **Agent 正文只走工具**：Assistant 最终回复只保存在 Transcript，不自动追加 Narrative。未提供 `inputNodeId` 的调用也不自动写入用户正文。已注册工具执行中的非取消异常（包括正文写入冲突）由 [`tool-registry.ts`](./src/agents/tool-registry.ts) 转为 failed Tool Result，再由 [`tool-loop.ts`](./src/agents/tool-loop.ts) 保存并返回后续 Provider Step。
 - **分阶段提交**：Transcript 与工具副作用各按自己的事务提交；Provider 或后续步骤失败不回滚先前提交。返回的 `mutation.scope: 'agent-session-transcript'` 及 Changeset 不是整轮 Tool Loop 的原子回滚凭证。消费者应保留已提交身份，将刷新失败与写入失败分开处理。
 - **Prompt 资源 CAS**：资源更新沿用调用方 `expectedVersion`，冲突不自动覆盖。编辑消费者保留草稿及原基线；只有用户显式重新应用时才读取最新资源、合并已编辑字段并按最新版本再次 CAS，不复活远端已删除节点。该消费边界见 [草稿回归用例](../../tests/unit/client/context-asset-drafts.test.ts)。
-- **分页必须完整消费**：Profile 等列表返回 `nextCursor`，不能把首个 100 条当作全量。全量读取沿 cursor 收集后发布；Runtime 的 Document 收集与 Prompt Resource 稳定 ID 扫描见 [`foundation/document-store.ts`](./src/foundation/document-store.ts)、[`cards/workspace.ts`](./src/cards/workspace.ts)。Keyset 仍是动态遍历，不提供跨请求快照。
+- **分页必须完整消费**：Profile 等列表返回 `nextCursor`，不能把首个 100 条当作全量。全量读取沿 cursor 收集后发布；Runtime 的 Document 收集与 Prompt Resource 稳定 ID 扫描见 [`foundation/document-store.ts`](./src/foundation/document-store.ts)、[`cards/card-bundle.ts`](./src/cards/card-bundle.ts)。Keyset 仍是动态遍历，不提供跨请求快照。
 
 CodeAct 的 QuickJS/VFS 与 `readNarrative` 只代表当前已接入的执行和读取能力，不代表完整 Memory/Session 生命周期已完成。未装配 Narrative Context Provider 时，被动 Prompt 构建仍有 recent-100 回退及诊断，它不是冻结的 Memory 基线；主动工具读取不继承这一回退，见[默认剧情上下文来源](../../docs/architecture/application/extension/narrative-context.md)与 [`agents-runtime.ts`](./src/runtime/agents-runtime.ts)。
 
@@ -95,3 +95,16 @@ pnpm exec vitest run tests/unit/application-runtime tests/integration/applicatio
 - [State and Variables](../../docs/architecture/application/state-and-variables.md)
 - [History Text Pipeline](../../docs/architecture/application/history-text-pipeline.md)
 - [Extension Data and Portable Payload](../../docs/architecture/application/extension/data-and-portable-payload.md)
+
+## 领域规则与合同归属
+
+- `agents/session-execution.ts`：同一 AgentStore 的执行登记与切换保护；调用方仍负责登记和 finally 释放。
+- `agents/tool-catalog.ts`：Tool Document 转换、目录读取和 Registry 同步；不编排 Agent 回合。
+- `prompt/agent-turn-variables.ts`：用户/角色/Global State 的变量材料构造，Agent、Narrative、Macro 共用。
+- `extensions/storage-scope.ts`：Extension/Script 存储目标与范围校验，保留同事务 Store 访问。
+- `narrative/sampling-contracts.ts`：SampleNarrativeInput 请求合同；公开名称继续由包入口导出。
+- `scripts/script-text-resources.ts`：当前 Script 文本规则的读写、导入和引用映射，不是启动迁移。
+- `cards/card-bundle.ts`、`card-bundle-codec.ts`、`card-bundle-types.ts`：Card Bundle 交换流程与格式；不等于 Timeline Workspace。
+- `prompt/prompt-resource-types.ts` 和 `extensions/portable-payload-types.ts`：各自领域合同，Card Bundle 组合使用。Card 来源引用仍为类型级关联，不更改资源归属或公开格式。
+
+本轮保留完整事务编排、composition root 和公共聚合出口；命名与归属移动不新增运行行为。

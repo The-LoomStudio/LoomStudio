@@ -112,10 +112,11 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
   }
 }
 
-window.addEventListener('pagehide', () => {
+window.addEventListener('pagehide', event => {
+  if (event.persisted) return
   systemLogger.info('Studio client stopping', { event: 'client.stopping' })
   void rootLogger.close()
-}, { once: true })
+})
 
 function shouldWriteClientConsoleLog(record: { level: string; namespace: string }): boolean {
   return record.level === 'warn' || record.level === 'error' || record.namespace === 'system'

@@ -1,4 +1,4 @@
-import type { PromptResourceNode } from '../cards/workspace-types.js'
+import type { PromptResourceNode } from '../prompt/prompt-resource-types.js'
 import { createHash } from 'node:crypto'
 import type { CompiledPrompt, PromptContribution, SourceNode } from '../prompt/prompt-builder.js'
 import type { VfsEntry } from './types.js'

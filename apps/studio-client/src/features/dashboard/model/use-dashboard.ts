@@ -1,20 +1,33 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { DashboardPeriod, DashboardSnapshot, DashboardTone, DashboardView } from '../../../widgets/dashboard/dashboard-view.js'
 
 const tones: DashboardTone[] = ['accent', 'info', 'success', 'warning', 'pink', 'cyan', 'muted']
+function captureRange(period: DashboardPeriod) {
+  const to = new Date()
+  const from = new Date(to)
+  from.setDate(from.getDate() - (period === '7' ? 6 : 29))
+  from.setHours(0, 0, 0, 0)
+  return { to: to.toISOString(), ...(period !== 'all' ? { from: from.toISOString() } : {}), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
+}
+
 export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
-  const [period, setPeriod] = useState<DashboardPeriod>('30')
+  const [selection, setSelection] = useState(() => ({ period: '30' as DashboardPeriod, revision: 0, open, range: captureRange('30') }))
   const [view, setView] = useState<DashboardView>('overview')
-  const [revision, setRevision] = useState(0)
-  const range = useMemo(() => {
-    const to = new Date()
-    const from = new Date(to)
-    from.setDate(from.getDate() - (period === '7' ? 6 : 29))
-    from.setHours(0, 0, 0, 0)
-    return { to: to.toISOString(), ...(period !== 'all' ? { from: from.toISOString() } : {}), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
-  }, [period, open, revision])
+  // Capture before constructing queries so reopening never subscribes to the previous range first.
+  let current = selection
+  if (selection.open !== open) {
+    current = { ...selection, open, range: open ? captureRange(selection.period) : selection.range }
+    setSelection(current)
+  }
+  const { period, revision, range } = current
+  const setPeriod = (next: DashboardPeriod) => setSelection(previous => next === previous.period ? previous : {
+    ...previous, period: next, range: open ? captureRange(next) : previous.range,
+  })
+  const refresh = () => {
+    if (open) setSelection(previous => ({ ...previous, revision: previous.revision + 1, range: captureRange(previous.period) }))
+  }
   const base = ['dashboard', endpoint]
   const usage = useQuery({ queryKey: [...base, 'usage', range], queryFn: () => api.dashboard.usage(range), enabled: open, staleTime: 30000 })
   const play = useQuery({ queryKey: [...base, 'play', range], queryFn: () => api.dashboard.play(range), enabled: open, staleTime: 30000 })
@@ -59,5 +72,5 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
         : [{ name: group.name, description: `${group.files} 个文件`, bytes: group.bytes, count: group.files }],
     })) ?? [],
   }
-  return { data, range, period, setPeriod, setView, refresh: () => setRevision(value => value + 1), refreshing: queries.some(query => query.isFetching) }
+  return { data, range, period, setPeriod, setView, refresh, refreshing: queries.some(query => query.isFetching) }
 }

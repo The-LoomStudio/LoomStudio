@@ -1,11 +1,12 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 /** One scroll owner per viewport. Content growth never counts as user intent. */
-export function useSmoothFollow({ scrollRef, contentRef, enabled = true, scopeId, initially = true }: {
+export function useSmoothFollow({ scrollRef, contentRef, enabled = true, scopeId, initially = true, growthOnly = false }: {
   scrollRef: RefObject<HTMLDivElement | null>
   contentRef: RefObject<HTMLDivElement | null>
   enabled?: boolean
   scopeId?: string
+  growthOnly?: boolean
   initially?: boolean
 }) {
   const [following, setFollowing] = useState(initially)
@@ -20,8 +21,9 @@ export function useSmoothFollow({ scrollRef, contentRef, enabled = true, scopeId
   const resume = useCallback(() => {
     followingRef.current = true
     setFollowing(true)
-    wakeRef.current()
-  }, [])
+    if (enabled) wakeRef.current()
+    else if (scrollRef.current) scrollRef.current.scrollTop = Math.max(0, scrollRef.current.scrollHeight - scrollRef.current.clientHeight)
+  }, [enabled, scrollRef])
 
   useLayoutEffect(() => {
     followingRef.current = initially
@@ -107,7 +109,15 @@ export function useSmoothFollow({ scrollRef, contentRef, enabled = true, scopeId
       userMoving = false
     }
     const selection = () => { if (hasSelection()) pause() }
-    const observer = new ResizeObserver(wake)
+    let previousContent = contentRef.current?.textContent
+    const contentChanged = () => {
+      const content = contentRef.current?.textContent
+      if (!growthOnly || content !== previousContent) wake()
+      previousContent = content
+    }
+    const observer = new ResizeObserver(contentChanged)
+    const mutations = new MutationObserver(contentChanged)
+    if (contentRef.current) mutations.observe(contentRef.current, { subtree: true, childList: true, characterData: true })
     observer.observe(element)
     if (contentRef.current) observer.observe(contentRef.current)
     element.addEventListener('wheel', wheel, { passive: true })
@@ -117,10 +127,11 @@ export function useSmoothFollow({ scrollRef, contentRef, enabled = true, scopeId
     element.addEventListener('pointerdown', pointer)
     element.addEventListener('scroll', scroll)
     document.addEventListener('selectionchange', selection)
-    wake()
+    if (!growthOnly) wake()
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
+      mutations.disconnect()
       wakeRef.current = () => {}
       delete element.dataset.streamScroll
       element.removeEventListener('wheel', wheel)
@@ -131,8 +142,8 @@ export function useSmoothFollow({ scrollRef, contentRef, enabled = true, scopeId
       element.removeEventListener('scroll', scroll)
       document.removeEventListener('selectionchange', selection)
     }
-  }, [enabled, scopeId, scrollRef, contentRef, pause, resume])
+  }, [enabled, scopeId, scrollRef, contentRef, pause, resume, growthOnly])
 
-  useLayoutEffect(() => { if (enabled) wakeRef.current() })
+  useLayoutEffect(() => { if (enabled && !growthOnly) wakeRef.current() })
   return { following, followingRef, interruptionRef, pause, resume }
 }

@@ -77,6 +77,8 @@ export const messages = {
   'settings.about': 'About',
   'settings.back': 'Back to settings',
   'settings.categories': 'Settings categories',
+  'settings.focusComposerOnStartup': 'Focus the story input on startup',
+  'settings.focusComposerOnStartupHelp': 'Off by default. Takes effect after reloading and focuses once at startup, unless you have already started interacting.',
   'settings.general': 'General',
   'settings.narrativeOverscan': 'Buffered messages above and below',
   'settings.appearance': 'Appearance',

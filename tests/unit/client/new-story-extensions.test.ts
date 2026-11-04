@@ -169,3 +169,26 @@ it('uses the story Card and discards a late response from the previous Card', as
     expect(current.card?.id).toBe('current')
   } finally { act(() => root.unmount()) }
 })
+
+it('uses an updated editor Card without another read and still reloads an explicit revision', async () => {
+  const card = (version: number) => ({ id: 'card', name: 'Card', version }) as Card
+  const get = vi.fn(async () => ({ card: card(1) }))
+  const api = { cards: { get } } as unknown as StudioApi
+  let current!: ReturnType<typeof useExtensionCardContext>
+  function Fixture({ editor, revision = 0 }: { editor?: Card; revision?: number }) {
+    current = useExtensionCardContext(api, 'card', editor, revision)
+    return null
+  }
+  const root = createRoot(document.createElement('div'))
+  try {
+    await act(async () => { root.render(createElement(Fixture)) })
+    expect(current.card?.version).toBe(1)
+    await act(async () => { root.render(createElement(Fixture, { editor: card(2) })) })
+    expect(current.card?.version).toBe(2)
+    expect(get).toHaveBeenCalledTimes(1)
+    get.mockResolvedValue({ card: card(3) })
+    await act(async () => { root.render(createElement(Fixture, { editor: card(2), revision: 1 })) })
+    expect(current.card?.version).toBe(3)
+    expect(get).toHaveBeenCalledTimes(2)
+  } finally { act(() => root.unmount()) }
+})

@@ -1,10 +1,6 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createPromptResourceStore, type PromptResourceTreeNode } from '@loom-studio/application-data'
-import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import {
-  migrateVersionOne, migrateVersionTwo, migrateVersionThree, migrateVersionFour, migrateVersionFive,
-} from '../../../packages/application-data/src/prompt-resource/schema.js'
 
 const actor = { kind: 'system' as const, id: 'prompt-resource-test' }
 
@@ -26,41 +22,6 @@ describe('PromptResourceStore', () => {
     } finally { await engine.close() }
   })
 
-  it('preserves a v4 Setting mount through the v5 migration with valid foreign keys', () => {
-    const database = new DatabaseSync(':memory:')
-    try {
-      database.exec('PRAGMA foreign_keys = ON')
-      for (const migrate of [migrateVersionOne, migrateVersionTwo, migrateVersionThree, migrateVersionFour]) {
-        migrate(database)
-      }
-      database.exec('BEGIN')
-      database.prepare(`
-        INSERT INTO prompt_resources (id, resource_kind, root_node_id, label, version, metadata_json, created_at, updated_at)
-        VALUES ('setting-1', 'setting', 'node-1', 'Setting', 1, '{}', '2026-01-01', '2026-01-01')
-      `).run()
-      database.prepare(`
-        INSERT INTO prompt_resource_nodes
-          (id, resource_id, parent_id, order_index, kind, label, extra_json, created_at, updated_at)
-        VALUES ('node-1', 'setting-1', NULL, 0, 'module', 'Setting', '{}', '2026-01-01', '2026-01-01')
-      `).run()
-      database.prepare(`
-        INSERT INTO global_setting_mounts
-          (id, setting_resource_id, source_kind, source_id, order_index, origin_json, created_at)
-        VALUES ('mount-1', 'setting-1', 'preset', 'preset-1', 7, '{"kind":"legacy"}', '2026-01-01')
-      `).run()
-      database.exec('COMMIT')
-      const before = database.prepare('SELECT * FROM global_setting_mounts').get()
-
-      migrateVersionFive(database)
-
-      expect(database.prepare('SELECT * FROM global_setting_mounts').get()).toEqual({
-        ...before, reference_json: null,
-      })
-      expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
-    } finally {
-      database.close()
-    }
-  })
 
   it('replaces an authored tree without changing resource identity and can revert its root change', async () => {
     const { engine, store } = createStore()
@@ -154,7 +115,7 @@ describe('PromptResourceStore', () => {
     const setting = await store.createResource({ actor, id: 'setting-500', resourceKind: 'lore', rootNode: settingFixture })
     const preset = await store.createResource({ actor, id: 'preset-100', resourceKind: 'preset', rootNode: presetFixture })
 
-    expect(engine.database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.prompt-resource')).toEqual({ version: 8 })
+    expect(engine.database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.prompt-resource')).toEqual({ version: 9 })
     expect(engine.database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND (name LIKE 'prompt_resource%' OR name IN ('global_lore_mounts', 'preset_tool_mounts'))`).all()).toEqual(expect.arrayContaining([
       { name: 'prompt_resources' },
       { name: 'prompt_resource_nodes' },
@@ -316,7 +277,7 @@ describe('PromptResourceStore', () => {
     cyclic.self = cyclic
     await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'node.update', nodeId: 'entry-a', patch: { capabilities: cyclic as never } }] })).rejects.toMatchObject({ code: 'prompt_resource.json_invalid' })
     await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'node.update', nodeId: 'entry-a', patch: { extra: [] as never } }] })).rejects.toMatchObject({ code: 'prompt_resource.json_invalid' })
-    await expect(store.replaceLoreMounts({ actor, source: { kind: 'manual' }, mounts: [{ loreResourceId: resource.resource.id, orderIndex: 0, origin: cyclic as never }] })).rejects.toMatchObject({ code: 'prompt_resource.json_invalid' })
+    await expect(store.replaceLoreMounts({ actor, expectedMountIds: [], source: { kind: 'manual' }, mounts: [{ loreResourceId: resource.resource.id, orderIndex: 0, origin: cyclic as never }] })).rejects.toMatchObject({ code: 'prompt_resource.json_invalid' })
     await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'resource.update', patch: { metadata: null as never } }] })).rejects.toMatchObject({ code: 'prompt_resource.json_invalid' })
     await expect(store.getResource(resource.resource.id)).resolves.toMatchObject({ version: 1 })
     engine.close()
@@ -453,10 +414,13 @@ describe('PromptResourceStore', () => {
     const { engine, store } = createStore()
     const first = await store.createResource({ actor, id: 'setting-1', resourceKind: 'lore', rootNode: createSmallTree() })
     const second = await store.createResource({ actor, id: 'setting-2', resourceKind: 'lore', rootNode: createSmallTree('root-2', 'second') })
-    const firstReplace = await store.replaceLoreMounts({ actor, source: { kind: 'manual' }, mounts: [{ loreResourceId: first.resource.id, orderIndex: 0 }, { loreResourceId: second.resource.id, orderIndex: 1 }] })
-    const secondReplace = await store.replaceLoreMounts({ actor, source: { kind: 'manual' }, mounts: [{ loreResourceId: second.resource.id, orderIndex: 3 }] })
+    const firstReplace = await store.replaceLoreMounts({ actor, expectedMountIds: [], source: { kind: 'manual' }, mounts: [{ loreResourceId: first.resource.id, orderIndex: 0 }, { loreResourceId: second.resource.id, orderIndex: 1 }] })
+    const secondReplace = await store.replaceLoreMounts({ actor, expectedMountIds: firstReplace.mounts.map(mount => mount.id), source: { kind: 'manual' }, mounts: [{ loreResourceId: second.resource.id, orderIndex: 3 }] })
+    await expect(store.replaceLoreMounts({ actor, source: { kind: 'manual' }, expectedMountIds: [], mounts: [] })).rejects.toMatchObject({ code: 'prompt_resource.mount_conflict' })
+    await expect(store.replaceLoreMounts({ actor, source: { kind: 'manual' }, expectedMountIds: firstReplace.mounts.map(mount => mount.id), mounts: [] })).rejects.toMatchObject({ code: 'prompt_resource.mount_conflict' })
+
     expect(secondReplace.commit.operations).toEqual([
-      ...firstReplace.mounts.map(mount => ({ store: 'prompt-resources', kind: 'delete' as const, entityId: mount.id, entityType: 'prompt-resource.mount' })).sort((left, right) => left.entityId.localeCompare(right.entityId)),
+      ...firstReplace.mounts.map(mount => ({ store: 'prompt-resources', kind: 'delete' as const, entityId: mount.id, entityType: 'prompt-resource.mount' })).sort((left, right) => left.entityId < right.entityId ? -1 : left.entityId > right.entityId ? 1 : 0),
       { store: 'prompt-resources', kind: 'create', entityId: secondReplace.mounts[0]!.id, entityType: 'prompt-resource.mount' },
     ])
     expect((await store.listLoreMounts({ source: { kind: 'manual' } })).map(mount => mount.loreResourceId)).toEqual(['setting-2'])
@@ -489,7 +453,7 @@ describe('PromptResourceStore', () => {
     const { engine, store } = createStore()
     const preset = await store.createResource({ actor, id: 'tool-preset', resourceKind: 'preset', rootNode: createSmallTree('tool-preset-root', 'tool-preset') })
     const first = await store.replacePresetToolMounts({
-      actor,
+      actor, expectedMountIds: [],
       presetResourceId: preset.resource.id,
       mounts: [
         { toolId: 'official/first', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } },
@@ -497,16 +461,20 @@ describe('PromptResourceStore', () => {
       ],
     })
     const second = await store.replacePresetToolMounts({
-      actor,
+      actor, expectedMountIds: first.mounts.map(mount => mount.id),
       presetResourceId: preset.resource.id,
       mounts: [{ toolId: 'official/second', orderIndex: 0, defaultEnabled: true, content: { targetAnchorId: 'tools', localDepth: 5 } }],
     })
+
+    await expect(store.replacePresetToolMounts({ actor, presetResourceId: preset.resource.id, expectedMountIds: [], mounts: [] })).rejects.toMatchObject({ code: 'prompt_resource.mount_conflict' })
+    await expect(store.replacePresetToolMounts({ actor, presetResourceId: preset.resource.id, expectedMountIds: first.mounts.map(mount => mount.id), mounts: [] })).rejects.toMatchObject({ code: 'prompt_resource.mount_conflict' })
+    expect(await store.listPresetToolMounts({ presetResourceId: preset.resource.id })).toEqual(second.mounts)
 
     expect(second.commit.operations).toEqual([
       ...first.mounts.map(mount => ({
         store: 'prompt-resources', kind: 'delete' as const, entityId: mount.id, entityType: 'prompt-resource.tool-mount',
         scope: { store: 'prompt-resources', entityType: 'prompt-resource', entityId: preset.resource.id, version: 1 },
-      })).sort((left, right) => left.entityId.localeCompare(right.entityId)),
+      })).sort((left, right) => left.entityId < right.entityId ? -1 : left.entityId > right.entityId ? 1 : 0),
       {
         store: 'prompt-resources', kind: 'create', entityId: second.mounts[0]!.id, entityType: 'prompt-resource.tool-mount',
         scope: { store: 'prompt-resources', entityType: 'prompt-resource', entityId: preset.resource.id, version: 1 },

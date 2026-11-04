@@ -1,3 +1,4 @@
+import { projectTimelinePositions } from '../../../packages/application-runtime/src/agents/timeline-position.js'
 // @vitest-environment happy-dom
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -6,7 +7,7 @@ import { NarrativeExecutionFlow } from '../../../apps/studio-client/src/features
 import type { NarrativeSessionExecution } from '../../../apps/studio-client/src/features/narrative-runtime/model/narrative-execution-view.js'
 import { AgentToolActionItem } from '../../../apps/studio-client/src/features/sessions/ui/agent-tool-blocks.js'
 import { NarrativeCommunication, useCommunicationExpansion } from '../../../apps/studio-client/src/features/narrative-runtime/ui/narrative-communication.js'
-import { projectTimelineRounds } from '../../../apps/studio-client/src/features/narrative-runtime/model/timeline-execution-projection.js'
+import { projectTimelineRounds as renderTimelineRounds } from '../../../apps/studio-client/src/features/narrative-runtime/model/timeline-execution-projection.js'
 import type { AgentTranscriptEntry, NarrativeNode } from '../../../apps/studio-client/src/entities/index.js'
 
 const roots: ReturnType<typeof createRoot>[] = []
@@ -16,21 +17,20 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 
-function savedFailure(legacyAbandoned = false) {
+function savedFailure(abandoned = false) {
   const entry = (id: string, sequence: number, data: AgentTranscriptEntry['entry']): AgentTranscriptEntry => ({
     id, sequence, agentSessionId: 'story', createdAt: '', ...(sequence > 1 ? { roundId: 'communication-round', runId: 'failed-run' } : {}), entry: data,
   })
   const entries = [entry('opening', 1, { kind: 'message', role: 'assistant', purpose: 'narrative', content: 'Opening' }),
-    entry('input', 2, { kind: 'message', role: 'user', content: '先探索世界书' }),
-    entry('failed', 3, { kind: 'run-state', state: 'failed', reason: 'HTTP 503 overloaded', recovery: legacyAbandoned
-      ? { phase: 'provider', nextProviderStep: 1, userEntryId: 'input' } : { materialBaseline: { headEntryId: 'opening' } } }),
-    ...(legacyAbandoned ? [entry('discarded', 4, { kind: 'run-state', state: 'discarded' })] : []),
+    entry('input', 2, { kind: 'message', role: 'user', content: '先探索世界书', editBaseline: { timelineId: 'story', branchId: 'branch', headEntryId: 'opening', headNodeId: 'opening-node', stateRevisionId: 'state', workspaceRevisionId: 'workspace' } }),
+    entry('failed', 3, { kind: 'run-state', state: 'failed', reason: 'HTTP 503 overloaded', recovery: { phase: 'provider', nextProviderStep: 1, userEntryId: 'input', materialBaseline: { timelineId: 'story', branchId: 'branch', headEntryId: 'opening', headNodeId: 'opening-node', stateRevisionId: 'state', workspaceRevisionId: 'workspace' } } }),
+    ...(abandoned ? [entry('discarded', 4, { kind: 'run-state', state: 'discarded' })] : []),
   ]
   const node: NarrativeNode = { id: 'opening-node', entryId: 'opening', kind: 'narrative', floor: 1, timelineId: 'story', body: { format: 'loom-markdown.v1', raw: 'Opening' }, createdAt: '' }
   return projectTimelineRounds(entries, [node], 'Writer')[0]!.communications.find(item => item.anchorNodeId === node.id)!
 }
 
-async function mount(legacyAbandoned = false, withReplies = false) {
+async function mount(abandoned = false, withReplies = false) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   const host = document.createElement('div')
   document.body.append(host)
@@ -38,7 +38,7 @@ async function mount(legacyAbandoned = false, withReplies = false) {
   roots.push(root)
   const onContinue = vi.fn(async () => true)
   const onRetryInput = vi.fn(async () => true)
-  const candidate = savedFailure(legacyAbandoned)
+  const candidate = savedFailure(abandoned)
   if (withReplies) candidate.discussions[0]!.steps = ['first', 'last'].map(id => ({ id, kind: 'reply', role: 'assistant', title: '回复', content: id, state: 'completed' }))
   await act(async () => root.render(createElement(NarrativeCommunication, { candidate, round: 0, activeRunId: 'failed-run', onContinue, onRetryInput })))
   return { host, onContinue, onRetryInput }
@@ -95,7 +95,7 @@ it('places retry beside copy on the last assistant reply only', async () => {
   expect(f.onRetryInput).toHaveBeenCalledWith('input', '先探索世界书')
 })
 
-it('keeps edit and retry controls visible for a legacy abandoned first-request failure', async () => {
+it('keeps edit and retry controls visible for an abandoned first-request failure with a saved baseline', async () => {
   const f = await mount(true)
   expect(f.host.querySelector<HTMLButtonElement>('[aria-label="编辑沟通输入"]')?.disabled).toBe(false)
   expect(f.host.querySelector<HTMLButtonElement>('[aria-label="重试沟通"]')?.disabled).toBe(false)
@@ -112,7 +112,7 @@ it('keeps a reply-only narrative run and its single reasoning disclosure togethe
   })
   const entries = [
     entry('input', 1, { kind: 'message', role: 'user', purpose: 'narrative', content: '介绍项目' }),
-    entry('thought', 2, { kind: 'reasoning', content: '先整理项目知识', state: 'completed' }),
+    entry('thought', 2, { kind: 'reasoning', content: '先整理项目知识', source: 'provider-native', visibility: 'collapsed', replay: 'omit' }),
     entry('reply', 3, { kind: 'message', role: 'assistant', content: '这是项目介绍' }),
   ]
   const node: NarrativeNode = { id: 'input-node', entryId: 'input', kind: 'user-input', floor: 1, timelineId: 'story', body: { format: 'loom-markdown.v1', raw: '介绍项目' }, createdAt: '' }
@@ -247,18 +247,47 @@ it('keeps manual expansion unchanged across streaming prose and completion', asy
   await render()
   expect(host.querySelector('details')).toBeNull()
   await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="查看工作过程"]')!.click())
-  expect(host.querySelector('details')?.open).toBe(false)
-  await act(async () => host.querySelector('summary')!.click())
-  expect(host.querySelector('details')?.open).toBe(true)
+  expect(host.querySelector('[aria-label="思考：思考"]')?.getAttribute('aria-expanded')).toBe('false')
+  await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="思考：思考"]')!.click())
+  expect(host.querySelector('[aria-label="思考：思考"]')?.getAttribute('aria-expanded')).toBe('true')
   execution.steps.push({ id: 'prose', kind: 'narrative', title: '正文', content: 'writing', state: 'running' })
   await render()
   expect(host.querySelector('[aria-label="剧情正文"]')).not.toBeNull()
-  expect(host.querySelector('details')?.open).toBe(true)
+  expect(host.querySelector('[aria-label="思考：思考"]')?.getAttribute('aria-expanded')).toBe('true')
   execution.steps.push({ id: 'after', kind: 'thinking', title: '收尾', content: 'finish', state: 'running' })
   await render()
-  expect(host.querySelectorAll('details')[1]?.open).toBe(false)
+  expect(host.querySelector('[aria-label="思考：收尾"]')?.getAttribute('aria-expanded')).toBe('false')
   execution.state = 'completed'
   await render()
-  expect(host.querySelectorAll('details')).toHaveLength(2)
-  expect(host.querySelector('details')?.open).toBe(true)
+  expect(host.querySelectorAll('[aria-label^="思考："]')).toHaveLength(2)
+  expect(host.querySelector('[aria-label="思考：思考"]')?.getAttribute('aria-expanded')).toBe('true')
 })
+
+it('renders projected Agent replies in both initial and follow-up Timeline communication', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  const host = document.createElement('div')
+  document.body.append(host)
+  const root = createRoot(host)
+  roots.push(root)
+  const execution = (id: string): NarrativeSessionExecution => ({ id, preset: 'Writer', state: 'completed',
+    steps: [{ id, kind: 'reply', title: '回复', content: '<nom|smile|原文>', state: 'completed' }] })
+  const source = { kind: 'agent-session' as const, sessionId: 'story' }
+  await act(async () => root.render(createElement(NarrativeCommunication, {
+    round: 1, candidate: { execution: execution('first'), discussions: [execution('followup')] },
+    displayProjection: { pending: false, entries: new Map(['first', 'followup'].map(id => [id, {
+      source, id, sequence: 1, depth: 0, originalText: '<nom|smile|原文>',
+      text: `<div class="nom-bubble">${id} 已处理</div>`, appliedRuleIds: ['nom'], promotedReasoning: [],
+    }])) },
+  })))
+  await act(async () => { await import('../../../apps/studio-client/src/shared/ui/markdown-content/safe-html-markdown.js') })
+  expect(host.querySelectorAll('[data-loom-message-content]')).toHaveLength(2)
+  expect(host.textContent).toContain('first 已处理')
+  expect(host.textContent).toContain('followup 已处理')
+  expect(host.textContent).not.toContain('<div')
+  expect(host.textContent).not.toContain('<nom|')
+})
+
+// Exercise the same authoritative positioning boundary as transcript reads.
+function projectTimelineRounds(...args: Parameters<typeof renderTimelineRounds>) {
+  return renderTimelineRounds(projectTimelinePositions(args[0] as never, args[1] as never) as typeof args[0], ...args.slice(1) as [typeof args[1], typeof args[2], typeof args[3]])
+}

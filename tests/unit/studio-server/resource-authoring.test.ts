@@ -12,7 +12,7 @@ const resource: AuthoringResource = {
   rootNode: { id: 'root', kind: 'module', label: '助手', body: '容器原文', extra: { custom: { flag: true } }, children: [
     { id: 'message', kind: 'message', label: '系统消息', capabilities: { roleHint: 'system', activation: { kind: 'always' } }, children: [
       { id: 'entry', kind: 'entry', label: '行为/说明.md', enabled: false, body: '# 正文\n\n---\n保留换行\n', extra: { custom: [1, 'x'] } },
-      { id: 'anchor', kind: 'virtual', label: '知识', capabilities: { targetAnchorId: '@lore.stable', localDepth: 5 } },
+      { id: 'anchor', kind: 'virtual', label: '知识', capabilities: { targetAnchorId: '@lore.stable' } },
     ] },
     { id: 'history', kind: 'virtual', label: '历史', capabilities: { targetAnchorId: '@chat.session' } },
   ] },

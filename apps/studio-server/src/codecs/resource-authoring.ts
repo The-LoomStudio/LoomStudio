@@ -81,7 +81,7 @@ export function projectResourceAuthoring(input: AuthoringResource): Map<string, 
       } else if (node.kind === 'folder' || node.kind === 'message') {
         let directory = prefix
         if (node.kind === 'message') {
-          const role = node.capabilities?.roleHint === 'developer' ? 'system' : node.capabilities?.roleHint ?? 'system'
+          const role = node.capabilities?.roleHint ?? 'system'
           if (typeof role !== 'string' || !roles.includes(role)) fail(prefix, `Unsupported Message role: ${String(role)}`)
           directory += `.${role}.message`
           const { roleHint: _role, ...capabilities } = node.capabilities ?? {}
@@ -156,7 +156,7 @@ export function restoreResourceAuthoring(input: ReadonlyMap<string, Uint8Array>)
         const metadataPath = `${path}/${filename}`
         const metadata = readMetadata(metadataPath)
         if (message) {
-          const role = message[2] === 'developer' ? 'system' : message[2]
+          const role = message[2]
           if (!roles.includes(role)) fail(path, `Unsupported Message role: ${role}`)
           const capabilities = metadata.capabilities === undefined ? {} : object(metadata.capabilities, metadataPath)
           if ('roleHint' in capabilities) fail(metadataPath, 'Message roleHint is determined by the directory')

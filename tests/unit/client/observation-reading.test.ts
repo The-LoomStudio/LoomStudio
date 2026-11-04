@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { compareMessages } from '../../../apps/studio-client/src/features/observability/model/observation-message-diff.js'
-import { buildSourceTree } from '../../../apps/studio-client/src/features/observability/model/observation-source-tree.js'
+import { buildSourceTree, filterSourceTree, sortSourceTreeByTokens } from '../../../apps/studio-client/src/features/observability/model/observation-source-tree.js'
 import { mapObservationStep } from '../../../apps/studio-client/src/features/observability/model/observation-mapping.js'
 import type { ObservationSource } from '../../../apps/studio-client/src/features/observability/model/observation-view.js'
 import type { ObservationEntry } from '../../../apps/studio-client/src/entities/observation.js'
@@ -141,4 +141,33 @@ describe('model log reading', () => {
     expect(step.tools[0].result).toEqual(entry.request!.toolExecutions![0].result)
   })
 
+})
+
+
+it('filters source entries by both anchor and full text while retaining only their ancestry', () => {
+  const tree = buildSourceTree([
+    source('a', { nodeKind: 'virtual', anchorIds: ['@a'] }),
+    source('b', { nodeKind: 'virtual', anchorIds: ['@b'] }),
+    source('shared', { included: true, injections: [{ id: 'a1', targetAnchorId: '@a', rendered: 'deep needle' }, { id: 'b1', targetAnchorId: '@b', rendered: 'other' }] }),
+    source('excluded', { included: true, injections: [{ id: 'a2', targetAnchorId: '@a', rendered: 'not a match' }] }),
+  ], 'Other')
+  const result = filterSourceTree(tree, 'needle', new Set(['shared']), '@a')
+  expect(result.map(node => node.source?.id)).toEqual(['a'])
+  expect(result[0].children.map(node => node.source?.id)).toEqual(['shared'])
+  expect(filterSourceTree(tree, 'missing phrase')).toEqual([])
+})
+
+
+it('sorts sibling sources by tokens, keeps ancestry and authored ties, and puts unknown counts last', () => {
+  const tree = buildSourceTree([
+    source('folder', { nodeKind: 'folder' }),
+    source('small', { parentId: 'folder', included: true }),
+    source('large', { parentId: 'folder', included: true }),
+    source('tie', { parentId: 'folder', included: true }),
+    source('unknown', { parentId: 'folder', included: true }),
+  ], 'Other')
+  const sorted = sortSourceTreeByTokens(tree, new Map([['small', 10], ['large', 50], ['tie', 50]]))
+  expect(sorted[0].source?.id).toBe('folder')
+  expect(sorted[0].children.map(node => node.source?.id)).toEqual(['large', 'tie', 'small', 'unknown'])
+  expect(tree[0].children.map(node => node.source?.id)).toEqual(['small', 'large', 'tie', 'unknown'])
 })

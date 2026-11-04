@@ -4,7 +4,8 @@ import { createStudioPanels } from '../../../apps/studio-client/src/app/studio-p
 
 function fixture() {
   const state = {
-    api: {}, cards: [], allTimelines: [], cardTimelines: [],
+    api: {}, cards: [], allTimelines: [], cardTimelines: [], promptResources: [],
+    t: (key: string) => key,
     selectedCardId: 'playing-card',
     selectCardTimeline: vi.fn(),
     setSelectedCardId: vi.fn(),
@@ -18,7 +19,7 @@ function fixture() {
   }
   const navigation = {
     route: { panel: 'character', cardId: 'browsed-card', timelineId: 'playing-timeline', branchId: 'playing-branch' },
-    searchParams: new URLSearchParams(),
+    searchParams: new URLSearchParams(), toolSearchParams: new URLSearchParams(),
     openPanel: vi.fn(),
     setSearchParams: vi.fn(),
     openNarrative: vi.fn(),
@@ -27,8 +28,10 @@ function fixture() {
     isCurrent: vi.fn(() => true),
     openUri: vi.fn(),
   }
+  const openRecentCharacter = vi.fn()
   const panels = createStudioPanels({
-    state, navigation, resourcePanels: {},
+    state, navigation, resourcePanels: {}, openRecentCharacter,
+    extensionCardContext: {}, clientExtensions: { packages: [], cardPackages: [] },
   } as unknown as Parameters<typeof createStudioPanels>[0])
   function panelElement(id: 'character' | 'sessions' | 'recent') {
     const boundary = panels[id](true) as ReactElement<{ children: ReactElement<{
@@ -46,48 +49,18 @@ function fixture() {
     onDeleteTimeline(id: string): Promise<boolean>
     onArchiveImported(id: string): Promise<void>
   }>).props
-  const recentProps = (panelElement('recent') as ReactElement<{
-    onOpenCard(card: { id: string; validationError?: string }): void
-  }>).props
-  return { props, sessionsProps, recentProps, state, navigation }
+  const historyProps = (panelElement('recent') as ReactElement<{ recent: ReactElement<{ onOpenRecent(visit: { cardId: string }): void }> }>).props
+  const recentProps = historyProps.recent.props
+  return { props, sessionsProps, recentProps, state, navigation, openRecentCharacter }
 }
 
 describe('Character browsing versus playing', () => {
-  it('opens invalid recent cards in the error profile rather than starting or continuing a story', () => {
-    const { recentProps, state, navigation } = fixture()
-    recentProps.onOpenCard({ id: 'bad-card', validationError: 'Invalid opening' })
-    expect(navigation.openPanel).toHaveBeenCalledWith('character', { cardId: 'bad-card' })
-    expect(state.selectCardTimeline).not.toHaveBeenCalled()
-    expect(navigation.openCardPreview).not.toHaveBeenCalled()
-    expect(state.createTimelineFromCard).not.toHaveBeenCalled()
-  })
-  it('previews a recent card with no history without requesting creation', async () => {
-    const { recentProps, state, navigation } = fixture()
-    state.selectCardTimeline.mockResolvedValue(null)
-    recentProps.onOpenCard({ id: 'recent-card' })
-    await vi.waitFor(() => expect(navigation.openCardPreview).toHaveBeenCalledWith('recent-card'))
-    expect(state.selectCardTimeline).toHaveBeenCalledExactlyOnceWith('recent-card')
-    expect(state.setOpeningChoice).not.toHaveBeenCalled()
-    expect(state.createTimelineFromCard).not.toHaveBeenCalled()
-    expect(navigation.openNarrative).not.toHaveBeenCalled()
-  })
-
-  it('continues an existing recent-card story and ignores failed or superseded selections', async () => {
-    const { recentProps, state, navigation } = fixture()
-    state.selectCardTimeline.mockResolvedValueOnce({ timelineId: 'saved', branchId: 'branch' })
-    recentProps.onOpenCard({ id: 'recent-card' })
-    await vi.waitFor(() => expect(navigation.openNarrative).toHaveBeenCalledWith('saved', 'branch'))
-    state.selectCardTimeline.mockResolvedValueOnce(undefined)
-    recentProps.onOpenCard({ id: 'failed-card' })
-    await Promise.resolve()
-    expect(navigation.openCardPreview).not.toHaveBeenCalled()
-    state.selectCardTimeline.mockResolvedValueOnce(null)
-    recentProps.onOpenCard({ id: 'late-card' })
-    navigation.isCurrent.mockReturnValue(false)
-    await Promise.resolve()
-    expect(navigation.openCardPreview).not.toHaveBeenCalled()
-    expect(state.setOpeningChoice).not.toHaveBeenCalled()
-    expect(navigation.openNarrative).toHaveBeenCalledOnce()
+  it('delegates recent visits to the App navigation owner', () => {
+    const { recentProps, openRecentCharacter, state } = fixture()
+    const visit = { cardId: 'recent-card' }
+    recentProps.onOpenRecent(visit)
+    expect(openRecentCharacter).toHaveBeenCalledExactlyOnceWith(visit)
+    expect(state.activateTimeline).not.toHaveBeenCalled()
   })
 
   it('resets the story and default opening before showing the requested card preview', () => {
@@ -101,10 +74,9 @@ describe('Character browsing versus playing', () => {
     expect(state.activateTimeline).not.toHaveBeenCalled()
   })
 
-  it('does not overwrite newer navigation when creation, activation or deletion finishes', async () => {
+  it('does not overwrite newer navigation when creation or deletion finishes', async () => {
     const { props, sessionsProps, state, navigation } = fixture()
     const creation = props.onCreateTimelineFromCard('external-card')
-    props.onOpenTimeline({ id: 'external-session' }, 'external-card')
     const deletion = sessionsProps.onDeleteTimeline('playing-timeline')
     navigation.isCurrent.mockReturnValue(false)
     await creation
@@ -161,12 +133,11 @@ describe('Character browsing versus playing', () => {
     expect(navigation.openNarrative).toHaveBeenCalledWith('new-timeline', 'new-branch')
   })
 
-  it('changes play context only when opening a saved session succeeds', async () => {
+  it('publishes the selected saved story without activating from the panel', () => {
     const { props, state, navigation } = fixture()
     props.onOpenTimeline({ id: 'external-session' }, 'external-card')
+    expect(navigation.openNarrative).toHaveBeenCalledExactlyOnceWith('external-session')
+    expect(state.activateTimeline).not.toHaveBeenCalled()
     expect(state.setSelectedCardId).not.toHaveBeenCalled()
-    await vi.waitFor(() => expect(navigation.openNarrative).toHaveBeenCalledWith('external-session', 'saved-branch'))
-    expect(state.activateTimeline).toHaveBeenCalledWith('external-session')
-    expect(state.setSelectedCardId).toHaveBeenCalledWith('external-card')
   })
 })

@@ -194,6 +194,7 @@ export function createExtensionAgentTasks({ runtime, documents }: { runtime: App
       if (document.content.lifecycle === 'temporary' && (document.content.runId || document.content.result)) throw new Error('Temporary Agent task can only be invoked once')
       invoking.add(input.sessionId)
       let runId: string | undefined
+      let terminal = false
       const abort = () => { if (runId) runs.cancel(runId, 'extension-scope-ended') }
       try {
         const started = await runs.create({ agentSessionId: input.sessionId, input: input.input, contextMode: 'isolated',
@@ -206,11 +207,18 @@ export function createExtensionAgentTasks({ runtime, documents }: { runtime: App
         const { result: _previous, ...record } = document.content
         await documents.write({ id: document.id, type: documentType, expectedVersion: document.version, content: { ...record, runId } as JsonValue })
         while (!(await runs.subscribe(runId, 0, input.sessionId)).done) await delay(50)
+        terminal = true
         const result = await finish(record, runId)
         const latest = await documents.get(document.id) as DocumentRecord<Ownership>
         await save(latest, { result })
         runs.acknowledgeCompletion(runId)
         return result
+      } catch (error) {
+        if (runId && !terminal) {
+          runs.cancel(runId, 'extension-task-invoke-failed')
+          while (!(await runs.subscribe(runId, 0, input.sessionId)).done) await delay(50)
+        }
+        throw error
       } finally {
         signal?.removeEventListener('abort', abort)
         invoking.delete(input.sessionId)
@@ -224,7 +232,7 @@ export function createExtensionAgentTasks({ runtime, documents }: { runtime: App
       const page = await runs.subscribe(snapshot.runId, input.cursor, input.sessionId)
       signal?.throwIfAborted()
       return { snapshot, events: page.events.flatMap(progressEvents), nextCursor: page.nextCursor,
-        replayExpired: page.replayExpired ?? false, ...(page.partialText === undefined ? {} : { partialText: page.partialText }),
+        replayExpired: page.replayExpired ?? false, ...(page.partialEvents === undefined ? {} : { partialText: page.partialEvents.filter(event => event.type === 'text-delta').map(event => event.delta).join('') }),
         pendingApprovals: (page.pendingApprovals ?? []).flatMap(event => event.type === 'mutation-approval-requested' || event.type === 'history-read-approval-requested'
           ? [{ requestId: event.requestId, kind: event.type === 'mutation-approval-requested' ? 'mutation' as const : 'history-read' as const }] : []), done: page.done }
     },

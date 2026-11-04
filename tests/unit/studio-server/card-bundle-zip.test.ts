@@ -431,7 +431,9 @@ describe('Loom Card ZIP', () => {
       })),
       'assets/avatar.png': Buffer.from('avatar'),
     })
-    await expect(decodeCardBundleZip(archive)).rejects.toThrow('Unsupported card bundle schemaVersion')
+    await expect(decodeCardBundleZip(archive)).rejects.toThrow('Invalid Loom Card package manifest')
+    const files = unzipSync(archive)
+    await expect(loadCardBundleFiles(async path => files[path]!)).rejects.toThrow('Invalid Loom Card package manifest')
   })
 
   it('reuses identical old inline entries without generating a legacy directory', async () => {

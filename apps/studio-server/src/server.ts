@@ -6,8 +6,6 @@ import { createExtensionAgentTasks } from './extensions/extension-agent-tasks.js
 import { createExtensionApplicationAdapter } from './extensions/extension-application-adapter.js'
 import { createCardTransferService } from './codecs/card-transfer-service.js'
 import {
-  applicationDocumentTypes,
-  extensionInstallationId,
   createApplicationRuntime,
   createObservationStore,
   createObservedAiGateway,
@@ -19,9 +17,8 @@ import {
   createStateContentRegistry,
   createNarrativeContextRegistry,
   createStateContributionRegistry,
-  type ExtensionInstallationContent,
 } from '@loom-studio/application-runtime'
-import { canAccessExtensionAsset, canExtensionConsumeAsset } from './extensions/extension-asset-access.js'
+import { canReadCardExtensionAsset, canExtensionConsumeAsset } from './extensions/extension-asset-access.js'
 import { createExtensionFileData } from './extensions/extension-file-data.js'
 import {
   createAiGatewayCapabilityRegistry,
@@ -40,12 +37,11 @@ import { createScriptService } from './scripts/script-service.js'
 import { createKernel } from '@loom-studio/kernel'
 import { queryExtensionLogs, readLogFailure, type Logger, type LogReader, type LogHistoryReader } from '@loom-studio/logging'
 import { createNarrativeStore } from '@loom-studio/application-data'
-import { createPromptResourceStore, migrateLoreDocuments, type PromptResourceStore } from '@loom-studio/application-data'
+import { createPromptResourceStore, type PromptResourceStore } from '@loom-studio/application-data'
 import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
 import { createId, nowIso } from '@loom-studio/shared'
 import { createStateStore } from '@loom-studio/application-data'
 import { join, resolve } from 'node:path'
-import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { withAiGatewayLogging } from './logging/ai-gateway-logging.js'
 import { createNetworkSettingsStore } from './platform/network-settings.js'
@@ -175,21 +171,11 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   let assets: AssetStore | undefined
   let promptResources: PromptResourceStore | undefined
   try {
-    if (dataEngine) {
-      const version = dataEngine.database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?')
-        .get('application.prompt-resource') as { version: number } | undefined
-      if (version && version.version < 6 && (options.sqlitePath ?? localPaths.databaseFile) !== ':memory:') {
-        mkdirSync(localPaths.backupRoot, { recursive: true })
-        const backupPath = join(localPaths.backupRoot, `before-lore-${Date.now()}.sqlite`)
-        dataEngine.database.prepare('VACUUM INTO ?').run(backupPath)
-      }
-    }
     promptResources = dataEngine ? createPromptResourceStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     agents = dataEngine ? createAgentStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     narratives = dataEngine ? createNarrativeStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     states = dataEngine ? createStateStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     if (dataEngine) {
-      dataEngine.migrate({ namespace: 'application.lore-documents', migrations: [{ version: 1, migrate: migrateLoreDocuments }] })
       blobs = createBlobStore({
         engine: dataEngine,
         rootDirectory: localPaths.blobRoot,
@@ -306,6 +292,13 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     readCardPackage: input => applicationRuntime.getCardExtensionPackage(input),
     listInstallations: () => applicationRuntime.listExtensionInstallations(),
     assertDependencyConsumers: (packageId, target, nextVersion) => applicationRuntime.checkExtensionDependencyConsumers({ packageId, target, nextVersion }),
+    onModuleBatchCompleted: result => { kernel.getEventBus().emit('extensions.changed', {
+      packageId: result.packageId, target: result.target, action: 'batch-completed', batchId: result.batchId,
+    }, { publisher: { kind: 'kernel' } }) },
+    previewPackageResources: input => applicationRuntime.previewExtensionPackageResources(input),
+    uninstallInstallation: input => applicationRuntime.uninstallExtensionInstallation(input, {
+      actor: { kind: 'extension', id: input.packageId },
+    }),
     importPackageResources: input => applicationRuntime.importExtensionPackageResources(input, {
       actor: { kind: 'extension', id: input.packageId },
     }),
@@ -360,6 +353,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   })
   const startupDirectoryScan = directoryCatalog.scan()
   const directoryMedia = createCardDirectoryMedia({ dataRoot: localPaths.dataRoot, logger: options.logger?.child('card.directory.media') })
+  let commitPublisher: { dispose(): void } | undefined
   let mediaWatcher: { dispose(): void } | undefined
   const resourceDirectories = assets ? createCardDirectoryService({
     dataRoot: localPaths.dataRoot,
@@ -420,20 +414,10 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     }),
     clientDirectory: options.clientDirectory,
     assets,
-    canReadCardExtensionAsset: async input => {
-      const target = { kind: 'card' as const, cardId: input.cardId }
-      const installationId = extensionInstallationId(input.packageId, target)
-      const [installation, asset, card] = await Promise.all([
-        documents.get(installationId), assets?.getMediaAsset(input.assetId), documents.get(input.cardId),
-      ])
-      if (!asset || !installation || installation.type !== applicationDocumentTypes.extensionInstallation
-        || !card || card.type !== applicationDocumentTypes.cardSource) return false
-      const content = installation.content as ExtensionInstallationContent
-      if (content.packageId !== input.packageId || content.target.kind !== 'card' || content.target.cardId !== input.cardId) return false
-      if (asset.ownerPackageId === input.packageId && asset.ownerInstallationId === installationId) return true
-      return extensionManager.getGrantedAssetCapabilities(input.packageId, input.moduleId, target).includes('assets.read')
-        && await canAccessExtensionAsset(documents, asset, target)
-    },
+    canReadCardExtensionAsset: input => canReadCardExtensionAsset({
+      documents, assets,
+      getGrantedAssetCapabilities: (packageId, moduleId, target) => extensionManager.getGrantedAssetCapabilities(packageId, moduleId, target),
+    }, input),
     cardMedia: cardTransfer.cardMedia,
     cardPng: cardTransfer.cardPng,
     extensionIcons: {
@@ -447,20 +431,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionEvents: {
       subscribe: handler => {
         const eventBus = kernel.getEventBus()
-        const delivery = eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed', 'directories.media.changed', 'data.changed'], handler)
-        const data = eventBus.subscribe(['data.changed'], event => {
-          const changesetId = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
-            && typeof event.payload.changesetId === 'string'
-            ? event.payload.changesetId
-            : undefined
-          eventBus.emit('extensions.data.changed', changesetId ? { changesetId } : {}, { publisher: { kind: 'kernel' } })
-        })
-        return {
-          dispose: () => {
-            delivery.dispose()
-            data.dispose()
-          },
-        }
+        return eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed', 'directories.media.changed', 'data.changed'], handler)
       },
     },
     logger: options.rpcLogger,
@@ -495,6 +466,9 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         await applicationRuntime.initialize()
         await extensionAgentTasks.recover()
         await kernel.start()
+        commitPublisher ??= (dataEngine ?? documents).subscribeCommits(commit => {
+          kernel.getEventBus().emit('extensions.data.changed', { changesetId: commit.changesetId }, { publisher: { kind: 'kernel' } })
+        })
         await extensionManager.initialize()
         await scripts.resolve({ workspaceId: 'workspace' })
         mediaWatcher = await directoryMedia.watch(() => {
@@ -516,6 +490,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         })
         return { port: actualPort }
       } catch (error) {
+        commitPublisher?.dispose()
+        commitPublisher = undefined
         mediaWatcher?.dispose()
         mediaWatcher = undefined
         logger?.error('Studio server failed to start', {
@@ -527,6 +503,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
     close: async () => {
       logger?.info('Studio server stopping', { event: 'server.stopping' })
+      commitPublisher?.dispose()
+      commitPublisher = undefined
       mediaWatcher?.dispose()
       mediaWatcher = undefined
       try {

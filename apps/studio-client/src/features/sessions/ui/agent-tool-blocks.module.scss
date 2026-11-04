@@ -4,7 +4,7 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 220ms cubic-bezier(0.2, 0, 0.2, 1), opacity 180ms ease;
+  transition: grid-template-rows var(--loom-motion-duration-standard) var(--loom-motion-easing-standard), opacity var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
 
   &[data-open='true'] {
     grid-template-rows: 1fr;
@@ -247,4 +247,9 @@
   &[data-status='error'] { color: var(--loom-color-danger); }
   &[data-status='interrupted'] { color: var(--loom-color-warning); }
   svg { width: 13px; height: 13px; }
+}
+
+:global(html[data-loom-motion='reduce']) .toolCollapse { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  :global(html:not([data-loom-motion='full'])) .toolCollapse { transition: none; }
 }

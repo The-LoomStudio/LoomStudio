@@ -4,7 +4,7 @@ import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { UserBackgroundLibrary } from '../features/backgrounds/model/use-user-backgrounds.js'
 import type { useExtensionCardContext } from '../features/extension-renderers/model/use-extension-card-context.js'
 import type { MemoryLogSink } from '@loom-studio/logging'
-import React, { type ComponentProps, type ReactNode } from 'react'
+import { type ComponentProps, type ReactNode } from 'react'
 import { ContentErrorBoundary } from '../shared/ui/content-error-boundary.js'
 import { formatEntityReference, playerProfilePath } from '@loom-studio/shared'
 import type { ClientRendererHost } from '../shared/extension-renderer-runtime/client-renderer-host.js'
@@ -62,6 +62,7 @@ export function createStudioPanels(input: {
   sessionBusy: boolean
   openStateSource: (scope: 'global' | 'timeline') => void
   openAgentSession: (sessionId: string) => Promise<void>
+  onDeleteCards: StudioState['deleteCards']
   onTextTransformsChanged: () => void
   uiScale: number
   setUiScale: (scale: number) => void
@@ -85,6 +86,37 @@ export function createStudioPanels(input: {
     if (owner.kind === 'extension') return [...clientExtensions.packages, ...clientExtensions.cardPackages].find(pkg => pkg.packageId === owner.packageId)?.displayName
     return undefined
   }
+  const runtimeInspector = <LazyTextTransformPanel
+        api={state.textTransformsApi}
+        loomScriptsApi={state.api.loomScripts}
+        onRuntimeChanged={input.onTextTransformsChanged}
+        rendererHost={rendererHost}
+        runtimeScriptContext={{
+          workspaceId: 'workspace',
+          ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
+          ...(activePresetId ? { presetId: activePresetId } : {}),
+        }}
+        t={state.t}
+        getOwnerName={owner => {
+          if (owner.kind === 'card') return state.cards.find(c => c.id === owner.cardId)?.name
+          if (owner.kind === 'preset') return state.promptResources.find(p => p.id === owner.presetId)?.rootNode.label
+          if (owner.kind === 'extension') return owner.packageId
+          return undefined
+        }}
+        runtimeContexts={[
+          ...(state.narrativeTimeline && state.branch ? [{
+            id: 'narrative',
+            label: state.t('textTransform.runtimeNarrative'),
+            source: { kind: 'narrative' as const, timelineId: state.narrativeTimeline.id, branchId: state.branch.id },
+            consumerAgentSessionId: state.agentChatSession?.id,
+          }] : []),
+          ...(state.agentChatSession ? [{
+            id: `agent-session:${state.agentChatSession.id}`,
+            label: state.t('textTransform.runtimeAgentSession'),
+            source: { kind: 'agent-session' as const, sessionId: state.agentChatSession.id },
+          }] : []),
+        ]}
+      />
   const renderHistory = (view: 'timelines' | 'sessions') => (
     <LazySessionsPanel
       view={view}
@@ -117,9 +149,7 @@ export function createStudioPanels(input: {
         void input.openAgentSession(session.id)
       }}
       onOpenTimeline={timeline => {
-        void state.activateTimeline(timeline.id).then(branchId => {
-          if (branchId) navigation.openNarrative(timeline.id, branchId)
-        })
+        void navigation.openNarrative(timeline.id)
       }}
       onRenameAgentSession={state.renameAgentSession}
       onRenameTimeline={state.renameTimeline}
@@ -169,6 +199,7 @@ export function createStudioPanels(input: {
         },
       } : undefined}
       resources={<LazyUserResourcesPanel
+      active={active}
       backgroundLibrary={input.userBackgrounds}
       onOpenBackground={id => { void navigation.openPath(`/studio/settings?category=appearance&backgroundId=${encodeURIComponent(`user-background/${id}`)}`) }}
       api={state.textTransformsApi}
@@ -181,7 +212,7 @@ export function createStudioPanels(input: {
         void navigation.openResource(resource.resourceKind === 'preset' ? 'agent' : 'resource', resource.id, nodeId)
       }}
       onOpenRule={ruleId => {
-        void navigation.openPath(`/studio/text-transforms?ruleId=${encodeURIComponent(ruleId)}`)
+        void navigation.openPath(`/studio/extensions?extensionView=scripts&scriptFilter=rules&scriptId=${encodeURIComponent(ruleId)}`)
       }}
     />} />,
     play: active => panels.character(active),
@@ -211,9 +242,7 @@ export function createStudioPanels(input: {
             recent={input.recentCharacters}
             onOpenRecent={input.openRecentCharacter}
             onOpenTimeline={timeline => {
-              void state.activateTimeline(timeline.id).then(branchId => {
-                if (branchId) navigation.openNarrative(timeline.id, branchId)
-              })
+              void navigation.openNarrative(timeline.id)
             }}
             onOpenAgentSession={session => {
               void input.openAgentSession(session.id)
@@ -242,7 +271,7 @@ export function createStudioPanels(input: {
           }
           return Boolean(activated)
         }}
-        onDeleteCards={state.deleteCards}
+        onDeleteCards={input.onDeleteCards}
         onPreviewCard={cardId => {
           state.resetToDraftTimeline()
           state.setSelectedCardId(cardId)
@@ -285,14 +314,7 @@ export function createStudioPanels(input: {
             void navigation.openPanel('character', { cardId })
           }
         }}
-        onOpenTimeline={(timeline, cardId) => {
-          void state.activateTimeline(timeline.id).then(branchId => {
-            if (branchId && navigation.isCurrent()) {
-              state.setSelectedCardId(cardId)
-              navigation.openNarrative(timeline.id, branchId)
-            }
-          })
-        }}
+        onOpenTimeline={timeline => { void navigation.openNarrative(timeline.id) }}
         resources={state.promptResourceDrafts}
         onUpdateCardMedia={state.updateCardMedia}
         onUpdateCardProfile={state.updateCardProfile}
@@ -386,46 +408,7 @@ export function createStudioPanels(input: {
         onRefresh={state.refreshMacros}
       />
     },
-    'text-transform': () => (
-      <LazyTextTransformPanel
-        scriptScopes={scriptScopes}
-        getScriptOwnerName={getScriptOwnerName}
-        onScriptsChanged={uiState.bumpLoomScriptRefreshToken}
-        scriptsRefreshToken={uiState.loomScriptRefreshToken}
-        initialRuleId={navigation.searchParams.get('ruleId') ?? undefined}
-        initialExtractorId={navigation.searchParams.get('extractorId') ?? undefined}
-        api={state.textTransformsApi}
-        loomScriptsApi={state.api.loomScripts}
-        onRuntimeChanged={input.onTextTransformsChanged}
-        rendererHost={rendererHost}
-        runtimeScriptContext={{
-          workspaceId: 'workspace',
-          ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
-          ...(activePresetId ? { presetId: activePresetId } : {}),
-        }}
-        t={state.t}
-        cardId={currentCardId}
-        getOwnerName={owner => {
-          if (owner.kind === 'card') return state.cards.find(c => c.id === owner.cardId)?.name
-          if (owner.kind === 'preset') return state.promptResources.find(p => p.id === owner.presetId)?.rootNode.label
-          if (owner.kind === 'extension') return owner.packageId
-          return undefined
-        }}
-        runtimeContexts={[
-          ...(state.narrativeTimeline && state.branch ? [{
-            id: 'narrative',
-            label: state.t('textTransform.runtimeNarrative'),
-            source: { kind: 'narrative' as const, timelineId: state.narrativeTimeline.id, branchId: state.branch.id },
-            consumerAgentSessionId: state.agentChatSession?.id,
-          }] : []),
-          ...(state.agentChatSession ? [{
-            id: `agent-session:${state.agentChatSession.id}`,
-            label: state.t('textTransform.runtimeAgentSession'),
-            source: { kind: 'agent-session' as const, sessionId: state.agentChatSession.id },
-          }] : []),
-        ]}
-      />
-    ),
+    'text-transform': () => null,
     inspector: active => active ? (
       <LazyInspectorPanel
         agentTranscript={state.agentMessages}
@@ -453,6 +436,7 @@ export function createStudioPanels(input: {
     extensions: (active, surface) => (
       <LazyRendererWorkspacePanel
         key={state.endpoint}
+        active={active}
         mode={surface === 'tool' ? 'management' : 'workspace'}
         onOpenWorkspace={() => { void navigation.openExtensionWorkspace() }}
         onCloseWorkspace={() => { void navigation.closeExtensionWorkspace() }}
@@ -463,9 +447,13 @@ export function createStudioPanels(input: {
         extensionRuntime={state.api.extensionRuntime}
         extensionApi={state.api.extensions}
         onCharacterImported={async () => { await state.refreshCards() }}
+        scriptPreviewContext={state.agentChatSession && uiState.agentPanelOpen ? 'agent-session' : state.narrativeTimeline ? 'narrative' : state.agentChatSession ? 'agent-session' : undefined}
         scriptApi={state.api.loomScripts}
+        promptResourceApi={state.api.promptResources}
+        runtimeInspector={runtimeInspector}
         scriptScopes={scriptScopes}
         getScriptOwnerName={getScriptOwnerName}
+        onRelatedResourceChanged={async () => { await state.refreshResourceConsumers(); uiState.bumpLoomScriptRefreshToken() }}
         onScriptsChanged={uiState.bumpLoomScriptRefreshToken}
         scriptsRefreshToken={uiState.loomScriptRefreshToken}
         onRefreshExtensions={async () => {
@@ -480,7 +468,10 @@ export function createStudioPanels(input: {
         settingScopeContext={{
           ...(input.extensionCardContext.card?.id ? { cardId: input.extensionCardContext.card.id } : {}),
           ...(state.narrativeTimeline?.id ? { timelineId: state.narrativeTimeline.id } : {}),
+          ...(state.narrativeTimeline?.createdFrom?.cardId ? { timelineCardId: state.narrativeTimeline.createdFrom.cardId } : {}),
           ...(state.agentChatSession?.id ? { agentSessionId: state.agentChatSession.id } : {}),
+          ...(state.agentChatSession?.timelineId === state.narrativeTimeline?.id && state.narrativeTimeline?.createdFrom?.cardId
+            ? { agentSessionCardId: state.narrativeTimeline.createdFrom.cardId } : {}),
         }}
         t={state.t}
         onDisable={clientExtensions.disable}

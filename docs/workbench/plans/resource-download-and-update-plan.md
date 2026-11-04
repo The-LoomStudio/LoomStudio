@@ -1,7 +1,7 @@
 # 作品、角色包与扩展：资源下载与更新
 
 > **状态**：讨论计划 / 未授权业务实现
-> **更新**：2026-11-01
+> **更新**：2026-11-03
 > **本轮授权**：按用户确认收窄到作品／角色包、扩展及其依赖的下载、更新、自动检测与冲突展示。以下推荐方案与开放问题不视为已批准架构。
 
 ## 目标与组织建议
@@ -16,9 +16,9 @@
 | --- | --- | --- |
 | 扩展代码 | [扩展管理器](../../../apps/studio-server/src/extensions/extension-manager.ts)提供 Git 检查、变更预览、本地修改保护与代码回退；[前端控件](../../../apps/studio-client/src/features/extension-renderers/ui/remote-extension-install.tsx)提供显式操作 | 未形成覆盖全部更新对象的检查、待处理提醒与操作历史体验；ZIP 不具备现有 Git 检查能力 |
 | 扩展贡献资源 | [正式合同](../../architecture/extensions/README.md)区分安装代码和导入资源；普通重导入不覆盖本地编辑，显式资源更新有 installation 版本检查 | 逐项差异、保留用户修改、冲突审阅和自定义迁移 UI 尚未闭合，不能把代码更新成功视为资源已采用 |
-| 角色卡包 | [当前后续](./workspace-resource-and-distribution-plan.md)仍保留外部来源与更新未决项；[Bundle 合同](../../architecture/application/card-bundle-files.md)区分新建导入与原 Card 的目录 Apply | 外部来源、版本基线、原 Card 更新、Lore / Script 等资源冲突与失败恢复尚未闭合 |
+| 角色卡包 | [原短后续](../../archive/plans/card-external-source-followup-2026-11-03.md)已合并，本页承接外部来源与更新未决项；[Bundle 合同](../../architecture/application/card-bundle-files.md)区分新建导入与原 Card 的目录 Apply | 外部来源、版本基线、原 Card 更新、Lore / Script 等资源冲突与失败恢复尚未闭合 |
 
-原[综合分发计划](../../archive/plans/workspace-resource-and-distribution-plan.md)于 2026-10-25 归档，未完成部分由当前短后续承接，并非丢失。原稿明确把自动合并列为非目标；本次不得将其解释为已批准三方自动合并。
+原[综合分发计划](../../archive/plans/workspace-resource-and-distribution-plan.md)于 2026-10-25 归档，未完成部分原由短后续承接，2026-11-03 合并到本页，并非丢失。原稿明确把自动合并列为非目标；本次不得将其解释为已批准三方自动合并。
 
 [完整资源 Diff 草案](../drafts/prompt-resource-diff-mode-v0.md)也仍在，但它讨论编辑器的比较基线、历史恢复和多资源视图，不是已经实现的包更新冲突协议。本计划只按更新审阅需要复用差异展示，不自动重启完整 Diff Mode。
 
@@ -117,7 +117,19 @@
 
 ## 与其他计划的关系
 
-- [Card 来源与开发工作区](./workspace-resource-and-distribution-plan.md)：继续保留来源 / 更新领域合同，本页协调共同更新流程；作者源与 draft / Apply 不并入本计划。
+- [原 Card 来源短后续](../../archive/plans/card-external-source-followup-2026-11-03.md)已合并归档；本页统一承接来源与更新合同。作者格式和 CLI Apply 首版见[交付记录](../../archive/plans/resource-authoring-dx-plan.md)。
 - [扩展发行与安装验收](./extension-module-completion-plan.md)：继续负责独立发行和真实安装验收，不因统一提醒重复开发安装器。
 - [完整资源 Diff 草案](../drafts/prompt-resource-diff-mode-v0.md)：只按需复用展示能力，不整体解冻。
 - [日志后续](./log-plan/README.md)：通用 Notification / TUI 仍为独立候选；更新提醒不扩大为日志平台重建。
+
+
+## 2026-11-03 合并范围与边界
+
+原 Card 外部来源短后续不再独立维护。本页同时承接外部资源链接、用户指定来源、Git／非 Git 版本替换、包身份与来源版本、本地编辑保留、替换范围、缺失资源及失败恢复。不得通过清空重导入规避冲突，不因保存来源就自动下载、安装或授权。
+
+来源可信度由用户决定，宿主负责授权范围内获取与校验；角色私有扩展的内嵌分发与外部引用并存，外部引用不自动物化。作者文件与 Timeline 不可变材料继续分属不同权威。关闭条件是选定来源类型后，用户可审阅版本与范围，并在本地修改、缺失和获取失败时得到明确结果。公网、跨平台和用户数据验收单独记录。此合并不新增自动更新或自动合并的实施授权。
+
+
+## 2026-11-04 Extension 定向交付
+
+[Extension流程实施](../../archive/plans/extension-flow-remediation-2026-11-04.md)已接入恢复记录可见性、安装阶段结果，以及Global/Card资源采用前的增改删预览与fingerprint冲突拒绝。界面区分代码版本与资源采用版本。此交付不等于本计划第三阶段全部完成：现有资源缺少可靠作者基线时标记本地编辑未知，引用提示是有限的持久ID匹配；逐字段内容Diff、保留/覆盖选择、三方合并、跨重启操作历史及其他资源类型更新仍未实现，继续由本计划承接。

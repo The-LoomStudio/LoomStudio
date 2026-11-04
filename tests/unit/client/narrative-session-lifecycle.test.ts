@@ -1,5 +1,6 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
-import { fixture, hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
+import { settle, fixture, hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import type { DataOperation } from '../../../apps/studio-client/src/shared/api/data-commit-events.js'
 
@@ -15,12 +16,12 @@ describe('Narrative root and helper Session lifecycle', () => {
       pendingApprovals: [{ type: 'mutation-approval-requested', runId: 'live-run', requestId: 'pending-patch',
         preview: { action: 'patch', path: '/workspace/probe.md', kind: 'workspace', before: 'a', after: 'b' } }] })
       .mockReturnValueOnce(stopped.promise)
-    await f.render().activateAgentSession('session')
+    await settle(() => f.render().activateAgentSession('session'))
     await vi.waitFor(() => expect(f.render().activeAgentRun?.approval?.requestId).toBe('pending-patch'))
     expect(f.render().activeAgentRun?.status).toBe('running')
     expect(f.render().runRecovery?.status).not.toBe('suspended')
     f.input.api.agentSessions.pauseRun = vi.fn(async () => ({ runId: 'live-run', accepted: true, state: 'running' as const }))
-    await f.render().pauseAgentRun()
+    await settle(() => f.render().pauseAgentRun())
     expect(f.input.api.agentSessions.pauseRun).toHaveBeenCalledWith('live-run')
     expect(f.render().activeAgentRun?.status).toBe('running')
     stopped.resolve({ events: [{ type: 'suspended', runId: 'live-run' }], nextCursor: 11, done: true, state: 'suspended' })
@@ -34,17 +35,17 @@ describe('Narrative root and helper Session lifecycle', () => {
       runId: 'interrupted', sequence: 1, createdAt: '', entry: { kind: 'run-state', state: 'running' } }] })
     f.input.api.agentSessions.runState = vi.fn(async () => ({ runId: 'interrupted', state: 'suspended' as const }))
     f.subscribeRun.mockClear()
-    await f.render().activateAgentSession('session')
+    await settle(() => f.render().activateAgentSession('session'))
     expect(f.render().activeAgentRun).toMatchObject({ runId: 'interrupted', status: 'suspended' })
     expect(f.subscribeRun).not.toHaveBeenCalled()
   })
 
-  it('does not reset an active Timeline Session when mount effects replay', async () => {
+  it('does not reset an active Timeline Session on rerender', async () => {
     const f = await primaryFixture()
     const before = f.render()
     const list = vi.mocked(f.input.api.agentSessions.list)
     list.mockClear()
-    for (const effect of hooks.mountEffects) effect()
+    f.render()
     await Promise.resolve()
     expect(list).not.toHaveBeenCalled()
     expect(f.render().agentSession).toEqual(before.agentSession)
@@ -54,52 +55,51 @@ describe('Narrative root and helper Session lifecycle', () => {
 
   it('keeps the selected Session through incomplete background lists but clears it on an explicit deletion', async () => {
     vi.stubGlobal('EventSource', class {})
-    const f = fixture()
-    await f.render().createTimelineFromCard()
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
-    await f.render().createAgentSession('profile', true)
+    await settle(() => f.render().createAgentSession('profile', true))
     const list = vi.fn(async () => ({ sessions: [f.result.agentSession] }))
     f.input.api.agentSessions.list = list
-    await f.render().activateAgentSession(f.result.agentSession)
+    await settle(() => f.render().activateAgentSession(f.result.agentSession))
     list.mockResolvedValue({ sessions: [] })
     f.render()
-    hooks.subscribingSessions = true
-    const dispose = hooks.sessionEffect?.()
-    hooks.connected?.()
+    const dispose = f.unmount
+    hooks.narrativeConnected()
     await vi.waitFor(() => expect(f.render().agentSessions).toEqual([]))
     expect(f.render().agentSession?.id).toBe('session')
     expect(f.render().primarySession?.id).toBe('timeline')
-    hooks.sessionCommit?.([{
+    hooks.onCommit([{
       entityType: 'agent.session', entityId: 'session', kind: 'delete',
       scope: { store: 'narrative', entityType: 'narrative.timeline', entityId: 'timeline' },
     }])
     expect(f.render().agentSession).toBeUndefined()
     expect(f.render().primarySession?.id).toBe('timeline')
     list.mockResolvedValue({ sessions: [f.result.agentSession] })
-    hooks.connected?.()
+    hooks.narrativeConnected()
     await vi.waitFor(() => expect(f.render().agentSessions).toHaveLength(1))
     expect(f.render().agentSession).toBeUndefined()
     dispose?.()
   })
 
   it('keeps failed core Session restoration unavailable and completes Timeline activation after retry', async () => {
-    const f = fixture()
+    const f = await fixture()
     const failure = new Error('Session catalog unavailable')
     f.input.api.narratives.get = vi.fn(async () => ({ timeline: f.result.narrative.timeline, branches: [f.result.narrative.branch] }))
     f.input.runLatestAction = async action => { try { await action({ isCurrent: () => true }) } catch (error) { f.reportFailure(error) } }
     f.input.api.agentSessions.list = vi.fn().mockRejectedValueOnce(failure).mockResolvedValue({ sessions: [f.result.agentSession] })
     f.getTranscript.mockResolvedValue({ session: f.result.agentSession, entries: [] })
-    expect(await f.render().activateTimeline('timeline')).toBeUndefined()
+    expect(await settle(() => f.render().activateTimeline('timeline'))).toBeUndefined()
     expect(f.render().agentSessionReady).toBe(false)
     expect(f.reportFailure).toHaveBeenCalledWith(failure)
-    expect(await f.render().activateTimeline('timeline')).toBe('branch')
+    expect(await settle(() => f.render().activateTimeline('timeline'))).toBe('branch')
     expect(f.render().agentSessionReady).toBe(true)
     expect(f.render().agentSession?.id).toBe('session')
   })
 
   it.each([false, true])('loads the fixed root when opening a helper across Timelines (standalone %s)', async standalone => {
-    const f = fixture()
-    await f.render().createTimelineFromCard()
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
     const targetTimelineId = standalone ? undefined : 'other-timeline'
     const inspected = { ...f.result.agentSession, id: 'inspected', timelineId: targetTimelineId }
@@ -110,7 +110,7 @@ describe('Narrative root and helper Session lifecycle', () => {
     f.getPage.mockResolvedValue({ timeline, branch, nodes: [] })
     f.input.api.agentSessions.list = vi.fn(async () => ({ sessions: [inspected] }))
     f.getTranscript.mockImplementation(async request => ({ session: request.agentSessionId === root.id ? root : inspected, entries: [] }))
-    const activated = await f.render().activateAgentSession(inspected)
+    const activated = await settle(() => f.render().activateAgentSession(inspected))
     await f.loadRoot()
     expect(activated).toEqual({ session: inspected, branchId: standalone ? undefined : branch.id })
     expect(f.render().agentSession?.id).toBe('inspected')
@@ -120,10 +120,10 @@ describe('Narrative root and helper Session lifecycle', () => {
   })
 
   it('does not publish a Session when navigation changes while its transcript loads', async () => {
-    const f = fixture()
-    await f.render().createTimelineFromCard()
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
-    await f.render().createAgentSession('profile', true)
+    await settle(() => f.render().createAgentSession('profile', true))
     const before = f.render().agentSession
     f.input.api.agentSessions.list = vi.fn(async () => ({ sessions: [f.result.agentSession] }))
     const read = Promise.withResolvers<Awaited<ReturnType<StudioApi['agentSessions']['getTranscript']>>>()
@@ -139,10 +139,10 @@ describe('Narrative root and helper Session lifecycle', () => {
   })
 
   it.each(['timeline', 'card', 'api'])('does not publish or navigate a late Session after %s changes', async change => {
-    const f = fixture()
-    await f.render().createTimelineFromCard()
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
-    await f.render().createAgentSession('profile', true)
+    await settle(() => f.render().createAgentSession('profile', true))
     let resolve!: (value: Awaited<ReturnType<StudioApi['agentSessions']['create']>>) => void
     f.createSession.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
     const pending = f.render().createAgentSession('profile', true)
@@ -158,7 +158,7 @@ describe('Narrative root and helper Session lifecycle', () => {
   })
 
   it('rejects replacing the root with a helper without creating a Timeline or Session', async () => {
-    const f = fixture()
+    const f = await fixture()
     await expect(f.render().setPrimaryAgentSession(f.result.agentSession)).rejects.toThrow('故事使用固定根 Session')
     expect(f.createTimeline).not.toHaveBeenCalled()
     expect(f.createSession).not.toHaveBeenCalled()
@@ -167,7 +167,7 @@ describe('Narrative root and helper Session lifecycle', () => {
   })
 
   it('does not publish or navigate first Timeline creation after the Card changes', async () => {
-    const f = fixture()
+    const f = await fixture()
     let resolve!: (value: typeof f.result.narrative) => void
     f.createTimeline.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
     const pending = f.render().createTimelineFromCard()
@@ -182,58 +182,57 @@ describe('Narrative root and helper Session lifecycle', () => {
 
   it('isolates Session events and uses targeted reads only for scoped updates', async () => {
     vi.stubGlobal('EventSource', class {})
-    const f = fixture()
-    await f.render().createTimelineFromCard()
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
-    await f.render().createAgentSession('profile', true)
+    await settle(() => f.render().createAgentSession('profile', true))
     const list = vi.fn(async () => ({ sessions: [f.result.agentSession] }))
     const get = vi.fn(async () => ({ session: { ...f.result.agentSession, title: 'updated' } }))
     f.input.api.agentSessions.list = list
     f.input.api.agentSessions.get = get
     f.render()
-    hooks.subscribingSessions = true
-    const dispose = hooks.sessionEffect?.()
+    const dispose = f.unmount
     const operation = (kind: string, timelineId = 'timeline'): DataOperation => ({
       entityType: 'agent.session', entityId: 'session', kind,
       scope: { store: 'narrative', entityType: 'narrative.timeline', entityId: timelineId },
     })
-    hooks.sessionCommit?.([operation('update', 'other')])
+    hooks.onCommit([operation('update', 'other')])
     expect(list).not.toHaveBeenCalled()
     expect(get).not.toHaveBeenCalled()
-    hooks.sessionCommit?.([operation('update')])
+    hooks.onCommit([operation('update')])
     await vi.waitFor(() => expect(f.render().agentSessions[0]?.title).toBe('updated'))
     expect(get).toHaveBeenCalledWith('session')
     expect(list).not.toHaveBeenCalled()
     for (const kind of ['create', 'delete']) {
-      hooks.sessionCommit?.([operation(kind)])
+      hooks.onCommit([operation(kind)])
       await Promise.resolve()
       await Promise.resolve()
     }
-    hooks.connected?.()
+    hooks.narrativeConnected()
     await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(3))
-    hooks.sessionCommit?.([{ entityType: 'agent.session', entityId: 'session', kind: 'update' }])
+    hooks.onCommit([{ entityType: 'agent.session', entityId: 'session', kind: 'update' }])
     await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(4))
     dispose?.()
   })
 
   it('requires an explicit Timeline and reuses its existing root on every send', async () => {
-    const f = fixture()
-    await f.render().submitTurn(f.event)
+    const f = await fixture()
+    await settle(() => f.render().submitTurn(f.event))
     expect(f.reportFailure).toHaveBeenCalledWith(expect.objectContaining({ message: '请先点击“开始一个新故事”' }))
     expect(f.createTimeline).not.toHaveBeenCalled()
     expect(f.appendInput).not.toHaveBeenCalled()
     expect(f.render().input).toBe('  Draft\n')
-    await f.render().createTimelineFromCard()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
-    expect(f.createTimeline).toHaveBeenCalledExactlyOnceWith({ cardId: 'card', openingContent: '', expectedCardVersion: undefined })
+    expect(f.createTimeline).toHaveBeenCalledExactlyOnceWith({ cardId: 'card', openingContent: '', expectedCardVersion: undefined, agentPresetId: 'profile' })
     expect(f.createSession).not.toHaveBeenCalled()
     expect(f.render().primarySession?.id).toBe('timeline')
     expect(f.appendInput).not.toHaveBeenCalled()
     expect(f.submitInterjection).toHaveBeenCalledWith(expect.objectContaining({ agentSessionId: 'timeline', narrativeTarget: expect.objectContaining({ timelineId: 'timeline' }) }))
     f.render().setInput('Next turn')
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     expect(f.createSession).not.toHaveBeenCalled()
     expect(f.submitInterjection).toHaveBeenCalledTimes(2)
   })
@@ -242,8 +241,8 @@ describe('Narrative root and helper Session lifecycle', () => {
     vi.stubGlobal('localStorage', {
       getItem: () => null, setItem: () => {}, removeItem: () => {},
     })
-    const f = fixture()
-    await f.render().createTimelineFromCard()
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
     const primary = f.rootSession
     const child = { ...f.result.agentSession, id: 'child', agentPresetId: childPresetId }
@@ -251,12 +250,12 @@ describe('Narrative root and helper Session lifecycle', () => {
     f.getTranscript.mockImplementation(async ({ agentSessionId }) => ({
       session: agentSessionId === child.id ? child : primary, entries: [],
     }))
-    await f.render().activateAgentSession(child)
+    await settle(() => f.render().activateAgentSession(child))
     expect(f.render().agentSession?.id).toBe(child.id)
     expect(f.render().primarySession?.id).toBe(primary.id)
     expect(f.input.onSelectAgentPreset).not.toHaveBeenCalled()
 
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.submitInterjection).toHaveBeenCalledWith(expect.objectContaining({
       agentSessionId: primary.id,
@@ -266,7 +265,7 @@ describe('Narrative root and helper Session lifecycle', () => {
   })
 
   it('returns to the deleted Timeline source card and requires explicit restart before sending', async () => {
-    const f = fixture()
+    const f = await fixture()
     f.result.narrative.timeline.createdFrom = { cardId: 'source-card', cardVersion: 1 }
     f.input.selectedCardId = 'another-card'
     f.input.onSelectCard = vi.fn(id => { f.input.selectedCardId = id })
@@ -280,7 +279,7 @@ describe('Narrative root and helper Session lifecycle', () => {
     f.input.api.narratives.delete = vi.fn(async () => ({ deleted: true as const, mutation: { changesetId: 'deleted' } }))
     const listSessions = vi.fn(async () => ({ sessions: [] }))
     f.input.api.agentSessions.list = listSessions
-    await f.render().activateTimeline(deletedTimeline.id)
+    await settle(() => f.render().activateTimeline(deletedTimeline.id))
     listSessions.mockClear()
 
     await expect(f.render().deleteTimeline(deletedTimeline.id)).resolves.toBe(true)
@@ -302,21 +301,21 @@ describe('Narrative root and helper Session lifecycle', () => {
     expect(f.appendInput).not.toHaveBeenCalled()
     await expect(f.render().setPrimaryAgentSession(f.result.agentSession)).rejects.toThrow('故事使用固定根 Session')
     expect(f.createTimeline).not.toHaveBeenCalled()
-    await f.render().createTimelineFromCard()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
-    await f.render().createAgentSession('profile', true)
-    expect(f.createTimeline).toHaveBeenCalledExactlyOnceWith({ cardId: 'source-card', openingContent: '', expectedCardVersion: undefined })
+    await settle(() => f.render().createAgentSession('profile', true))
+    expect(f.createTimeline).toHaveBeenCalledExactlyOnceWith({ cardId: 'source-card', openingContent: '', expectedCardVersion: undefined, agentPresetId: 'profile' })
     expect(f.render().input).toBe('Start again')
     expect(f.render().primarySession?.id).toBe('timeline')
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     expect(f.submitInterjection).toHaveBeenCalledWith(expect.objectContaining({ input: 'Start again' }))
     expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.reportFailure).toHaveBeenCalledWith(expect.objectContaining({ message: '请先点击“开始一个新故事”' }))
   })
 
   it('retains the root and committed Timeline when helper creation fails and is retried', async () => {
-    const f = fixture()
-    await f.render().createTimelineFromCard()
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
     await f.loadRoot()
     const failure = new Error('Session creation failed')
     f.createSession.mockRejectedValueOnce(failure)
@@ -333,7 +332,7 @@ describe('Narrative root and helper Session lifecycle', () => {
     const primary = await state.createAgentSession('profile', true)
     expect(primary?.timelineId).toBe('timeline')
     expect(f.render().primarySession?.id).toBe('timeline')
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     expect(f.createTimeline).toHaveBeenCalledOnce()
     expect(f.createSession).toHaveBeenCalledTimes(2)
     expect(f.submitInterjection).toHaveBeenCalledOnce()

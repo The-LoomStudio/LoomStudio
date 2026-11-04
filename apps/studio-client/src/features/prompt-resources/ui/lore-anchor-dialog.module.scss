@@ -1,0 +1,16 @@
+.dialog[data-loom-ui-dialog] {
+  width: min(760px, calc(100vw - 24px));
+  max-height: calc(var(--loom-viewport-height, 100dvh) - 32px);
+}
+
+.content { padding: 0 4px 8px; }
+.hint, .path, .entry small { color: var(--loom-color-text-subtle); }
+.hint { font-size: var(--loom-font-size-2); line-height: 1.6; }
+.group { margin-top: 20px; }
+.group h3 { display: flex; align-items: center; gap: 10px; font-size: var(--loom-font-size-3); overflow-wrap: anywhere; }
+.group h3 span { color: var(--loom-color-text-subtle); font-weight: normal; }
+.group ol { margin: 0; padding-left: 24px; }
+.group li { padding: 8px 0; }
+.entry { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; overflow-wrap: anywhere; }
+.path { margin-top: 4px; font-size: var(--loom-font-size-2); overflow-wrap: anywhere; }
+.disabled { opacity: 0.6; }

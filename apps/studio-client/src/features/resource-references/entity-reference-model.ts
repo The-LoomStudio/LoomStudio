@@ -1,4 +1,4 @@
-import { legacyChatProviderIds } from '../provider-settings/model/chat-provider.js'
+import { officialChatProviderIds } from '../provider-settings/model/chat-provider.js'
 import { t } from '../../shared/i18n/index.js'
 import { formatEntityReference, type EntityReference } from '@loom-studio/shared'
 import type { StudioApi } from '../../shared/api/studio-api.js'
@@ -36,7 +36,7 @@ export async function loadEntityReference(api: StudioApi, reference: EntityRefer
   for (let page = 0; page < 10; page++) {
     const result = await api.providerProfiles.list({ cursor, limit: 100 })
     const provider = result.providerProfiles.find(item => item.id === id)
-    if (provider) return legacyChatProviderIds.has(provider.providerExtensionId)
+    if (provider) return officialChatProviderIds.has(provider.providerExtensionId)
       ? { title: provider.displayName, uri: formatEntityReference(reference) }
       : { title: provider.displayName, note: t('observation.providerDirectUnavailable') }
     if (!result.nextCursor) throw new Error('提供方已不存在或无法访问。')

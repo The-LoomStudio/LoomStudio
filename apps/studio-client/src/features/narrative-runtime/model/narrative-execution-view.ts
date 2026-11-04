@@ -10,8 +10,11 @@ export type NarrativeSessionStep = {
   presentation?: 'question'
 }
 export type NarrativeSessionExecution = {
+  order?: number
   id: string
   preset: string
+  durationMs?: number
+  runningSince?: number
   inputAttachments?: import('@loom-studio/shared').ChatAttachment[]
   interjectionStatus?: 'pending' | 'applied' | 'discarded'
   input?: string

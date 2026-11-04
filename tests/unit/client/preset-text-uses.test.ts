@@ -19,6 +19,11 @@ vi.mock('react', async original => ({
   useEffect: (effect: () => void) => { hooks.cursor++; hooks.effects.push(effect) },
 }))
 
+vi.mock('../../../apps/studio-client/src/shared/studio-shell/use-workbench-view.js', async () => {
+  const react = await import('react')
+  return { useWorkbenchView: (_key: string, initial: string) => react.useState(initial) }
+})
+
 beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = [] })
 
 type Element = ReactElement<Record<string, unknown>>
@@ -34,12 +39,37 @@ function elements(value: unknown): Element[] {
 }
 
 describe('Preset text use immediate save', () => {
+  it('shows only the current character and exposes unavailable references for removal', async () => {
+    let preset: PromptResource = { id: 'preset', version: 1, resourceKind: 'preset', createdAt: '', updatedAt: '',
+      rootNode: { id: 'root', kind: 'module', label: 'Writer' },
+      textUses: [{ id: 'deleted', kind: 'rule', enabled: true }, { id: 'other-rule', kind: 'rule', enabled: true }] }
+    const api = {
+      listRuleSummaries: async () => ({ rules: [
+        { id: 'current-rule', name: '当前规则', enabled: true, owner: { kind: 'card', cardId: 'current' } },
+        { id: 'other-rule', name: '其他角色规则', enabled: true, owner: { kind: 'card', cardId: 'other' } },
+      ] }), listExtractorSummaries: async () => ({ extractors: [] }),
+    } as unknown as StudioApi['textTransforms']
+    const onSave = vi.fn(async input => { preset = { ...preset, ...input, version: preset.version + 1 }; return preset })
+    const render = () => { hooks.cursor = 0; return elements(PresetTextUses({ preset, api, onSave,
+      card: { id: 'current', name: '当前角色' } as import('../../../apps/studio-client/src/entities/index.js').Card,
+      t: createTranslator('zh-CN') })) }
+    render()
+    for (const effect of hooks.effects.splice(0)) effect()
+    await vi.waitFor(() => expect(render().some(element => element.props['aria-label'] === '启用规则：当前规则')).toBe(true))
+    expect(render().some(element => element.props['aria-label'] === '启用规则：其他角色规则')).toBe(false)
+    const directory = render().find(element => element.props.ariaLabel === '正则与提取器来源目录')!
+    expect((directory.props.nodes as FileTreeNode[]).find(node => node.label === '角色')?.children?.[0]?.label).toBe('当前角色')
+    const remove = render().find(element => element.props['aria-label'] === '移除不可用引用：原资源已删除或不可用')!
+    ;(remove.props.onClick as () => void)()
+    await vi.waitFor(() => expect(preset.textUses).toEqual([{ id: 'other-rule', kind: 'rule', enabled: true }]))
+  })
+
   it('saves each edit immediately, retains failed edits across tabs for retry, and batches resource changes', async () => {
     let preset: PromptResource = { id: 'preset', version: 3, resourceKind: 'preset', createdAt: '', updatedAt: '',
       rootNode: { id: 'root', kind: 'module', label: 'Writer' }, textUses: [] }
     const api = {
-      listRules: vi.fn(async () => ({ rules: [{ id: 'public-rule', name: 'Public', enabled: true, owner: { kind: 'workspace' } }] })),
-      listExtractors: vi.fn(async () => ({ extractors: [{ id: 'extractor', name: 'Extract', enabled: false, owner: { kind: 'extension', packageId: 'example.memory' } }] })),
+      listRuleSummaries: vi.fn(async () => ({ rules: [{ id: 'public-rule', name: 'Public', enabled: true, owner: { kind: 'workspace' } }] })),
+      listExtractorSummaries: vi.fn(async () => ({ extractors: [{ id: 'extractor', name: 'Extract', enabled: false, owner: { kind: 'extension', packageId: 'example.memory' } }] })),
     } as unknown as StudioApi['textTransforms']
     let rejectSave!: (error: Error) => void
     const originalPreset = preset
@@ -65,21 +95,21 @@ describe('Preset text use immediate save', () => {
     }
     await vi.waitFor(() => expect(control('启用规则：Public')).toBeDefined())
     const directory = () => render().find(element => element.props.ariaLabel === '正则与提取器来源目录')!
-    expect((directory().props.nodes as FileTreeNode[]).map(node => node.label)).toEqual(['我的资源', '扩展 · example.memory'])
-    const ruleNode = (directory().props.nodes as FileTreeNode[])[0]!.children![0]!
+    expect((directory().props.nodes as FileTreeNode[]).map(node => node.label)).toEqual(['扩展', '个人'])
+    const ruleNode = (directory().props.nodes as FileTreeNode[]).find(node => node.label === '个人')!.children![0]!
     ;(directory().props.onSelect as (node: FileTreeNode) => void)(ruleNode)
     expect(onOpen).toHaveBeenCalledWith('rule', 'public-rule')
     expect(render().some(element => element.props['aria-label'] === '编辑规则：Public')).toBe(false)
     const search = render().find(element => element.props['aria-label'] === '搜索正则与提取器')!
     ;(search.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'example.memory' } })
-    expect((directory().props.nodes as FileTreeNode[]).map(node => node.label)).toEqual(['扩展 · example.memory'])
+    expect((directory().props.nodes as FileTreeNode[]).map(node => node.label)).toEqual(['扩展'])
     ;(search.props.onClear as () => void)()
     const lorePanel = render().find(element => element.props.role === 'tabpanel'
       && element.props['aria-label'] === 'Lore')!
     expect(elements(lorePanel).some(element => element.props['aria-label'] === '使用角色世界书')).toBe(true)
     ;(control('使用角色世界书').props.onClick as () => void)()
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledExactlyOnceWith({
-      agentPresetId: 'preset', expectedVersion: 3, useCardLore: false, useGlobalLore: true, textUses: [],
+      agentPresetId: 'preset', expectedVersion: 3, useCardLore: false, useGlobalLore: true, useCardText: true, useGlobalText: true, textUses: [],
     }))
     expect(control('使用全局世界书').props.disabled).toBe(true)
     switchTab('tools')
@@ -102,7 +132,8 @@ describe('Preset text use immediate save', () => {
     await vi.waitFor(() => expect(control('启用规则：Public').props.disabled).toBe(false))
     expect(onSave.mock.lastCall?.[0]).toMatchObject({ expectedVersion: 5, textUses: [{ id: 'public-rule', kind: 'rule', enabled: false }] })
     expect(control('启用规则：Public').props['aria-pressed']).toBe(false)
-    const all = (directory().props.nodes as FileTreeNode[]).flatMap(folder => folder.children ?? [])
+    const leaves = (nodes: FileTreeNode[]): FileTreeNode[] => nodes.flatMap(node => node.children ? leaves(node.children) : [node])
+    const all = leaves(directory().props.nodes as FileTreeNode[])
     const actions = (directory().props.getBatchActions as (nodes: FileTreeNode[]) => import('../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js').FileTreeBatchAction[])(all)
     await actions.find(action => action.id === 'enable')!.run(all)
     expect(control('启用规则：Public').props['aria-pressed']).toBe(true)

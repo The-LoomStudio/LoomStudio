@@ -41,7 +41,7 @@ async function setup(overrides: Record<string, unknown> = {}, busy = false) {
   }
   const navigation = { isCurrent: () => true, openPanel: vi.fn(), openNarrative: vi.fn(), clearDeletedTimeline: vi.fn(), clearDeletedCard: vi.fn() }
   await act(async () => root.render(createElement(QueryClientProvider, { client: queryClient },
-    createElement(StudioTimelineActions, { state, navigation, cardId: 'source', busy } as unknown as ComponentProps<typeof StudioTimelineActions>))))
+    createElement(StudioTimelineActions, { state, navigation, cardId: 'source', busy, onDeleteCards: state.deleteCards } as unknown as ComponentProps<typeof StudioTimelineActions>))))
   return { state, navigation }
 }
 async function click(label: string) {
@@ -79,14 +79,16 @@ it('uses deletion preview and passes explicit deletion options for the displayed
   expect(container.querySelector('dialog[open]')?.textContent).toContain('来源角色')
   await click('确认删除')
   expect(state.deleteCards).toHaveBeenCalledWith(['source'], { includePlayData: true, includePromptResources: true })
-  expect(navigation.clearDeletedCard).toHaveBeenCalledWith('source', ['story'])
+  expect(navigation.clearDeletedCard).not.toHaveBeenCalled()
+  expect(state.resetToDraftTimeline).not.toHaveBeenCalled()
+  expect(state.refreshAllTimelines).not.toHaveBeenCalled()
 })
 
 it('offers character deletion before a story exists, and disables mutations while busy', async () => {
   const { state } = await setup({ narrativeTimeline: undefined, branch: undefined }, true)
   const buttons = [...container.querySelectorAll('button')]
   expect(buttons.find(button => button.textContent === '删除当前故事')?.disabled).toBe(true)
-  expect(buttons.find(button => button.textContent === '删除角色')?.disabled).toBe(true)
+  expect(buttons.find(button => button.getAttribute('aria-label') === '删除角色')?.disabled).toBe(true)
   await click('新开故事')
   expect(state.createTimelineFromCard).not.toHaveBeenCalled()
 })
@@ -112,7 +114,7 @@ it('keeps story actions when the timeline exists but its branch is not loaded', 
   expect(container.textContent).not.toContain('尚未开始故事')
 })
 
-it('lists only the displayed character timelines and navigates after activation', async () => {
+it('lists only the displayed character timelines and publishes selection before activation', async () => {
   const activateTimeline = vi.fn(async () => 'other-branch')
   const { navigation } = await setup({
     activateTimeline,
@@ -129,8 +131,8 @@ it('lists only the displayed character timelines and navigates after activation'
   expect(items.map(item => item.querySelector('[title]')?.textContent)).toEqual(['当前故事', '另一个故事'])
   expect(items.every(item => item.textContent?.includes('2026'))).toBe(true)
   await act(async () => items[1].click())
-  expect(activateTimeline).toHaveBeenCalledWith('other')
-  expect(navigation.openNarrative).toHaveBeenCalledWith('other', 'other-branch')
+  expect(activateTimeline).not.toHaveBeenCalled()
+  expect(navigation.openNarrative).toHaveBeenCalledWith('other')
 })
 
  it('uses mobile tap for the character and long press for story actions', async () => {

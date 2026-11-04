@@ -119,7 +119,7 @@ export function planPromptBlocks(input: PromptDataModel, observation?: Observati
           ...(m.messages ? { messages: m.messages } : {}),
           role: m.sourceRef.kind === 'sessionHistory'
             ? m.capabilities.roleHint ?? 'system'
-            : inheritedRole ?? (m.capabilities.roleHint === 'developer' ? 'system' : m.capabilities.roleHint) ?? 'system',
+            : inheritedRole ?? m.capabilities.roleHint ?? 'system',
           targetAnchorId: node.id,
           localDepth: m.capabilities.localDepth,
         }))
@@ -138,22 +138,20 @@ export function planPromptBlocks(input: PromptDataModel, observation?: Observati
   if (hasMessageNodes) {
     const blocks: PromptFragment[][] = []
 
-    function readMessageRole(node: SourceNode): 'system' | 'user' | 'assistant' | 'developer' {
+    function readMessageRole(node: SourceNode): 'system' | 'user' | 'assistant' {
       const hint = node.capabilities?.roleHint
-      if (hint === 'developer') return 'system'
       if (hint === 'system' || hint === 'user' || hint === 'assistant') {
         return hint
       }
       const meta = node.meta
       if (meta?.includes('user')) return 'user'
       if (meta?.includes('assistant')) return 'assistant'
-      if (meta?.includes('developer')) return 'system'
       return 'system'
     }
 
     function collectFragments(
       node: SourceNode,
-      inheritedRole: 'system' | 'user' | 'assistant' | 'developer',
+      inheritedRole: 'system' | 'user' | 'assistant',
     ): PromptFragment[] {
       if (node.kind === 'message') throw new Error('Message blocks cannot be nested')
       if (!isActiveNode(node)) return []
@@ -234,9 +232,8 @@ function createEntryFragment(node: SourceNode, role: PromptProviderRole, contrib
     id: contribution?.id ?? node.id,
     source: { kind: 'preset', sourceId: node.sourceId, sourceNodeId: node.id },
     content,
-    role: role === 'developer' ? 'system' : role,
+    role,
     targetAnchorId: node.capabilities?.targetAnchorId,
-    localDepth: node.capabilities?.localDepth,
   }
 }
 

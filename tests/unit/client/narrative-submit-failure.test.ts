@@ -1,11 +1,12 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
-import { fixture, hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
+import { settle, fixture, hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
 
 describe('Narrative input persistence and delivery', () => {
 
   it('sends inline discussion through the Timeline Session without appending prose or replacing the composer draft', async () => {
     const f = await primaryFixture()
-    const accepted = await f.render().sendDiscussionInput('请调整这一段')
+    const accepted = await settle(() => f.render().sendDiscussionInput('请调整这一段'))
     expect(accepted).toBe(true)
     expect(f.appendInput).not.toHaveBeenCalled()
     expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({
@@ -18,30 +19,30 @@ describe('Narrative input persistence and delivery', () => {
 
   it('retains the loaded older boundary across latest-page events and terminal refresh', async () => {
     vi.stubGlobal('EventSource', class {})
-    const f = fixture()
-    await f.render().createTimelineFromCard()
-    await f.render().createAgentSession('profile', true)
+    const f = await fixture()
+    await settle(() => f.render().createTimelineFromCard())
+    await settle(() => f.render().createAgentSession('profile', true))
     const node = (id: string) => ({ id, kind: 'narrative' as const, floor: Number(id.slice(1)), timelineId: 'timeline', stateRevisionId: 'state', workspaceRevisionId: 'workspace',
       body: { format: 'loom-markdown.v1' as const, raw: id }, createdAt: 'now' })
     const n1 = node('n1'), n2 = node('n2'), n3 = node('n3')
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
     f.render()
-    const dispose = hooks.commitEffect?.()
+    const dispose = f.unmount
     hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'branch' }])
     await vi.waitFor(() => expect(f.render().olderCursor).toBe('page2'))
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n2], nextCursor: 'page1' })
-    await f.render().loadOlderNodes()
+    await settle(() => f.render().loadOlderNodes())
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
     hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'branch' }])
     await Promise.resolve()
     await Promise.resolve()
     expect(f.render().olderCursor).toBe('page1')
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     expect(f.render().olderCursor).toBe('page1')
     f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n1] })
-    await f.render().loadOlderNodes()
+    await settle(() => f.render().loadOlderNodes())
     expect(f.getPage.mock.calls.at(-1)?.[0].cursor).toBe('page1')
     expect(f.render().nodes.map(item => item.id)).toEqual(['n1', 'n2', 'n3'])
     dispose?.()
@@ -77,13 +78,13 @@ describe('Narrative input persistence and delivery', () => {
   it('retains failed submissions and retries the same request identity', async () => {
     const f = await primaryFixture()
     f.submitInterjection.mockRejectedValueOnce(new Error('Head conflict'))
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     expect(f.createSession).toHaveBeenCalledOnce()
     expect(f.subscribeRun).not.toHaveBeenCalled()
     expect(f.render().nodes).toEqual([])
     expect(f.render().composerInput).toBe('  Draft\n')
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     expect(f.submitInterjection.mock.calls[1]![0]).toEqual(f.submitInterjection.mock.calls[0]![0])
     expect(f.submitInterjection).toHaveBeenCalledTimes(2)
@@ -116,12 +117,12 @@ describe('Narrative input persistence and delivery', () => {
 
   it('keeps persisted input and a newer draft when no retry checkpoint or swipe is available', async () => {
     const f = await primaryFixture()
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     const nodeId = f.render().nodes[0]!.id
     f.render().newAgentSession()
     f.render().setInput('A newer draft')
-    await f.render().retryNarrativeInput()
+    await settle(() => f.render().retryNarrativeInput())
     expect(f.appendInput).not.toHaveBeenCalled()
     expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.render().nodes[0]?.id).toBe(nodeId)
@@ -132,21 +133,21 @@ describe('Narrative input persistence and delivery', () => {
 
   it('does not redeliver a committed input through a different endpoint', async () => {
     const f = await primaryFixture()
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     f.input.api = { ...f.input.api }
     expect(f.render().canRetryNarrativeInput).toBe(false)
-    await f.render().retryNarrativeInput()
+    await settle(() => f.render().retryNarrativeInput())
     expect(f.submitInterjection).toHaveBeenCalledOnce()
   })
 
   it('refreshes Narrative Head on any committed branch change, independent of the writer', async () => {
     vi.stubGlobal('EventSource', class {})
     const f = await primaryFixture()
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     f.render()
-    const dispose = hooks.commitEffect?.()
+    const dispose = f.unmount
     const before = f.getPage.mock.calls.length
     hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'other-branch' }])
     expect(f.getPage).toHaveBeenCalledTimes(before)
@@ -161,7 +162,7 @@ describe('Narrative input persistence and delivery', () => {
     await vi.waitFor(() => expect(f.render().branch?.headNodeId).toBe(node.id))
     expect(f.render().nodes.map(item => item.body.raw)).toEqual(['Draft', 'External writer'])
     f.render().setInput('Next input')
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     expect(f.submitInterjection.mock.calls[1]![0].narrativeTarget).toEqual({ timelineId: 'timeline', branchId: 'branch' })
     expect(f.appendInput).not.toHaveBeenCalled()
@@ -170,10 +171,10 @@ describe('Narrative input persistence and delivery', () => {
 
   it('treats an explicit new submission with the same text as a new user node', async () => {
     const f = await primaryFixture()
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     f.render().setInput('Draft')
-    await f.render().submitTurn(f.event)
+    await settle(() => f.render().submitTurn(f.event))
     await f.loadRoot()
     expect(f.appendInput).not.toHaveBeenCalled()
     expect(f.submitInterjection).toHaveBeenCalledTimes(2)

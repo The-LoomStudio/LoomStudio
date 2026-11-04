@@ -8,6 +8,8 @@ export function useRemoteCardImport(onImportCards: (files: File[]) => Promise<vo
   const [remoteImportOpen, setRemoteImportOpen] = useState(false)
   const [remoteImportUrl, setRemoteImportUrl] = useState('')
   const [remoteImportError, setRemoteImportError] = useState('')
+  const [remoteImportUrlInvalid, setRemoteImportUrlInvalid] = useState(false)
+  const [remoteImportProgress, setRemoteImportProgress] = useState('')
   const [remoteImportBusy, setRemoteImportBusy] = useState(false)
   const remoteImportAbortRef = useRef<AbortController | null>(null)
   useEffect(() => () => {
@@ -19,6 +21,7 @@ export function useRemoteCardImport(onImportCards: (files: File[]) => Promise<vo
     setRemoteImportOpen(false)
     setRemoteImportUrl('')
     setRemoteImportError('')
+    setRemoteImportUrlInvalid(false)
   }
 
   async function importRemoteCard() {
@@ -26,15 +29,24 @@ export function useRemoteCardImport(onImportCards: (files: File[]) => Promise<vo
     const controller = new AbortController()
     remoteImportAbortRef.current = controller
     setRemoteImportError('')
+    setRemoteImportUrlInvalid(false)
     setRemoteImportBusy(true)
+    setRemoteImportProgress('正在连接；下载大小待服务器提供')
     try {
       const url = new URL(remoteImportUrl.trim())
-      if (url.protocol !== 'https:') throw new Error(t('character.importRemoteHttpsOnly'))
+      if (url.protocol !== 'https:') {
+        setRemoteImportUrlInvalid(true)
+        throw new Error(t('character.importRemoteHttpsOnly'))
+      }
       const response = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal })
       if (!response.ok) throw new Error(t('character.importRemoteDownloadFailed', { status: response.status }))
-      const blob = await readBoundedResponseBlob(response, MAX_REMOTE_CARD_BYTES, t('character.importRemoteTooLarge'))
+      const blob = await readBoundedResponseBlob(response, MAX_REMOTE_CARD_BYTES, t('character.importRemoteTooLarge'), (received, total) => {
+        const size = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MiB`
+        setRemoteImportProgress(`已下载 ${size(received)}${total === undefined ? ' · 总大小未知' : ` / ${size(total)}`}`)
+      })
       controller.signal.throwIfAborted()
       const fileName = remoteCardFileName(url, blob.type)
+      setRemoteImportProgress(`下载完成 · ${(blob.size / 1024 / 1024).toFixed(1)} MiB，正在导入`)
       await onImportCards([new File([blob], fileName, { type: blob.type })])
       if (controller.signal.aborted) return
       setRemoteImportOpen(false)
@@ -52,9 +64,10 @@ export function useRemoteCardImport(onImportCards: (files: File[]) => Promise<vo
   function changeRemoteImportUrl(value: string) {
     setRemoteImportUrl(value)
     setRemoteImportError('')
+    setRemoteImportUrlInvalid(false)
   }
 
-  return { remoteImportOpen, setRemoteImportOpen, remoteImportUrl, changeRemoteImportUrl, remoteImportError, remoteImportBusy, closeRemoteImport, importRemoteCard }
+  return { remoteImportProgress, remoteImportOpen, setRemoteImportOpen, remoteImportUrl, changeRemoteImportUrl, remoteImportError, remoteImportUrlInvalid, remoteImportBusy, closeRemoteImport, importRemoteCard }
 }
 
 function remoteCardFileName(url: URL, contentType: string): string {

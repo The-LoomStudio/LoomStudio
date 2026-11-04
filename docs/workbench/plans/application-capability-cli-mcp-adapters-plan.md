@@ -7,7 +7,7 @@
 > **保留范围**：通用应用控制的 CLI、RPC／Agent Tool／CodeAct 共享 Application Capability 候选，以及 Loom MCP Server / Client。资源创作工具链由下述主计划承担。
 > **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已有 Application Runtime RPC、Agent Tool Registry、Provider Tool Transport 和本地 Studio Server；Application Capability Registry、正式 CLI 与 MCP 尚未实现。
 
-> **2026-10-28 范围合并**：资源创作相关的 CLI、连接认证、资源导出／差异／显式 Apply 已并入[资源作者工作流与 DX](./resource-authoring-dx-plan.md)，以该主计划为唯一活动施工入口。本页保留通用应用控制、共享 Capability 与 MCP 候选，不作为作者工具链的默认前置。下文资源命令、分阶段路线和最小切片仅作既有设计参考，不再独立驱动资源创作实施；是否提供离线文件检查／构建由新主计划明确，原“后台必须运行”约束继续适用于访问 Studio 状态的操作。
+> **2026-10-28 范围合并**：资源创作相关的 CLI、连接认证、资源导出／差异／显式 Apply 已并入[资源作者工作流与 DX](../../archive/plans/resource-authoring-dx-plan.md)，首版已于 2026-11-03 交付归档。本页保留通用应用控制、共享 Capability 与 MCP 候选，不作为作者工具链的默认前置。下文资源命令、分阶段路线和最小切片仅作既有设计参考，不再独立驱动资源创作实施；是否提供离线文件检查／构建由新主计划明确，原“后台必须运行”约束继续适用于访问 Studio 状态的操作。
 
 相关计划：
 
@@ -15,7 +15,7 @@
 - [`agent-session-context-and-workspace-capability-plan.md`](../../archive/plans/agent-session-context-and-workspace-capability-plan.md)
 - [`file-backed-resource-agent-script-codeact-plan.md`](../../archive/plans/file-backed-resource-agent-script-codeact-plan.md)
 - [`ai-gateway-streaming-execution-plan.md`](../../archive/plans/ai-gateway-streaming-execution-plan.md)
-- [资源作者工作流与 DX](./resource-authoring-dx-plan.md)：作者格式、工具与 Studio 接入的活动主计划；[旧开发模式计划](../../archive/plans/workspace-dev-sync-plan.md)仅保留历史参考。
+- [资源作者工作流与 DX](../../archive/plans/resource-authoring-dx-plan.md)：作者格式、工具与 Studio 接入的首版交付记录；[旧开发模式计划](../../archive/plans/workspace-dev-sync-plan.md)仅保留历史参考。
 
 ## 本次转交边界
 
@@ -433,7 +433,7 @@ Trusted Bash 必须与普通 Agent Profile、导入角色脚本和 `loom-js` Cap
 
 ## 8. 分阶段实施
 
-以下为通用适配器的候选路线，不是资源作者工具链的前置或第二份实施清单；涉及资源创作的工作包统一以[资源作者主计划](./resource-authoring-dx-plan.md)为准。
+以下为通用适配器的候选路线，不是资源作者工具链的前置或第二份实施清单；涉及资源创作的工作包统一以[资源作者主计划](../../archive/plans/resource-authoring-dx-plan.md)为准。
 
 ### Phase 0：Capability Slice Spike
 

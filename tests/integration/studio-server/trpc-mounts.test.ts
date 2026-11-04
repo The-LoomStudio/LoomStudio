@@ -65,7 +65,7 @@ describe('tRPC mount pilot', () => {
         } })
         await expect(client.application.listPresetToolMounts.query({})).resolves.toHaveProperty('mounts')
         expect(calls.map(url => new URL(url).pathname)).toEqual(['/trpc/application.listPresetToolMounts', '/auth/session', '/trpc/application.listPresetToolMounts'])
-        await expect(client.application.replacePresetToolMounts.mutate({ presetId: 'missing', mounts: [] })).rejects.toThrow()
+        await expect(client.application.replacePresetToolMounts.mutate({ expectedMountIds: [], presetId: 'missing', mounts: [] })).rejects.toThrow()
         expect(calls).toHaveLength(4)
       })
     } finally { vi.unstubAllGlobals() }

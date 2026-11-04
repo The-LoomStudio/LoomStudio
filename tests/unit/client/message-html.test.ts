@@ -151,6 +151,24 @@ describe('message HTML classification', () => {
     expect(rendered).toContain('公开正文。')
   })
 
+  it.each([
+    '```text\n<foo>\nx\n</foo>\n```',
+    '````text\n```html\n<foo>\nx\n</foo>\n```\n````',
+    '~~~~text\n~~~\n<foo>\nx\n</foo>\n~~~\n~~~~',
+    '``literal ` <foo>\nx\n</foo>``',
+    '```text\n<foo>\nx\n</foo>',
+    '    <foo>\n    x\n    </foo>',
+  ])('preserves code source while classifying %s', value => {
+    for (const streaming of [false, true]) {
+      expect(parseMessageSegments(value, streaming)).toEqual([{ kind: 'markdown', value, start: 0 }])
+    }
+  })
+
+  it('does not treat text after inline code as a new line', () => {
+    const value = '`literal`<foo>\ntext'
+    expect(parseMessageSegments(value)).toEqual([{ kind: 'markdown', value, start: 0 }])
+  })
+
   it('recognizes wrapped HTML code blocks while preserving their custom wrapper text', () => {
     const wrapped = '<opening>\n```html\n<div>UI</div>\n```\n</opening>'
     const parts = parseMessageSegments(wrapped)

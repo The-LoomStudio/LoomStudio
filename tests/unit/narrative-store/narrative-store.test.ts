@@ -16,20 +16,6 @@ function createTestContext() {
   const actor = { kind: 'system' as const, id: 'test' }
   return { engine, store, actor }
 }
-
-
-function downgradeAuthority(database: DatabaseSync) {
-  database.exec(`DROP VIEW narrative_node_projection;
-    ALTER TABLE narrative_nodes ADD COLUMN body_format TEXT NOT NULL DEFAULT 'loom-markdown.v1';
-    ALTER TABLE narrative_nodes ADD COLUMN body_raw TEXT NOT NULL DEFAULT '';
-    UPDATE narrative_nodes SET body_raw = (SELECT json_extract(entry_json, '$.content') FROM agent_transcript_entries WHERE id = entry_id);
-    ALTER TABLE narrative_nodes DROP COLUMN entry_id;
-    ALTER TABLE narrative_branches DROP COLUMN head_entry_id;
-    ALTER TABLE narrative_recovery_points DROP COLUMN head_entry_id;
-    DELETE FROM agent_transcript_entries WHERE agent_session_id IN (SELECT id FROM agent_sessions WHERE kind = 'timeline');
-    DELETE FROM agent_sessions WHERE kind = 'timeline';`)
-}
-
 describe('narrative store', () => {
   it('captures the previous body before the next logical message while retaining intervening tool facts', async () => {
     const { engine, store, actor } = createTestContext()
@@ -158,57 +144,33 @@ describe('narrative store', () => {
     } finally { await engine.close() }
   })
 
-  it('migrates pre-Workspace histories once without changing identities or inventing past work', async () => {
-    const { engine, store, actor } = createTestContext()
+  it('rejects unsupported pre-Workspace Narrative schema version 4', async () => {
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-1`,
+      now: () => '2026-08-24T00:00:00.000Z',
+    })
     try {
-      const story = await store.createTimeline({ actor, stateRevisionId: 'initial', openingNode: { body: { format: 'loom-markdown.v1', raw: 'Opening' } } })
-      await store.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id, expectedHeadNodeId: story.nodes[0]!.id,
-        stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Second' } })
-      const ids = (await store.listNodes(story.timeline.id)).map(node => node.id)
-      downgradeAuthority(engine.database)
-      engine.database.exec(`
-        ALTER TABLE narrative_nodes DROP COLUMN kind;
-        DROP TABLE narrative_recovery_points;
-        ALTER TABLE narrative_nodes DROP COLUMN workspace_revision_id;
-        ALTER TABLE narrative_branches DROP COLUMN workspace_head_revision_id;
-        DROP INDEX narrative_nodes_floor;
-        ALTER TABLE narrative_nodes DROP COLUMN floor;
-        DROP TABLE workspace_revisions;
-        DELETE FROM schema_migrations WHERE namespace = 'application.workspace';
-        UPDATE schema_migrations SET version = 4 WHERE namespace = 'application.narrative';
-      `)
-      const migrated = createNarrativeStore({ engine })
-      const nodes = await migrated.listNodes(story.timeline.id)
-      expect(nodes.map(node => node.id)).toEqual(ids)
-      expect(nodes.map(node => node.floor)).toEqual([1, 2])
-      expect(new Set(nodes.map(node => node.workspaceRevisionId)).size).toBe(1)
-      expect((await migrated.getBranch(story.branch.id))!.workspaceHeadRevisionId).toBe(nodes[0]!.workspaceRevisionId)
-      expect((await createNarrativeStore({ engine }).listNodes(story.timeline.id))).toEqual(nodes)
+      engine.database.prepare('INSERT INTO schema_migrations (namespace, version) VALUES (?, ?)').run('application.narrative', 4)
+      expect(() => createNarrativeStore({ engine })).toThrow(expect.objectContaining({
+        code: 'data.sqlite_schema_unsupported',
+        message: 'SQLite schema application.narrative@4 is not supported; expected 9',
+      }))
     } finally { engine.close() }
   })
 
-  it.each([true, false])('upgrades a v6 history without losing data (recovery table missing: %s)', async missing => {
-    const { engine, store, actor } = createTestContext()
+  it('rejects unsupported Narrative schema version 6', async () => {
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-1`,
+      now: () => '2026-08-24T00:00:00.000Z',
+    })
     try {
-      const story = await store.createTimeline({ actor, stateRevisionId: 'initial',
-        openingNode: { body: { format: 'loom-markdown.v1', raw: 'Opening' } } })
-      const appended = await store.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id,
-        expectedHeadNodeId: story.nodes[0]!.id, stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Existing input' } })
-      const before = await store.getPage({ timelineId: story.timeline.id })
-      const points = missing ? [] : await store.listRecoveryPoints(story.timeline.id)
-      downgradeAuthority(engine.database)
-      if (missing) engine.database.exec('DROP TABLE narrative_recovery_points')
-      engine.database.exec("ALTER TABLE narrative_nodes DROP COLUMN kind; UPDATE schema_migrations SET version = 6 WHERE namespace = 'application.narrative'")
-
-      const migrated = createNarrativeStore({ engine })
-      const after = await migrated.getPage({ timelineId: story.timeline.id })
-      expect(after.nodes.map(({ entryId, ...node }) => node)).toEqual(before.nodes.map(({ entryId, ...node }) => node))
-      expect((await migrated.listRecoveryPoints(story.timeline.id)).map(({ headEntryId, ...point }) => point)).toEqual(points.map(({ headEntryId, ...point }) => point))
-      await expect(migrated.appendNode({ actor, timelineId: story.timeline.id, branchId: story.branch.id,
-        expectedHeadNodeId: appended.node.id, stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'New reply' } }))
-        .resolves.toMatchObject({ node: { parentNodeId: appended.node.id } })
-      expect((await migrated.listRecoveryPoints(story.timeline.id)).some(point => point.nodeId === appended.node.id)).toBe(true)
-      expect(engine.database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+      engine.database.prepare('INSERT INTO schema_migrations (namespace, version) VALUES (?, ?)').run('application.narrative', 6)
+      expect(() => createNarrativeStore({ engine })).toThrow(expect.objectContaining({
+        code: 'data.sqlite_schema_unsupported',
+        message: 'SQLite schema application.narrative@6 is not supported; expected 9',
+      }))
     } finally { engine.close() }
   })
 
@@ -236,28 +198,18 @@ describe('narrative store', () => {
     } finally { engine.close() }
   })
 
-  it('backfills v7 node kinds from input receipts and recorded Swipe inputs without guessing text', async () => {
-    const { engine, store, actor } = createTestContext()
+  it('rejects unsupported Narrative schema version 7', async () => {
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-1`,
+      now: () => '2026-08-24T00:00:00.000Z',
+    })
     try {
-      const story = await store.createTimeline({ actor, stateRevisionId: 'initial' })
-      const target = { actor, timelineId: story.timeline.id, branchId: story.branch.id }
-      const receiptInput = await store.appendInput({ ...target, nodeId: 'receipt-input', expectedHeadNodeId: null,
-        reason: 'application.appendNarrativeInput', body: { format: 'loom-markdown.v1', raw: 'Receipt input' } })
-      const swipeInput = await store.appendNode({ ...target, expectedHeadNodeId: receiptInput.node.id,
-        stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'Swipe input' } })
-      const unknown = await store.appendNode({ ...target, expectedHeadNodeId: swipeInput.node.id,
-        stateRevisionId: 'initial', body: { format: 'loom-markdown.v1', raw: 'I look like user input but have no evidence' } })
-      engine.database.prepare('INSERT INTO narrative_swipe_groups (id, timeline_id, branch_id, metadata_json, revision) VALUES (?, ?, ?, ?, ?)')
-        .run('legacy-group', story.timeline.id, story.branch.id, JSON.stringify({ inputNodeId: swipeInput.node.id,
-          inputs: [{ nodeId: receiptInput.node.id }] }), 1)
-      downgradeAuthority(engine.database)
-      engine.database.exec("ALTER TABLE narrative_nodes DROP COLUMN kind; UPDATE schema_migrations SET version = 7 WHERE namespace = 'application.narrative'")
-      const migrated = createNarrativeStore({ engine })
-      expect((await migrated.getNode(receiptInput.node.id))?.kind).toBe('user-input')
-      expect((await migrated.getNode(swipeInput.node.id))?.kind).toBe('user-input')
-      expect((await migrated.getNode(unknown.node.id))?.kind).toBe('narrative')
-      expect((await createNarrativeStore({ engine }).listNodes(story.timeline.id)).map(node => node.id))
-        .toEqual((await migrated.listNodes(story.timeline.id)).map(node => node.id))
+      engine.database.prepare('INSERT INTO schema_migrations (namespace, version) VALUES (?, ?)').run('application.narrative', 7)
+      expect(() => createNarrativeStore({ engine })).toThrow(expect.objectContaining({
+        code: 'data.sqlite_schema_unsupported',
+        message: 'SQLite schema application.narrative@7 is not supported; expected 9',
+      }))
     } finally { engine.close() }
   })
 

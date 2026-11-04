@@ -9,7 +9,8 @@ export function serveFrameRequests(port: MessagePort, options: {
   handle(method: string, params: unknown): Promise<unknown>
   onInvalidMessage(): void
 }) {
-  const pending = new Map<string, ReturnType<typeof setTimeout>>()
+  type PendingRequest = { timer: ReturnType<typeof setTimeout>; responded: boolean }
+  const pending = new Map<string, PendingRequest>()
   let disposed = false
   function respond(requestId: string, result: IframeRequestResult) {
     if (!disposed) port.postMessage({ type: 'loom:ctx.result', requestId, result })
@@ -28,11 +29,15 @@ export function serveFrameRequests(port: MessagePort, options: {
       respond(requestId, { ok: false, error: { code: 'ctx.busy', message: 'Too many pending iframe requests' } })
       return
     }
-    const timer = setTimeout(() => {
-      pending.delete(requestId)
-      respond(requestId, { ok: false, error: { code: 'ctx.timeout', message: 'Host request timed out' } })
-    }, 10_000)
-    pending.set(requestId, timer)
+    const request: PendingRequest = {
+      responded: false,
+      timer: setTimeout(() => {
+        // A timed-out reply does not cancel host work or release its capacity.
+        request.responded = true
+        respond(requestId, { ok: false, error: { code: 'ctx.timeout', message: 'Host request timed out' } })
+      }, 10_000),
+    }
+    pending.set(requestId, request)
     void Promise.resolve().then(() => {
       if (disposed) throw new Error('Iframe context disposed')
       return options.handle(method, params)
@@ -44,10 +49,13 @@ export function serveFrameRequests(port: MessagePort, options: {
       },
     }))
     function finish(result: IframeRequestResult) {
-      if (pending.get(requestId as string) !== timer) return
-      clearTimeout(timer)
+      if (pending.get(requestId as string) !== request) return
+      clearTimeout(request.timer)
       pending.delete(requestId as string)
-      respond(requestId as string, result)
+      if (!request.responded) {
+        request.responded = true
+        respond(requestId as string, result)
+      }
     }
   }
   port.addEventListener('message', receive)
@@ -57,7 +65,7 @@ export function serveFrameRequests(port: MessagePort, options: {
       if (disposed) return
       disposed = true
       port.removeEventListener('message', receive)
-      for (const timer of pending.values()) clearTimeout(timer)
+      for (const request of pending.values()) clearTimeout(request.timer)
       pending.clear()
     },
   }

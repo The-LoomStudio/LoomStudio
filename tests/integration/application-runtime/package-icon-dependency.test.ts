@@ -79,7 +79,7 @@ describe('package icon dependencies', () => {
       await runtime.importExtensionPackageResources(pkg('example.assets'))
       await runtime.importExtensionPackageResources({ ...pkg('example.consumer', icon), dependencies, target: { kind: 'card', cardId: card.id } })
       const installation = (await documents.get(extensionInstallationId('example.assets', { kind: 'global' })))!
-      await expect(runtime.removeExtensionPackageResources({ packageId: 'example.assets', uninstall: true, expectedInstallationVersion: installation.version })).rejects.toThrow('cannot be uninstalled')
+      await expect(runtime.uninstallExtensionInstallation({ packageId: 'example.assets', expectedInstallationVersion: installation.version })).rejects.toThrow('cannot be uninstalled')
       await expect(runtime.importExtensionPackageResources({ ...pkg('example.assets'), packageVersion: '2.0.0', update: { expectedInstallationVersion: installation.version } })).rejects.toThrow('cannot be updated')
       validatePackageAsset.mockRejectedValueOnce(new Error('Asset removed in update'))
       await expect(runtime.importExtensionPackageResources({ ...pkg('example.assets'), packageVersion: '1.1.0', update: { expectedInstallationVersion: installation.version } })).rejects.toThrow('Asset removed in update')
@@ -94,7 +94,7 @@ describe('package icon dependencies', () => {
       const installed = await runtime.importExtensionPackageResources({ ...pkg('example.assets', icon), target: { kind: 'card', cardId: card.id } })
       expect((await promptResources.getResource(installed.promptResources[0]!.resourceId))?.metadata.icon).toEqual({ ...icon, target: { kind: 'global' } })
       const global = (await documents.get(extensionInstallationId('example.assets', { kind: 'global' })))!
-      await expect(runtime.removeExtensionPackageResources({ packageId: 'example.assets', uninstall: true, expectedInstallationVersion: global.version })).rejects.toThrow('cannot be uninstalled')
+      await expect(runtime.uninstallExtensionInstallation({ packageId: 'example.assets', expectedInstallationVersion: global.version })).rejects.toThrow('cannot be uninstalled')
     } finally { await engine.close() }
   })
 

@@ -112,7 +112,7 @@ function ProviderAccountItem(props: {
   const baseUrl = typeof props.account.config.baseUrl === 'string' ? props.account.config.baseUrl : ''
   const catalog = mergeModelCatalog(props.models.map(profile => profile.providerModelId), fetchedModels, query)
   const providerBrand = resolveProviderBrand(props.account.displayName, baseUrl, props.account.providerExtensionId)
-  const fake = props.account.providerExtensionId === 'official.fake' || props.account.providerExtensionId === 'fake'
+  const fake = props.account.providerExtensionId === 'official.fake'
 
   useEffect(() => {
     mountedRef.current = true

@@ -49,49 +49,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
   const workspaces = createWorkspaceStore(options)
   const agents = createAgentStore(options)
 
-  engine.migrate({
-    namespace: migrationNamespace,
-    migrations: [
-      { version: 1, migrate: migrateVersionOne },
-      { version: 2, migrate: migrateVersionTwo },
-      { version: 3, migrate: migrateVersionThree },
-      { version: 4, migrate: database => database.exec('ALTER TABLE narrative_timelines ADD COLUMN opening_json TEXT') },
-      { version: 5, migrate: database => database.exec(`
-        ALTER TABLE narrative_nodes ADD COLUMN floor INTEGER;
-        WITH RECURSIVE positions(id, floor) AS (
-          SELECT id, 1 FROM narrative_nodes WHERE parent_node_id IS NULL
-          UNION ALL
-          SELECT n.id, p.floor + 1 FROM narrative_nodes n JOIN positions p ON n.parent_node_id = p.id
-        ) UPDATE narrative_nodes SET floor = (SELECT floor FROM positions WHERE positions.id = narrative_nodes.id);
-        CREATE INDEX narrative_nodes_floor ON narrative_nodes(timeline_id, floor);
-      `) },
-      { version: 6, migrate: database => {
-        database.exec(`ALTER TABLE narrative_nodes ADD COLUMN workspace_revision_id TEXT; ALTER TABLE narrative_branches ADD COLUMN workspace_head_revision_id TEXT;
-          CREATE TABLE narrative_recovery_points (
-            branch_id TEXT NOT NULL REFERENCES narrative_branches(id), node_id TEXT NOT NULL REFERENCES narrative_nodes(id),
-            state_revision_id TEXT NOT NULL, workspace_revision_id TEXT NOT NULL REFERENCES workspace_revisions(id),
-            PRIMARY KEY(branch_id, node_id)
-          )`)
-
-        for (const row of database.prepare('SELECT id FROM narrative_timelines').all() as { id: string }[]) {
-          const id = nextId('workspace-revision')
-          database.prepare('INSERT INTO workspace_revisions VALUES (?, ?, NULL, ?, ?)').run(id, row.id, JSON.stringify(initialWorkspaceEntries()), now())
-          database.prepare('UPDATE narrative_nodes SET workspace_revision_id = ? WHERE timeline_id = ?').run(id, row.id)
-          database.prepare('UPDATE narrative_branches SET workspace_head_revision_id = ? WHERE timeline_id = ?').run(id, row.id)
-        }
-      } },
-      // Early v6 databases already have Workspace columns but may lack branch recovery points.
-      { version: 7, migrate: database => database.exec(`
-        CREATE TABLE IF NOT EXISTS narrative_recovery_points (
-          branch_id TEXT NOT NULL REFERENCES narrative_branches(id), node_id TEXT NOT NULL REFERENCES narrative_nodes(id),
-          state_revision_id TEXT NOT NULL, workspace_revision_id TEXT NOT NULL REFERENCES workspace_revisions(id),
-          PRIMARY KEY(branch_id, node_id)
-        )
-      `) },
-      { version: 8, migrate: migrateNodeKind },
-      { version: 9, migrate: database => migrateTimelineAuthority(database, nextId, now) },
-    ],
-  })
+  engine.initializeSchema({ namespace: migrationNamespace, version: 9, initialize: initializeNarrativeSchema })
   assertNarrativeSchema(engine.database)
   const swipes = createNarrativeSwipeStore(options)
 
@@ -713,100 +671,13 @@ function readEditableOpening(database: DatabaseSync, timeline: NarrativeTimeline
   return branch.headNodeId === opening.nodeId && Number(count.count) === (opening.nodeId ? 1 : 0) ? opening : undefined
 }
 
-function migrateNodeKind(database: DatabaseSync): void {
-  database.exec(`
-    ALTER TABLE narrative_nodes ADD COLUMN kind TEXT NOT NULL DEFAULT 'narrative' CHECK (kind IN ('user-input', 'narrative'));
-    UPDATE narrative_nodes SET kind = 'user-input'
-    WHERE source_changeset_id IN (SELECT id FROM changesets WHERE reason = 'application.appendNarrativeInput');
-  `)
-  // A fresh Narrative database creates the Swipe store after these migrations.
-  if (database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'narrative_swipe_groups'").get()) {
-    database.exec(`
-      UPDATE narrative_nodes SET kind = 'user-input' WHERE id IN (
-        SELECT json_extract(metadata_json, '$.inputNodeId') FROM narrative_swipe_groups
-        UNION
-        SELECT json_extract(input.value, '$.nodeId') FROM narrative_swipe_groups AS g, json_each(g.metadata_json, '$.inputs') AS input
-      );
-    `)
-  }
-}
 
-function migrateVersionOne(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE narrative_timelines (
-      id TEXT PRIMARY KEY,
-      title TEXT,
-      created_from_card_id TEXT,
-      created_from_card_version INTEGER,
-      prompt_resource_ids_json TEXT NOT NULL,
-      active_branch_id TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      tombstoned INTEGER NOT NULL DEFAULT 0,
-      deleted_at TEXT,
-      deleted_by_json TEXT,
-      delete_reason TEXT,
-      CHECK (created_from_card_version IS NULL OR created_from_card_version > 0),
-      FOREIGN KEY(id, active_branch_id)
-        REFERENCES narrative_branches(timeline_id, id)
-        DEFERRABLE INITIALLY DEFERRED
-    );
 
-    CREATE TABLE narrative_branches (
-      id TEXT PRIMARY KEY,
-      timeline_id TEXT NOT NULL REFERENCES narrative_timelines(id),
-      title TEXT,
-      head_node_id TEXT,
-      parent_branch_id TEXT,
-      forked_from_node_id TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(timeline_id, id),
-      FOREIGN KEY(timeline_id, head_node_id)
-        REFERENCES narrative_nodes(timeline_id, id),
-      FOREIGN KEY(timeline_id, parent_branch_id)
-        REFERENCES narrative_branches(timeline_id, id),
-      FOREIGN KEY(timeline_id, forked_from_node_id)
-        REFERENCES narrative_nodes(timeline_id, id)
-    );
 
-    CREATE TABLE narrative_nodes (
-      id TEXT PRIMARY KEY,
-      timeline_id TEXT NOT NULL REFERENCES narrative_timelines(id),
-      parent_node_id TEXT,
-      body_format TEXT NOT NULL CHECK (body_format = 'loom-markdown.v1'),
-      body_raw TEXT NOT NULL,
-      source_agent_session_id TEXT,
-      source_agent_message_id TEXT,
-      source_run_id TEXT,
-      source_changeset_id TEXT,
-      created_at TEXT NOT NULL,
-      UNIQUE(timeline_id, id),
-      FOREIGN KEY(timeline_id, parent_node_id)
-        REFERENCES narrative_nodes(timeline_id, id)
-    );
 
-    CREATE INDEX idx_narrative_branches_timeline ON narrative_branches(timeline_id);
-    CREATE INDEX idx_narrative_nodes_timeline_parent ON narrative_nodes(timeline_id, parent_node_id);
-    CREATE INDEX idx_narrative_nodes_timeline_created ON narrative_nodes(timeline_id, created_at);
-  `)
-}
 
-function migrateVersionTwo(database: DatabaseSync): void {
-  database.exec(`
-    CREATE INDEX idx_narrative_timelines_card_updated
-    ON narrative_timelines(created_from_card_id, updated_at DESC, id DESC);
-  `)
-}
 
-function migrateVersionThree(database: DatabaseSync): void {
-  database.exec(`
-    ALTER TABLE narrative_branches ADD COLUMN state_head_revision_id TEXT;
-    ALTER TABLE narrative_nodes ADD COLUMN state_revision_id TEXT;
-    CREATE INDEX idx_narrative_branches_state_head ON narrative_branches(state_head_revision_id);
-    CREATE INDEX idx_narrative_nodes_state_revision ON narrative_nodes(state_revision_id);
-  `)
-}
+
 
 function assertNarrativeSchema(database: DatabaseSync): void {
   const timelineForeignKeys = database.prepare("PRAGMA foreign_key_list('narrative_timelines')").all() as Array<{ table?: string; from?: string; to?: string }>
@@ -1248,40 +1119,89 @@ function parseStringArray(value: unknown, field: string): string[] {
   }
 }
 
-function migrateTimelineAuthority(database: DatabaseSync, nextId: (prefix: string) => string, _now: () => string) {
-  database.exec(`ALTER TABLE narrative_nodes ADD COLUMN entry_id TEXT REFERENCES agent_transcript_entries(id);
-    ALTER TABLE narrative_branches ADD COLUMN head_entry_id TEXT REFERENCES agent_transcript_entries(id);
-    ALTER TABLE narrative_recovery_points ADD COLUMN head_entry_id TEXT REFERENCES agent_transcript_entries(id);`)
-  for (const timeline of database.prepare('SELECT * FROM narrative_timelines').all()) {
-    const timelineId = String(timeline.id)
-    database.prepare(`INSERT INTO agent_sessions (id, kind, timeline_id, title, narrative_mode, entry_count, created_at, updated_at)
-      VALUES (?, 'timeline', ?, ?, 'declared', 0, ?, ?)`)
-      .run(timelineId, timelineId, timeline.title, timeline.created_at, timeline.updated_at)
-    let sequence = 0
-    for (const node of database.prepare(`WITH RECURSIVE path AS (
-      SELECT *, 1 AS depth FROM narrative_nodes WHERE timeline_id = ? AND parent_node_id IS NULL
-      UNION ALL SELECT n.*, p.depth + 1 FROM narrative_nodes n JOIN path p ON n.parent_node_id = p.id
-    ) SELECT * FROM path ORDER BY depth, created_at, id`).all(timelineId)) {
-      const entryId = nextId('agent-entry')
-      const parent = node.parent_node_id ? database.prepare('SELECT entry_id FROM narrative_nodes WHERE id = ?').get(node.parent_node_id)?.entry_id : null
-      database.prepare(`INSERT INTO agent_transcript_entries (id, agent_session_id, parent_entry_id, sequence, entry_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)`)
-        .run(entryId, timelineId, parent ?? null, ++sequence, JSON.stringify({ kind: 'message', role: node.kind === 'user-input' ? 'user' : 'assistant',
-          content: node.body_raw, purpose: 'narrative', narrativeId: node.id }), node.created_at)
-      database.prepare('UPDATE narrative_nodes SET entry_id = ? WHERE id = ?').run(entryId, node.id)
-    }
-    database.prepare('UPDATE agent_sessions SET entry_count = ? WHERE id = ?').run(sequence, timelineId)
-  }
-  database.exec(`UPDATE narrative_branches SET head_entry_id = (SELECT entry_id FROM narrative_nodes WHERE id = head_node_id);
-    UPDATE narrative_recovery_points SET head_entry_id = (SELECT entry_id FROM narrative_nodes WHERE id = node_id);
-    UPDATE agent_sessions SET head_entry_id = (SELECT b.head_entry_id FROM narrative_timelines t JOIN narrative_branches b ON b.id = t.active_branch_id WHERE t.id = agent_sessions.id) WHERE kind = 'timeline';
-    ALTER TABLE narrative_nodes DROP COLUMN body_raw;
-    ALTER TABLE narrative_nodes DROP COLUMN body_format;
-    CREATE VIEW narrative_node_projection AS SELECT n.*, 'loom-markdown.v1' AS body_format,
-      json_extract(e.entry_json, '$.content') AS body_raw FROM narrative_nodes n JOIN agent_transcript_entries e ON e.id = n.entry_id;`)
-}
+
 
 function nodeAttachments(agent: AgentTransaction, node: NarrativeNode): ChatAttachment[] | undefined {
   const entry = node.entryId ? agent.getEntry(node.entryId)?.entry : undefined
   return entry?.kind === 'message' ? entry.attachments : undefined
+}
+
+
+function initializeNarrativeSchema(database: DatabaseSync): void {
+  database.exec(`
+CREATE TABLE narrative_timelines (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      created_from_card_id TEXT,
+      created_from_card_version INTEGER,
+      prompt_resource_ids_json TEXT NOT NULL,
+      active_branch_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      tombstoned INTEGER NOT NULL DEFAULT 0,
+      deleted_at TEXT,
+      deleted_by_json TEXT,
+      delete_reason TEXT, opening_json TEXT,
+      CHECK (created_from_card_version IS NULL OR created_from_card_version > 0),
+      FOREIGN KEY(id, active_branch_id)
+        REFERENCES narrative_branches(timeline_id, id)
+        DEFERRABLE INITIALLY DEFERRED
+    );
+
+CREATE TABLE narrative_branches (
+      id TEXT PRIMARY KEY,
+      timeline_id TEXT NOT NULL REFERENCES narrative_timelines(id),
+      title TEXT,
+      head_node_id TEXT,
+      parent_branch_id TEXT,
+      forked_from_node_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL, state_head_revision_id TEXT, workspace_head_revision_id TEXT, head_entry_id TEXT REFERENCES agent_transcript_entries(id),
+      UNIQUE(timeline_id, id),
+      FOREIGN KEY(timeline_id, head_node_id)
+        REFERENCES narrative_nodes(timeline_id, id),
+      FOREIGN KEY(timeline_id, parent_branch_id)
+        REFERENCES narrative_branches(timeline_id, id),
+      FOREIGN KEY(timeline_id, forked_from_node_id)
+        REFERENCES narrative_nodes(timeline_id, id)
+    );
+
+CREATE TABLE narrative_nodes (
+      id TEXT PRIMARY KEY,
+      timeline_id TEXT NOT NULL REFERENCES narrative_timelines(id),
+      parent_node_id TEXT,
+      source_agent_session_id TEXT,
+      source_agent_message_id TEXT,
+      source_run_id TEXT,
+      source_changeset_id TEXT,
+      created_at TEXT NOT NULL, state_revision_id TEXT, floor INTEGER, workspace_revision_id TEXT, kind TEXT NOT NULL DEFAULT 'narrative' CHECK (kind IN ('user-input', 'narrative')), entry_id TEXT REFERENCES agent_transcript_entries(id),
+      UNIQUE(timeline_id, id),
+      FOREIGN KEY(timeline_id, parent_node_id)
+        REFERENCES narrative_nodes(timeline_id, id)
+    );
+
+CREATE INDEX idx_narrative_branches_timeline ON narrative_branches(timeline_id);
+
+CREATE INDEX idx_narrative_nodes_timeline_parent ON narrative_nodes(timeline_id, parent_node_id);
+
+CREATE INDEX idx_narrative_nodes_timeline_created ON narrative_nodes(timeline_id, created_at);
+
+CREATE INDEX idx_narrative_timelines_card_updated
+    ON narrative_timelines(created_from_card_id, updated_at DESC, id DESC);
+
+CREATE INDEX idx_narrative_branches_state_head ON narrative_branches(state_head_revision_id);
+
+CREATE INDEX idx_narrative_nodes_state_revision ON narrative_nodes(state_revision_id);
+
+CREATE INDEX narrative_nodes_floor ON narrative_nodes(timeline_id, floor);
+
+CREATE TABLE narrative_recovery_points (
+            branch_id TEXT NOT NULL REFERENCES narrative_branches(id), node_id TEXT NOT NULL REFERENCES narrative_nodes(id),
+            state_revision_id TEXT NOT NULL, workspace_revision_id TEXT NOT NULL REFERENCES workspace_revisions(id), head_entry_id TEXT REFERENCES agent_transcript_entries(id),
+            PRIMARY KEY(branch_id, node_id)
+          );
+
+CREATE VIEW narrative_node_projection AS SELECT n.*, 'loom-markdown.v1' AS body_format,
+      json_extract(e.entry_json, '$.content') AS body_raw FROM narrative_nodes n JOIN agent_transcript_entries e ON e.id = n.entry_id;
+  `)
 }

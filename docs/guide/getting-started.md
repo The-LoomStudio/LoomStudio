@@ -60,15 +60,7 @@ STBridge、The World 以各自独立仓库的源码为基准，修改及构建�
 pnpm data:reset  # 安全备份现有数据后重置开发环境 data/
 ```
 
-对于仍存有历史 `.loomstudio-dev/data/studio.sqlite` 的遗留环境，需在停止进程后执行离线迁移：
-
-```bash
-pnpm data:migrate          # 只检查，不复制
-pnpm data:migrate --apply  # 离线复制、校验后发布到 data/
-pnpm dev:server
-```
-
-迁移命令需要 `lsof` 检查源文件是否处于独占离线状态。目标已存在、数据库损坏或未离线时均拒绝操作。迁移完成后原旧目录已彻底停用。
+开发启动不会从旧 `.loomstudio-dev/data/` 目录迁移或恢复数据库。需要使用的数据库必须位于当前解析的数据根目录；Store namespace 版本不匹配时启动会报错，不会自动升级旧数据库。
 
 正式无配置运行继续使用操作系统原生用户数据目录，不会默认把用户数据写进应用安装目录。
 

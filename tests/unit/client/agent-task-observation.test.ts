@@ -1,14 +1,15 @@
+// @vitest-environment happy-dom
 import { describe, expect, it, vi } from 'vitest'
-import { primaryFixture } from '../../support/client/narrative-runtime.js'
+import { settle, primaryFixture } from '../../support/client/narrative-runtime.js'
 
 describe('Task menu Run observation', () => {
   it('preserves cancelled input recovery when summary status refreshes the Session', async () => {
     const f = await primaryFixture()
     f.render().setAgentInput('Keep this input')
     f.subscribeRun.mockResolvedValueOnce({ events: [], nextCursor: 1, done: true, state: 'cancelled' })
-    await f.render().submitAgentTurn(f.event)
+    await settle(() => f.render().submitAgentTurn(f.event))
     await f.loadRoot()
-    await f.render().refreshTaskSession('session')
+    await settle(() => f.render().refreshTaskSession('session'))
     expect(f.render().runRecovery?.input).toBe('Keep this input')
     f.render().restoreRunInput()
     expect(f.render().agentComposerInput).toBe('Keep this input')
@@ -30,7 +31,7 @@ describe('Task menu Run observation', () => {
   it('does not attach a background Session to the visible composer', async () => {
     const f = await primaryFixture()
     f.render().observeTaskRun('another-session', 'background-run')
-    await f.render().refreshTaskSession('another-session')
+    await settle(() => f.render().refreshTaskSession('another-session'))
     expect(f.subscribeRun).not.toHaveBeenCalled()
     expect(f.getTranscript).not.toHaveBeenCalled()
     expect(f.render().agentSession?.id).toBe('session')

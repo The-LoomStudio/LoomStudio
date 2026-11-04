@@ -1,0 +1,702 @@
+import type { PortableExtensionPayloadArtifact, PortableExtensionPayloadContent } from '../extensions/portable-payload-types.js'
+import type { PromptResourceKind, PromptResourceContent, PromptResourceArtifact, PromptResourceNode } from '../prompt/prompt-resource-types.js'
+import { parseCardFrameworkFields } from './card-framework.js'
+import { isLoomScriptFileName, textRuleUsagesSchema } from '@loom-studio/shared/loom-scripts'
+import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { stripPromptAuthorDepth, normalizeMacroOptions, promptResourceDisplayMetadataSchema } from '@loom-studio/shared'
+import { resolveLoomScriptSettings, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
+import type { PromptContribution, SourceNode } from '../prompt/prompt-builder.js'
+import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
+import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
+import { isObject } from '../foundation/json.js'
+import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../state/state-definition.js'
+import { parseStateArtifact } from '../state/state-contribution.js'
+import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
+import { normalizeOpening, parseCardExtensionAdoptions } from './card.js'
+import { validateTextExtractorDraft, validateTextTransformRuleDraft, type TextExtractorDraft, type TextTransformRuleDraft } from '../transforms/history-text.js'
+import type { StateDefinitionDraft, TimelineStateBinding } from '../types.js'
+import type {
+  CardBundleArtifact,
+  CardBundleSourceArtifactRef,
+} from './card-bundle-types.js'
+
+export function isPromptResourceArtifact(value: unknown): value is PromptResourceArtifact {
+  try {
+    assertPromptResourceArtifact(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function normalizePromptResourceArtifact(artifact: unknown): PromptResourceArtifact {
+  assertPromptResourceArtifact(artifact)
+  const normalized = structuredClone(artifact)
+  return {
+    ...normalized,
+    schemaVersion: 2,
+    rootNode: normalizeAuthorNode(normalized.rootNode),
+    scriptAttachments: structuredClone(artifact.scriptAttachments ?? []),
+    ...(artifact.textTransformRules !== undefined ? { textTransformRules: structuredClone(artifact.textTransformRules) } : {}),
+  }
+}
+export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardBundleArtifact {
+  assertCardBundleArtifact(artifact)
+
+  return {
+    ...artifact,
+    schemaVersion: 4,
+    artifactId: artifact.artifactId,
+    displayName: artifact.displayName,
+    description: artifact.description,
+    card: {
+      ...artifact.card,
+      ...(artifact.card.opening !== undefined ? { opening: normalizeOpening(artifact.card.opening) } : {}),
+    },
+    contextAssets: (artifact.contextAssets ?? []).map(normalizeAuthorNode),
+    extensionPayloads: structuredClone(artifact.extensionPayloads ?? []),
+    extensionPackages: structuredClone(artifact.extensionPackages ?? []),
+    scriptAttachments: structuredClone(artifact.scriptAttachments ?? []),
+    metadata: artifact.metadata ?? {},
+  }
+}
+
+export function toPortableExtensionPayloadArtifact(content: PortableExtensionPayloadContent): PortableExtensionPayloadArtifact {
+  return {
+    id: content.artifactPayloadId,
+    packageId: content.packageId,
+    fileName: content.fileName,
+    format: content.format,
+    mediaType: content.mediaType,
+    ...(content.schemaVersion !== undefined ? { schemaVersion: content.schemaVersion } : {}),
+    ...(content.requirement !== undefined ? { requirement: structuredClone(content.requirement) } : {}),
+    ...(content.metadata !== undefined ? { metadata: structuredClone(content.metadata) } : {}),
+    content: content.content,
+    ...(content.resourceOrigin !== undefined ? { resourceOrigin: content.resourceOrigin } : {}),
+  }
+}
+
+export function createSourceArtifactRef(
+  artifact: CardBundleArtifact,
+  importedAt: string,
+  stored?: Pick<
+    CardBundleSourceArtifactRef,
+    'sourceArtifactId' | 'blobId' | 'sha256' | 'sizeBytes' | 'originalFileName' | 'mediaType'
+  >,
+): CardBundleSourceArtifactRef {
+  return {
+    artifactId: artifact.artifactId,
+    displayName: artifact.displayName,
+    format: 'loom.cardBundle',
+    importedAt,
+    schemaVersion: artifact.schemaVersion,
+    ...stored,
+  }
+}
+
+function normalizeAuthorNode(node: PromptResourceNode): PromptResourceNode {
+  return { ...node,
+    ...(node.capabilities ? { capabilities: stripPromptAuthorDepth(node.capabilities) } : {}),
+    ...(node.children ? { children: node.children.map(normalizeAuthorNode) } : {}),
+  }
+}
+
+export function collectPromptInputs(input: {
+  contributions: PromptContribution[]
+  inheritedCategory: PromptResourceNode['category'] | undefined
+  inheritedSourceId: string | undefined
+  variables: VariableRenderContext
+  nodes: PromptResourceNode[]
+  parentActivationGates: PromptActivation[]
+  parentEnabled: boolean
+  parentId: string | null
+  sourceNodes: SourceNode[]
+  resource?: { id: string; version: number }
+  sourcePath?: string
+}): void {
+  for (const [index, node] of input.nodes.entries()) {
+    const category = node.category ?? input.inheritedCategory
+    const sourceId = node.kind === 'module' ? node.id : input.inheritedSourceId ?? node.id
+    const effectiveEnabled = input.parentEnabled && node.enabled !== false
+    const activationGates = node.capabilities?.activation
+      ? [...input.parentActivationGates, node.capabilities.activation]
+      : input.parentActivationGates
+    const effectiveActivation = combineActivationGates(activationGates)
+    const authorEntry = category === 'preset' || category === 'lore'
+    const inlineEntry = category === 'preset' && node.kind === 'entry' && !node.capabilities?.targetAnchorId
+    const body = effectiveEnabled && node.kind === 'entry' && typeof node.body === 'string'
+      ? node.capabilities?.processorId ? node.body : renderVariableMacros(node.body, input.variables, { hostId: node.id, stage: 'source' })
+      : undefined
+    input.sourceNodes.push({
+      id: node.id,
+      evidence: { resourceId: input.resource?.id, version: input.resource?.version,
+        path: `${input.sourcePath ?? ''}/${node.label}`, original: node.body,
+        ...(!effectiveEnabled ? { disabledReason: node.enabled === false ? 'author disabled' : 'ancestor disabled' } : {}),
+      },
+      sourceId,
+      parentId: input.parentId,
+      displayName: node.label,
+      ...(node.extra ? { metadata: structuredClone(node.extra) } : {}),
+      orderIndex: index + 1,
+      kind: node.kind,
+      enabled: effectiveEnabled,
+      ...(inlineEntry && body !== undefined ? { body } : {}),
+      capabilities: {
+        ...(authorEntry ? stripPromptAuthorDepth(node.capabilities) : node.capabilities),
+        ...(effectiveActivation ? { activation: effectiveActivation } : {}),
+      },
+    })
+
+    if (effectiveEnabled && category && node.kind === 'entry' && body !== undefined
+      && (inlineEntry || node.capabilities?.targetAnchorId)) {
+      const kind = readSourceKind(category)
+      if (kind) {
+        input.contributions.push({
+          id: `resource.${node.id}`,
+          sourceRef: {
+            kind,
+            sourceId,
+            sourceNodeId: node.id,
+          },
+          content: body,
+          capabilities: {
+            ...(node.capabilities?.processorId ? { processorId: node.capabilities.processorId } : {}),
+            ...(effectiveActivation ? { activation: effectiveActivation } : {}),
+            ...(node.capabilities?.targetAnchorId ? { targetAnchorId: node.capabilities.targetAnchorId } : {}),
+            // One traversal across adopted resources preserves each tree without interleaving books.
+            ...(authorEntry ? { localDepth: input.contributions.length }
+              : node.capabilities?.localDepth !== undefined ? { localDepth: node.capabilities.localDepth } : {}),
+            ...(node.capabilities?.roleHint ? { roleHint: node.capabilities.roleHint } : {}),
+            ...(node.capabilities?.lifecycle ? { lifecycle: node.capabilities.lifecycle } : {}),
+          },
+        })
+      }
+    }
+
+    if (node.children) {
+      collectPromptInputs({
+        ...input,
+        sourcePath: `${input.sourcePath ?? ''}/${node.label}`,
+        parentActivationGates: activationGates,
+        parentEnabled: effectiveEnabled,
+        nodes: node.children,
+        parentId: node.id,
+        inheritedCategory: category,
+        inheritedSourceId: sourceId,
+      })
+    }
+  }
+}
+
+function readSourceKind(category: PromptResourceNode['category']): PromptContribution['sourceRef']['kind'] | undefined {
+  if (category === 'preset') return 'preset'
+  if (category === 'lore') return 'lore'
+  if (category === 'runtime') return 'runtime'
+  if (category === 'history') return 'narrativeChat'
+  return undefined
+}
+
+export function findNodes(nodes: PromptResourceNode[], predicate: (node: PromptResourceNode) => boolean): PromptResourceNode[] {
+  const results: PromptResourceNode[] = []
+  for (const node of nodes) {
+    if (predicate(node)) results.push(node)
+    if (node.children) results.push(...findNodes(node.children, predicate))
+  }
+  return results
+}
+
+export function applyDefaultPromptProjection(asset: PromptResourceNode, resource: PromptResourceContent): PromptResourceNode {
+  if (asset.kind !== 'entry' || asset.capabilities?.targetAnchorId) return asset
+  if (resource.resourceKind !== 'lore') return asset
+
+  const targetAnchorId = '@chat.system'
+
+  return {
+    ...asset,
+    capabilities: {
+      ...asset.capabilities,
+      activation: asset.capabilities?.activation ?? { kind: 'always' as const },
+      lifecycle: asset.capabilities?.lifecycle ?? { lifecycle: 'always' },
+      targetAnchorId,
+      roleHint: 'system',
+    },
+  }
+}
+
+
+function assertPromptResourceArtifact(value: unknown): asserts value is PromptResourceArtifact {
+  if (!isObject(value)) throw new Error('Prompt Resource artifact must be an object')
+  if (value.metadata !== undefined) promptResourceDisplayMetadataSchema.parse(value.metadata)
+  if (value.format !== 'loom.promptResource') throw new Error(`Unsupported Prompt Resource artifact format: ${String(value.format)}`)
+  if (value.schemaVersion !== 2) throw new Error(`Unsupported Prompt Resource artifact schemaVersion: ${String(value.schemaVersion)}`)
+  if (!isPromptResourceKind(value.resourceKind)) throw new Error(`Invalid Prompt Resource kind: ${String(value.resourceKind)}`)
+  if (value.macroOptions !== undefined) normalizeMacroOptions(value.macroOptions)
+  if (value.useCardLore !== undefined && typeof value.useCardLore !== 'boolean') throw new Error('Invalid Preset card Lore selection')
+  if (value.useCardText !== undefined && typeof value.useCardText !== 'boolean') throw new Error('Invalid Preset card text selection')
+  if (value.useGlobalLore !== undefined && typeof value.useGlobalLore !== 'boolean') throw new Error('Invalid Preset global Lore selection')
+  if (value.useGlobalText !== undefined && typeof value.useGlobalText !== 'boolean') throw new Error('Invalid Preset global text selection')
+  if (value.loreMounts !== undefined && (!Array.isArray(value.loreMounts) || value.resourceKind !== 'preset'
+    || value.loreMounts.some(reference => !isObject(reference)
+      || (reference.kind !== 'package' && reference.kind !== 'external')
+      || (reference.kind === 'package' && (typeof reference.contributionId !== 'string' || !reference.contributionId.trim()))
+      || (reference.kind === 'external' && (typeof reference.resourceId !== 'string' || !reference.resourceId.trim()))))) {
+    throw new Error('Invalid Preset Lore references')
+  }
+  assertTextUses(value.textUses)
+  assertPromptResourceNode(value.rootNode, 'rootNode')
+  assertUniquePromptResourceNodeIds(value.rootNode)
+  assertLoomScriptAttachments(value.scriptAttachments)
+  assertCardTextPipeline(value.textTransformRules, false)
+}
+
+function isPromptResourceKind(value: unknown): value is PromptResourceKind {
+  return value === 'preset'
+    || value === 'lore'
+    || value === 'logic'
+    || value === 'runtime'
+    || value === 'history'
+    || value === 'prompt'
+}
+
+export function isCardBundleArtifact(value: JsonValue | undefined): value is CardBundleArtifact {
+  try {
+    assertCardBundleArtifact(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function assertCardBundleArtifact(value: unknown): asserts value is CardBundleArtifact {
+  if (!isObject(value)) throw new Error('Card bundle must be an object')
+  if (value.schemaVersion !== 4) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
+  assertNonEmptyString(value.artifactId, 'Card bundle artifactId')
+  if (value.derivedFrom !== undefined) {
+    if (!isObject(value.derivedFrom)) throw new Error('Card bundle derivedFrom must be an object')
+    assertNonEmptyString(value.derivedFrom.artifactId, 'Card bundle derivedFrom.artifactId')
+    if (value.derivedFrom.artifactId === value.artifactId) throw new Error('A derived Card must have a different artifactId')
+  }
+  assertNonEmptyString(value.displayName, 'Card bundle displayName')
+  if (value.description !== undefined && typeof value.description !== 'string') throw new Error('Card bundle description must be a string')
+  assertCardBundleCard(value.card)
+  if (!Array.isArray(value.contextAssets)) throw new Error('Card bundle contextAssets must be an array')
+  for (const [index, node] of value.contextAssets.entries()) {
+    assertPromptResourceNode(node, `contextAssets[${index}]`)
+    assertUniquePromptResourceNodeIds(node)
+  }
+  if (value.contextAssetSettings !== undefined) {
+    if (!isObject(value.contextAssetSettings)) throw new Error('Card bundle contextAssetSettings must be an object')
+    const rootIds = new Set(value.contextAssets.map(node => (node as JsonObject).id))
+    const settingKeys = new Set(['metadata', 'macros', 'macroOptions', 'useCardLore', 'useGlobalLore', 'useCardText', 'useGlobalText', 'historyPolicy', 'textUses'])
+    for (const [rootId, settings] of Object.entries(value.contextAssetSettings)) {
+      if (!rootIds.has(rootId) || !isObject(settings) || Object.keys(settings).some(key => !settingKeys.has(key))) {
+        throw new Error(`Invalid Card context asset settings: ${rootId}`)
+      }
+      if (settings.metadata !== undefined) promptResourceDisplayMetadataSchema.parse(settings.metadata)
+      assertTextUses(settings.textUses)
+      if (settings.macros !== undefined) validateBundleMacros(settings.macros)
+      if (settings.macroOptions !== undefined) normalizeMacroOptions(settings.macroOptions)
+      for (const key of ['useCardLore', 'useGlobalLore', 'useCardText', 'useGlobalText']) {
+        if (settings[key] !== undefined && typeof settings[key] !== 'boolean') {
+          throw new Error(`Invalid Card context asset ${key}: ${rootId}`)
+        }
+      }
+      if (settings.historyPolicy !== undefined && settings.historyPolicy !== 'persistent' && settings.historyPolicy !== 'ephemeral') {
+        throw new Error(`Invalid Card context asset historyPolicy: ${rootId}`)
+      }
+    }
+  }
+  if (value.externalContextAssetIds !== undefined) {
+    const rootIds = new Set(value.contextAssets.map(node => (node as JsonObject).id))
+    if (!Array.isArray(value.externalContextAssetIds)
+      || value.externalContextAssetIds.some(id => typeof id !== 'string'
+        || !rootIds.has(id))
+      || new Set(value.externalContextAssetIds).size !== value.externalContextAssetIds.length) {
+      throw new Error('Invalid externalContextAssetIds')
+    }
+  }
+  if (value.state !== undefined) parseStateArtifact(value.state)
+  if (value.stateTemplates !== undefined) {
+    if (!Array.isArray(value.stateTemplates)) throw new Error('Card bundle stateTemplates must be an array')
+    const ids = new Set<string>()
+    for (const [index, template] of value.stateTemplates.entries()) {
+      if (!isObject(template)) throw new Error(`Card bundle state template must be an object: ${index}`)
+      assertNonEmptyString(template.id, `Card bundle state template id: ${index}`)
+      if (ids.has(template.id)) throw new Error(`Duplicate State template id: ${template.id}`)
+      ids.add(template.id)
+      validateStateDefinitionDraft({
+        kind: 'timeline-template',
+        templateVersion: template.templateVersion as number,
+        schema: template.schema as JsonObject,
+        initial: template.initial as JsonObject,
+        ...(typeof template.componentKey === 'string' ? { componentKey: template.componentKey } : {}),
+        ...(Array.isArray(template.targetEntityTypeIds) ? { targetEntityTypeIds: template.targetEntityTypeIds as string[] } : {}),
+        ...(typeof template.label === 'string' ? { label: template.label } : {}),
+      })
+    }
+  }
+  if (value.timelineStateBindings !== undefined) {
+    if (!Array.isArray(value.timelineStateBindings)) throw new Error('Card bundle timelineStateBindings must be an array')
+    for (const binding of value.timelineStateBindings) validateTimelineStateBinding(binding as TimelineStateBinding)
+  }
+  assertPortableExtensionPayloads(value.extensionPayloads)
+  assertEmbeddedExtensionPackages(value.extensionPackages)
+  assertLoomScriptAttachments(value.scriptAttachments)
+  assertCardTextPipeline(value.textTransformRules, false)
+  assertCardTextPipeline(value.textExtractors, true)
+  if (value.metadata !== undefined && !isObject(value.metadata)) throw new Error('Card bundle metadata must be an object')
+}
+
+export const maxEmbeddedExtensionArchiveBase64Bytes = 64 * 1024 * 1024
+
+export function assertEmbeddedExtensionPackages(value: unknown): asserts value is CardBundleArtifact['extensionPackages'] {
+  if (value !== undefined) {
+    // ponytail: bound embedded archives independently of their eventual installer extraction budgets.
+    if (!Array.isArray(value) || value.length > 32) throw new Error('Card extensionPackages must contain at most 32 archives')
+    const packageIds = new Set<string>()
+    let bytes = 0
+    for (const item of value) {
+      if (!isObject(item) || typeof item.packageId !== 'string' || !item.packageId.trim()
+        || typeof item.version !== 'string' || !item.version.trim()
+        || typeof item.archiveBase64 !== 'string' || !item.archiveBase64.length) throw new Error('Invalid embedded extension package')
+      if (packageIds.has(item.packageId)) throw new Error(`Duplicate embedded extension package: ${item.packageId}`)
+      packageIds.add(item.packageId)
+      bytes += item.archiveBase64.length
+      if (bytes > maxEmbeddedExtensionArchiveBase64Bytes) throw new Error('Embedded extension archives exceed the Card bundle budget')
+      if (Buffer.from(item.archiveBase64, 'base64').toString('base64') !== item.archiveBase64) throw new Error('Embedded extension archive must be canonical base64')
+    }
+  }
+}
+
+function assertCardTextPipeline(value: unknown, extractor: boolean): void {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error('Card text pipeline declarations must be an array')
+  for (const item of value) {
+    if (!isObject(item) || typeof item.name !== 'string' || typeof item.enabled !== 'boolean'
+      || !Number.isInteger(item.orderIndex) || !Array.isArray(item.targets)
+      || item.targets.some(target => target !== 'narrative' && target !== 'agent-session')
+      || !isObject(item.matcher) || item.matcher.kind !== 'regex'
+      || typeof item.matcher.pattern !== 'string' || typeof item.matcher.flags !== 'string'
+      || ['owner', 'origin', 'id', 'version', 'createdAt', 'updatedAt'].some(key => item[key] !== undefined)) {
+      throw new Error('Invalid Card text pipeline declaration')
+    }
+    const draft = { ...item, owner: { kind: 'card' as const, cardId: 'bundle' } }
+    if (extractor) {
+      if ((item.strategy !== 'latest-valid' && item.strategy !== 'all-matches')
+        || (item.parser !== 'text' && item.parser !== 'key-value-lines')
+        || (item.artifactType !== undefined && typeof item.artifactType !== 'string')
+        || (item.outputSchema !== undefined && !isObject(item.outputSchema))) {
+        throw new Error('Invalid Card text extractor')
+      }
+      validateTextExtractorDraft(draft as TextExtractorDraft)
+    } else {
+      if (!Array.isArray(item.phases) || item.phases.some(phase => !['classify', 'prompt', 'display'].includes(String(phase)))
+        || (item.range !== undefined && !isObject(item.range))
+        || !isObject(item.effect)
+        || !['replace', 'mark', 'promote-reasoning'].includes(String(item.effect.kind))
+        || (item.effect.kind === 'replace' && typeof item.effect.replacement !== 'string')
+        || (item.effect.kind === 'mark' && item.effect.markerType !== undefined && typeof item.effect.markerType !== 'string')
+        || (item.effect.kind === 'promote-reasoning'
+          && (!['collapsed', 'hidden', 'visible'].includes(String(item.effect.visibility))
+            || !['omit', 'assistant-content'].includes(String(item.effect.replay))
+            || (item.effect.dialect !== undefined && typeof item.effect.dialect !== 'string')))) {
+        throw new Error('Invalid Card text transform rule')
+      }
+      validateTextTransformRuleDraft(draft as TextTransformRuleDraft)
+    }
+    const group = extractor ? item.matcher.contentGroup : (item.effect as Record<string, unknown>).contentGroup
+    if (group !== undefined && typeof group !== 'string' && !(Number.isInteger(group) && Number(group) >= 0)) {
+      throw new Error('Invalid Card text pipeline contentGroup')
+    }
+  }
+}
+
+function assertResourceOrigin(value: unknown): void {
+  if (value !== undefined && value !== 'card' && value !== 'external') throw new Error('Invalid resourceOrigin')
+}
+
+function assertTextUses(value: unknown): void {
+  if (value !== undefined && (!Array.isArray(value) || value.some(use =>
+    !isObject(use) || typeof use.id !== 'string' || !use.id.trim()
+    || (use.kind !== 'rule' && use.kind !== 'extractor') || typeof use.enabled !== 'boolean'
+    || (use.orderIndex !== undefined && (!Number.isSafeInteger(use.orderIndex) || Number(use.orderIndex) < 0))
+    || (use.reference !== undefined && (!isObject(use.reference)
+      || (use.reference.kind !== 'package' && use.reference.kind !== 'external')
+      || (use.reference.kind === 'package' && (typeof use.reference.contributionId !== 'string' || !use.reference.contributionId.trim()))
+      || (use.reference.kind === 'external' && (typeof use.reference.resourceId !== 'string' || !use.reference.resourceId.trim()))))))) {
+    throw new Error('Invalid Preset Text use references')
+  }
+}
+
+function assertLoomScriptAttachments(value: unknown): void {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error('Loom Script attachments must be an array')
+  for (const [index, attachment] of value.entries()) {
+    if (!isObject(attachment) || !Number.isSafeInteger(attachment.orderIndex)) throw new Error(`Invalid Loom Script attachment: ${index}`)
+    assertResourceOrigin(attachment.resourceOrigin)
+    if (attachment.ruleUsage !== undefined) textRuleUsagesSchema.parse(attachment.ruleUsage)
+    if (attachment.settings !== undefined && (!isObject(attachment.settings) || Object.values(attachment.settings).some(value =>
+      typeof value !== 'string' && typeof value !== 'boolean' && (typeof value !== 'number' || !Number.isFinite(value))))) throw new Error(`Invalid Loom Script settings: ${index}`)
+    for (const key of ['textResourceIds', 'textResourceReferences', 'loreResourceReferences', 'loreNodeReferences'] as const) {
+      const references = attachment[key]
+      if (references !== undefined && (!isObject(references) || Object.entries(references).some(([id, address]) =>
+        !id.trim() || typeof address !== 'string' || !address.trim()))) throw new Error(`Invalid Loom Script ${key}: ${index}`)
+    }
+    if (!isObject(attachment.script)
+      || attachment.script.format !== 'loom.script'
+      || attachment.script.schemaVersion !== 1
+      || typeof attachment.script.fileName !== 'string'
+      || !isLoomScriptFileName(attachment.script.fileName)
+      || typeof attachment.script.source !== 'string') {
+      throw new Error(`Invalid Loom Script attachment artifact: ${index}`)
+    }
+    if (attachment.groupOrder !== undefined && !Number.isSafeInteger(attachment.groupOrder)) throw new Error('Invalid script group order')
+    const metadata = parseLoomScriptSource(attachment.script.source)
+    resolveLoomScriptSettings(metadata.settings, attachment.settings as LoomScriptSettings | undefined)
+  }
+}
+
+const portablePayloadTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const portablePayloadFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+const maxPortablePayloadCount = 64
+const maxPortablePayloadBytes = 8 * 1024 * 1024
+const maxPortablePayloadTotalBytes = 32 * 1024 * 1024
+
+function assertPortableExtensionPayloads(value: unknown): void {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error('Card bundle extensionPayloads must be an array')
+  if (value.length > maxPortablePayloadCount) {
+    throw new Error(`Card bundle extensionPayloads exceed ${maxPortablePayloadCount} entries`)
+  }
+
+  const ids = new Set<string>()
+  let totalBytes = 0
+  for (const [index, payload] of value.entries()) {
+    if (!isObject(payload)) throw new Error(`Card bundle Extension Payload must be an object: ${index}`)
+    assertResourceOrigin(payload.resourceOrigin)
+    assertPortablePayloadToken(payload.id, `Card bundle Extension Payload id: ${index}`)
+    if (ids.has(payload.id)) throw new Error(`Duplicate Extension Payload id: ${payload.id}`)
+    ids.add(payload.id)
+    assertPortablePayloadToken(payload.packageId, `Card bundle Extension Payload packageId: ${index}`)
+    if (typeof payload.fileName !== 'string' || !portablePayloadFileNamePattern.test(payload.fileName)) {
+      throw new Error(`Card bundle Extension Payload fileName is invalid: ${index}`)
+    }
+    assertBoundedNonEmptyString(payload.format, `Card bundle Extension Payload format: ${index}`, 128)
+    assertBoundedNonEmptyString(payload.mediaType, `Card bundle Extension Payload mediaType: ${index}`, 255)
+    if (payload.schemaVersion !== undefined
+      && (typeof payload.schemaVersion !== 'number'
+        || !Number.isSafeInteger(payload.schemaVersion)
+        || payload.schemaVersion < 1)) {
+      throw new Error(`Card bundle Extension Payload schemaVersion is invalid: ${index}`)
+    }
+    if (payload.requirement !== undefined) {
+      if (!isObject(payload.requirement)) throw new Error(`Card bundle Extension Payload requirement is invalid: ${index}`)
+      if (payload.requirement.versionRange !== undefined) {
+        assertBoundedNonEmptyString(
+          payload.requirement.versionRange,
+          `Card bundle Extension Payload requirement.versionRange: ${index}`,
+          128,
+        )
+      }
+    }
+    if (payload.metadata !== undefined && !isObject(payload.metadata)) {
+      throw new Error(`Card bundle Extension Payload metadata is invalid: ${index}`)
+    }
+    if (typeof payload.content !== 'string') throw new Error(`Card bundle Extension Payload content must be a string: ${index}`)
+    // ponytail: 首版只运输 UTF-8 JSON/text；需要任意二进制时改为 Blob-backed Payload，不引入 Base64。
+    const contentBytes = new TextEncoder().encode(payload.content).byteLength
+    if (contentBytes > maxPortablePayloadBytes) {
+      throw new Error(`Card bundle Extension Payload exceeds ${maxPortablePayloadBytes} bytes: ${payload.id}`)
+    }
+    totalBytes += contentBytes
+    if (totalBytes > maxPortablePayloadTotalBytes) {
+      throw new Error(`Card bundle Extension Payloads exceed ${maxPortablePayloadTotalBytes} total bytes`)
+    }
+  }
+}
+
+export function normalizePortableExtensionPayloadArtifact(
+  payload: PortableExtensionPayloadArtifact,
+): PortableExtensionPayloadArtifact {
+  assertPortableExtensionPayloads([payload])
+  return structuredClone(payload)
+}
+
+function assertPortablePayloadToken(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || !portablePayloadTokenPattern.test(value)) throw new Error(`${label} is invalid`)
+}
+
+function assertBoundedNonEmptyString(value: unknown, label: string, maxLength: number): asserts value is string {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > maxLength) {
+    throw new Error(`${label} must be a non-empty string no longer than ${maxLength} characters`)
+  }
+}
+
+export function sameTimelineTemplate(value: JsonValue, definition: Extract<StateDefinitionDraft, { kind: 'timeline-template' }>): boolean {
+  if (!isObject(value) || value.kind !== 'timeline-template') return false
+  return value.templateVersion === definition.templateVersion
+    && JSON.stringify(value.schema) === JSON.stringify(definition.schema)
+    && JSON.stringify(value.initial) === JSON.stringify(definition.initial)
+    && value.componentKey === definition.componentKey
+    && JSON.stringify(value.targetEntityTypeIds) === JSON.stringify(definition.targetEntityTypeIds)
+    && value.label === definition.label
+}
+
+function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifact['card'] {
+  if (!isObject(value)) throw new Error('Card bundle card must be an object')
+  assertNonEmptyString(value.name, 'Card bundle card.name')
+  parseCardFrameworkFields(value)
+  assertOptionalString(value.userName, 'Card bundle card.userName')
+  assertOptionalString(value.description, 'Card bundle card.description')
+  if (value.macros !== undefined) validateBundleMacros(value.macros)
+  if (value.macroOptions !== undefined) normalizeMacroOptions(value.macroOptions)
+  if (value.extensionAdoptions !== undefined) parseCardExtensionAdoptions(value.extensionAdoptions)
+  if (value.stateContributionIds !== undefined
+    && (!Array.isArray(value.stateContributionIds) || !value.stateContributionIds.every(id => typeof id === 'string' && id.trim().length > 0))) {
+    throw new Error('Card bundle card.stateContributionIds must be non-empty strings')
+  }
+
+  if (value.preset !== undefined) {
+    if (!isObject(value.preset)) throw new Error('Card bundle card.preset must be an object')
+    assertOptionalString(value.preset.system, 'Card bundle card.preset.system')
+    if (value.preset.macros !== undefined) validateBundleMacros(value.preset.macros)
+    if (value.preset.macroOptions !== undefined) normalizeMacroOptions(value.preset.macroOptions)
+  }
+
+  if (value.opening !== undefined && typeof value.opening !== 'string') {
+    if (!isObject(value.opening)) throw new Error('Card bundle card.opening must be a string or object')
+    if (value.opening.alternatives !== undefined && !Array.isArray(value.opening.alternatives)) {
+      throw new Error('Card bundle opening alternatives must be an array')
+    }
+    const openings = [value.opening, ...(value.opening.alternatives ?? [])]
+    const ids = new Set<string>()
+    for (const opening of openings) {
+      if (!isObject(opening) || typeof opening.content !== 'string' || 'entries' in opening || 'role' in opening) {
+        throw new Error('Card bundle opening must contain single string content')
+      }
+      assertOptionalString(opening.title, 'Card bundle opening title')
+      if (opening.id !== undefined) {
+        if (typeof opening.id !== 'string' || !opening.id.trim()) throw new Error('Invalid opening ID')
+        if (ids.has(opening.id)) throw new Error(`Duplicate opening ID: ${opening.id}`)
+        ids.add(opening.id)
+      }
+    }
+  }
+
+  if (value.lore !== undefined) {
+    if (!isObject(value.lore)) throw new Error('Card bundle card.lore must be an object')
+    if (value.lore.entries !== undefined && !Array.isArray(value.lore.entries)) {
+      throw new Error('Card bundle card.lore.entries must be an array')
+    }
+    for (const [index, entry] of (value.lore.entries ?? []).entries()) {
+      if (!isObject(entry) || typeof entry.content !== 'string') {
+        throw new Error(`Card bundle lore entry must contain string content: ${index}`)
+      }
+      assertOptionalString(entry.id, `Card bundle lore entry id: ${index}`)
+      assertOptionalString(entry.path, `Card bundle lore entry path: ${index}`)
+      assertOptionalString(entry.title, `Card bundle lore entry title: ${index}`)
+      if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
+        throw new Error(`Card bundle lore entry enabled must be boolean: ${index}`)
+      }
+      if (entry.activation !== undefined && !isPromptActivation(entry.activation)) {
+        throw new Error(`Card bundle lore entry activation is invalid: ${index}`)
+      }
+      if (entry.tags !== undefined && (!Array.isArray(entry.tags) || !entry.tags.every(tag => typeof tag === 'string'))) {
+        throw new Error(`Card bundle lore entry tags must be strings: ${index}`)
+      }
+      
+    }
+  }
+}
+
+function validateBundleMacros(value: unknown): void {
+  if (!isObject(value)) throw new Error('Card bundle macros must be an object')
+  for (const [name, macroValue] of Object.entries(value)) {
+    if (typeof macroValue !== 'string') throw new Error(`Card bundle macro value must be a string: ${name}`)
+  }
+}
+
+function assertPromptResourceNode(value: unknown, path: string): asserts value is PromptResourceNode {
+  if (!isObject(value)) throw new Error(`Prompt resource node must be an object: ${path}`)
+  assertNonEmptyString(value.id, `Prompt resource node id: ${path}`)
+  if (typeof value.label !== 'string') throw new Error(`Prompt resource node label must be a string: ${path}`)
+  if (!isPromptResourceNodeKind(value.kind)) throw new Error(`Prompt resource node kind is invalid: ${path}`)
+  if (value.category !== undefined && !isPromptResourceNodeCategory(value.category)) {
+    throw new Error(`Prompt resource node category is invalid: ${path}`)
+  }
+  assertOptionalString(value.body, `Prompt resource node body: ${path}`)
+  assertOptionalString(value.meta, `Prompt resource node meta: ${path}`)
+  if (value.enabled !== undefined && typeof value.enabled !== 'boolean') throw new Error(`Prompt resource node enabled must be boolean: ${path}`)
+  for (const key of ['projection', 'orderList', 'configRows', 'isSection']) {
+    if (Object.hasOwn(value, key)) throw new Error(`Unsupported Prompt resource node field: ${path}.${key}`)
+  }
+  if (value.meta === 'message.developer') throw new Error(`Invalid Prompt message role: ${path}`)
+  assertPromptResourceCapabilities(value.capabilities, path)
+
+  if (value.children !== undefined) {
+    if (!Array.isArray(value.children)) throw new Error(`Prompt resource node children must be an array: ${path}`)
+    value.children.forEach((child, index) => assertPromptResourceNode(child, `${path}.children[${index}]`))
+  }
+}
+
+function assertUniquePromptResourceNodeIds(rootNode: PromptResourceNode): void {
+  const ids = new Set<string>()
+  const visit = (node: PromptResourceNode): void => {
+    if (ids.has(node.id)) throw new Error(`Duplicate prompt resource node id: ${node.id}`)
+    ids.add(node.id)
+    node.children?.forEach(visit)
+  }
+  visit(rootNode)
+}
+
+function assertPromptResourceCapabilities(value: JsonValue | undefined, path: string): void {
+  if (value === undefined) return
+  if (!isObject(value)) throw new Error(`Prompt resource capabilities must be an object: ${path}`)
+  if (value.roleHint !== undefined && !['system', 'user', 'assistant'].includes(String(value.roleHint))) throw new Error(`Prompt resource roleHint is invalid: ${path}`)
+  if (value.processorId !== undefined) assertNonEmptyString(value.processorId, `Prompt processor ID: ${path}`)
+  if (value.activation !== undefined && !isPromptActivation(value.activation)) throw new Error(`Prompt resource activation is invalid: ${path}`)
+  if (value.content !== undefined && (!isObject(value.content) || value.content.kind !== 'text')) throw new Error(`Prompt resource content capability is invalid: ${path}`)
+  if (value.lifecycle !== undefined && (!isObject(value.lifecycle) || typeof value.lifecycle.lifecycle !== 'string')) throw new Error(`Prompt resource lifecycle is invalid: ${path}`)
+  if (value.projection !== undefined) {
+    if (!isObject(value.projection)) throw new Error(`Prompt resource projection is invalid: ${path}`)
+    assertOptionalString(value.projection.targetAnchorId, `Prompt resource projection targetAnchorId: ${path}`)
+    assertOptionalNumber(value.projection.localDepth, `Prompt resource projection localDepth: ${path}`)
+  }
+  if (value.resolution !== undefined) {
+    if (!isObject(value.resolution) || typeof value.resolution.semanticSlotKey !== 'string') throw new Error(`Prompt resource resolution is invalid: ${path}`)
+    if (!['append', 'merge', 'replace', 'single'].includes(String(value.resolution.policy))) throw new Error(`Prompt resource resolution policy is invalid: ${path}`)
+    assertOptionalNumber(value.resolution.priorityHint, `Prompt resource resolution priorityHint: ${path}`)
+  }
+  if (value.render !== undefined) {
+    if (!isObject(value.render)) throw new Error(`Prompt resource render capability is invalid: ${path}`)
+    if (value.render.wrapper !== undefined && !['section', 'message', 'inline'].includes(String(value.render.wrapper))) throw new Error(`Prompt resource render wrapper is invalid: ${path}`)
+    if (value.render.roleHint !== undefined && !['system', 'assistant', 'user'].includes(String(value.render.roleHint))) throw new Error(`Prompt resource render roleHint is invalid: ${path}`)
+    assertOptionalString(value.render.label, `Prompt resource render label: ${path}`)
+  }
+}
+
+function assertNonEmptyString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`)
+}
+
+function assertOptionalString(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== 'string') throw new Error(`${label} must be a string`)
+}
+
+function assertOptionalNumber(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== 'number') throw new Error(`${label} must be a number`)
+}
+
+function assertOptionalStringArray(value: unknown, label: string): void {
+  if (value !== undefined && (!Array.isArray(value) || !value.every(item => typeof item === 'string'))) {
+    throw new Error(`${label} must be a string array`)
+  }
+}
+
+function isPromptResourceNodeKind(value: unknown): value is PromptResourceNode['kind'] {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function isPromptResourceNodeCategory(value: unknown): value is NonNullable<PromptResourceNode['category']> {
+  return typeof value === 'string' && value.trim().length > 0
+}

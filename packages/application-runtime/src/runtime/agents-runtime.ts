@@ -5,7 +5,7 @@ import { observationOrigin } from '../observability/origin.js'
 import type { ObservationBuild } from '../observability/types.js'
 import { createVariableRenderContext } from '../prompt/variables.js'
 import { parseAgentApprovalPolicy } from '../agents/approval-policy.js'
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import type { DocumentStore } from '@loom-studio/document-store'
 import { countText } from '@loom-studio/tokenizer'
 import { estimateRequestTokens } from '@loom-studio/ai-gateway'
 import { readLogFailure } from '@loom-studio/logging'
@@ -17,8 +17,8 @@ import type {
 } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
-import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
-import { createAgentToolRegistry, type ToolDefinition } from '../agents/tool-registry.js'
+import { readDocument, writeDocument } from '../foundation/document-store.js'
+import { createAgentToolRegistry } from '../agents/tool-registry.js'
 import { createAgentToolScope } from '../agents/agent-tool-scope.js'
 import {
   compileAgentToolSet,
@@ -30,8 +30,9 @@ import {
 import { composeAgentTurnPrompt } from '../agents/agent-turn.js'
 import { collectPromptExtensionDependencies } from '../extensions/prompt-dependencies.js'
 import { assertTimelineExtensionLease } from '../extensions/timeline-participation.js'
-import { createSessionSummaryCoordinator, defaultSessionSummaryPolicy, planSessionSummary, summaryInstruction, type SummaryPlan } from '../agents/session-summary.js'
+import { getSessionSummaryCoordinator, defaultSessionSummaryPolicy, planSessionSummary, summaryInstruction, type SummaryPlan } from '../agents/session-summary.js'
 import { readSessionHistory } from '../agents/session-history.js'
+import { projectTimelinePositions } from '../agents/timeline-position.js'
 import { readAgentRunRecovery, readAgentRunState, readInterruptedAgentRuns, registerAgentExecutor } from '../agents/run-recovery.js'
 import { readDiscussionRetry, restoreDiscussionRetryInTransaction } from '../agents/discussion-retry.js'
 import { assertNonEmpty, assertProviderModelExists } from '../agents/agent.js'
@@ -52,7 +53,6 @@ import type {
   CreateAgentPresetInput,
   UpdateAgentPresetInput,
   AgentToolContent,
-  AgentToolEntry,
   AgentTranscriptPage,
   AppendAgentTranscriptEntriesInput,
   AppendAgentTranscriptEntriesResult,
@@ -94,7 +94,9 @@ import {
   requireDocumentParticipant,
   tombstoneExtensionStorageScope,
 } from './context.js'
-import { readAgentTurnVariables } from './narrative-runtime.js'
+import { readAgentTurnVariables } from '../prompt/agent-turn-variables.js'
+import { getAgentSessionExecutions, isAgentSessionExecuting } from '../agents/session-execution.js'
+import { listAgentToolEntries, refreshAgentToolRegistry, toAgentToolContent, toAgentToolEntry } from '../agents/tool-catalog.js'
 import { hasPlayerProfile } from '../profiles/player-state.js'
 import {
   assertNarrativeExecutionSource,
@@ -106,8 +108,6 @@ import {
   type SwipeExecution,
 } from './swipe-runtime.js'
 import { inspectApplicationMacros, inspectPreparedMacros, variableContextFromInspection } from './macros-runtime.js'
-
-const executingSessions = new WeakMap<object, Set<string>>()
 
 type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'extensionReadonlyFiles'
@@ -137,7 +137,7 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
 >
 
 export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
-  const summaries = createSessionSummaryCoordinator(ctx)
+  const summaries = getSessionSummaryCoordinator(ctx)
   const manualSummaryExecutions = new Map<string, Promise<void>>()
   return {
     reviseAgentInput: async (input: Parameters<import('../types.js').ApplicationRuntime['reviseAgentInput']>[0], request?: RuntimeRequestContext) => {
@@ -249,8 +249,8 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       const history = await readActiveSessionHistory(ctx, session, page)
       const summary = history.entries.find(entry => entry.entry.kind === 'work-summary') ?? null
       const boundary = summary?.entry.kind === 'work-summary' ? summary.entry.boundary : undefined
-      const retiredThroughSequence = boundary?.retiredThroughSequence ?? summary?.sequence ?? 0
-      const sourceThroughSequence = boundary?.sourceThroughSequence ?? summary?.sequence ?? 0
+      const retiredThroughSequence = boundary?.retiredThroughSequence ?? 0
+      const sourceThroughSequence = boundary?.sourceThroughSequence ?? 0
       const messages = await requireAgents(ctx).countSummaryMessages(session.id, retiredThroughSequence, sourceThroughSequence)
       return { session, policy: session.summaryPolicy ?? defaultSessionSummaryPolicy,
         status: summaries.status(session.id), summary,
@@ -258,8 +258,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     },
     updateAgentSessionSummary: async (input: { agentSessionId: string; branchId?: string; expectedSummaryId: string; expectedEntryCount: number; content: string }, request?: RuntimeRequestContext) => {
       const agents = requireAgents(ctx)
-      let executing = executingSessions.get(agents)
-      if (!executing) { executing = new Set(); executingSessions.set(agents, executing) }
+      const executing = getAgentSessionExecutions(agents)
       if (executing.has(input.agentSessionId) || ['preparing', 'ready'].includes(summaries.status(input.agentSessionId).state))
         throw new Error('会话正在工作或总结，请完成或终止后再保存摘要。')
       executing.add(input.agentSessionId)
@@ -277,7 +276,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           throw new Error('会话或摘要已变化。草稿已保留，请复制修改并刷新后合并。')
         if (previous.entry.kind !== 'work-summary') throw new Error('Session summary unavailable')
         if (previous.entry.content === input.content) return
-        const boundary = previous.entry.boundary ?? { sourceThroughSequence: previous.sequence, retiredThroughSequence: previous.sequence }
+        const boundary = previous.entry.boundary
         request?.abortSignal?.throwIfAborted()
         await ctx.dataEngine.transact(narrativeWriteContext(request, 'application.updateAgentSessionSummary'), async tx => {
           if (page) {
@@ -295,8 +294,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     getAgentSessionSummaryStatus: (input: { agentSessionId: string }) => summaries.status(input.agentSessionId),
     summarizeAgentSession: async (input: { agentSessionId: string; branchId?: string }, request?: RuntimeRequestContext) => {
       const agents = requireAgents(ctx)
-      let executing = executingSessions.get(agents)
-      if (!executing) { executing = new Set(); executingSessions.set(agents, executing) }
+      const executing = getAgentSessionExecutions(agents)
       if (executing.has(input.agentSessionId) || summaries.status(input.agentSessionId).state === 'preparing')
         throw new Error('Agent Session already has active work')
       executing.add(input.agentSessionId)
@@ -378,7 +376,9 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       if (input.historyPolicy !== undefined) metadata.historyPolicy = input.historyPolicy
       if (input.approvalPolicy !== undefined) metadata.approvalPolicy = parseAgentApprovalPolicy(input.approvalPolicy)!
       if (input.useCardLore !== undefined) metadata.useCardLore = input.useCardLore
+      if (input.useCardText !== undefined) metadata.useCardText = input.useCardText
       if (input.useGlobalLore !== undefined) metadata.useGlobalLore = input.useGlobalLore
+      if (input.useGlobalText !== undefined) metadata.useGlobalText = input.useGlobalText
       if (input.textUses !== undefined) {
         if (!Array.isArray(input.textUses) || input.textUses.some(use =>
           typeof use.id !== 'string' || !use.id.trim()
@@ -393,7 +393,10 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           : []
         metadata.textUses = input.textUses.map(use => {
           const reference = previous.find(item => item.kind === use.kind && item.id === use.id)?.reference
-          return { ...structuredClone(use), ...(reference === undefined ? {} : { reference: structuredClone(reference) }) }
+          return { id: use.id, kind: use.kind, enabled: use.enabled,
+            ...(use.orderIndex !== undefined ? { orderIndex: use.orderIndex } : {}),
+            ...(reference === undefined ? {} : { reference: structuredClone(reference) }),
+          }
         })
       }
       const mutations: PromptResourceMutation[] = [{
@@ -444,7 +447,12 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
 
     getAgentTranscriptPage: async (input: GetAgentTranscriptPageInput): Promise<AgentTranscriptPage> => {
       const page = await requireAgents(ctx).getEntryPage(input)
-      return input.selectedCandidates && page.session.kind !== 'timeline'
+      if (page.session.kind === 'timeline') {
+        const history = branchTranscriptEntries(await requireAgents(ctx).listEntries(input.agentSessionId), page.session.headEntryId)
+        const positions = new Map(projectTimelinePositions(history, await ctx.narratives!.listNodes(page.session.id)).map(entry => [entry.id, entry.timelinePosition]))
+        return { ...page, entries: page.entries.map(entry => ({ ...entry, timelinePosition: positions.get(entry.id) })) }
+      }
+      return input.selectedCandidates
         ? { ...page, entries: await projectSwipeSessionHistory(ctx, input.agentSessionId, page.entries, true) }
         : page
     },
@@ -552,7 +560,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     },
 
     updateAgentSession: async (input: UpdateAgentSessionInput, requestContext?: RuntimeRequestContext): Promise<UpdateAgentSessionResult> => {
-      if ((input.agentPresetId !== undefined || input.narrativeMode !== undefined) && executingSessions.get(ctx)?.has(input.agentSessionId))
+      if ((input.agentPresetId !== undefined || input.narrativeMode !== undefined) && isAgentSessionExecuting(requireAgents(ctx), input.agentSessionId))
         throw new Error('Wait for the active Agent turn before changing its configuration')
       if (input.agentPresetId !== undefined) await readPresetResource(ctx.promptResources, input.agentPresetId)
       const result = await requireAgents(ctx).updateSession({
@@ -588,256 +596,282 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     },
 
     invokeAgentTurn: async (input: InvokeAgentTurnInput, requestContext?: RuntimeRequestContext): Promise<InvokeAgentTurnResult> => {
-      input = structuredClone(input)
-      await manualSummaryExecutions.get(input.agentSessionId)
-      requestContext?.abortSignal?.throwIfAborted()
-      input.attachments = await validateMessageAttachments(ctx.mediaAssets, input.attachments)
-      const agents = requireAgents(ctx)
-      let executing = executingSessions.get(agents)
-      if (!executing) {
-        executing = new Set()
-        executingSessions.set(agents, executing)
+      const ownerController = new AbortController()
+      requestContext = {
+        ...requestContext,
+        abortSignal: requestContext?.abortSignal
+          ? AbortSignal.any([requestContext.abortSignal, ownerController.signal])
+          : ownerController.signal,
       }
-      if (executing.has(input.agentSessionId))
-        throw Object.assign(new Error('Agent Session already has an executing Run'), { code: 'agent.session_busy' })
-      executing.add(input.agentSessionId)
-      const runId = requestContext?.agentRun?.runId ?? ctx.createId('run')
-      const releaseExecutor = registerAgentExecutor(runId)
-      const startedAt = performance.now()
-      ctx.observations.capture(() => ctx.observations.write({
-        id: runId, kind: 'run', title: 'Agent Run', status: 'running',
-        agentSessionId: input.agentSessionId, timelineId: input.narrativeTarget?.timelineId,
-        origin: observationOrigin(requestContext),
-      }))
-      const progress: AgentRunProgress = { stage: 'preparation', providerStep: 0, toolCount: 0, suspended: false }
-      let swipeExecution: SwipeExecution | undefined
-      const logContext = {
-        correlationId: requestContext?.correlationId,
-        callId: requestContext?.callId,
-        parentCallId: requestContext?.parentCallId,
-      }
-      const references = { runId, sessionId: input.agentSessionId }
-      const runLogger = ctx.runtimeLogger?.child('run')
-      runLogger?.info('Agent turn started', {
-        event: 'run.started', ...logContext,
-        data: { ...references, outcome: 'running', detail: 'Agent Session transcript' },
+      const ownerSubscription = ctx.dataEngine.subscribeCommits(commit => {
+        if (commit.operations.some(operation => operation.store === 'agent'
+          && operation.entityType === 'agent.session' && operation.kind === 'delete'
+          && operation.entityId === input.agentSessionId)) {
+          ownerController.abort(Object.assign(new Error('Agent Session deleted'), { name: 'AbortError', code: 'agent.session_deleted' }))
+        }
       })
       try {
-        const stale = requestContext?.agentRun?.continuation ? { interrupted: [], entryCount: 0 }
-          : await readInterruptedAgentRuns(agents, input.agentSessionId, runId)
-        if (stale.interrupted.length) {
-          await ctx.dataEngine.transact(narrativeWriteContext(requestContext, 'application.reconcileAgentRuns'), async tx => {
-            agents.transaction(tx).appendEntries({ agentSessionId: input.agentSessionId, expectedEntryCount: stale.entryCount,
-              entries: stale.interrupted.map(id => ({ runId: id, entry: { kind: 'run-state' as const, state: 'aborted' as const,
-                reason: 'Execution interrupted: the original executor has stopped; superseded by a new request' } })) })
-          })
-          runLogger?.warn('Recovered interrupted Agent execution markers', {
-            event: 'run.reconciled', ...logContext,
-            data: { ...references, interruptedRunIds: stale.interrupted },
-          })
-        }
-        for (const lease of requestContext?.agentRun?.continuation?.recovery?.promptExtensionLeases ?? []) {
-          await assertTimelineExtensionLease(ctx, ctx.documents, lease)
-        }
-        await summaries.wait(input.agentSessionId)
+        input = structuredClone(input)
+        await manualSummaryExecutions.get(input.agentSessionId)
         requestContext?.abortSignal?.throwIfAborted()
-        const discussionRetry = await readDiscussionRetry(ctx, input, requestContext)
-        if (input.contextMode !== 'isolated' && !input.retry && !input.narrativeTarget?.swipe && !requestContext?.agentRun?.continuation) {
-          await summaries.adopt(input.agentSessionId, requestContext)
+        input.attachments = await validateMessageAttachments(ctx.mediaAssets, input.attachments)
+        const agents = requireAgents(ctx)
+        const executing = getAgentSessionExecutions(agents)
+        if (executing.has(input.agentSessionId))
+          throw Object.assign(new Error('Agent Session already has an executing Run'), { code: 'agent.session_busy' })
+        executing.add(input.agentSessionId)
+        const runId = requestContext?.agentRun?.runId ?? ctx.createId('run')
+        const releaseExecutor = registerAgentExecutor(runId)
+        const startedAt = performance.now()
+        ctx.observations.capture(() => ctx.observations.write({
+          id: runId, kind: 'run', title: 'Agent Run', status: 'running',
+          agentSessionId: input.agentSessionId, timelineId: input.narrativeTarget?.timelineId,
+          origin: observationOrigin(requestContext),
+        }))
+        const progress: AgentRunProgress = { stage: 'preparation', providerStep: 0, toolCount: 0, suspended: false }
+        let swipeExecution: SwipeExecution | undefined
+        const logContext = {
+          correlationId: requestContext?.correlationId,
+          callId: requestContext?.callId,
+          parentCallId: requestContext?.parentCallId,
         }
-        if (input.contextMode !== 'isolated' && !input.retry && !input.narrativeTarget?.swipe && !requestContext?.agentRun?.continuation
-          && summaries.status(input.agentSessionId).state !== 'preparing') {
-          const sourceSession = await agents.getSession(input.agentSessionId)
-          if (!sourceSession) throw new Error('Agent Session not found')
-          if (sourceSession.entryCount && (sourceSession.summaryPolicy?.enabled ?? true)) {
-            if (sourceSession.timelineId && input.narrativeTarget && input.narrativeTarget.timelineId !== sourceSession.timelineId)
-              throw new Error('Narrative target does not match the Agent Session timeline binding')
-            const target = input.narrativeTarget ?? (sourceSession.timelineId ? { timelineId: sourceSession.timelineId } : undefined)
-            const page = target && ctx.narratives ? await ctx.narratives.getPage({ ...target, limit: 1 }) : undefined
-            const inputNode = input.narrativeTarget?.inputNodeId ? page?.nodes.find(node => node.id === input.narrativeTarget!.inputNodeId) : undefined
-            if (input.narrativeTarget?.inputNodeId && (!inputNode || page?.branch.headNodeId !== inputNode.id))
-              throw new Error('The writing input must be the latest Narrative node')
-            if (!inputNode && !input.input.trim() && !input.attachments?.length) throw new Error('Agent turn input cannot be empty')
-            const sourcePreset = await readPresetResource(ctx.promptResources, requireSessionPreset(sourceSession))
-            const plan = (sourcePreset.historyPolicy ?? 'persistent') === 'persistent'
-              ? await planSessionSummary(ctx, {
-                session: sourceSession, entries: (await readActiveSessionHistory(ctx, sourceSession, page)).entries,
-                branchId: page?.branch.id, sourceNodeId: inputNode ? inputNode.parentNodeId ?? null : undefined,
-                allowFloorTrigger: Boolean(inputNode),
-              }) : undefined
-            if (plan) {
-              const snapshot = await prepareAgentTurn(ctx, {
-                agentSessionId: input.agentSessionId, input: summaryInstruction(plan),
-                ...(page ? { narrativeTarget: { timelineId: page.timeline.id, branchId: page.branch.id } } : {}),
-                macroSelections: input.macroSelections,
-              }, 'runtime', requestContext, undefined, plan.boundary.narrative)
-              const preparation = summaries.start(plan, { model: snapshot.model, messages: snapshot.agentStepMessages,
-                entries: snapshot.agentPage.entries, entryCount: snapshot.session.entryCount }, requestContext)
-              if (plan.policy.asynchronous && inputNode) void preparation
-              else {
-                await preparation
-                const result = await summaries.adopt(input.agentSessionId, requestContext)
-                if (result.state !== 'adopted') throw new Error(result.error ?? 'Session summary failed')
+        const references = { runId, sessionId: input.agentSessionId }
+        const runLogger = ctx.runtimeLogger?.child('run')
+        runLogger?.info('Agent turn started', {
+          event: 'run.started', ...logContext,
+          data: { ...references, outcome: 'running', detail: 'Agent Session transcript' },
+        })
+        try {
+          const stale = requestContext?.agentRun?.continuation ? { interrupted: [], entryCount: 0 }
+            : await readInterruptedAgentRuns(agents, input.agentSessionId, runId)
+          if (stale.interrupted.length) {
+            await ctx.dataEngine.transact(narrativeWriteContext(requestContext, 'application.reconcileAgentRuns'), async tx => {
+              agents.transaction(tx).appendEntries({ agentSessionId: input.agentSessionId, expectedEntryCount: stale.entryCount,
+                entries: stale.interrupted.map(id => ({ runId: id, entry: { kind: 'run-state' as const, state: 'aborted' as const,
+                  reason: 'Execution interrupted: the original executor has stopped; superseded by a new request' } })) })
+            })
+            runLogger?.warn('Recovered interrupted Agent execution markers', {
+              event: 'run.reconciled', ...logContext,
+              data: { ...references, interruptedRunIds: stale.interrupted },
+            })
+          }
+          for (const lease of requestContext?.agentRun?.continuation?.recovery?.promptExtensionLeases ?? []) {
+            await assertTimelineExtensionLease(ctx, ctx.documents, lease)
+          }
+          await summaries.wait(input.agentSessionId)
+          requestContext?.abortSignal?.throwIfAborted()
+          const discussionRetry = await readDiscussionRetry(ctx, input, requestContext)
+          if (input.contextMode !== 'isolated' && !input.retry && !input.narrativeTarget?.swipe && !requestContext?.agentRun?.continuation) {
+            await summaries.adopt(input.agentSessionId, requestContext)
+          }
+          if (input.contextMode !== 'isolated' && !input.retry && !input.narrativeTarget?.swipe && !requestContext?.agentRun?.continuation
+            && summaries.status(input.agentSessionId).state !== 'preparing') {
+            const sourceSession = await agents.getSession(input.agentSessionId)
+            if (!sourceSession) throw new Error('Agent Session not found')
+            if (sourceSession.entryCount && (sourceSession.summaryPolicy?.enabled ?? true)) {
+              if (sourceSession.timelineId && input.narrativeTarget && input.narrativeTarget.timelineId !== sourceSession.timelineId)
+                throw new Error('Narrative target does not match the Agent Session timeline binding')
+              const target = input.narrativeTarget ?? (sourceSession.timelineId ? { timelineId: sourceSession.timelineId } : undefined)
+              const page = target && ctx.narratives ? await ctx.narratives.getPage({ ...target, limit: 1 }) : undefined
+              const inputNode = input.narrativeTarget?.inputNodeId ? page?.nodes.find(node => node.id === input.narrativeTarget!.inputNodeId) : undefined
+              if (input.narrativeTarget?.inputNodeId && (!inputNode || page?.branch.headNodeId !== inputNode.id))
+                throw new Error('The writing input must be the latest Narrative node')
+              if (!inputNode && !input.input.trim() && !input.attachments?.length) throw new Error('Agent turn input cannot be empty')
+              const sourcePreset = await readPresetResource(ctx.promptResources, requireSessionPreset(sourceSession))
+              const plan = (sourcePreset.historyPolicy ?? 'persistent') === 'persistent'
+                ? await planSessionSummary(ctx, {
+                  session: sourceSession, entries: (await readActiveSessionHistory(ctx, sourceSession, page)).entries,
+                  branchId: page?.branch.id, sourceNodeId: inputNode ? inputNode.parentNodeId ?? null : undefined,
+                  allowFloorTrigger: Boolean(inputNode),
+                }) : undefined
+              if (plan) {
+                const snapshot = await prepareAgentTurn(ctx, {
+                  agentSessionId: input.agentSessionId, input: summaryInstruction(plan),
+                  ...(page ? { narrativeTarget: { timelineId: page.timeline.id, branchId: page.branch.id } } : {}),
+                  macroSelections: input.macroSelections,
+                }, 'runtime', requestContext, undefined, plan.boundary.narrative)
+                const preparation = summaries.start(plan, { model: snapshot.model, messages: snapshot.agentStepMessages,
+                  entries: snapshot.agentPage.entries, entryCount: snapshot.session.entryCount }, requestContext)
+                if (plan.policy.asynchronous && inputNode) void preparation
+                else {
+                  await preparation
+                  const result = await summaries.adopt(input.agentSessionId, requestContext)
+                  if (result.state !== 'adopted') throw new Error(result.error ?? 'Session summary failed')
+                }
               }
             }
           }
-        }
-        if (input.contextMode === 'isolated' && input.narrativeTarget) throw new Error('Isolated Agent turns cannot target Narrative')
-        swipeExecution = await beginNarrativeSwipeRun(ctx, input, runId, requestContext, discussionRetry)
-        const prepared = await collectPromptExtensionDependencies(ctx, () => prepareAgentTurn(ctx, input, 'runtime', requestContext, runId))
-        const {
-          model,
-          narrativePage,
-          prompt,
-          agentStepMessages,
-          compiledToolSet,
-          session,
-          preset,
-        } = prepared
-        ctx.observations.capture(() => ctx.observations.patch(runId, {
-          agentPresetId: preset.id, title: preset.rootNode.label || 'Agent Run', timelineId: narrativePage?.timeline.id ?? session.timelineId,
-          branchId: narrativePage?.branch.id, buildId: prompt.promptBuildTrace.buildId,
-        }))
-        const savedInput = session.kind === 'timeline' && input.narrativeTarget?.inputNodeId
-          ? await ctx.narratives!.getNode(input.narrativeTarget.inputNodeId) : undefined
-        const savedUser = savedInput?.entryId ? await agents.getEntry(savedInput.entryId) : undefined
-        const loop = await runNativeToolLoop({
-          ctx,
-          agents,
-          session,
-          runId,
-          progress,
-          model,
-          tokenMultiplier: prepared.tokenMultiplier,
-          buildId: prompt.promptBuildTrace.buildId,
-          initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
-          recoveryRequest: {
-            ...input,
-            retry: undefined,
-            ...(narrativePage ? { narrativeTarget: {
-              ...input.narrativeTarget, timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
-            } } : {}),
-          },
-          userInput: prepared.userInput,
-          attachments: prepared.attachments,
-          beforeInterjections: async () => { await summaries.wait(session.id) },
-          initialInterjection: input.interjectionRequestId ? (await agents.listEntries(session.id)).find(item => item.entry.kind === 'user-interjection' && item.entry.requestId === input.interjectionRequestId) : undefined,
-          ...(discussionRetry?.user.roundId ? { retryRoundId: discussionRetry.user.roundId } : {}),
-          materialBaseline: discussionRetry?.baseline ?? requestContext?.agentRun?.continuation?.recovery?.materialBaseline
-            ?? (session.kind === 'timeline' && narrativePage && !input.narrativeTarget?.inputNodeId ? {
-              timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
-              headNodeId: narrativePage.branch.headNodeId ?? null, headEntryId: narrativePage.branch.headEntryId ?? null,
-              stateRevisionId: narrativePage.branch.stateHeadRevisionId, workspaceRevisionId: narrativePage.branch.workspaceHeadRevisionId,
-            } : undefined),
-          compiledToolSet,
-          toolExecutionScope: prompt.toolExecutionScope,
-          processedPrompt: prompt.processingSnapshot,
-          promptExtensionLeases: requestContext?.agentRun?.continuation?.recovery?.promptExtensionLeases ?? prepared.promptExtensionLeases,
-          branchId: narrativePage?.branch.id ?? 'agent-only',
-          purpose: input.narrativeTarget?.inputNodeId ? 'narrative' : 'agent',
-          classificationRules: prepared.classificationRules,
-          ...(session.kind === 'timeline' && narrativePage ? { narrativeOutput: {
-            mode: session.narrativeMode ?? 'declared',
-            adopt: (tx, entry, content) => {
-              const narratives = ctx.narratives!.transaction(tx)
-              const branch = narratives.getBranch(narrativePage.branch.id)
-              if (!branch) throw new Error('Narrative branch no longer exists')
-              const adopted = narratives.appendNode({
-                timelineId: narrativePage.timeline.id, branchId: branch.id,
-                expectedHeadNodeId: branch.headNodeId ?? null, stateRevisionId: branch.stateHeadRevisionId,
-                body: { format: 'loom-markdown.v1', raw: content },
-                source: { agentSessionId: session.id, agentMessageId: entry.id, runId },
-              })
-              const source = prompt.toolExecutionScope.narrativeSource
-              if (source) source.cursorNodeId = adopted.node.id
+          if (input.contextMode === 'isolated' && input.narrativeTarget) throw new Error('Isolated Agent turns cannot target Narrative')
+          swipeExecution = await beginNarrativeSwipeRun(ctx, input, runId, requestContext, discussionRetry)
+          const prepared = await collectPromptExtensionDependencies(ctx, () => prepareAgentTurn(ctx, input, 'runtime', requestContext, runId))
+          const {
+            model,
+            narrativePage,
+            prompt,
+            agentStepMessages,
+            compiledToolSet,
+            session,
+            preset,
+          } = prepared
+          ctx.observations.capture(() => ctx.observations.patch(runId, {
+            agentPresetId: preset.id, title: preset.rootNode.label || 'Agent Run', timelineId: narrativePage?.timeline.id ?? session.timelineId,
+            branchId: narrativePage?.branch.id, buildId: prompt.promptBuildTrace.buildId,
+          }))
+          const savedInput = session.kind === 'timeline' && input.narrativeTarget?.inputNodeId
+            ? await ctx.narratives!.getNode(input.narrativeTarget.inputNodeId) : undefined
+          const savedUser = savedInput?.entryId ? await agents.getEntry(savedInput.entryId) : undefined
+          const loop = await runNativeToolLoop({
+            ctx,
+            agents,
+            session,
+            runId,
+            progress,
+            ...(swipeExecution ? { transcriptIdentity: { roundId: swipeExecution.groupId, candidateId: swipeExecution.candidateId } } : {}),
+            model,
+            tokenMultiplier: prepared.tokenMultiplier,
+            buildId: prompt.promptBuildTrace.buildId,
+            initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
+            recoveryRequest: {
+              ...input,
+              retry: undefined,
+              ...(narrativePage ? { narrativeTarget: {
+                ...input.narrativeTarget, timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
+              } } : {}),
             },
-          } } : {}),
-          ...(requestContext ? { requestContext } : {}),
-          delivery: preset.delivery ?? 'stream',
-          ...(requestContext?.agentRun?.continuation?.userEntry
-            ? { resumeUserEntry: requestContext.agentRun.continuation.userEntry }
-            : savedUser ? { resumeUserEntry: savedUser } : {}),
-          ...(requestContext?.agentRun?.continuation?.partialEntryId
-            ? { resumeAssistantEntryId: requestContext.agentRun.continuation.partialEntryId }
-            : {}),
-        })
-        const outcome = progress.suspended ? 'suspended' : requestContext?.abortSignal?.aborted
-          ? requestContext.abortSignal.reason === 'user-pause' ? 'suspended' : 'cancelled'
-          : 'completed'
-        const execution = swipeExecution
-        swipeExecution = undefined
-        await finishNarrativeSwipeRun(ctx, execution, outcome === 'cancelled' ? 'failed' : outcome, requestContext)
-        if (outcome === 'completed') {
-          if (input.contextMode !== 'isolated') await summaries.adopt(input.agentSessionId, requestContext)
-          if (input.narrativeTarget && narrativePage) {
-            const branch = await ctx.narratives!.getBranch(narrativePage.branch.id)
-            if (!branch) throw new Error(`Narrative branch not found: ${narrativePage.branch.id}`)
-            ctx.narrativeActivity.emit({ kind: 'run-completed', timelineId: narrativePage.timeline.id,
-              branchId: branch.id, nodeId: branch.headNodeId ?? null, agentSessionId: input.agentSessionId })
-          }
-        }
-        runLogger?.info(`Agent turn ${outcome}`, {
-          event: `run.${outcome}`, ...logContext,
-          data: {
-            ...references, outcome, durationMs: readDurationMs(startedAt),
-            providerStep: progress.providerStep, toolCount: progress.toolCount,
-            detail: `${progress.providerStep} steps · ${progress.toolCount} tools`,
-          },
-        })
-
-        ctx.observations.capture(() => ctx.observations.patch(runId, {
-          status: outcome === 'cancelled' ? 'aborted' : outcome, durationMs: readDurationMs(startedAt),
-        }))
-        return {
-          runId,
-          agentSession: (await agents.getSession(input.agentSessionId)) ?? loop.session,
-          summaryStatus: summaries.status(input.agentSessionId),
-          entries: { user: loop.userEntry, assistant: loop.assistantEntry },
-          provider: {
-            provider: loop.providerResult.provider,
-            model: loop.providerResult.model,
-            ...(loop.providerResult.finishReason ? { finishReason: loop.providerResult.finishReason } : {}),
-            ...(loop.providerResult.usage ? { usage: loop.providerResult.usage } : {}),
-            ...(loop.providerResult.providerCallId ? { providerCallId: loop.providerResult.providerCallId } : {}),
-          },
-          projection: prompt.projection,
-          promptBuildTrace: prompt.promptBuildTrace,
-          toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
-          toolPromptBuildTrace: loop.toolPromptBuildTrace,
-          mutation: { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
-          macroInspection: prepared.macroInspection,
-        }
-      } catch (error) {
-        const failure = readLogFailure(error)
-        const aborted = requestContext?.abortSignal?.aborted || (error instanceof Error && error.name === 'AbortError')
-        const outcome = progress.suspended || (aborted && requestContext?.abortSignal?.reason === 'user-pause')
-          ? 'suspended' : aborted ? 'cancelled' : 'failed'
-        ctx.observations.capture(() => ctx.observations.patch(runId, {
-          status: outcome === 'cancelled' ? 'aborted' : outcome, durationMs: readDurationMs(startedAt),
-          diagnostic: failure.failureReason,
-        }))
-        if (swipeExecution) {
+            userInput: prepared.userInput,
+            attachments: prepared.attachments,
+            beforeInterjections: async () => { await summaries.wait(session.id) },
+            initialInterjection: input.interjectionRequestId ? (await agents.listEntries(session.id)).find(item => item.entry.kind === 'user-interjection' && item.entry.requestId === input.interjectionRequestId) : undefined,
+            ...(discussionRetry?.user.roundId ? { retryRoundId: discussionRetry.user.roundId } : {}),
+            materialBaseline: discussionRetry?.baseline ?? requestContext?.agentRun?.continuation?.recovery?.materialBaseline
+              ?? (session.kind === 'timeline' && narrativePage && !input.narrativeTarget?.inputNodeId ? {
+                timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
+                headNodeId: narrativePage.branch.headNodeId ?? null, headEntryId: narrativePage.branch.headEntryId ?? null,
+                stateRevisionId: narrativePage.branch.stateHeadRevisionId, workspaceRevisionId: narrativePage.branch.workspaceHeadRevisionId,
+              } : undefined),
+            compiledToolSet,
+            toolExecutionScope: prompt.toolExecutionScope,
+            processedPrompt: prompt.processingSnapshot,
+            promptExtensionLeases: requestContext?.agentRun?.continuation?.recovery?.promptExtensionLeases ?? prepared.promptExtensionLeases,
+            branchId: narrativePage?.branch.id ?? 'agent-only',
+            purpose: input.narrativeTarget?.inputNodeId ? 'narrative' : 'agent',
+            classificationRules: prepared.classificationRules,
+            ...(session.kind === 'timeline' && narrativePage ? { narrativeOutput: {
+              mode: session.narrativeMode ?? 'declared',
+              adopt: (tx, entry, content) => {
+                const narratives = ctx.narratives!.transaction(tx)
+                const branch = narratives.getBranch(narrativePage.branch.id)
+                if (!branch) throw new Error('Narrative branch no longer exists')
+                const adopted = narratives.appendNode({
+                  timelineId: narrativePage.timeline.id, branchId: branch.id,
+                  expectedHeadNodeId: branch.headNodeId ?? null, stateRevisionId: branch.stateHeadRevisionId,
+                  body: { format: 'loom-markdown.v1', raw: content },
+                  source: { agentSessionId: session.id, agentMessageId: entry.id, runId },
+                })
+                const source = prompt.toolExecutionScope.narrativeSource
+                if (source) source.cursorNodeId = adopted.node.id
+              },
+            } } : {}),
+            ...(requestContext ? { requestContext } : {}),
+            delivery: preset.delivery ?? 'stream',
+            ...(requestContext?.agentRun?.continuation?.userEntry
+              ? { resumeUserEntry: requestContext.agentRun.continuation.userEntry }
+              : savedUser ? { resumeUserEntry: savedUser } : {}),
+            ...(requestContext?.agentRun?.continuation?.partialEntryId
+              ? { resumeAssistantEntryId: requestContext.agentRun.continuation.partialEntryId }
+              : {}),
+          })
+          ownerController.signal.throwIfAborted()
+          const outcome = progress.suspended ? 'suspended' : requestContext?.abortSignal?.aborted
+            ? requestContext.abortSignal.reason === 'user-pause' ? 'suspended' : 'cancelled'
+            : 'completed'
           const execution = swipeExecution
           swipeExecution = undefined
-          const swipeOutcome = requestContext?.agentRun?.continuation && progress.stage === 'preparation'
-            ? 'preparation-failed' : outcome === 'cancelled' ? 'failed' : outcome
-          await finishNarrativeSwipeRun(ctx, execution, swipeOutcome, requestContext)
+          await finishNarrativeSwipeRun(ctx, execution, outcome === 'cancelled' ? 'failed' : outcome, requestContext)
+          if (outcome === 'completed') {
+            if (input.contextMode !== 'isolated') await summaries.adopt(input.agentSessionId, requestContext)
+            if (input.narrativeTarget && narrativePage) {
+              const branch = await ctx.narratives!.getBranch(narrativePage.branch.id)
+              if (!branch) throw new Error(`Narrative branch not found: ${narrativePage.branch.id}`)
+              ctx.narrativeActivity.emit({ kind: 'run-completed', timelineId: narrativePage.timeline.id,
+                branchId: branch.id, nodeId: branch.headNodeId ?? null, agentSessionId: input.agentSessionId })
+            }
+          }
+          runLogger?.info(`Agent turn ${outcome}`, {
+            event: `run.${outcome}`, ...logContext,
+            data: {
+              ...references, outcome, durationMs: readDurationMs(startedAt),
+              providerStep: progress.providerStep, toolCount: progress.toolCount,
+              detail: `${progress.providerStep} steps · ${progress.toolCount} tools`,
+            },
+          })
+
+          ctx.observations.capture(() => ctx.observations.patch(runId, {
+            status: outcome === 'cancelled' ? 'aborted' : outcome, durationMs: readDurationMs(startedAt),
+          }))
+          const agentSession = (await agents.getSession(input.agentSessionId)) ?? loop.session
+          ownerController.signal.throwIfAborted()
+          return {
+            runId,
+            agentSession,
+            summaryStatus: summaries.status(input.agentSessionId),
+            entries: { user: loop.userEntry, assistant: loop.assistantEntry },
+            provider: {
+              provider: loop.providerResult.provider,
+              model: loop.providerResult.model,
+              ...(loop.providerResult.finishReason ? { finishReason: loop.providerResult.finishReason } : {}),
+              ...(loop.providerResult.usage ? { usage: loop.providerResult.usage } : {}),
+              ...(loop.providerResult.providerCallId ? { providerCallId: loop.providerResult.providerCallId } : {}),
+            },
+            projection: prompt.projection,
+            promptBuildTrace: prompt.promptBuildTrace,
+            toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
+            toolPromptBuildTrace: loop.toolPromptBuildTrace,
+            mutation: { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
+            macroInspection: prepared.macroInspection,
+          }
+        } catch (error) {
+          const failure = readLogFailure(error)
+          const aborted = requestContext?.abortSignal?.aborted || (error instanceof Error && error.name === 'AbortError')
+          const outcome = progress.suspended || (aborted && requestContext?.abortSignal?.reason === 'user-pause')
+            ? 'suspended' : aborted ? 'cancelled' : 'failed'
+          ctx.observations.capture(() => ctx.observations.patch(runId, {
+            status: outcome === 'cancelled' ? 'aborted' : outcome, durationMs: readDurationMs(startedAt),
+            diagnostic: failure.failureReason,
+          }))
+          if (swipeExecution) {
+            const execution = swipeExecution
+            swipeExecution = undefined
+            const swipeOutcome = requestContext?.agentRun?.continuation && !progress.transcriptStarted
+              ? 'preparation-failed' : outcome === 'cancelled' ? 'failed' : outcome
+            await finishNarrativeSwipeRun(ctx, execution, swipeOutcome, requestContext)
+          }
+          runLogger?.[outcome === 'failed' ? 'error' : !aborted && outcome === 'suspended' ? 'warn' : 'info'](`Agent turn ${outcome} · ${progress.stage}`, {
+            event: `run.${outcome}`, ...logContext,
+            data: {
+              ...references, ...failure, ...progress, outcome, durationMs: readDurationMs(startedAt),
+              detail: `${failure.failureReason} · ${progress.providerStep} steps · ${progress.toolCount} tools`,
+            },
+          })
+          throw error
+        } finally {
+          releaseExecutor()
+          executing.delete(input.agentSessionId)
         }
-        runLogger?.[outcome === 'failed' ? 'error' : !aborted && outcome === 'suspended' ? 'warn' : 'info'](`Agent turn ${outcome} · ${progress.stage}`, {
-          event: `run.${outcome}`, ...logContext,
-          data: {
-            ...references, ...failure, ...progress, outcome, durationMs: readDurationMs(startedAt),
-            detail: `${failure.failureReason} · ${progress.providerStep} steps · ${progress.toolCount} tools`,
-          },
-        })
+      } catch (error) {
+        if (ownerController.signal.aborted) throw ownerController.signal.reason
         throw error
       } finally {
-        releaseExecutor()
-        executing.delete(input.agentSessionId)
+        ownerSubscription.dispose()
       }
     },
 
     inspectMacros: (input: InspectMacrosInput) => inspectApplicationMacros(ctx, input),
+
+    getAgentToolSummary: async (input: { toolId: string }): Promise<{ tool: { id: string } | null }> => {
+      const tool = (await listAgentToolEntries(ctx)).find(tool => tool.id === input.toolId)
+      return { tool: tool ? { id: tool.id } : null }
+    },
 
     listAgentTools: async (): Promise<ListAgentToolsResult> => ({ tools: await listAgentToolEntries(ctx) }),
 
@@ -896,6 +930,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         ...promptResourceWriteContext(requestContext),
         reason: 'application.replacePresetToolMounts',
         presetResourceId: input.presetId,
+        expectedMountIds: input.expectedMountIds,
         mounts: input.mounts.map(mount => ({
           toolId: mount.toolId,
           orderIndex: mount.orderIndex,
@@ -919,79 +954,6 @@ async function readPresetResource(
   return preset
 }
 
-export function toAgentToolContent(
-  definition: ToolDefinition,
-  createdAt: string,
-  updatedAt: string = createdAt,
-  origin?: AgentToolContent['origin'],
-): AgentToolContent {
-  return {
-    owner: structuredClone(definition.owner),
-    name: definition.name,
-    description: definition.description,
-    input: structuredClone(definition.input),
-    ...(definition.prompt ? { prompt: structuredClone(definition.prompt) } : {}),
-    ...(origin ? { origin: structuredClone(origin) } : {}),
-    createdAt,
-    updatedAt,
-  }
-}
-
-export function toAgentToolDefinition(document: DocumentRecord<AgentToolContent>): ToolDefinition {
-  return {
-    id: document.id,
-    owner: structuredClone(document.content.owner),
-    name: document.content.name,
-    description: document.content.description,
-    input: structuredClone(document.content.input),
-    ...(document.content.prompt
-      ? { prompt: structuredClone(document.content.prompt) }
-      : {}),
-  }
-}
-
-function toAgentToolEntry(document: DocumentRecord<AgentToolContent>): AgentToolEntry {
-  return {
-    ...toAgentToolDefinition(document),
-    ...(document.content.origin
-      ? { origin: structuredClone(document.content.origin) }
-      : {}),
-    version: document.version,
-    createdAt: document.content.createdAt,
-    updatedAt: document.content.updatedAt,
-  }
-}
-
-export async function listAgentToolEntries(
-  ctx: Pick<ApplicationRuntimeContext, 'agentTools' | 'documents' | 'now'>,
-): Promise<AgentToolEntry[]> {
-  const documents = await listDocuments<AgentToolContent>(
-    ctx.documents,
-    applicationDocumentTypes.agentTool,
-  )
-  if (documents.length > 0) return documents.map(toAgentToolEntry)
-  const timestamp = ctx.now()
-  return ctx.agentTools.list().map((definition) => ({
-    ...structuredClone(definition),
-    version: 0,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }))
-}
-
-export async function refreshAgentToolRegistry(
-  ctx: Pick<ApplicationRuntimeContext, 'agentTools' | 'documents'>,
-): Promise<void> {
-  const documents = await listDocuments<AgentToolContent>(
-    ctx.documents,
-    applicationDocumentTypes.agentTool,
-  )
-  if (documents.length === 0) return
-  ctx.agentTools.replaceDefinitions(
-    documents.map(toAgentToolDefinition),
-  )
-}
-
 async function readActiveSessionHistory(ctx: AgentsRuntimeContext, session: AgentSession, narrativePage?: NarrativePage) {
   const narratives = ctx.narratives
   // Resolve source validity before retiring any Transcript entries. A rejected
@@ -999,8 +961,8 @@ async function readActiveSessionHistory(ctx: AgentsRuntimeContext, session: Agen
   let sourcePath: Set<string> | undefined
   const agentPage = await readSessionHistory(requireAgents(ctx), session.id, async entry => {
     if (entry.entry.kind !== 'work-summary') return false
-    const source = entry.entry.boundary?.narrative
-    const workspaceDependency = entry.entry.boundary?.adoptedWorkspaceRevisionId
+    const source = entry.entry.boundary.narrative
+    const workspaceDependency = entry.entry.boundary.adoptedWorkspaceRevisionId
     if (workspaceDependency) {
       let revisionId = narrativePage?.branch.workspaceHeadRevisionId
       while (revisionId && revisionId !== workspaceDependency)
@@ -1569,7 +1531,7 @@ async function buildProviderPayloadPreview(input: {
   if (!input.model) return undefined
   const providerProfile = await readDocument<ProviderProfileContent>(input.documents, input.model.providerProfileId, applicationDocumentTypes.providerProfile)
   const providerExtensionId = providerProfile.content.providerExtensionId
-  if (providerExtensionId !== 'official.openai-compatible' && providerExtensionId !== 'openai-compatible') return undefined
+  if (providerExtensionId !== 'official.openai-compatible') return undefined
   return buildOpenAIChatPayload({
     messages: input.messages,
     modelId: input.model.modelId,
@@ -1588,8 +1550,4 @@ function requireSessionPreset(session: AgentSession): string {
 async function activeTimelineBranch(ctx: AgentsRuntimeContext, sessionId: string): Promise<string | undefined> {
   const session = await requireAgents(ctx).getSession(sessionId)
   return session?.kind === 'timeline' ? (await ctx.narratives?.getTimeline(sessionId))?.activeBranchId : undefined
-}
-
-export function assertAgentSessionNotExecuting(ctx: object, sessionId: string): void {
-  if (executingSessions.get(ctx)?.has(sessionId)) throw new Error('Finish the active Agent turn before switching its adopted history')
 }

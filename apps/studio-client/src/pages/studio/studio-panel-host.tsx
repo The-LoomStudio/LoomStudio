@@ -1,6 +1,7 @@
 import { memo, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { STUDIO_PANEL_IDS, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 import { StudioPanelLoading } from './studio-panel-loading.js'
+import { StudioPanelActive } from '../../shared/studio-shell/studio-panel-active.js'
 import styles from './studio-page.module.scss'
 
 type StudioPanelHostProps = {
@@ -45,9 +46,11 @@ const StudioPanelStage = memo(function StudioPanelStage(props: {
       data-loom-object={`${props.panel}-panel`}
     >
       {visited || props.active ? (
-        <Suspense fallback={<StudioPanelLoading />}>
-          {props.render(props.active)}
-        </Suspense>
+        <StudioPanelActive.Provider value={props.active}>
+          <Suspense fallback={<StudioPanelLoading />}>
+            {props.render(props.active)}
+          </Suspense>
+        </StudioPanelActive.Provider>
       ) : null}
     </div>
   )

@@ -120,7 +120,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
             moduleId,
             ...(record.instance ? { instanceId: record.instance.instanceId } : {}),
             state: record.instance?.state ?? record.state,
-            outcome: 'completed',
+            outcome: record.instance?.state === 'dispose_failed' ? 'failed' : 'completed',
             detail: `state ${record.instance?.state ?? record.state}`,
           },
         })

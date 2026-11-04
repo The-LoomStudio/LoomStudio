@@ -6,15 +6,12 @@ export function normalizeContextAssets(nodes: ContextAssetNode[]): ContextAssetN
 
 function normalizeContextAssetNode(node: ContextAssetNode): ContextAssetNode {
   const children = node.children ? normalizeContextAssets(node.children) : undefined
-  const authorCapabilities = node.capabilities?.roleHint === 'developer' ? { ...node.capabilities, roleHint: 'system' as const } : node.capabilities
-  const capabilities = authorCapabilities?.projection
-    ? authorCapabilities
-    : node.projection ? writeProjectionCapability(authorCapabilities, node.projection) : authorCapabilities
+  const capabilities = node.capabilities
   const projection = readProjectionFromCapabilities(capabilities)
 
+  const { projection: _projection, ...source } = node
   return {
-    ...node,
-    ...(node.meta === 'message.developer' ? { meta: 'message.system' } : {}),
+    ...source,
     ...(children ? { children } : {}),
     ...(projection ? { projection } : {}),
     ...(capabilities ? { capabilities } : {}),

@@ -32,10 +32,10 @@
 ## 架构规约与外部依赖所有权 (Rules & Boundaries)
 
 1. **共享 SQLite 事务管道**：
-   - 本包**强依赖 `@loom-studio/data-engine`**，运行期公开读写进入统一 FIFO；Store 创建时同步注册 namespace migration，不把迁移当作运行期排队操作；
+   - 本包**强依赖 `@loom-studio/data-engine`**，运行期公开读写进入统一 FIFO；Store 创建时以 `initializeSchema({ namespace, version, initialize })` 初始化当前 schema，不把初始化当作运行期排队操作；
    - **严禁私自建立第二套 SQLite 连接**。跨 Store 写入通过各 Store 的 `transaction(tx)` 参与同一 Engine 事务，共享 Changeset；只有成功且非空的提交才通知 `DataCommitFact`。
 2. **拒绝 ORM 抽象**：
-   - 坚持使用原生 SQL 查询与 Data Engine 命名空间迁移（Namespaced Migrations），**严禁引入 Prisma、TypeORM 或复杂实体映射框架**。
+   - 坚持使用原生 SQL 查询与 Data Engine 命名空间 schema 初始化，**严禁引入 Prisma、TypeORM 或复杂实体映射框架**。
 3. **领域界限清晰**：
    - 本包仅负责数据实体的持久化、版本校验与结构化查询；
    - **严禁编写提示词编译、模型调用循环（Tool Loop）或前端交互逻辑**（这些全部归属于 `application-runtime`）。
@@ -72,7 +72,7 @@ import {
 - [`NarrativeStore.appendInput()`](./src/narrative/store.ts) 以固定 `nodeId`、`expectedHeadNodeId` 和正文提交用户输入。同一输入重试返回原节点与原 Changeset；正文、原 parent 或归属不一致返回 `narrative.input_conflict`，不生成第二条正文。调用方在成功落库后另行投递 Agent Session；本 Store 不启动 Agent，也不把两次调用合成一个事务。
 - [`PromptResourceStore.mutateResource()`](./src/prompt-resource/mutations.ts) 必须携带资源级 `expectedVersion`；不匹配返回 `prompt_resource.conflict`，没有自动合并或改用最新版本重试。一次 mutations 列表在同一事务内提交，Header/Node 修订与提交事实一起生效。
 - 普通 Session 固定 `agentPresetId`；特殊 Timeline Session 可暂未配置。更新预设或正文模式时，Store 拒绝最新 Run 为 `created`、`running`、`suspended`，或 `failed` 且带 `recovery` 检查点；不一概禁止所有失败 Run。允许更新后同一历史继续使用。`entryCount` 是全局单调写入计数；各分支保存采用的 Entry Head，回退不降低计数。
-- 各 Store 仅执行各自注册的连续版本 migration；数据库 namespace 高于当前支持版本时由 Engine 拒绝，不尝试降级或兼容读取。版本注册以各 `store.ts` 为准。
+- 各 Store 声明各自当前 schema 版本。空 namespace 初始化为当前 DDL，匹配版本可打开；已有非零版本不匹配时由 Engine 拒绝，不做历史升级、降级或兼容读取。版本声明以各 `store.ts` 为准。
 
 ### 统一游标分页与数据保真底线
 

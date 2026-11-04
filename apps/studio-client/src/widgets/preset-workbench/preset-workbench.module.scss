@@ -455,3 +455,52 @@
 .configurationContent .presetUsagePanel { flex: 1; min-height: 0; overflow: auto; padding: 20px 24px 28px; scrollbar-gutter: stable; }
 .configurationContent .presetUsageSave { flex: none; padding: 8px 24px; }
 .configurationContent .presetConfigSection { padding: 0; border: 0; }
+
+.presetInheritanceSource {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-1, 12px);
+
+  img {
+    flex-shrink: 0;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+}
+
+.toolReferenceButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-accent);
+  cursor: pointer;
+}
+
+.toolReferences {
+  display: grid;
+  gap: 12px;
+}
+
+.toolReferenceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+
+  button {
+    padding: 6px 0;
+    border: 0;
+    background: transparent;
+    color: var(--loom-color-accent);
+    text-align: left;
+    cursor: pointer;
+  }
+}
+
+.libraryTabs { flex-shrink: 0; border-bottom: 0 !important; padding: 8px 16px; }
+.libraryHost > .libraryPane { flex: 1; height: auto; }

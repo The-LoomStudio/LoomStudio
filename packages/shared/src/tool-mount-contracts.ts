@@ -28,6 +28,7 @@ export const listPresetToolMountsInputSchema = z.strictObject({
 })
 export const listPresetToolMountsResultSchema = z.object({ mounts: z.array(presetToolMountSchema) })
 export const replacePresetToolMountsInputSchema = z.strictObject({
+  expectedMountIds: z.array(z.string().min(1)),
   presetId: z.string().min(1),
   mounts: z.array(presetToolMountInputSchema),
 })

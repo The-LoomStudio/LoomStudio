@@ -14,6 +14,8 @@ export type LoomScriptContent = {
   settings?: LoomScriptSettingDefinition[]
   tags?: string[]
   textResourceIds?: Record<string, string>
+  loreNodeReferences?: Record<string, string>
+  loreResourceReferences?: Record<string, string>
   textResourceReferences?: Record<string, string>
   textResourceOrigin?: import('../transforms/history-text.js').TextTransformRuleContent['origin']
   textResourceOwner?: import('../transforms/history-text.js').TextRuleOwner
@@ -50,6 +52,7 @@ export type LoomScriptRuntimeMountSnapshot = {
 }
 
 export type ResolvedLoomScriptRendererMount = {
+  installationId?: string
   mountId: string
   mountVersion?: number
   settings?: LoomScriptSettings
@@ -84,6 +87,9 @@ export type LoomScriptAttachmentArtifact = {
   groupOrder?: number
   resourceOrigin?: 'card' | 'external'
   textResourceIds?: Record<string, string>
+  loreNodeReferences?: Record<string, string>
+  loreResourceReferences?: Record<string, string>
   textResourceReferences?: Record<string, string>
+  ruleUsage?: import('@loom-studio/shared/loom-scripts').TextRuleUsages
   settings?: LoomScriptSettings
 }

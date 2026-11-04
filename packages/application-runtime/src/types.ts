@@ -3,7 +3,7 @@ import type { AddUserBackgroundInput, RemoveUserBackgroundInput, UserBackgrounds
 import type { ObservationStore, ObservationOrigin } from './observability/types.js'
 import type { AgentApprovalPolicy } from './agents/approval-policy.js'
 import type { CreateUserProfileInput, DeleteUserProfileInput, SelectUserProfileInput, UpdateUserProfileInput, UserProfilesConfig } from './profiles/user-profiles.js'
-import type { LoomScriptMountTarget, CreateLoomScriptMountInput, UpdateLoomScriptMountInput, ListLoomScriptMountsInput, MutateLoomScriptMountResult, ListLoomScriptMountsResult } from '@loom-studio/shared/loom-scripts'
+import type { LoomScriptContributionDefinition, LoomScriptMountTarget, CreateLoomScriptMountInput, UpdateLoomScriptMountInput, ListLoomScriptMountsInput, MutateLoomScriptMountResult, ListLoomScriptMountsResult } from '@loom-studio/shared/loom-scripts'
 import type { ListPresetToolMountsInput, ListPresetToolMountsResult, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
 export type { ListPresetToolMountsInput, ListPresetToolMountsResult, PresetToolMountInput, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
 import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
@@ -110,9 +110,11 @@ import type {
   TextExtractionResult,
   TextExtractorDraft,
   TextExtractorEntry,
+  TextExtractorSummary,
   TextTransformPhase,
   TextTransformRuleDraft,
   TextTransformRuleEntry,
+  TextTransformRuleSummary,
   TextPipelineInspection,
   TextPipelineOverrideEntry,
 } from './transforms/history-text.js'
@@ -128,10 +130,12 @@ export type {
   TextExtractorContent,
   TextExtractorDraft,
   TextExtractorEntry,
+  TextExtractorSummary,
   TextTransformPhase,
   TextTransformRuleContent,
   TextTransformRuleDraft,
   TextTransformRuleEntry,
+  TextTransformRuleSummary,
   TextPipelineInspection,
   TextPipelineConsumer,
   TextPipelineOverrideContent,
@@ -139,10 +143,10 @@ export type {
   TextPipelineOverrideSource,
 } from './transforms/history-text.js'
 import type { CompiledPrompt } from './prompt/prompt-builder.js'
-import type { SampleNarrativeInput } from './runtime/transforms-runtime.js'
+import type { SampleNarrativeInput } from './narrative/sampling-contracts.js'
 import type { NarrativeSampleResult } from './narrative/sampling.js'
 import type { NarrativeContextRegistry } from './narrative/context-provider.js'
-export type { SampleNarrativeInput } from './runtime/transforms-runtime.js'
+export type { SampleNarrativeInput } from './narrative/sampling-contracts.js'
 import type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
 import type { PromptProcessorRegistry } from './prompt/prompt-processor-registry.js'
 import type { StateContentRegistry } from './state/state-content-registry.js'
@@ -155,26 +159,12 @@ import type {
   ResolvedLoomScriptRendererMount,
   UnavailableLoomScriptMount,
 } from './scripts/loom-script-contracts.js'
-import type {
-  CardBundleArtifact,
-  ImportBundleContent,
-  PortableExtensionPayloadArtifact,
-  PromptResourceArtifact,
-  PromptResourceCompositionCapabilities,
-  PromptResourceContent,
-  PromptResourceKind,
-  PromptResourceNode,
-} from './cards/workspace-types.js'
-export type {
-  CardBundleArtifact,
-  ImportBundleContent,
-  PortableExtensionPayloadArtifact,
-  PromptResourceArtifact,
-  PromptResourceCompositionCapabilities,
-  PromptResourceContent,
-  PromptResourceKind,
-  PromptResourceNode,
-} from './cards/workspace-types.js'
+import type { CardBundleArtifact, ImportBundleContent } from './cards/card-bundle-types.js'
+import type { PortableExtensionPayloadArtifact } from './extensions/portable-payload-types.js'
+import type { PromptResourceArtifact, PromptResourceCompositionCapabilities, PromptResourceContent, PromptResourceKind, PromptResourceNode } from './prompt/prompt-resource-types.js'
+export type { CardBundleArtifact, ImportBundleContent } from './cards/card-bundle-types.js'
+export type { PortableExtensionPayloadArtifact } from './extensions/portable-payload-types.js'
+export type { PromptResourceArtifact, PromptResourceCompositionCapabilities, PromptResourceContent, PromptResourceKind, PromptResourceNode } from './prompt/prompt-resource-types.js'
 export type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
 export type { StateContributionRegistry } from './state/state-contribution-registry.js'
 export type {
@@ -228,10 +218,12 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
   getStateDefinition(input: GetStateDefinitionInput): Promise<GetStateDefinitionResult>
   upsertStateDefinition(input: UpsertStateDefinitionInput, context?: RuntimeRequestContext): Promise<UpsertStateDefinitionResult>
   deleteStateDefinition(input: DeleteStateDefinitionInput, context?: RuntimeRequestContext): Promise<DeleteStateDefinitionResult>
+  listTextTransformRuleSummaries(input?: { owner?: TextTransformRuleDraft['owner'] }): Promise<{ rules: TextTransformRuleSummary[] }>
   listTextTransformRules(input?: { owner?: TextTransformRuleDraft['owner'] }): Promise<{ rules: TextTransformRuleEntry[] }>
   getTextTransformRule(input: { ruleId: string }): Promise<{ rule: TextTransformRuleEntry }>
   upsertTextTransformRule(input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft }, context?: RuntimeRequestContext): Promise<{ rule: TextTransformRuleEntry; mutation: MutationReceipt }>
   deleteTextTransformRule(input: { ruleId: string; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
+  listTextExtractorSummaries(): Promise<{ extractors: TextExtractorSummary[] }>
   listTextExtractors(): Promise<{ extractors: TextExtractorEntry[] }>
   getTextExtractor(input: { extractorId: string }): Promise<{ extractor: TextExtractorEntry }>
   upsertTextExtractor(input: { extractorId: string; expectedVersion?: number; extractor: TextExtractorDraft }, context?: RuntimeRequestContext): Promise<{ extractor: TextExtractorEntry; mutation: MutationReceipt }>
@@ -245,13 +237,16 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
   inspectTextPipeline(input: InspectTextPipelineInput): Promise<TextPipelineInspection>
   listRenderers(): Promise<{ renderers: RendererDefinition[] }>
   setLoomScriptExecutionStates(states: Array<{ mountId: string; revision: number; active: boolean }>): void
-  previewLoomScript(input: { source: string; text: string; phase?: TextTransformPhase; settings?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings }): Promise<{ output: string; matches: Array<{ ruleId: string; match: string }>; diagnostics: Array<{ message: string }>; extractions: Array<{ extractorId: string; values: JsonValue[]; diagnostics: Array<{ message: string }> }> }>
+  previewLoomScript(input: { source: string; text: string; previewSource?: 'narrative' | 'agent-session'; streaming?: boolean; phase?: TextTransformPhase; settings?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings }): Promise<{ output: string; matches: Array<{ ruleId: string; match: string }>; diagnostics: Array<{ message: string }>; extractions: Array<{ extractorId: string; values: JsonValue[]; diagnostics: Array<{ message: string }> }> }>
   deleteLoomScriptMount(input: { mountId: string; expectedVersion: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
-  getLoomScriptSettings(input: { mountId: string }): Promise<{ definitions: import('@loom-studio/shared/loom-scripts').LoomScriptSettingDefinition[]; inherited?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; effective?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; saved: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; adopted: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; documentVersion: number; adoptedDocumentVersion?: number; validationError?: string }>
-  importLoomScript(input: { owner: LoomScriptOwner; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
+  listLoomScriptConfigs(input: import('./scripts/script-config.js').ScriptConfigQuery): Promise<import('@loom-studio/extension-sdk').ScriptConfigEntry[]>
+  upsertLoomScriptConfig(input: import('./scripts/script-config.js').ScriptConfigWrite, context?: RuntimeRequestContext): Promise<import('@loom-studio/extension-sdk').ScriptConfigEntry>
+  getLoomScriptSettings(input: { mountId: string }): Promise<{ ruleDefaults: Array<{ id: string; rule: import('@loom-studio/shared/loom-scripts').ScriptTextTransformRule }>; definitions: import('@loom-studio/shared/loom-scripts').LoomScriptSettingDefinition[]; inherited?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; effective?: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; saved: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; adopted: import('@loom-studio/shared/loom-scripts').LoomScriptSettings; documentVersion: number; adoptedDocumentVersion?: number; validationError?: string }>
+  importLoomScript(input: { owner: LoomScriptOwner; fileName: string; source: string; mount?: { target: LoomScriptMountTarget; orderIndex?: number } }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
   updateLoomScript(input: { scriptDocumentId: string; expectedVersion: number; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
   deleteLoomScript(input: { scriptDocumentId: string; expectedVersion: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
   reorderLoomScripts(input: { groups: Array<{ owner: LoomScriptOwner; scriptIds: string[]; groupOrder?: number }>; target?: LoomScriptMountTarget }, context?: RuntimeRequestContext): Promise<{ reordered: true; mutation: MutationReceipt }>
+  getLoomScriptSummary(input: { scriptDocumentId: string }): Promise<{ script: { id: string; contributionKinds: LoomScriptContributionDefinition['kind'][] } | null }>
   getLoomScript(input: { scriptDocumentId: string }): Promise<{ script: LoomScriptEntry }>
   listLoomScripts(input?: { owner?: LoomScriptOwner }): Promise<{ scripts: LoomScriptEntry[] }>
   exportLoomScript(input: { scriptDocumentId: string }): Promise<{ artifact: LoomScriptArtifact }>
@@ -331,8 +326,11 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
   deleteAiCapabilityProfile(input: DeleteAiCapabilityProfileInput, context?: RuntimeRequestContext): Promise<DeleteAiCapabilityProfileResult>
   listProviderModels(input: ListProviderModelsInput, context?: RuntimeRequestContext): Promise<ListProviderModelsResult>
   pingProviderModel(input: PingProviderModelInput, context?: RuntimeRequestContext): Promise<PingProviderModelResult>
+  getAgentToolSummary(input: { toolId: string }): Promise<{ tool: { id: string } | null }>
   listAgentTools(): Promise<{ tools: AgentToolEntry[] }>
   importExtensionPackageResources(input: ImportExtensionPackageResourcesInput, context?: RuntimeRequestContext): Promise<ImportExtensionPackageResourcesResult>
+  previewExtensionPackageResources(input: PreviewExtensionPackageResourcesInput): Promise<PreviewExtensionPackageResourcesResult>
+  uninstallExtensionInstallation(input: UninstallExtensionInstallationInput, context?: RuntimeRequestContext): Promise<UninstallExtensionInstallationResult>
   removeExtensionPackageResources(input: RemoveExtensionPackageResourcesInput, context?: RuntimeRequestContext): Promise<RemoveExtensionPackageResourcesResult>
   updateAgentTool(input: UpdateAgentToolInput, context?: RuntimeRequestContext): Promise<UpdateAgentToolResult>
   listPresetToolMounts(input?: ListPresetToolMountsInput): Promise<ListPresetToolMountsResult>
@@ -460,12 +458,22 @@ export type AgentRunTask = {
   canAbandon: boolean
 }
 
+export type AgentStreamPosition = {
+  /** Last committed transcript sequence before this stream segment. */
+  afterSequence?: number
+  streamId?: string
+  roundId?: string
+  candidateId?: string
+  timelinePosition?: AgentTranscriptEntry['timelinePosition']
+  purpose?: 'narrative' | 'discussion'
+}
+
 export type AgentRunEvent =
-  | { type: 'reasoning-delta'; runId: string; providerRunId: string; providerStep: number; reasoningId: string; delta: string }
+  | (AgentStreamPosition & { type: 'reasoning-delta'; runId: string; providerRunId: string; providerStep: number; reasoningId: string; delta: string })
   | { type: 'started'; runId: string }
   | { type: 'transcript-appended'; runId: string; entries: AgentTranscriptEntry[] }
-  | { type: 'text-delta'; runId: string; providerRunId: string; providerStep: number; delta: string }
-  | { type: 'tool-input-delta'; runId: string; providerRunId: string; providerStep: number; toolCallId: string; toolName?: string; delta: string }
+  | (AgentStreamPosition & { type: 'text-delta'; runId: string; providerRunId: string; providerStep: number; delta: string })
+  | (AgentStreamPosition & { type: 'tool-input-delta'; runId: string; providerRunId: string; providerStep: number; toolCallId: string; toolName?: string; delta: string })
   | { type: 'mutation-approval-requested'; runId: string; requestId: string; preview: VfsMutationPreview }
   | { type: 'history-read-approval-requested'; runId: string; requestId: string; action: import('./narrative/access.js').NarrativeHistoryReadApproval }
   | { type: 'usage'; runId: string; providerRunId: string; providerStep: number; usage: NonNullable<GatewayChatResult['usage']> }
@@ -587,7 +595,6 @@ export type TimelineRuntimeContextContent = {
   sourceCardId: string
   sourceCardVersion: number
   cardName?: string
-  fallbackUserName: string
   stateEntityTypes: StateEntityType[]
   stateEntities: StateEntityId[]
   stateComponents: MaterializedStateContribution['components']
@@ -711,6 +718,7 @@ export type AppendNarrativeInputResult = {
 
 export type CreateNarrativeTimelineInput = {
   cardId: string
+  agentPresetId?: string
   playerProfile?: import('@loom-studio/shared').PlayerProfileState
   extensionAdoptions?: CardExtensionAdoption[]
   expectedCardVersion?: number
@@ -1380,8 +1388,9 @@ export type ListProviderProfilesResult = {
 }
 
 export type UpdateProviderProfileInput = {
+  credential?: Record<string, string>
   tokenMultipliers?: Record<string, number>
-  expectedVersion?: number
+  expectedVersion: number
   providerProfileId: string
   displayName?: string
   config?: JsonObject
@@ -1389,6 +1398,7 @@ export type UpdateProviderProfileInput = {
 }
 
 export type UpdateProviderProfileResult = {
+  credentialCleanupFailed?: boolean
   providerProfile: ProviderProfileView
 }
 
@@ -1517,7 +1527,9 @@ export type UpdateAgentPresetInput = {
   historyPolicy?: AgentHistoryPolicy
   approvalPolicy?: AgentApprovalPolicy
   useCardLore?: boolean
+  useCardText?: boolean
   useGlobalLore?: boolean
+  useGlobalText?: boolean
   textUses?: Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number }>
 }
 
@@ -1615,6 +1627,7 @@ export type ExportPromptResourceResult = {
 }
 
 export type UpdateCardPromptResourcesInput = {
+  expectedVersion: number
   cardId: string
   promptResourceIds: string[]
   externalPromptResourceIds?: string[]
@@ -1653,7 +1666,6 @@ export type UpdatePromptResourceAssetInput = {
   label?: string
   meta?: string
   enabled?: boolean
-  orderList?: string[]
 }
 
 export type UpdatePromptResourceAssetsInput = {
@@ -1686,7 +1698,6 @@ export type PromptAssetPatch = {
   label?: string
   meta?: string
   enabled?: boolean
-  orderList?: string[]
 }
 
 export type ExportCardBundleInput = {
@@ -1853,7 +1864,7 @@ export type ImportExtensionPackageResourcesInput = {
   source?: ExtensionInstallationSource
   loomScripts?: Array<{ contribution: { id: string; source: string; orderIndex?: number; groupOrder?: number }; source: string }>
   expectedCardVersion?: number
-  update?: { expectedInstallationVersion: number }
+  update?: { expectedInstallationVersion: number; expectedPreviewFingerprint?: string }
   packageId: string
   packageVersion: string
   target?: ExtensionInstallationTarget
@@ -1885,8 +1896,43 @@ export type ImportExtensionPackageResourcesResult = {
   mutation?: MutationReceipt
 }
 
+export type PreviewExtensionPackageResourcesInput = ImportExtensionPackageResourcesInput & {
+  update: NonNullable<ImportExtensionPackageResourcesInput['update']>
+}
+
+export type PreviewExtensionPackageResourcesResult = {
+  packageId: string
+  installationId: string
+  packageVersion: string
+  expectedInstallationVersion: number
+  fingerprint: string
+  items: Array<{
+    kind: string
+    contributionId: string
+    resourceId?: string
+    name?: string
+    action: 'add' | 'update' | 'remove' | 'unchanged'
+    localChanges: 'unknown' | 'none' | 'modified'
+    references?: Array<{ kind: string; id: string; name?: string }>
+  }>
+  warnings: string[]
+}
+
+export type UninstallExtensionInstallationInput = {
+  packageId: string
+  target?: ExtensionInstallationTarget
+  expectedInstallationVersion: number
+}
+
+export type UninstallExtensionInstallationResult = {
+  packageId: string
+  installationId: string
+  uninstalled: true
+  resourcesRetained: true
+  mutation?: MutationReceipt
+}
+
 export type RemoveExtensionPackageResourcesInput = {
-  uninstall?: true
   expectedInstallationVersion?: number
   packageId: string
   target?: ExtensionInstallationTarget

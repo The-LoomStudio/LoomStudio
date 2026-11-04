@@ -6,6 +6,7 @@ export type StudioRoute = {
   resourceId?: string
   branchId?: string
   cardId?: string
+  previewCardId?: string
   panel: StudioPanelId | null
   timelineId?: string
   nodeId?: string
@@ -14,7 +15,7 @@ export type StudioRoute = {
 
 type RouteParams = Readonly<Record<string, string | undefined>>
 const STUDIO_ROUTES: { path: string; read(params: RouteParams): StudioRoute }[] = [
-  ...([['resources', 'resource'], ['presets', 'agent'], ['agents', 'agent']] as const).map(([segment, panel]) => ({
+  ...([['resources', 'resource'], ['agents', 'agent']] as const).map(([segment, panel]) => ({
     path: `/studio/${segment}/reference/:resourceId/node/:nodeId`,
     read: ({ resourceId, nodeId }: RouteParams) => ({ panel, resourceId, assetId: nodeId }),
   })),
@@ -26,10 +27,9 @@ const STUDIO_ROUTES: { path: string; read(params: RouteParams): StudioRoute }[] 
   { path: '/studio/chat/:timelineId?', read: ({ timelineId }) => ({ panel: null, timelineId }) },
   { path: '/studio/characters/:cardId?', read: ({ cardId }) => ({ panel: 'character', cardId }) },
   { path: '/studio/resources/:cardId?/:assetId?', read: ({ cardId, assetId }) => ({ panel: 'resource', cardId, assetId }) },
-  { path: '/studio/presets/:cardId?/:assetId?', read: ({ cardId, assetId }) => ({ panel: 'agent', cardId, assetId }) },
   ...([
     ['models', 'model'], ['agents', 'agent'], ['user', 'user'], ['play', 'play'], ['recent', 'recent'],
-    ['memory', 'memory'], ['history', 'sessions'], ['state', 'state'], ['macro', null], ['text-transforms', 'text-transform'],
+    ['memory', 'memory'], ['state', 'state'], ['macro', null], ['text-transforms', 'text-transform'],
     ['debug', 'inspector'], ['logs', 'logs'], ['extensions', 'extensions'], ['settings', 'settings'],
   ] as const).map(([segment, panel]) => ({ path: `/studio/${segment}`, read: () => ({ panel }) })),
   { path: '/', read: () => ({ panel: null }) },

@@ -18,6 +18,6 @@ export function usePromptResourceWorkspace(input: Input) {
   useEffect(() => {
     contextAssetState.setResources(promptResources)
   }, [input.endpoint, promptResources])
-  const presetSelection = useAgentPresets({ resources: promptResources })
+  const presetSelection = useAgentPresets({ resources: promptResources, ready: state.resourcesReady })
   return { state, contextAssetState, presetSelection }
 }

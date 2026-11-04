@@ -1,14 +1,12 @@
-import type { createApplicationRuntime, CardBundleArtifact } from '@loom-studio/application-runtime'
+import type { createApplicationRuntime } from '@loom-studio/application-runtime'
 import type { AssetStore } from '@loom-studio/asset-store'
 import type { createCardDirectoryMedia } from '../resource-directories/card-directory-media.js'
 import type { createExtensionImportConversions } from '../extensions/import-conversion.js'
 import type { createStudioHttpServer } from '../http/http-server.js'
 import {
   createPolyglotCardPng,
-  decodeCardPng,
   defaultCardPng,
   encodeCardBundlePng,
-  hasLegacyCardPng,
   readCardPngArchive,
   stripPngTextMetadata,
   isPng,
@@ -85,16 +83,9 @@ export function createCardTransferService({ applicationRuntime, assets, director
       import: async (source, session) => {
         const archive = readCardPngArchive(source) ?? readPolyglotArchive(source)
         if (archive) return await importArchiveAndSave(await decodeCardBundleZip(archive), session.clientId)
-        let artifact: CardBundleArtifact
-        let avatarBytes: Uint8Array
-        if (hasLegacyCardPng(source)) {
-          artifact = decodeCardPng(source)
-          avatarBytes = stripPngTextMetadata(source)
-        } else {
-          const converted = await importConversions.cardPng(source, { clientId: session.clientId })
-          artifact = converted.artifact
-          avatarBytes = converted.avatarBytes ?? readPngImageBytes(source)
-        }
+        const converted = await importConversions.cardPng(source, { clientId: session.clientId })
+        const artifact = converted.artifact
+        const avatarBytes = converted.avatarBytes ?? readPngImageBytes(source)
         const media = await assets.createMediaAsset({
           source: stripPngTextMetadata(avatarBytes),
           kind: 'card.avatar',

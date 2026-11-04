@@ -2,10 +2,14 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { useStudioNavigation } from '../../../apps/studio-client/src/shared/studio-shell/use-studio-navigation.js'
 import { restoreStudioWorkspace, readStudioWorkspace, resolveStudioWorkspace, studioHistoryState } from '../../../apps/studio-client/src/shared/studio-shell/studio-workspace.js'
+
+import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
+
+beforeEach(() => useStudioLayoutStore.setState({ panelPositions: {} }))
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
@@ -31,12 +35,12 @@ describe('Studio tool navigation', () => {
       expect(navigation.toolSearchParams.get('extensionView')).toBe('participation')
       await act(async () => { await navigation.closeTool() })
       await act(async () => { await navigation.openPanel(tool) })
-      expect(navigation.route).toEqual({ ...origin, tool })
+      expect(navigation.route).toEqual({ ...origin, tool, ...(tool === 'extensions' ? { toolSearch: 'extensionView=participation' } : {}) })
       expect(restoreStudioWorkspace('/tool-test')).toEqual(origin)
       await act(async () => { await router.navigate(-1) })
       expect(navigation.route).toEqual(origin)
       await act(async () => { await router.navigate(1) })
-      expect(navigation.route).toEqual({ ...origin, tool })
+      expect(navigation.route).toEqual({ ...origin, tool, ...(tool === 'extensions' ? { toolSearch: 'extensionView=participation' } : {}) })
       await act(async () => { await navigation.closeTool() })
       expect(navigation.route).toEqual(origin)
       await act(async () => { await navigation.openPath(`/studio/${tool === 'model' ? 'models' : tool}`) })
@@ -108,7 +112,7 @@ describe('Studio tool navigation', () => {
       expect(navigation.route).toEqual({ ...origin, timelineId: 'next-story', branchId: 'next-branch' })
       await act(async () => { await navigation.openPanel('recent') })
       await act(async () => { await navigation.openCardPreview('preview-card') })
-      const preview = { ...origin, cardId: 'preview-card', timelineId: undefined, branchId: undefined }
+      const preview = { ...origin, previewCardId: 'preview-card', timelineId: undefined, branchId: undefined }
       expect(navigation.route).toEqual(preview)
       expect(restoreStudioWorkspace('/card-switch-test')).toEqual(preview)
     } finally {
@@ -130,24 +134,22 @@ describe('Studio tool navigation', () => {
       .toEqual({ ...origin, tool: 'extensions', toolSearch: 'packageId=world' })
   })
 
-  it('migrates legacy tool positions but preserves explicit extension workspaces', () => {
+  it('reads current tool fields without rewriting panel identities', () => {
     expect(readStudioWorkspace({ panel: 'extensions', search: 'packageId=world' }))
-      .toEqual({ panel: null, search: '', tool: 'extensions', toolSearch: 'packageId=world' })
+      .toEqual({ panel: 'extensions', search: 'packageId=world' })
     expect(readStudioWorkspace({ panel: 'settings', search: '' }))
-      .toEqual({ panel: null, search: '', tool: 'settings' })
+      .toEqual({ panel: 'settings', search: '' })
     expect(readStudioWorkspace({ panel: 'extensions', search: '', extensionWorkspace: true }))
       .toEqual({ panel: 'extensions', search: '', extensionWorkspace: true })
   })
 
-  it('routes history and legacy summaries into the history tool', () => {
-    expect(resolveStudioWorkspace({ pathname: '/studio/history', search: '', hash: '', state: null }, '/tool-test', origin))
-      .toEqual({ ...origin, tool: 'recent' })
+  it('opens the current history tool without redirecting old summary links', () => {
+    expect(resolveStudioWorkspace({ pathname: '/studio/recent', search: '?historyTab=sessions&sessionId=s&sessionView=summary', hash: '', state: null }, '/tool-test', origin))
+      .toEqual({ ...origin, tool: 'recent', toolSearch: 'historyTab=sessions&sessionId=s&sessionView=summary' })
     const summary = resolveStudioWorkspace({ pathname: '/studio/play', search: '?sessionId=s&sessionView=summary', hash: '', state: null }, '/tool-test', origin)
-    expect(summary.panel).toBe(origin.panel)
-    expect(summary.tool).toBe('recent')
-    expect(new URLSearchParams(summary.toolSearch).get('historyTab')).toBe('sessions')
-    expect(readStudioWorkspace({ panel: 'sessions', search: '' }))
-      .toEqual({ panel: null, search: '', tool: 'recent', toolSearch: 'historyTab=timelines' })
+    expect(summary.panel).toBe('play')
+    expect(summary.tool).toBeUndefined()
+    expect(new URLSearchParams(summary.search).has('historyTab')).toBe(false)
   })
 
 })

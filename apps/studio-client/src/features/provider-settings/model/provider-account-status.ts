@@ -2,7 +2,7 @@ import type { ProviderAccount } from '../../../entities/index.js'
 
 export function hasCompleteProviderAccount(accounts: ProviderAccount[]): boolean {
   return accounts.some(account => {
-    if (account.providerExtensionId !== 'official.openai-compatible' && account.providerExtensionId !== 'openai-compatible') {
+    if (account.providerExtensionId !== 'official.openai-compatible') {
       return true
     }
 

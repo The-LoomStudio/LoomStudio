@@ -195,6 +195,7 @@ export function applyReplaceLoreMounts(
   now: () => string,
 ): LoreMount[] {
   validateMountSource(database, input.source)
+  assertMountBaseline(input.expectedMountIds, listMounts(database, { source: input.source }))
   const seen = new Set<string>()
   for (const mount of input.mounts) {
     const identity = mount.loreResourceId ?? JSON.stringify(mount.reference)
@@ -283,6 +284,7 @@ export function applyReplacePresetToolMounts(
   now: () => string,
 ): PresetToolMount[] {
   requirePreset(database, input.presetResourceId)
+  assertMountBaseline(input.expectedMountIds, listPresetToolMounts(database, { presetResourceId: input.presetResourceId }))
   const seen = new Set<string>()
   for (const mount of input.mounts) {
     if (seen.has(mount.toolId)) throw new PromptResourceStoreError('prompt_resource.tool_mount_duplicate', `Tool mount is duplicated: ${mount.toolId}`)
@@ -321,4 +323,11 @@ export function listPresetToolMounts(database: DatabaseSync, input: ListPresetTo
   if (input.toolId) { validateId(input.toolId, 'toolId'); clauses.push('tool_id = ?'); values.push(input.toolId) }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
   return (database.prepare(`SELECT * FROM preset_tool_mounts ${where} ORDER BY order_index ASC, id ASC`).all(...values) as Array<Record<string, unknown>>).map(presetToolMountFromRow)
+}
+
+function assertMountBaseline(expectedIds: string[], mounts: Array<{ id: string }>): void {
+  const expected = new Set(expectedIds)
+  if (expected.size !== expectedIds.length || expected.size !== mounts.length || mounts.some(mount => !expected.has(mount.id))) {
+    throw new PromptResourceStoreError('prompt_resource.mount_conflict', 'Mount collection changed; reload before saving')
+  }
 }

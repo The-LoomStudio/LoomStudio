@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Info, GripVertical, MoreHorizontal, X } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { measureFileTreeElement, observeFileTreeOffset } from './file-tree-virtual-scroll.js'
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
 import { Button, Dialog, ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, type MenuAction } from '@loom-studio/ui'
 import { useEffectiveMotion } from '../../hooks/use-motion-preference.js'
@@ -56,7 +57,7 @@ type FileTreeProps = {
   renderExpandedRow?: (node: FileTreeNode) => ReactNode
   selectedId?: string
   revealId?: string
-  variant?: 'tree' | 'flat'
+  variant?: 'tree' | 'flat' | 'indented'
   virtualized?: boolean
 }
 
@@ -159,6 +160,8 @@ export function FileTree(props: FileTreeProps) {
     getItemKey: index => visibleNodes[index]?.node.id ?? index,
     getScrollElement: () => props.getVirtualScrollElement?.() ?? treeRef.current,
     overscan: 8,
+    observeElementOffset: observeFileTreeOffset,
+    measureElement: measureFileTreeElement,
   })
 
   useEffect(() => {
@@ -608,7 +611,7 @@ function FileTreeRow(props: {
   selectedId?: string
   batchSelectedIds?: Set<string>
   setTreeItemRef: (id: string, element: HTMLDivElement | null) => void
-  variant?: 'tree' | 'flat'
+  variant?: 'tree' | 'flat' | 'indented'
   onFocusNode: (id: string) => void
   onTreeItemKeyDown: (event: KeyboardEvent<HTMLDivElement>, node: FileTreeNode) => void
 }) {
@@ -685,7 +688,7 @@ function FileTreeRow(props: {
             if (!event.defaultPrevented && event.target === event.currentTarget) props.onTreeItemKeyDown(event, props.node)
           }}
         >
-          {props.variant !== 'flat' && props.level > 1 ? (
+          {props.variant !== 'flat' && props.variant !== 'indented' && props.level > 1 ? (
             <span className={styles.guideColumns} aria-hidden="true">
               {Array.from({ length: props.level - 1 }, (_, index) => (
                 <span
@@ -725,7 +728,7 @@ function FileTreeRow(props: {
               {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
             </button>
           ) : <span className={styles.disclosure} aria-hidden="true" />}
-          {props.variant !== 'flat' && expanded && hasChildren ? <span className={styles.branchContinuation} aria-hidden="true" /> : null}
+          {props.variant !== 'flat' && props.variant !== 'indented' && expanded && hasChildren ? <span className={styles.branchContinuation} aria-hidden="true" /> : null}
 
           <div
             className={styles.rowContent}
@@ -868,7 +871,7 @@ function FileTreeRow(props: {
               className={`${styles.expandedRow} ${!props.hasDragGutter ? styles.noDrag : ''}`}
               style={{ '--loom-tree-level': props.level } as CSSProperties}
             >
-              {props.variant !== 'flat' && props.level > 1 ? (
+              {props.variant !== 'flat' && props.variant !== 'indented' && props.level > 1 ? (
                 <span className={styles.guideColumns} aria-hidden="true">
                   {Array.from({ length: props.level - 1 }, (_, index) => (
                     <span

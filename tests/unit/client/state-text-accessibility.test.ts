@@ -118,7 +118,7 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
         },
         mount: {
           id: 'mount-1', version: 1, target: { kind: 'user' }, scriptDocumentId: 'script-1',
-          enabled: true, orderIndex: 0, grantedCapabilities: [], origin: {}, createdAt: '', updatedAt: '',
+        enabled: true, runtimeRevision: 1, adoptedDocumentVersion: 1, adoptedSettings: {}, orderIndex: 0, grantedCapabilities: [], origin: {}, createdAt: '', updatedAt: '',
         },
       }],
       scriptFileName: 'user.loom.js', scriptSource: '// USER SOURCE',

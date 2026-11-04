@@ -3,7 +3,7 @@ import { findContextAssetPath, flattenContextAssetNodes, readContextAssetDisable
 import { canMoveContextAssetNode } from '../model/tree-ops.js'
 import { SearchHighlight } from '../../../shared/ui/search-highlight.js'
 import type { SearchReveal } from '../../../shared/lib/search-match.js'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Ban, ToggleLeft, ToggleRight } from 'lucide-react'
 import type { ContextAssetNode, PromptResource } from '../../../entities/index.js'
 import { useRestorableScroll } from '../../../shared/hooks/use-restorable-scroll.js'
@@ -22,7 +22,9 @@ import {
   renderContextAssetTreeIcon,
   resolveVirtualDisplayName,
 } from './context-asset-tree.js'
+import { LoreAnchorDialog } from './lore-anchor-dialog.js'
 import styles from './context-asset-workbench.module.scss'
+import { StudioPanelActive } from '../../../shared/studio-shell/studio-panel-active.js'
 import { ResourceTokenSummary, TextTokenSummary } from './resource-token-summary.js'
 import type { ResourceTokenSnapshot } from '../model/use-resource-token-snapshot.js'
 
@@ -70,8 +72,23 @@ export function ContextAssetExplorer(props: {
   onBatchToggleEnabled?(ids: string[], enabled: boolean): Promise<{ failedIds: string[]; error?: string }>
   onChangeRole?(id: string, role: 'system' | 'user' | 'assistant'): void
 }) {
+  const panelActive = useContext(StudioPanelActive)
+  const active = panelActive && props.active !== false
+  const selectionContext = { workspaceId: props.workspaceId, scrollKey: props.scrollKey, selectedId: props.selectedId, revealId: props.revealId, active }
+  // A return to the same node is a new visit, not permission for an older write to select it.
+  const selectionRef = useRef(selectionContext)
+  if (selectionRef.current.workspaceId !== selectionContext.workspaceId
+    || selectionRef.current.scrollKey !== selectionContext.scrollKey
+    || selectionRef.current.selectedId !== selectionContext.selectedId
+    || selectionRef.current.revealId !== selectionContext.revealId
+    || selectionRef.current.active !== selectionContext.active) selectionRef.current = selectionContext
   const disabledAncestors = readContextAssetDisabledAncestors(props.displayNodes)
   const [editingId, setEditingId] = useState<string>()
+  const [anchorRootId, setAnchorRootId] = useState<string>()
+  const anchorRoot = props.displayNodes.find(node => node.id === anchorRootId && node.category === 'lore-root')
+  useEffect(() => {
+    if (anchorRootId && !anchorRoot) setAnchorRootId(undefined)
+  }, [anchorRootId, anchorRoot])
   const [error, setError] = useState<string>()
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -79,12 +96,17 @@ export function ContextAssetExplorer(props: {
     return () => { mountedRef.current = false }
   }, [])
   const scroll = useRestorableScroll<HTMLDivElement>(props.scrollKey)
-  const selectNode = (node: ContextAssetNode) => props.onSelectId?.(node.id)
+  const selectNode = (node: ContextAssetNode) => {
+    selectionRef.current = { ...selectionRef.current }
+    props.onSelectId(node.id)
+  }
+  const canSelectResult = (context: typeof selectionContext) => mountedRef.current && context.active && selectionRef.current === context
   const selectCreated = async (create: Promise<string | undefined>) => {
+    const context = selectionRef.current
     setError(undefined)
     try {
       const id = await create
-      if (id && mountedRef.current) {
+      if (id && canSelectResult(context)) {
         props.onSelectId(id)
         setEditingId(id)
       }
@@ -93,10 +115,11 @@ export function ContextAssetExplorer(props: {
     }
   }
   const deleteNode = async (id: string) => {
+    const context = selectionRef.current
     setError(undefined)
     try {
       const selectedId = await props.onDeleteNode(id, props.selectedId)
-      if (mountedRef.current) props.onSelectId(selectedId)
+      if (canSelectResult(context)) props.onSelectId(selectedId)
     } catch (caught) {
       if (mountedRef.current) setError(caught instanceof Error ? caught.message : String(caught))
     }
@@ -126,7 +149,7 @@ export function ContextAssetExplorer(props: {
         {error ? <p role="alert">{error}</p> : null}
         <FileTree canOpenFolderDetails={() => true}
           key={props.workspaceId}
-          active={props.active}
+          active={active}
           canBatchSelect={item => !isReadOnlyContextAssetTreeNode(item as ContextAssetNode) && !['folder', 'module', 'slot'].includes(item.kind ?? '')}
           getBatchActions={selected => [
             ...(props.onBatchToggleEnabled ? ([true, false] as const).map(enabled => ({
@@ -135,6 +158,7 @@ export function ContextAssetExplorer(props: {
               run: (nodes: typeof selected) => props.onBatchToggleEnabled!(nodes.map(node => node.id), enabled),
             })) : []),
             { id: 'delete', label: props.t('common.batchDelete'), tone: 'danger', confirm: true, run: async nodes => {
+              const context = selectionRef.current
               const failedIds: string[] = []
               const errors: string[] = []
               let selectedId = props.selectedId
@@ -142,7 +166,7 @@ export function ContextAssetExplorer(props: {
                 try { selectedId = await props.onDeleteNode(node.id, selectedId) }
                 catch (cause) { failedIds.push(node.id); errors.push(`${node.label}: ${cause instanceof Error ? cause.message : String(cause)}`) }
               }
-              if (mountedRef.current) props.onSelectId(selectedId)
+              if (canSelectResult(context)) props.onSelectId(selectedId)
               return { failedIds, error: errors.join('\n') }
             } },
           ]}
@@ -176,11 +200,12 @@ export function ContextAssetExplorer(props: {
               onDelete: deleteNode,
               onDuplicate: async id => selectCreated(props.onDuplicateNode(id)),
               onRename: id => setEditingId(id),
+              onViewAnchors: root?.id === item.id ? setAnchorRootId : undefined,
               onChangeRole: props.onChangeRole,
               t: props.t,
             })
           }}
-          hasActions={item => !isReadOnlyContextAssetTreeNode(item as ContextAssetNode)}
+          hasActions={item => (item as ContextAssetNode).category === 'lore-root' || !isReadOnlyContextAssetTreeNode(item as ContextAssetNode)}
           isMuted={item => (item as ContextAssetNode).enabled === false || disabledAncestors.has(item.id)}
           formatLabel={node => readTreeLabel(node as ContextAssetNode)}
           formatMeta={node => {
@@ -234,6 +259,7 @@ export function ContextAssetExplorer(props: {
           virtualized={props.virtualized}
         />
       </div>
+      {anchorRoot && <LoreAnchorDialog root={anchorRoot} t={props.t} onClose={() => setAnchorRootId(undefined)} />}
     </ContextAssetSearch>
   )
 }
@@ -256,7 +282,6 @@ export function ContextAssetEditor(props: {
   onCommitNode(id: string, partial: Partial<ContextAssetNode>): void
   onEditorModeChange(mode: LongTextEditorMode): void
   onMetadataOpenChange(open: boolean): void
-  onSelectNodeId?(id: string): void
 }) {
   const node = props.node
   const pathNodes = props.pathNodes ?? []

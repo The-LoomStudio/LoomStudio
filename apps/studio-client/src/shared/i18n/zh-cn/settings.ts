@@ -75,6 +75,8 @@ export const messages = {
   'settings.about': '关于',
   'settings.back': '返回设置',
   'settings.categories': '设置分类',
+  'settings.focusComposerOnStartup': '启动时聚焦正文输入框',
+  'settings.focusComposerOnStartupHelp': '默认关闭。开启后刷新页面生效，仅在启动时聚焦一次；已开始操作时不会抢占焦点。',
   'settings.general': '通用',
   'settings.narrativeOverscan': '正文上下各缓冲消息数',
   'settings.appearance': '外观',

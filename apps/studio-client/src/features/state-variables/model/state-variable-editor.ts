@@ -33,7 +33,22 @@ export function yamlToObject(text: string, label = 'State YAML'): Record<string,
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${label} 必须是一个对象/映射结构`)
   }
+  if (!isYamlJsonValue(parsed)) throw new Error(`${label} 只能包含 JSON 值（有限数字、字符串、布尔值、null、数组和对象）`)
   return parsed as Record<string, ClientJsonValue>
+}
+
+function isYamlJsonValue(value: unknown, ancestors = new Set<object>()): value is ClientJsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value !== 'object' || ancestors.has(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) return false
+  ancestors.add(value)
+  const valid = Array.isArray(value)
+    ? value.every(item => isYamlJsonValue(item, ancestors))
+    : Object.values(value).every(item => isYamlJsonValue(item, ancestors))
+  ancestors.delete(value)
+  return valid
 }
 
 export function createSnapshotReplaceFromYaml(snapshot: StateSnapshot, yamlText: string) {

@@ -564,7 +564,7 @@ describe('application narrative timeline lifecycle', () => {
       userName: 'Player',
       opening: { content: '{{ User }} enters.' },
     })
-    await runtime.updateCardPromptResources({
+    await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: card.card.id })).card.version,
       cardId: card.card.id,
       promptResourceIds: [],
     })
@@ -638,10 +638,10 @@ describe('application narrative timeline lifecycle', () => {
     try {
       const resource = await runtime.createPromptResource({ resourceKind: 'lore', name: 'Temporary Setting' })
       const card = await runtime.createCard({ name: 'Story' })
-      await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [resource.resource.id] })
+      await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: card.card.id })).card.version, cardId: card.card.id, promptResourceIds: [resource.resource.id] })
       const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Test Agent' })
-      await runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.resource.id }, loreResourceIds: [resource.resource.id] })
-      await runtime.replaceLoreMounts({ source: { kind: 'manual', id: 'global' }, loreResourceIds: [resource.resource.id] })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.resource.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: preset.resource.id }, loreResourceIds: [resource.resource.id] })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'manual', id: 'global' } })).mounts.map(mount => mount.id), source: { kind: 'manual', id: 'global' }, loreResourceIds: [resource.resource.id] })
       const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
       const originalCard = await runtime.getCard({ cardId: card.card.id })
       const originalTimeline = await runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })

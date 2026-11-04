@@ -31,9 +31,14 @@ export function resolveLoomScriptSettings(definitions: readonly LoomScriptSettin
   return result
 }
 
+export const loreReferenceSchema = z.strictObject({ resourceId: z.string().trim().min(1), nodeId: z.string().trim().min(1) })
+export type LoreReference = z.infer<typeof loreReferenceSchema>
+
 const matcherSchema = z.strictObject({ kind: z.literal('regex'), pattern: z.string(), flags: z.string() })
 export const scriptTextTransformRuleSchema = z.strictObject({
   name: z.string().trim().min(1), enabled: z.boolean(), orderIndex: z.number().int(), matcher: matcherSchema,
+  loreRefs: z.array(loreReferenceSchema).optional(),
+  description: z.string().optional(), descriptionAnchor: z.string().trim().min(1).optional(),
   captureRemove: z.array(z.string()).optional(), streaming: z.boolean().optional(),
   effect: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('replace'), replacement: z.string() }),
@@ -43,6 +48,28 @@ export const scriptTextTransformRuleSchema = z.strictObject({
   targets: z.array(z.enum(['narrative', 'agent-session'])).min(1), phases: z.array(z.enum(['classify', 'prompt', 'display'])).min(1),
   range: z.strictObject({ minDepth: z.number().int().nonnegative().optional(), maxDepth: z.number().int().nonnegative().optional() }).optional(),
 })
+/** Usage overrides belong to the adoption, never to the source definition. null means explicitly unlimited. */
+export const textRuleUsageSchema = z.strictObject({
+  minDepth: z.number().int().nonnegative().nullable().optional(),
+  maxDepth: z.number().int().nonnegative().nullable().optional(),
+  targets: scriptTextTransformRuleSchema.shape.targets.optional(),
+  phases: scriptTextTransformRuleSchema.shape.phases.optional(),
+  streaming: z.boolean().optional(),
+})
+export const textRuleUsagesSchema = z.record(z.string(), textRuleUsageSchema)
+export type TextRuleUsage = z.infer<typeof textRuleUsageSchema>
+export type TextRuleUsages = z.infer<typeof textRuleUsagesSchema>
+export function applyTextRuleUsage(rule: z.infer<typeof scriptTextTransformRuleSchema>, usage: TextRuleUsage = {}) {
+  const minDepth = usage.minDepth === null ? undefined : usage.minDepth ?? rule.range?.minDepth
+  const maxDepth = usage.maxDepth === null ? undefined : usage.maxDepth ?? rule.range?.maxDepth
+  if (maxDepth !== undefined && maxDepth < (minDepth ?? 0)) throw new Error('最大深度不能小于最小深度')
+  const phases = usage.phases ?? rule.phases
+  if (phases.includes('classify') && phases.length > 1) throw new Error('持久化分类不能与显示或提示词阶段混用')
+  if (rule.effect.kind === 'promote-reasoning' && (phases.length !== 1 || phases[0] !== 'classify')) throw new Error('推理提取只能使用持久化分类阶段')
+  return { ...rule, range: { minDepth, maxDepth }, targets: usage.targets ?? rule.targets,
+    phases: usage.phases ?? rule.phases, streaming: usage.streaming ?? rule.streaming }
+}
+
 export const scriptTextExtractorSchema = z.strictObject({
   name: z.string().trim().min(1), enabled: z.boolean(), orderIndex: z.number().int(),
   targets: z.array(z.enum(['narrative', 'agent-session'])).min(1),
@@ -104,7 +131,7 @@ const headerStart = '// ==LoomScript=='
 const headerEnd = '// ==/LoomScript=='
 const singles = new Set(['format', 'id', 'name', 'version', 'runtime'])
 const repeated = new Set(['capability', 'contribution', 'require', 'setting', 'tag'])
-const capabilities = new Set(['state.read', 'state.write', 'state.contribute', 'state.processContent', 'ui.notify', 'macros.provide', 'prompt.process', 'narrative.context.provide', 'narrative.read', 'agent.tasks', 'vfs.provide', 'assets.read', 'assets.publish', 'ai.invoke', 'runtime.client', 'runtime.client-worker', 'runtime.server', 'events.subscribe:state', 'events.subscribe:narrative', 'events.subscribe:agent', 'events.subscribe:diagnostics', 'events.subscribe:platform-data', 'events.subscribe:documents'])
+const capabilities = new Set(['configs.read', 'configs.write', 'state.read', 'state.write', 'state.contribute', 'state.processContent', 'ui.notify', 'macros.provide', 'prompt.process', 'narrative.context.provide', 'narrative.read', 'agent.tasks', 'vfs.provide', 'assets.read', 'assets.publish', 'ai.invoke', 'runtime.client', 'runtime.client-worker', 'runtime.server', 'events.subscribe:state', 'events.subscribe:narrative', 'events.subscribe:agent', 'events.subscribe:diagnostics', 'events.subscribe:platform-data', 'events.subscribe:documents'])
 export function parseLoomScriptSource(source: string): ParsedLoomScriptMetadata {
   if (/^\uFEFF?---\r?\n/.test(source)) return parseMarkdownRuleSource(source)
   const lines = source.split(/\r?\n/)
@@ -255,6 +282,7 @@ function parseMarkdownRuleSource(source: string): ParsedLoomScriptMetadata {
     ...header.tags.map(tag => `// @tag ${tag}`),
     ...header.settings.map(setting => `// @setting ${JSON.stringify(setting)}`),
     `// @contribution ${JSON.stringify({ kind: 'text-transform', id: 'rule', rule: {
+      description: header.description, descriptionAnchor: header.description_anchor, loreRefs: header.lore_refs,
       name: header.name, enabled: header.enabled, orderIndex: header.order,
       matcher: { kind: 'regex', pattern: header.regex, flags: header.regex_flags }, effect,
       targets: header.targets, phases: header.phases, captureRemove: header.capture_remove, streaming: header.streaming,
@@ -267,10 +295,12 @@ const markdownRuleHeader = z.strictObject({
   format: z.literal(1).optional(), id: identifier, name: z.string().trim().min(1).regex(/^[^\r\n]+$/),
   version: z.string().default('1.0.0'), tags: z.array(z.string().regex(/^[^\r\n]+$/)).default([]),
   regex: z.union([z.string(), z.strictObject({ $config: z.string(), as: z.enum(['literal', 'raw']).optional() })]),
+  description: z.string().optional(), description_anchor: z.string().trim().min(1).optional(),
   regex_flags: z.string().default('g'), enabled: z.boolean().default(true), order: z.number().int().default(0),
   phases: z.array(z.enum(['display', 'prompt', 'classify'])).min(1).default(['display']),
   targets: z.array(z.enum(['narrative', 'agent-session'])).min(1).default(['narrative', 'agent-session']),
   capture_remove: z.array(z.string()).default([]), streaming: z.boolean().default(false),
+  lore_refs: z.array(loreReferenceSchema).optional(),
   min_depth: z.number().int().nonnegative().optional(), max_depth: z.number().int().nonnegative().optional(),
   action: z.enum(['replace', 'mark', 'promote-reasoning']).default('replace'),
   marker_type: z.string().optional(), dialect: z.string().optional(),
@@ -281,10 +311,13 @@ const markdownRuleHeader = z.strictObject({
 
 export function serializeMarkdownTextRule(rule: ScriptTextTransformRule, id = 'imported.text-rule'): string {
   const header = {
+    ...(rule.description !== undefined ? { description: rule.description } : {}),
+    ...(rule.descriptionAnchor !== undefined ? { description_anchor: rule.descriptionAnchor } : {}),
     id, name: rule.name, version: '1.0.0', regex: rule.matcher.pattern, regex_flags: rule.matcher.flags,
     enabled: rule.enabled, order: rule.orderIndex, targets: rule.targets, phases: rule.phases,
     ...(rule.captureRemove?.length ? { capture_remove: rule.captureRemove } : {}),
     ...(rule.streaming ? { streaming: true } : {}),
+    ...(rule.loreRefs?.length ? { lore_refs: rule.loreRefs } : {}),
     ...(rule.range?.minDepth !== undefined ? { min_depth: rule.range.minDepth } : {}),
     ...(rule.range?.maxDepth !== undefined ? { max_depth: rule.range.maxDepth } : {}),
     ...(rule.effect.kind === 'mark' ? { marker_type: rule.effect.markerType } : {}),

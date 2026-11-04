@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { createBlobStore } from '@loom-studio/asset-store'
 import {
   createApplicationRuntime, createOfficialAgentToolRegistry, composeAgentTurnPrompt,
   officialReadPromptResourceTool, officialSearchPromptResourcesTool,
@@ -11,7 +15,7 @@ import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createId, nowIso } from '@loom-studio/shared'
 import { resolveEffectiveTextPipeline } from '../../../packages/application-runtime/src/runtime/transforms-runtime.js'
 import { readAvailableExtensionInstallations } from '../../../packages/application-runtime/src/runtime/extension-resource-access.js'
-import { isPromptResourceArtifact } from '../../../packages/application-runtime/src/cards/workspace-codec.js'
+import { isPromptResourceArtifact } from '../../../packages/application-runtime/src/cards/card-bundle-codec.js'
 
 function fixture() {
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
@@ -19,9 +23,12 @@ function fixture() {
   const promptResources = createPromptResourceStore({ engine })
   const agents = createAgentStore({ engine })
   const narratives = createNarrativeStore({ engine })
+  const rootDirectory = mkdtempSync(join(tmpdir(), 'loom-extension-resource-import-'))
+  const blobs = createBlobStore({ engine, rootDirectory, createId, now: nowIso })
+  onTestFinished(() => rmSync(rootDirectory, { recursive: true, force: true }))
   const requests: unknown[] = []
   const runtime = createApplicationRuntime({
-    dataEngine: engine, documents, promptResources,
+    dataEngine: engine, documents, promptResources, blobs,
     agents, narratives,
     gateway: { invokeChat: async ({ request }) => {
       requests.push(request.messages)
@@ -41,10 +48,28 @@ function fixture() {
     }],
     agentTools: [], transformRules: [], textExtractors: [],
   }
-  return { engine, documents, promptResources, agents, narratives, runtime, input, requests }
+  return { engine, documents, promptResources, agents, narratives, blobs, runtime, input, requests }
 }
 
 describe('Extension prompt resource import', () => {
+  it('resolves tool Lore references within each installation without adopting or duplicating Lore', async () => {
+    const { engine, runtime, input } = fixture()
+    try {
+      input.promptResources = [{ contribution: { id: 'manual', resourceKind: 'lore', source: 'manual.json' },
+        artifact: { format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'lore',
+          rootNode: { id: 'example.writer.manual', kind: 'module', label: 'Manual' } } }]
+      input.agentTools = [{ contribution: { id: 'example.writer/read', source: 'read.json' },
+        definition: { name: 'Read', description: 'Read data', input: { kind: 'structured', schema: { type: 'object' } },
+          prompt: { loreRefs: [{ resourceId: 'manual', nodeId: 'example.writer.manual' }] } } }]
+      for (const target of [{ kind: 'global' as const }, { kind: 'card' as const, cardId: (await runtime.createCard({ name: 'Copy' })).card.id }]) {
+        const installed = await runtime.importExtensionPackageResources({ ...input, target })
+        const resource = (await runtime.getPromptResource({ resourceId: installed.promptResources[0]!.resourceId })).resource
+        const tool = (await runtime.listAgentTools()).tools.find(tool => tool.id === installed.agentTools[0]!.toolId)!
+        expect(tool.prompt?.loreRefs).toEqual([{ resourceId: resource.id, nodeId: resource.rootNode.id }])
+      }
+    } finally { await engine.close() }
+  })
+
   it('binds a preset icon to its owning package and keeps it after duplication and update', async () => {
     const { engine, runtime, input } = fixture()
     try {
@@ -92,7 +117,7 @@ describe('Extension prompt resource import', () => {
       expect(await promptResources.getResource('missing-elsewhere')).toBeNull()
       expect(await engine.read(database => database.prepare('PRAGMA foreign_key_check').all())).toEqual([])
       const extra = await runtime.createPromptResource({ resourceKind: 'lore', name: 'Extra' })
-      await runtime.replaceLoreMounts({
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: source })).mounts.map(mount => mount.id),
         source, mounts: [{ id: mounts[0]!.id }, { id: mounts[1]!.id }, { loreResourceId: extra.resource.id }],
       })
       expect((await runtime.listLoreMounts({ source })).mounts.map(mount => mount.resolvedLoreResourceId ?? mount.loreResourceId))
@@ -125,7 +150,7 @@ describe('Extension prompt resource import', () => {
         ])
       await runtime.deletePromptResource({ resourceId: extra.resource.id })
       const beforeEdit = (await runtime.listLoreMounts({ source })).mounts
-      await runtime.replaceLoreMounts({ source, mounts: beforeEdit.map(mount => ({ id: mount.id })) })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: source })).mounts.map(mount => mount.id), source, mounts: beforeEdit.map(mount => ({ id: mount.id })) })
       expect((await runtime.listLoreMounts({ source })).mounts[2]).toMatchObject({
         loreResourceId: extra.resource.id, resolvedLoreResourceId: null,
         reference: { kind: 'external', resourceId: extra.resource.id },
@@ -311,7 +336,7 @@ describe('Extension prompt resource import', () => {
       const { agentPreset } = await runtime.createAgentPreset({
         name: 'Public', model: { providerProfileId: providerProfile.id, modelId: officialFakeModelId },
       })
-      await runtime.replacePresetToolMounts({
+      await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: agentPreset.id })).mounts.map(mount => mount.id),
         presetId: agentPreset.id, mounts: [{ toolId, orderIndex: 0, defaultEnabled: true }],
       })
       const timeline = await runtime.createNarrativeTimeline({ cardId: a.id, openingContent: '' })
@@ -352,9 +377,9 @@ describe('Extension prompt resource import', () => {
         })
         ids.push(installed.promptResources[0]!.resourceId)
       }
-      await runtime.replaceLoreMounts({ source: { kind: 'manual', id: 'global' }, loreResourceIds: ids })
-      await runtime.updateCardPromptResources({ cardId: a.id, promptResourceIds: [ids[0]!] })
-      await runtime.replaceLoreMounts({ source: { kind: 'preset', id: preset.id }, loreResourceIds: [ids[0]!] })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'manual', id: 'global' } })).mounts.map(mount => mount.id), source: { kind: 'manual', id: 'global' }, loreResourceIds: ids })
+      await runtime.updateCardPromptResources({ expectedVersion: (await runtime.getCard({ cardId: a.id })).card.version, cardId: a.id, promptResourceIds: [ids[0]!] })
+      await runtime.replaceLoreMounts({ expectedMountIds: (await runtime.listLoreMounts({ source: { kind: 'preset', id: preset.id } })).mounts.map(mount => mount.id), source: { kind: 'preset', id: preset.id }, loreResourceIds: [ids[0]!] })
       const bindings = await runtime.getPromptResourceBindings({ resourceId: ids[0]! })
       expect(bindings.cards).toEqual([{ id: a.id, name: 'A' }])
       expect(bindings.loreMounts.map(mount => mount.source)).toEqual(expect.arrayContaining([
@@ -519,16 +544,56 @@ describe('Extension prompt resource import', () => {
     }
   })
 
+  it('previews the target installation without writes and rejects edits after preview', async () => {
+    const { engine, runtime, input, promptResources, documents, blobs } = fixture()
+    try {
+      const installed = await runtime.importExtensionPackageResources(input)
+      const card = (await runtime.createCard({ name: 'Other installation' })).card
+      const other = await runtime.importExtensionPackageResources({ ...input, target: { kind: 'card', cardId: card.id } })
+      const installation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!
+      const update = { ...input, packageVersion: '2.0.0', update: { expectedInstallationVersion: installation.version } }
+      const beforeResources = await promptResources.listResources({ includeTombstone: true })
+      const beforeDocuments = await documents.list({ includeTombstone: true })
+      const prepareWrite = vi.spyOn(blobs, 'prepareWrite')
+      const preview = await runtime.previewExtensionPackageResources(update)
+      expect(prepareWrite).not.toHaveBeenCalled()
+      expect(await promptResources.listResources({ includeTombstone: true })).toEqual(beforeResources)
+      expect(await documents.list({ includeTombstone: true })).toEqual(beforeDocuments)
+      expect(preview.items).toEqual([expect.objectContaining({ kind: 'preset', action: 'update', localChanges: 'unknown', resourceId: installed.promptResources[0]!.resourceId })])
+      expect(preview.items.some(item => item.resourceId === other.promptResources[0]!.resourceId)).toBe(false)
+      const resource = await promptResources.getResource(installed.promptResources[0]!.resourceId)
+      await promptResources.mutateResource({ actor: { kind: 'system', id: 'test' }, reason: 'test.preview-edit', resourceId: resource!.id, expectedVersion: resource!.version,
+        mutations: [{ kind: 'resource.update', patch: { label: 'Local edit' } }] })
+      await expect(runtime.importExtensionPackageResources({ ...update, update: { ...update.update, expectedPreviewFingerprint: preview.fingerprint } })).rejects.toThrow('preview the package update again')
+      expect((await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!.packageVersion).toBe('1.0.0')
+    } finally { await engine.close() }
+  })
+
+  it('lists additions and removals from the actual update plan', async () => {
+    const { engine, runtime, input } = fixture()
+    try {
+      await runtime.importExtensionPackageResources(input)
+      const installation = (await runtime.listExtensionInstallations()).installations[0]!
+      const replacement = structuredClone(input.promptResources[0]!)
+      replacement.contribution.id = 'replacement'
+      if (isPromptResourceArtifact(replacement.artifact)) replacement.artifact.rootNode.id = 'example.writer.replacement.root'
+      const preview = await runtime.previewExtensionPackageResources({ ...input, packageVersion: '2.0.0', promptResources: [replacement], update: { expectedInstallationVersion: installation.version } })
+      expect(preview.items.map(item => [item.contributionId, item.action])).toEqual([['replacement', 'add'], [input.promptResources[0]!.contribution.id, 'remove']])
+      await runtime.importExtensionPackageResources({ ...input, packageVersion: '2.0.0', promptResources: [replacement], update: { expectedInstallationVersion: installation.version, expectedPreviewFingerprint: preview.fingerprint } })
+      expect((await runtime.listExtensionInstallations()).installations[0]!.packageVersion).toBe('2.0.0')
+    } finally { await engine.close() }
+  })
+
   it('retains package resources on uninstall and reuses them when the same package is installed again', async () => {
     const { engine, runtime, input } = fixture()
     try {
       const first = await runtime.importExtensionPackageResources(input)
       const before = await runtime.getAgentPreset({ agentPresetId: first.promptResources[0]!.resourceId })
       const installation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === first.installationId)!
-      const removed = await runtime.removeExtensionPackageResources({
-        packageId: input.packageId, uninstall: true, expectedInstallationVersion: installation.version,
+      const removed = await runtime.uninstallExtensionInstallation({
+        packageId: input.packageId, expectedInstallationVersion: installation.version,
       })
-      expect(removed.promptResourceIds).toEqual([])
+      expect(removed).toMatchObject({ installationId: first.installationId, uninstalled: true, resourcesRetained: true })
       expect((await runtime.listExtensionInstallations()).installations).toEqual([])
       expect(await runtime.getAgentPreset({ agentPresetId: first.promptResources[0]!.resourceId })).toEqual(before)
       const second = await runtime.importExtensionPackageResources(input)
@@ -592,7 +657,6 @@ describe('Extension prompt resource import', () => {
         format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset',
         rootNode: {
           id: 'example.writer.root', kind: 'module', label: 'Writer',
-          orderList: ['example.writer.body'],
           children: [{ id: 'example.writer.body', kind: 'entry', label: 'Body', body: 'Keep example.writer.body as text' }],
         },
       }
@@ -647,7 +711,7 @@ describe('Extension prompt resource import', () => {
         const id = installation.promptResources[0]!.resourceId
         const { agentPreset } = await runtime.getAgentPreset({ agentPresetId: id })
         expect(agentPreset.origin).toMatchObject({ installationId: installation.installationId, contributionId: 'example.writer.preset' })
-        expect(agentPreset.rootNode.orderList).toEqual([agentPreset.rootNode.children![0]!.id])
+        expect(agentPreset.rootNode.children).toHaveLength(1)
         expect(agentPreset.rootNode.children![0]!.body).toBe('Keep example.writer.body as text')
         expect((await runtime.listLoreMounts({ source: { kind: 'preset', id } })).mounts)
           .toMatchObject([{ loreResourceId: installation.promptResources[1]!.resourceId }])

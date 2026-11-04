@@ -1,7 +1,8 @@
+// @vitest-environment happy-dom
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
+import { settle, hooks, primaryFixture } from '../../support/client/narrative-runtime.js'
 import type { NarrativeSwipeView } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 import { RunRecoveryControls } from '../../../apps/studio-client/src/features/narrative-runtime/ui/run-recovery-controls.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
@@ -21,12 +22,12 @@ async function suspendedFixture() {
   const getSwipes = vi.fn(async () => ({ swipe: swipe() }))
   f.input.api.narratives.getSwipes = getSwipes
   f.render()
-  const dispose = hooks.commitEffect?.()
-  await Promise.resolve()
-  await Promise.resolve()
+  const dispose = f.unmount
+  hooks.narrativeConnected()
+  await f.loadRoot()
   getSwipes.mockResolvedValue({ swipe: swipe(true) })
   f.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 1, done: true, state: 'suspended' })
-  await f.render().generateSwipe('retry')
+  await settle(() => f.render().generateSwipe('retry'))
   await f.loadRoot()
   const state = vi.fn(async () => ({ runId: 'run', state: 'suspended' as const }))
   const abandon = vi.fn<StudioApi['agentSessions']['abandonRun']>(async () => ({ runId: 'run', accepted: true, state: 'suspended' as const }))
@@ -44,7 +45,7 @@ describe('Explicit suspended attempt abandonment', () => {
     f.getSwipes.mockImplementation(async () => { order.push('swipe'); return { swipe: swipe() } })
     f.getPage.mockImplementation(async () => { order.push('page'); return f.result.narrative })
     f.render().setAgentInput('Agent draft')
-    await f.render().abandonRootRun()
+    await settle(() => f.render().abandonRootRun())
     expect(order).toEqual(['abandon', 'swipe', 'page'])
     expect(f.state).not.toHaveBeenCalled()
     expect(f.abandon).toHaveBeenCalledExactlyOnceWith('run', 'timeline')
@@ -57,7 +58,7 @@ describe('Explicit suspended attempt abandonment', () => {
     expect(f.createSession).toHaveBeenCalledOnce()
     expect(f.createRun).toHaveBeenCalledOnce()
     expect(f.appendInput).not.toHaveBeenCalled()
-    await f.render().generateSwipe('retry')
+    await settle(() => f.render().generateSwipe('retry'))
     expect(f.createRun).toHaveBeenCalledTimes(2)
     expect(f.appendInput).not.toHaveBeenCalled()
     f.dispose?.()
@@ -66,14 +67,14 @@ describe('Explicit suspended attempt abandonment', () => {
   it('retains the attempt when the authoritative API rejects an executor that is still running', async () => {
     const f = await suspendedFixture()
     f.abandon.mockResolvedValueOnce({ runId: 'run', accepted: false, state: 'running' })
-    await f.render().abandonRootRun()
+    await settle(() => f.render().abandonRootRun())
     expect(f.abandon).toHaveBeenCalledExactlyOnceWith('run', 'timeline')
     expect(f.state).not.toHaveBeenCalled()
     expect(f.render().rootActiveRun?.status).toBe('suspended')
     expect(f.render().rootRecovery?.status).toBe('suspended')
     expect(f.render().rootRecovery?.error).toBe('故事执行未能放弃')
     expect(f.render().swipe?.suspended).toBe(true)
-    await f.render().generateSwipe('retry')
+    await settle(() => f.render().generateSwipe('retry'))
     expect(f.createRun).toHaveBeenCalledOnce()
     f.dispose?.()
   })
@@ -81,7 +82,7 @@ describe('Explicit suspended attempt abandonment', () => {
   it('keeps the attempt and surfaces a rejected abandonment', async () => {
     const f = await suspendedFixture()
     f.abandon.mockResolvedValueOnce({ runId: 'run', accepted: false, state: 'suspended' })
-    await f.render().abandonRootRun()
+    await settle(() => f.render().abandonRootRun())
     expect(f.render().rootActiveRun?.status).toBe('suspended')
     expect(f.render().rootRecovery?.error).toBe('故事执行未能放弃')
     expect(f.render().runRecoveryBusy).toBe(false)
@@ -93,11 +94,11 @@ describe('Explicit suspended attempt abandonment', () => {
     const f = await suspendedFixture()
     f.getSwipes.mockResolvedValue({ swipe: swipe() })
     f.getPage.mockRejectedValueOnce(new Error('Refresh offline'))
-    await f.render().abandonRootRun()
+    await settle(() => f.render().abandonRootRun())
     expect(f.render().rootActiveRun).toBeUndefined()
     expect(f.render().rootRecovery).toMatchObject({ status: 'refresh-failed', refreshFailed: true, error: 'Refresh offline' })
     f.getSwipes.mockResolvedValue({ swipe: swipe() })
-    await f.render().reconnectRootRun()
+    await settle(() => f.render().reconnectRootRun())
     expect(f.abandon).toHaveBeenCalledOnce()
     expect(f.render().swipe?.suspended).toBe(false)
     expect(f.render().rootRecovery?.refreshFailed).not.toBe(true)
@@ -111,11 +112,11 @@ describe('Explicit suspended attempt abandonment', () => {
       entry: { kind: 'run-state', state: 'suspended' },
     }] })
     f.input.api.agentSessions.runState = vi.fn(async () => ({ runId: 'restored-run', state: 'suspended' as const }))
-    await f.render().refreshTaskSession('timeline')
+    await settle(() => f.render().refreshTaskSession('timeline'))
     expect(f.render().rootRecovery).toMatchObject({ target: 'narrative', status: 'suspended' })
     const abandon = vi.fn<StudioApi['agentSessions']['abandonRun']>(async () => ({ runId: 'restored-run', accepted: true, state: 'suspended' as const }))
     f.input.api.agentSessions.abandonRun = abandon
-    await f.render().abandonRootRun()
+    await settle(() => f.render().abandonRootRun())
     expect(f.input.api.agentSessions.runState).toHaveBeenCalledExactlyOnceWith('restored-run', 'timeline')
     expect(abandon).toHaveBeenCalledExactlyOnceWith('restored-run', 'timeline')
     expect(f.render().rootActiveRun).toBeUndefined()

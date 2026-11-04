@@ -6,7 +6,7 @@
 
 | 要定位的职责 | 下一入口 |
 | --- | --- |
-| Connection、FIFO、事务、Migration 与提交通知 | [Data Engine README](../../../packages/data-engine/README.md) |
+| Connection、FIFO、事务、Schema 初始化与提交通知 | [Data Engine README](../../../packages/data-engine/README.md) |
 | Document / Revision / Changeset 的版本化操作 | [Document Store README](../../../packages/document-store/README.md) |
 | Transcript、正文分支索引、State、Workspace、Prompt Resource 与统计 | [Application Data README](../../../packages/application-data/README.md)；统计的采集与保留口径就近维护在该包内 |
 | Blob 字节、Source Artifact 与 Media Asset 元数据 | [Asset Store README](../../../packages/asset-store/README.md) |
@@ -23,11 +23,9 @@ Narrative 面向 Agent 的地址为 `/narrative/<floor>.md`。宿主在绑定的
 
 界面和日志消费资源名称及明确的导航目标；完整 ID 放在诊断入口。当前名称属于读取时投影，与运行当时记录的来源、配置和版本事实分开。
 
-## Lore 命名升级
+## Lore schema 当前基线
 
-Prompt Resource schema v6 将设定资源分类、挂载表/列、已知锚点协议字段和历史资源修订统一为 Lore；`application.lore-documents` v1 迁移 Card 当前/历史字段与 Agent 恢复快照中的 Prompt 来源。保留所有资源身份、版本及作者正文，不更改 State 或扩展私有数据。旧版数据库迁移步骤保持原名，新运行合同只使用 Lore。
-
-Server 检测到旧 Prompt Resource schema 时，先在数据目录的 `backups/` 创建 SQLite 快照，再进行升级。离线处理可运行 `pnpm exec tsx scripts/data/migrate-lore.ts <数据库路径>`；须先停写并备份。文件型角色目录与 SQLite 分开迁移：`pnpm exec tsx scripts/data/migrate-lore-files.ts <数据目录>` 预览，追加 `--apply` 写入结构文件和基线。已有文件编辑冲突保持为冲突，不把用户未保存改动默认为新基线；正文文件不改写。
+Prompt Resource 使用当前 schema namespace `application.prompt-resource@9`。Store 创建时只初始化空 namespace 的最终 DDL；现有 namespace 版本与 9 不匹配时拒绝打开，不执行旧版数据库升级或回填。已完成的 Lore 命名调整属于当前 schema 定义，不是仍可运行的旧库迁移入口。旧数据库和文件型 Lore 迁移脚本均已退出，当前格式输入直接遵循现行合同。
 
 放置规则：
 
@@ -48,22 +46,22 @@ Studio Server 当前创建一个 `@loom-studio/data-engine` SQLite Engine，并�
 - 单 SQLite connection 的生命周期；
 - 公开读写的 FIFO 串行化；
 - `BEGIN IMMEDIATE` transaction 与失败回滚；
-- namespaced schema migration；
+- namespaced schema 初始化；
 - 一次 transaction 对应一个 Changeset / Data Commit Fact；
 - commit 成功后的进程内通知。
 
-迁移版本记录在 `schema_migrations(namespace, version)`，不再使用单一 `PRAGMA user_version`。当前已注册：
+当前 namespace 版本记录在 `schema_migrations(namespace, version)`，不再使用单一 `PRAGMA user_version`。当前已注册：
 
 - `platform.data-engine@1`：`schema_migrations` 与通用 `changesets` Commit Journal；
 - `platform.documents@2`：`documents`、`document_revisions` 及其索引与外键约束。
 - `platform.blob-store@1`：`stored_blobs` 与 SHA-256 唯一索引；
 - `platform.asset-store@1`：`source_artifacts`、`media_assets` 及 Blob / owner 索引。
 
-每个 migration namespace 独立按连续版本升级。迁移失败会回滚该 namespace 的本次升级；数据库中某 namespace 的版本高于当前程序支持版本时会拒绝打开。Engine 使用 WAL 与 foreign key，不依赖 ORM、通用 Repository 或外部 migration framework。
+Store 通过 `initializeSchema({ namespace, version, initialize })` 声明当前 schema。空 namespace 在事务中直接建立当前最终 DDL 并记录版本；版本相同时继续打开；任意已有非零版本不匹配都会拒绝打开，不做连续版本升级、降级或兼容读取。初始化失败时 DDL 与版本记录一起回滚。Engine 使用 WAL 与 foreign key，不依赖 ORM、通用 Repository 或外部 migration framework。
 
-这些数字是持久化 Schema 的内部序号，不是应用发布版本；不能为减少版本名而调低已存在数据库的支持上限。拒绝更高 Schema 不代表自动降级、重建或清空数据，也不保证任意旧数据库都能被当前注册的迁移识别。
+这些数字是持久化 Schema 的内部序号，不是应用发布版本。版本匹配是打开 Store 的条件；当前代码不会自动升级、降级、重建或清空版本不匹配的数据库。
 
-`migrate()` 只用于组合根创建 Store 的启动阶段；运行时读写统一进入 Engine FIFO。transaction callback 必须返回 Promise，并直接使用当前 transaction 暴露的 SQLite connection，不能重新进入排队中的 Engine 方法。
+`initializeSchema()` 只用于组合根创建 Store 的启动阶段；运行时读写统一进入 Engine FIFO。transaction callback 必须返回 Promise，并直接使用当前 transaction 暴露的 SQLite connection，不能重新进入排队中的 Engine 方法。
 
 公共写入上下文的字段由 Engine 的 `DataTransactionInput` 统一定义。Agent、Narrative、State、Prompt Resource、Secret、Asset、Blob 的 `*WriteContext` 以及 `DocumentTransactionInput` 保留领域名称并直接别名该类型；Document 单次 `write()` 的可选 actor 合同不因此变为必填。
 
@@ -109,19 +107,19 @@ Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit S
 
 Application Store 与 Document Store 共用 Engine，但各自拥有领域表。以下是当前持久化边界，业务执行与恢复合同由 [Application 数据生命周期](../application/data-capabilities-and-lifecycle.md)和 [Runtime 与 Session](../application/agent/runtime-and-session.md)维护，不在平台层复制 RPC 清单。
 
-| Store / migration namespace | 当前版本 | 权威数据 |
+| Store / schema namespace | 当前版本 | 权威数据 |
 | --- | --- | --- |
 | Narrative / `application.narrative` | 9 | `narrative_timelines`、`narrative_branches`、`narrative_nodes`、`narrative_recovery_points`：Timeline 来源、分支、稳定楼号及 State / Workspace / Transcript 引用 |
 | Workspace / `application.workspace` | 1 | `workspace_revisions`：Timeline 文件树的不可变版本；文本在树中保存，二进制引用 Blob |
 | Agent / `application.agent` | 9 | `agent_sessions`、`agent_transcript_entries`、`agent_tool_invocations`、`agent_summary_tasks`：Session 身份、Transcript、轻量工具配对索引与摘要任务 |
 | State / `application.state` | 2 | `state_scopes`、`state_revisions`：State 当前 Head 与历史修订 |
-| Prompt Resource / `application.prompt-resource` | 8 | Resource Header / Node、修订、Lore Mount 与 Preset Tool Mount |
+| Prompt Resource / `application.prompt-resource` | 9 | Resource Header / Node、修订、Lore Mount 与 Preset Tool Mount |
 
-精确 namespace 与迁移序号以 [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Workspace Store](../../../packages/application-data/src/workspace/store.ts)、[Agent Store](../../../packages/application-data/src/agent/store.ts)、[State Store](../../../packages/application-data/src/state/store.ts)和 [Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)的注册为准。
+精确 namespace 与当前 schema 版本以 [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Workspace Store](../../../packages/application-data/src/workspace/store.ts)、[Agent Store](../../../packages/application-data/src/agent/store.ts)、[State Store](../../../packages/application-data/src/state/store.ts)和 [Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)的声明为准。
 
-Narrative v9 将正文权威移入 `agent_transcript_entries`，`narrative_nodes.entry_id` 引用正文 Entry；`narrative_node_projection` 将其投影为已有 Node body 读取形状。Branch 与恢复点分别保存 `head_entry_id`。不能再把 `narrative_nodes` 描述为独立正文副本。Agent v9 增加 Session `kind`、可空预设绑定、Narrative mode，以及 Entry 的 round / candidate 引用；Timeline 主 Session 与普通 Agent Session 的行为由 Runtime 约束。
+Narrative v9 将正文权威放在 `agent_transcript_entries`，`narrative_nodes.entry_id` 引用正文 Entry；`narrative_node_projection` 将其投影为 Node body 读取形状。Branch 与恢复点分别保存 `head_entry_id`。Agent v9 增加 Session `kind`、可空预设绑定、Narrative mode，以及 Entry 的 round / candidate 引用；Timeline 主 Session 与普通 Agent Session 的行为由 Runtime 约束。Store 不提供从其他 namespace 版本升级到这些 schema 的路径。
 
-迁移把旧 Narrative 正文转为 Timeline Session 的 Entry，并保留节点与分支引用；这不等于为旧 Timeline 补造完整的 Provider、工具或候选历史。摘要任务的持久化也不表示重启后可以继续原 Provider 请求。
+摘要任务的持久化不表示重启后可以继续原 Provider 请求。
 
 Workspace 新版本、Branch Head 及 State 恢复引用由领域事务推进。历史分页沿各自 parent 链读取，不使用 SQLite offset，也不能把 Transcript 顺序等同于当前分支投影。完整恢复点与稳定楼号合同见[数据生命周期](../application/data-capabilities-and-lifecycle.md#timeline-workspace-与稳定楼号)。
 

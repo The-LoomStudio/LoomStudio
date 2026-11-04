@@ -18,6 +18,37 @@ function mount(runtime: 'client' | 'client-worker' = 'client'): ResolvedLoomScri
 }
 
 describe('Client Script Runtime', () => {
+  it('updates owner-isolated Config subscriptions without reactivating the module and cancels on dispose', async () => {
+    vi.useFakeTimers()
+    const rendererHost = createClientRendererHost()
+    rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'card-a', timelineId: 'story-a', branchId: 'main' })
+    let context!: ClientExtensionActivationContext
+    let value = 'A'
+    const listConfigs = vi.fn(async () => [{ id: 'config-a', scriptDocumentId: 'script-a', scope: { kind: 'timeline' as const, timelineId: 'story-a' }, key: 'mode', value, version: value === 'A' ? 1 : 2, createdAt: '', updatedAt: '' }])
+    const loadSource = vi.fn(async () => ({ activate(ctx: ClientExtensionActivationContext) { context = ctx } }))
+    const runtime = createClientScriptRuntime({ rendererHost, data: {} as ClientExtensionDataApi, loadSource, configs: { listConfigs, upsertConfig: vi.fn() } })
+    const adopted = mount()
+    adopted.grantedCapabilities.push('configs.read', 'configs.write')
+    adopted.script.requestedCapabilities.push('configs.read', 'configs.write')
+    try {
+      await runtime.reconcile([adopted])
+      const handler = vi.fn()
+      const handle = context.configs.subscribe({}, handler)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(handler.mock.calls[0]?.[0][0].value).toBe('A')
+      expect(listConfigs).toHaveBeenCalledWith({ mountId: 'mount-a', runtimeRevision: 1, scope: { kind: 'timeline', timelineId: 'story-a' } })
+      value = 'B'
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(handler.mock.calls.at(-1)?.[0][0].value).toBe('B')
+      expect(loadSource).toHaveBeenCalledTimes(1)
+      await expect(context.configs.get({ scope: { kind: 'timeline', timelineId: 'other-story' }, key: 'mode' })).rejects.toThrow('outside')
+      handle.dispose()
+      const count = listConfigs.mock.calls.length
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(listConfigs).toHaveBeenCalledTimes(count)
+    } finally { await runtime.dispose(); vi.useRealTimers() }
+  })
+
   it('keeps the adopted source and instance across saves and same-card stories, refreshing only the selected mount', async () => {
     const rendererHost = createClientRendererHost()
     rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'card-a', timelineId: 'story-a', branchId: 'main' })

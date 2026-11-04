@@ -9,6 +9,7 @@ export function ScriptSettingsFields(props: {
   inherited?: LoomScriptSettings
   dirty: boolean
   disabled?: boolean
+  immediate?: boolean
   pendingApply?: boolean
   onChange(values: LoomScriptSettings): void
   onSave(): void
@@ -18,7 +19,7 @@ export function ScriptSettingsFields(props: {
   if (!props.definitions.length && !Object.keys(props.values).length && !props.dirty) return null
   return <fieldset className={styles.settings} disabled={props.disabled}>
     <legend>脚本配置</legend>
-    <p className={styles.muted}>配置保存在此范围，不修改源码。保存后刷新脚本生效；尚未启用时，下次启用生效。</p>
+    <p className={styles.muted}>配置保存在此范围，不修改源码。{props.immediate ? '保存后生效。' : '保存后刷新脚本生效；尚未启用时，下次启用生效。'}</p>
     {props.definitions.map(definition => {
       const overridden = Object.hasOwn(props.values, definition.key)
       const value = props.values[definition.key] ?? props.inherited?.[definition.key] ?? definition.default

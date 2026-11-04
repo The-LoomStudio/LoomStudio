@@ -17,9 +17,9 @@ type LoomCardPayloadManifest = Omit<PortableExtensionPayloadArtifact, 'content'>
 
 type LoomScriptAttachmentArtifact = NonNullable<CardBundleArtifact['scriptAttachments']>[number]
 
-type LegacyCardManifest = {
-  schema: 'loom.cardBundle.zip.v1'
-  artifact: Omit<CardBundleArtifact, 'extensionPayloads'>
+type LoomCardManifest = {
+  schema: 'loom.cardBundle.zip.v2'
+  resources: CardFilesIndex
   media?: {
     avatar?: string
     background?: string
@@ -35,11 +35,6 @@ type LegacyCardManifest = {
     settings?: LoomScriptAttachmentArtifact['settings']
     script: Omit<LoomScriptAttachmentArtifact['script'], 'source'> & { path: string }
   }>
-}
-
-type LoomCardManifest = Omit<LegacyCardManifest, 'schema' | 'artifact'> & {
-  schema: 'loom.cardBundle.zip.v2'
-  resources: CardFilesIndex
 }
 
 export type CardBundleMedia = {
@@ -158,12 +153,11 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
   return decodeCardBundleFiles(files)
 }
 
-// Compatibility: Decodes either schema v1 (monolithic JSON artifact) or v2 (projected resource tree) manifests.
 export function decodeCardBundleFiles(files: Map<string, Uint8Array>): CardBundleFilesInput {
   const manifestBytes = files.get(manifestPath)
   if (!manifestBytes) throw new Error('Loom Card package is missing manifest.json')
-  const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes)) as LegacyCardManifest | LoomCardManifest
-  if (!manifest || (manifest.schema !== 'loom.cardBundle.zip.v1' && manifest.schema !== 'loom.cardBundle.zip.v2') || !manifest.media?.avatar) {
+  const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes)) as LoomCardManifest
+  if (!manifest || manifest.schema !== 'loom.cardBundle.zip.v2' || !manifest.media?.avatar) {
     throw new Error('Invalid Loom Card package manifest')
   }
   const avatar = readMedia(files, manifest.media.avatar, manifest.mediaTypes?.[manifest.media.avatar])
@@ -171,9 +165,7 @@ export function decodeCardBundleFiles(files: Map<string, Uint8Array>): CardBundl
   const extensionPayloads = readExtensionPayloads(files, manifest.extensionPayloads)
   const extensionPackages = readExtensionPackages(files, manifest.extensionPackages)
   const scriptAttachments = readScriptAttachments(files, manifest.scriptAttachments)
-  const artifact = manifest.schema === 'loom.cardBundle.zip.v2'
-    ? restoreCardFiles(manifest.resources, files)
-    : manifest.artifact
+  const artifact = restoreCardFiles(manifest.resources, files)
   return {
     artifact: normalizeCardBundleArtifact({ ...artifact, extensionPayloads, extensionPackages, scriptAttachments }),
     avatar,
@@ -196,11 +188,11 @@ export async function loadCardBundleFiles(read: (path: string) => Promise<Uint8A
     files.set(path, bytes)
     return bytes
   }
-  const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await load(manifestPath))) as LegacyCardManifest | LoomCardManifest
-  if (!manifest || (manifest.schema !== 'loom.cardBundle.zip.v1' && manifest.schema !== 'loom.cardBundle.zip.v2') || !manifest.media?.avatar) {
+  const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await load(manifestPath))) as LoomCardManifest
+  if (!manifest || manifest.schema !== 'loom.cardBundle.zip.v2' || !manifest.media?.avatar) {
     throw new Error('Invalid Loom Card package manifest')
   }
-  if (manifest.schema === 'loom.cardBundle.zip.v2') await loadCardResourceFiles(manifest.resources, load)
+  await loadCardResourceFiles(manifest.resources, load)
   await load(manifest.media.avatar)
   if (manifest.media.background !== undefined) await load(manifest.media.background)
   for (const attachment of manifest.scriptAttachments ?? []) await load(attachment.script.path)
@@ -223,8 +215,8 @@ function readScriptAttachments(
     }
     validateBundlePath(attachment.script.path)
     if (!(attachment.script.path.startsWith('scripts/') || attachment.script.path.startsWith('external/scripts/'))
-      || !attachment.script.path.endsWith('.loom.js')) {
-      throw new Error(`Loom Card Script path must stay under scripts/ or external/scripts/ and end in .loom.js: ${attachment.script.path}`)
+      || !(attachment.script.path.endsWith('.loom.js') || attachment.script.path.endsWith('.md'))) {
+      throw new Error(`Loom Card Script path must stay under scripts/ or external/scripts/ and end in .loom.js or .md: ${attachment.script.path}`)
     }
     const bytes = files.get(attachment.script.path)
     if (!bytes) throw new Error(`Loom Card package is missing ${attachment.script.path}`)
@@ -351,7 +343,7 @@ function readMedia(files: Map<string, Uint8Array>, path: string, mediaType?: unk
 
 function readExtensionPackages(
   files: Map<string, Uint8Array>,
-  archives: LegacyCardManifest['extensionPackages'],
+  archives: LoomCardManifest['extensionPackages'],
 ): NonNullable<CardBundleArtifact['extensionPackages']> {
   if (archives === undefined) return []
   if (!Array.isArray(archives) || archives.length > 32) throw new Error('Invalid embedded extension package manifest')

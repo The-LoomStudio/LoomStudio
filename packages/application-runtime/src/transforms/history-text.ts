@@ -62,6 +62,9 @@ export type TextTransformRuleEffect =
     }
 
 export type TextTransformRuleDraft = {
+  loreRefs?: import('@loom-studio/shared/loom-scripts').LoreReference[]
+  description?: string
+  descriptionAnchor?: string
   name: string
   owner: TextRuleOwner
   enabled: boolean
@@ -98,6 +101,8 @@ export type TextTransformRuleEntry = TextTransformRuleContent & {
   scriptDocumentId?: string
   contributionId?: string
 }
+
+export type TextTransformRuleSummary = Pick<TextTransformRuleEntry, 'id' | 'name' | 'owner' | 'enabled' | 'origin'>
 
 export type HistoryTextEntry<Source extends TextProjectionSource = HistorySource> = {
   id: string
@@ -359,10 +364,7 @@ function applyRule(input: {
     found.push(match)
     if (found.length > input.maxMatches) throw new Error(`Text Transform Rule match budget exceeded: ${input.rule.id}`)
     if (!input.rule.matcher.flags.includes('g')) break
-    if (match[0].length === 0) {
-      const codePoint = input.text.codePointAt(input.regex.lastIndex)
-      input.regex.lastIndex += (input.regex.unicode || input.regex.unicodeSets) && codePoint !== undefined && codePoint > 0xffff ? 2 : 1
-    }
+    if (match[0].length === 0) advanceEmptyMatch(input.regex, input.text)
   }
   if (!found.length) {
     return {
@@ -373,6 +375,7 @@ function applyRule(input: {
       edits: [] as TextEdit[],
     }
   }
+  const inputDigest = createHash('sha256').update(input.text).digest('hex')
   const records = found.map((match, occurrenceIndex): TextMatchRecord => {
     const inputRange = { start: match.index, end: match.index + match[0].length }
     return {
@@ -384,7 +387,7 @@ function applyRule(input: {
         ruleVersion: input.rule.version,
         stepIndex: input.stepIndex,
         occurrenceIndex,
-        inputText: input.text,
+        inputDigest,
       }),
       ruleId: input.rule.id,
       ruleVersion: input.rule.version,
@@ -439,13 +442,12 @@ function createMatchId(input: {
   ruleVersion: number
   stepIndex: number
   occurrenceIndex: number
-  inputText: string
+  inputDigest: string
 }): string {
   const source = input.source.kind === 'narrative'
     ? ['narrative', input.source.timelineId, input.source.branchId]
     : input.source.kind === 'card-opening' ? ['card-opening', input.source.cardId]
     : ['agent-session', input.source.sessionId, input.source.headEntryId ?? '']
-  const inputDigest = createHash('sha256').update(input.inputText).digest('hex')
   return `match:${createHash('sha256').update(JSON.stringify([
     source,
     input.phase,
@@ -454,7 +456,7 @@ function createMatchId(input: {
     input.ruleVersion,
     input.stepIndex,
     input.occurrenceIndex,
-    inputDigest,
+    input.inputDigest,
   ])).digest('hex')}`
 }
 
@@ -528,6 +530,11 @@ function createGlobalRegex(pattern: string, flags: string): RegExp {
   return new RegExp(pattern, flags.includes('g') ? flags : `${flags}g`)
 }
 
+function advanceEmptyMatch(regex: RegExp, text: string): void {
+  const codePoint = text.codePointAt(regex.lastIndex)
+  regex.lastIndex += (regex.unicode || regex.unicodeSets) && codePoint !== undefined && codePoint > 0xffff ? 2 : 1
+}
+
 function assertSafeFlags(flags: string): void {
   if (/[^dgimsuvy]/.test(flags)) throw new Error(`Unsupported regex flags: ${flags}`)
   if (new Set(flags).size !== flags.length) throw new Error(`Duplicate regex flags: ${flags}`)
@@ -569,6 +576,8 @@ export type TextExtractorContent = TextExtractorDraft & {
   updatedAt: string
 }
 export type TextExtractorEntry = TextExtractorContent & { id: string; version: number }
+
+export type TextExtractorSummary = Pick<TextExtractorEntry, 'id' | 'name' | 'owner' | 'enabled' | 'origin'>
 
 export type TextPipelineInspection = {
   source: HistorySource
@@ -654,40 +663,110 @@ export function createTextExtractionArtifact(input: {
   }
 }
 
-export function extractHistory(input: { snapshot: HistoryProjectionSnapshot; extractor: TextExtractorEntry }): TextExtractionResult {
-  const diagnostics: TextTransformDiagnostic[] = []
-  if (!input.extractor.enabled || !input.extractor.targets.includes(input.snapshot.source.kind)) {
-    return { extractorId: input.extractor.id, values: [], sourceEntryIds: [], stale: false, diagnostics }
+export type HistoryExtractionBudget = {
+  maxScannedMatches: number
+  maxCandidates: number
+  maxCapturedCharacters: number
+  maxResultUnits: number
+  maxDiagnostics: number
+}
+
+export const defaultHistoryExtractionBudget: HistoryExtractionBudget = {
+  maxScannedMatches: 10_000,
+  maxCandidates: 5_000,
+  // UTF-16 code units across full matches and every numbered capture, including invalid candidates.
+  maxCapturedCharacters: 1_000_000,
+  // Each JSON value/container costs one unit; strings and object keys also cost their UTF-16 length.
+  maxResultUnits: 2_000_000,
+  maxDiagnostics: 100,
+}
+
+export class HistoryExtractionBudgetExceededError extends Error {
+  readonly code = 'text.extractor.budget_exceeded'
+  readonly budget: keyof HistoryExtractionBudget
+  readonly limit: number
+  readonly actual: number
+
+  constructor(budget: keyof HistoryExtractionBudget, limit: number, actual: number) {
+    super(`Text Extractor budget exceeded: ${budget} (${actual} > ${limit})`)
+    this.name = 'HistoryExtractionBudgetExceededError'
+    this.budget = budget
+    this.limit = limit
+    this.actual = actual
   }
+}
+
+export function extractionResultUnits(value: JsonValue): number {
+  if (typeof value === 'string') return 1 + value.length
+  if (Array.isArray(value)) return 1 + value.reduce<number>((total, item) => total + extractionResultUnits(item), 0)
+  if (value !== null && typeof value === 'object') {
+    return 1 + Object.entries(value).reduce((total, [key, item]) => total + key.length + extractionResultUnits(item), 0)
+  }
+  return 1
+}
+
+export function extractHistory(input: {
+  snapshot: HistoryProjectionSnapshot
+  extractor: TextExtractorEntry
+  budget?: Partial<HistoryExtractionBudget>
+}): TextExtractionResult {
+  const diagnostics: TextTransformDiagnostic[] = []
+  const result: TextExtractionResult = { extractorId: input.extractor.id, values: [], sourceEntryIds: [], stale: false, diagnostics }
+  if (!input.extractor.enabled || !input.extractor.targets.includes(input.snapshot.source.kind)) return result
+  const budget = { ...defaultHistoryExtractionBudget, ...input.budget }
+  const check = (key: keyof HistoryExtractionBudget, actual: number) => {
+    if (actual > budget[key]) throw new HistoryExtractionBudgetExceededError(key, budget[key], actual)
+  }
+  let resultUnits = extractionResultUnits(result)
+  check('maxResultUnits', resultUnits)
   assertSafeFlags(input.extractor.matcher.flags)
   const entries = [...input.snapshot.entries].sort((left, right) => right.depth - left.depth)
-  const candidates: Array<{ value: JsonValue; entryId: string; depth: number }> = []
-  const invalidDepths: number[] = []
+  const candidates: Array<{ value: JsonValue; entryId: string; depth: number; units: number }> = []
+  let minInvalidDepth = Infinity
+  let scannedMatches = 0
+  let candidateCount = 0
+  let capturedCharacters = 0
   for (const entry of entries) {
     const regex = createGlobalRegex(input.extractor.matcher.pattern, input.extractor.matcher.flags)
     let match: RegExpExecArray | null
     while ((match = regex.exec(entry.text)) !== null) {
+      check('maxScannedMatches', ++scannedMatches)
+      for (const capture of match) capturedCharacters += capture?.length ?? 0
+      check('maxCapturedCharacters', capturedCharacters)
       const raw = readCapture(match, input.extractor.matcher.contentGroup)
+      let value: JsonValue
       try {
-        const value = parseExtractedValue(raw, input.extractor.parser)
+        value = parseExtractedValue(raw, input.extractor.parser)
         if (input.extractor.outputSchema) validateBasicOutputSchema(value, input.extractor.outputSchema)
-        candidates.push({ value, entryId: entry.id, depth: entry.depth })
       } catch (error) {
-        invalidDepths.push(entry.depth)
-        diagnostics.push({ code: 'text.extractor.parse_failed', message: error instanceof Error ? error.message : String(error), entryId: entry.id })
+        minInvalidDepth = Math.min(minInvalidDepth, entry.depth)
+        check('maxDiagnostics', diagnostics.length + 1)
+        const diagnostic = { code: 'text.extractor.parse_failed', message: error instanceof Error ? error.message : String(error), entryId: entry.id }
+        resultUnits += extractionResultUnits(diagnostic)
+        check('maxResultUnits', resultUnits)
+        diagnostics.push(diagnostic)
+        if (match[0].length === 0) advanceEmptyMatch(regex, entry.text)
+        continue
       }
-      if (match[0].length === 0) regex.lastIndex += 1
+      check('maxCandidates', ++candidateCount)
+      const latestOnly = input.extractor.strategy === 'latest-valid'
+      const current = candidates[0]
+      if (!latestOnly || !current || entry.depth < current.depth) {
+        const units = extractionResultUnits(value) + extractionResultUnits(entry.id)
+        resultUnits += units - (latestOnly ? current?.units ?? 0 : 0)
+        check('maxResultUnits', resultUnits)
+        const candidate = { value, entryId: entry.id, depth: entry.depth, units }
+        if (latestOnly) candidates[0] = candidate
+        else candidates.push(candidate)
+      }
+      if (match[0].length === 0) advanceEmptyMatch(regex, entry.text)
     }
   }
   candidates.sort((left, right) => left.depth - right.depth)
-  const selected = input.extractor.strategy === 'latest-valid' ? candidates.slice(0, 1) : candidates
-  return {
-    extractorId: input.extractor.id,
-    values: selected.map(item => item.value),
-    sourceEntryIds: selected.map(item => item.entryId),
-    stale: selected.length > 0 && invalidDepths.some(depth => depth < selected[0]!.depth),
-    diagnostics,
-  }
+  result.values = candidates.map(item => item.value)
+  result.sourceEntryIds = candidates.map(item => item.entryId)
+  result.stale = candidates.length > 0 && minInvalidDepth < candidates[0]!.depth
+  return result
 }
 
 function parseExtractedValue(raw: string, parser: TextExtractorParser): JsonValue {
@@ -696,7 +775,9 @@ function parseExtractedValue(raw: string, parser: TextExtractorParser): JsonValu
   for (const line of raw.split(/\r?\n/)) {
     const separator = line.indexOf(':')
     if (separator < 1) continue
-    value[line.slice(0, separator).trim()] = line.slice(separator + 1).trim()
+    Object.defineProperty(value, line.slice(0, separator).trim(), {
+      value: line.slice(separator + 1).trim(), enumerable: true, configurable: true, writable: true,
+    })
   }
   if (!Object.keys(value).length) throw new Error('Extractor did not produce any key-value pairs')
   return value
@@ -707,7 +788,7 @@ function validateBasicOutputSchema(value: JsonValue, schema: JsonObject): void {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Extractor output must be an object')
     const required = Array.isArray(schema.required) ? schema.required : []
     for (const key of required) {
-      if (typeof key === 'string' && !(key in value)) throw new Error(`Extractor output is missing required property: ${key}`)
+      if (typeof key === 'string' && !Object.hasOwn(value, key)) throw new Error(`Extractor output is missing required property: ${key}`)
     }
   } else if (schema.type === 'string' && typeof value !== 'string') {
     throw new Error('Extractor output must be a string')

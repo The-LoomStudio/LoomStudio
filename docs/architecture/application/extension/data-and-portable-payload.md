@@ -29,7 +29,7 @@ ctx.storage.configs.list/get/upsert/delete
 ctx.storage.records.list/get/create/update/delete
 ```
 
-Config 使用当前 Package、Scope 与稳定 key 形成唯一地址。更新需要 `expectedVersion`。Record 使用独立 ID，可保存 `recordType`、JSON data 和以下 typed bindings：
+Config 使用当前 Package、安装 Target、Scope 与稳定 key 形成唯一地址。省略 Target 的底层 API 仍表示全局安装；Host 设置表单必须显式传入安装 Target，不能用 card storage scope 替代安装身份。更新存活记录需要 `expectedVersion`。Record 使用独立 ID，可保存 `recordType`、JSON data 和以下 typed bindings：
 
 ```ts
 type ExtensionEntityRef =
@@ -47,6 +47,10 @@ Config 与 Record 分别保存为 `airp.extensionConfig` 和 `airp.extensionReco
 同一 Data Engine 的受管写入在实际事务内复核原始采用代次。全局配置的非故事编辑不受某条 Timeline 暂停影响。
 
 Studio Client Host 通过 `application.listExtensionConfigs/getExtensionConfig/upsertExtensionConfig` 管理声明式设置，Client Extension 则只获得自动绑定当前 Package 的 `ctx.configs.list/get/upsert/subscribe`。Client 更新同样要求现有 Document Version；`subscribe` 由已提交的 `extensions.data.changed` 触发重新读取并比较版本，不接收 Host 表单 draft。
+
+角色安装的 Config 只允许本角色 scope，或由真实 `Timeline.createdFrom.cardId` 证明属于该角色的 Timeline / Session scope；禁止 global scope 和其他角色的 scope。全局安装可以在现有实体 scope 中使用自己的命名空间，同包全局/角色安装的值与版本互不替代。角色设置控件的 card scope 按安装目标绑定；Timeline / Session 归属不明时不可提交，后端仍进行权威校验。
+
+Host 字段保留本地草稿及首次编辑的版本基线；失败后暂停自动提交，不能因重读到新版就静默覆盖服务端。用户可明确采用服务端值，或在已读取的最新基线上重新应用当前草稿；读取失败保留草稿并提供重读入口，不能盲写。最新记录不存在时允许明确采用默认值或重新创建；这沿用现有 absence / tombstone 写入合同，不增加 create-if-absent 保证。API、Package、安装 Target 或有效 scope 身份切换会重建字段，旧异步结果不进入新身份；成功只确认已提交快照，不清除等待期间继续编辑的草稿。
 
 ### 2.2 Portable Payload
 
@@ -109,6 +113,6 @@ Extension publishes Payload
 - [`packages/extension-sdk/src/index.ts`](../../../../packages/extension-sdk/src/index.ts)
 - [`packages/extension-sdk/extension-host/src/index.ts`](../../../../packages/extension-sdk/extension-host/src/index.ts)
 - [`packages/application-runtime/src/runtime/extensions-runtime.ts`](../../../../packages/application-runtime/src/runtime/extensions-runtime.ts)
-- [`packages/application-runtime/src/cards/workspace.ts`](../../../../packages/application-runtime/src/cards/workspace.ts)
+- [`packages/application-runtime/src/cards/card-bundle.ts`](../../../../packages/application-runtime/src/cards/card-bundle.ts)
 - [`apps/studio-server/src/main.ts`](../../../../apps/studio-server/src/main.ts)
 - [`apps/studio-server/src/codecs/card-bundle-zip.ts`](../../../../apps/studio-server/src/codecs/card-bundle-zip.ts)

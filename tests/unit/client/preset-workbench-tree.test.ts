@@ -11,6 +11,14 @@ const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [
 vi.mock('../../../apps/studio-client/src/features/prompt-resources/model/use-resource-token-snapshot.js', () => ({
   useResourceTokenSnapshot: () => ({ pending: false, refresh: vi.fn() }),
 }))
+vi.mock('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon.js', async original => ({
+  ...await original<typeof import('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon.js')>(),
+  useExtensionIdentities: () => [],
+}))
+vi.mock('../../../apps/studio-client/src/shared/studio-shell/use-workbench-view.js', async () => {
+  const react = await import('react')
+  return { useWorkbenchView: (_key: string, initial: string) => react.useState(initial) }
+})
 vi.mock('react', async original => ({
   ...await original<typeof import('react')>(),
   useId: () => 'test-id',
@@ -41,7 +49,6 @@ vi.mock('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store
     useStudioLayoutStore: Object.assign(
       (selector: (state: unknown) => unknown) => selector({
         ...actual.useStudioLayoutStore.getState(),
-        presetView: 'assets',
         assetLayouts: {
           preset: { explorerWidth: 260, views: { 'test-ws': { selectedId: 'preset-root-1' } } },
           resources: { explorerWidth: 260, views: {} },

@@ -32,6 +32,19 @@ describe('State variable editor model', () => {
     expect(createSnapshotReplaceFromYaml({ scopeId: 'scope-g', target: { scope: 'global' }, revisionId: 'rev-1', value: {}, createdAt: 'now' }, 'WritingStyle: Light Novel').operations).toEqual([{ op: 'set', path: '', value: { WritingStyle: 'Light Novel' } }])
   })
 
+  it.each(['value: .nan', 'value: .inf', 'value: -.inf', 'value: 1e400', 'value: !!set { a: null }', 'value: !!timestamp 2026-11-04', 'value: &loop [*loop]'])(
+    'rejects non-JSON YAML values before building a snapshot replacement: %s', yaml => {
+      expect(() => createSnapshotReplaceFromYaml({ scopeId: 'scope-g', target: { scope: 'global' }, revisionId: 'rev-1', value: {}, createdAt: 'now' }, yaml)).toThrow('只能包含 JSON 值')
+    },
+  )
+
+  it('preserves nested JSON values, shared aliases, and own special YAML keys', () => {
+    const parsed = yamlToObject('__proto__: own\nconstructor: label\ntoString: text\nnested: &shared { list: [null, true, 2.5, "value"], empty: {} }\ncopy: *shared')
+    expect(Object.hasOwn(parsed, '__proto__')).toBe(true)
+    expect(Object.getPrototypeOf(parsed)).toBe(Object.prototype)
+    expect(parsed).toEqual(JSON.parse('{"__proto__":"own","constructor":"label","toString":"text","nested":{"list":[null,true,2.5,"value"],"empty":{}},"copy":{"list":[null,true,2.5,"value"],"empty":{}}}'))
+  })
+
   it('parses Entity, Component, Mount, and Extension contribution authoring fields', () => {
     const parsed = parseCardStateConfig(`
 stateTemplates:

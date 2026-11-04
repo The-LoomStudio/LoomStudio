@@ -1,4 +1,4 @@
-import type { DataTransactionInput } from '@loom-studio/data-engine'
+import type { SqliteDataTransaction, DataTransactionInput } from '@loom-studio/data-engine'
 import type { DataCommitFact } from '@loom-studio/data-engine'
 
 export type SecretRef = `secret:${string}`
@@ -53,6 +53,11 @@ export type SecretStore = {
     ref: SecretRef
     owner: SecretOwner
   }): Promise<{ deleted: boolean; cleanupPending: boolean; commit: DataCommitFact }>
+  /** Registers deletion in the owning Engine transaction. Call cleanup only after commit. */
+  registerDelete(transaction: SqliteDataTransaction, input: {
+    ref: SecretRef
+    owner: SecretOwner
+  }): { cleanup(context: SecretWriteContext): Promise<{ deleted: boolean; cleanupPending: boolean }> }
   withSecret<T>(ref: SecretRef, context: SecretUseContext, operation: (plaintext: SecretPlaintext) => Promise<T>): Promise<T>
   retryPendingCleanup(context: SecretWriteContext): Promise<number>
 }

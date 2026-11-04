@@ -7,7 +7,12 @@
 }
 
 .management {
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.managementNotices {
+  max-height: 32vh;
+  overflow: auto;
 }
 
 .panel[data-runtime-error='true'] {
@@ -133,12 +138,7 @@
   overflow-wrap: anywhere;
 }
 
-.participationSidebarNotice small {
-  display: block;
-  margin-top: 10px;
-  line-height: 1.7;
-  color: var(--loom-color-text-subtle);
-}
+
 
 .storySummary, .summaryEmpty {
   display: flex;
@@ -573,3 +573,33 @@
 .cardHeading { margin: 0 0 12px; padding-bottom: 12px; border-bottom: 1px solid var(--loom-color-divider); font-size: 14px; font-weight: var(--loom-font-weight-5); }
 
 button.participationSidebarNotice { width: 100%; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+
+.characterSummary .cardHeading {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.characterStory {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--loom-color-divider);
+}
+
+.storyEntry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-info, var(--loom-color-accent));
+  text-align: left;
+  cursor: pointer;
+
+  small { color: var(--loom-color-text-muted); }
+}
+
+.storyEntry[aria-current="page"] { font-weight: var(--loom-font-weight-5); }

@@ -1,4 +1,4 @@
-import type { SqliteDataEngine } from '@loom-studio/data-engine'
+import type { SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
 import type {
   SecretBackend,
   SecretMetadata,
@@ -27,10 +27,7 @@ export class SecretStoreError extends Error {
 }
 
 export function createSecretStore(options: SecretStoreOptions): SecretStore {
-  options.engine.migrate({
-    namespace: migrationNamespace,
-    migrations: [{ version: 1, migrate: migrateVersionOne }],
-  })
+  options.engine.initializeSchema({ namespace: migrationNamespace, version: 1, initialize: initializeSchema })
 
   return {
     create: input => createSecret(options, input),
@@ -40,6 +37,7 @@ export function createSecretStore(options: SecretStoreOptions): SecretStore {
       return metadata ? toPublicMetadata(metadata) : undefined
     }),
     delete: input => deleteSecret(options, input),
+    registerDelete: (transaction, input) => registerDelete(options, transaction, input),
     withSecret: (ref, context, operation) => withSecret(options, ref, context, operation),
     retryPendingCleanup: context => retryPendingCleanup(options, context),
   }
@@ -119,28 +117,44 @@ async function deleteSecret(
   options: SecretStoreOptions,
   input: SecretWriteContext & { ref: SecretRef; owner: SecretOwner },
 ): Promise<{ deleted: boolean; cleanupPending: boolean; commit: Awaited<ReturnType<SqliteDataEngine['transact']>>['commit'] }> {
-  const existing = await requireOwnedActiveSecret(options.engine, input.ref, input.owner)
-  const timestamp = options.now()
   const pending = await options.engine.transact(toTransactionInput(input, 'secret.delete.pending'), async tx => {
-    const update = tx.database.prepare(`
-      UPDATE secret_metadata SET state = 'pending-delete', updated_at = ?
-      WHERE id = ? AND backend_key = ? AND state = 'active'
-    `).run(timestamp, secretId(input.ref), existing.backendKey)
-    if (Number(update.changes) !== 1) throw new SecretStoreError('secret.concurrent_change', 'Secret changed during deletion')
-    tx.database.prepare('INSERT OR IGNORE INTO secret_backend_cleanup (backend_key, secret_id, queued_at) VALUES (?, ?, ?)')
-      .run(existing.backendKey, secretId(input.ref), timestamp)
-    tx.recordOperations([{
-      store: 'secrets',
-      kind: 'update',
-      entityId: secretId(input.ref),
-      entityType: 'platform.secret.metadata',
-      fromVersion: 1,
-      toVersion: 1,
-    }])
-    return undefined
+    return registerDelete(options, tx, input)
   })
-  const cleaned = await drainCleanupKey(options, existing.backendKey, input)
-  return { deleted: cleaned, cleanupPending: !cleaned, commit: pending.commit }
+  return { ...await pending.value.cleanup(input), commit: pending.commit }
+}
+
+function registerDelete(
+  options: SecretStoreOptions,
+  tx: SqliteDataTransaction,
+  input: { ref: SecretRef; owner: SecretOwner },
+): ReturnType<SecretStore['registerDelete']> {
+  if (tx.database !== options.engine.database) {
+    throw new SecretStoreError('secret.engine_mismatch', 'Secret deletion requires its owning Data Engine transaction')
+  }
+  assertOwner(input.owner)
+  const existing = readStoredMetadata(tx.database, input.ref)
+  if (!existing || existing.state !== 'active') throw new SecretStoreError('secret.not_found', 'Secret is unavailable')
+  if (!sameOwner(existing.owner, input.owner)) throw new SecretStoreError('secret.owner_mismatch', 'Secret does not belong to this owner')
+  const timestamp = options.now()
+  tx.database.prepare(`
+    UPDATE secret_metadata SET state = 'pending-delete', updated_at = ? WHERE id = ?
+  `).run(timestamp, secretId(input.ref))
+  tx.database.prepare('INSERT OR IGNORE INTO secret_backend_cleanup (backend_key, secret_id, queued_at) VALUES (?, ?, ?)')
+    .run(existing.backendKey, secretId(input.ref), timestamp)
+  tx.recordOperations([{
+    store: 'secrets',
+    kind: 'update',
+    entityId: secretId(input.ref),
+    entityType: 'platform.secret.metadata',
+    fromVersion: 1,
+    toVersion: 1,
+  }])
+  return {
+    cleanup: async context => {
+      const cleaned = await drainCleanupKey(options, existing.backendKey, context)
+      return { deleted: cleaned, cleanupPending: !cleaned }
+    },
+  }
 }
 
 async function withSecret<T>(
@@ -251,7 +265,7 @@ async function requireOwnedActiveSecret(engine: SqliteDataEngine, ref: SecretRef
   return metadata
 }
 
-function migrateVersionOne(database: SqliteDataEngine['database']): void {
+function initializeSchema(database: SqliteDataEngine['database']): void {
   database.exec(`
     CREATE TABLE secret_metadata (
       id TEXT PRIMARY KEY,

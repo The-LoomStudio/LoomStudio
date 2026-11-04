@@ -1,6 +1,12 @@
 import type { messages as zhCN } from '../zh-cn/resources.js'
 
 export const messages = {
+  'context.anchors.title': "View by anchor",
+  'context.anchors.hint': "Entries follow file-tree order within each group. Group order is for navigation; the consuming preset determines placement. Conditional entries are candidates, not confirmed active entries.",
+  'context.anchors.empty': "This lorebook has no entries.",
+  'context.anchors.unassigned': "No target anchor",
+  'context.anchors.unassignedHint': "These entries have no injection target and do not contribute to an anchor.",
+  'context.anchors.disabled': "Disabled (including ancestors)",
   'promptResource.temporaryHint': "Temporary view. This does not add the resource to the current character.",
   'dashboard.open': 'Dashboard',
   'promptResource.processingWarning': 'Prompt processing reported warnings; some Lore may have been skipped. See build diagnostics.',
@@ -85,7 +91,6 @@ export const messages = {
   'context.anchorPicker.noAnchors': 'This preset has no anchors',
   'context.anchorPicker.noResults': 'No matching anchors',
   'context.metadata.targetAnchorPlaceholder': 'Enter or select anchor (@lore.stable…)…',
-  'context.metadata.localDepth': 'Local Depth',
   'context.metadata.localOrder': 'Local Order',
   'context.metadata.zoneId': 'Target Anchor',
   'context.metadata.zonePlaceholder': 'Enter or select anchor (@lore.stable…)…',

@@ -1,42 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
-import { createPolyglotCardPng, decodeCardPng, defaultCardPng, encodeCardPng, encodeCardBundlePng, hasLegacyCardPng, isPng, readCardPngArchive, readPngImageBytes, readPolyglotArchive, stripLoomCardPayload, stripPngTextMetadata } from '../../../apps/studio-server/src/codecs/card-png.js'
+import type { CardBundleArtifact } from '@loom-studio/application-runtime'
+import { createPolyglotCardPng, defaultCardPng, encodeCardBundlePng, isPng, readCardPngArchive, readPngImageBytes, readPolyglotArchive, stripLoomCardPayload, stripPngTextMetadata } from '../../../apps/studio-server/src/codecs/card-png.js'
 import { encodeCardBundleZip, decodeCardBundleZip } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
 
 describe('Loom Card PNG', () => {
-  it('round-trips a UTF-8 Card Artifact through compressed iTXt', () => {
-    const artifact: CardBundleArtifact = {
-      schemaVersion: 4,
-      artifactId: 'card-artifact-1',
-      displayName: '雾港角色',
-      card: { name: '雾港角色', description: '包含中文提示词。' },
-      contextAssets: [],
-      extensionPayloads: [{
-        id: 'style-v1',
-        packageId: 'example.renderer',
-        fileName: 'style.json',
-        format: 'example.style',
-        mediaType: 'application/json',
-        content: '{"主题":"雾港"}',
-      }],
-    }
-
-    const encoded = encodeCardPng(defaultCardPng, artifact)
-
-    expect(isPng(encoded)).toBe(true)
-    expect(encoded.byteLength).toBeGreaterThan(defaultCardPng.byteLength)
-    expect(decodeCardPng(encoded)).toEqual(normalizeCardBundleArtifact(artifact))
+  it('does not find a bundle in an ordinary PNG', () => {
+    expect(readCardPngArchive(defaultCardPng)).toBeUndefined()
   })
 
-  it('rejects a non-V4 Artifact at the PNG boundary', () => {
-    expect(() => encodeCardPng(defaultCardPng, {
-      schemaVersion: 1,
-      artifactId: 'legacy', displayName: 'Legacy', card: { name: 'Legacy' }, contextAssets: [],
-    } as never)).toThrow('Unsupported card bundle schemaVersion')
-  })
-
-  it('rejects an ordinary PNG without Loom metadata', () => {
-    expect(() => decodeCardPng(defaultCardPng)).toThrow('Loom Card iTXt')
+  it('rejects a non-V4 Artifact before packaging it in a PNG', () => {
+    expect(() => encodeCardBundlePng(defaultCardPng, encodeCardBundleZip({
+      artifact: { schemaVersion: 1, artifactId: 'legacy', displayName: 'Legacy', card: { name: 'Legacy' }, contextAssets: [] } as never,
+      avatar: { bytes: defaultCardPng, mediaType: 'image/png' },
+    }))).toThrow('Unsupported card bundle schemaVersion')
   })
 
   it('appends and extracts a ZIP payload without changing the PNG image bytes', () => {
@@ -54,15 +30,15 @@ describe('Loom Card PNG', () => {
         name: 'PNG Bundle', description: '真实正文',
         preset: { macroOptions: { tone: [{ id: 'quiet', label: 'Quiet', value: 'soft' }, { id: 'loud', label: 'Loud', value: 'bold' }] } },
       }, contextAssets: [],
+      extensionPayloads: [{ id: 'style', packageId: 'example.renderer', fileName: 'style.json', format: 'example.style', mediaType: 'application/json', content: '{"主题":"雾港"}' }],
     }
     const archive = encodeCardBundleZip({
       artifact,
       avatar: { bytes: defaultCardPng, mediaType: 'image/png' },
       background: { bytes: Buffer.from('background'), mediaType: 'image/webp' },
     })
-    const png = encodeCardBundlePng(encodeCardPng(defaultCardPng, artifact), archive)
+    const png = encodeCardBundlePng(defaultCardPng, archive)
     expect(isPng(png)).toBe(true)
-    expect(hasLegacyCardPng(png)).toBe(false)
     expect(readPolyglotArchive(png)).toBeUndefined()
     expect(Buffer.from(readCardPngArchive(png)!).equals(Buffer.from(archive))).toBe(true)
     expect(Buffer.from(stripLoomCardPayload(png)).equals(defaultCardPng)).toBe(true)
@@ -71,6 +47,7 @@ describe('Loom Card PNG', () => {
     const decoded = await decodeCardBundleZip(readCardPngArchive(png)!)
     expect(decoded.artifact.card.description).toBe('真实正文')
     expect(decoded.artifact.card.preset).toEqual(artifact.card.preset)
+    expect(decoded.artifact.extensionPayloads).toEqual(artifact.extensionPayloads)
     expect(Buffer.from(decoded.background!.bytes).toString()).toBe('background')
   }, 30000)
 

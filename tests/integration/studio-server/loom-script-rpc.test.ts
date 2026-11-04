@@ -1,4 +1,4 @@
-import { loomScriptMountSchema } from '@loom-studio/shared/loom-scripts'
+import { serializeLoomScriptMetadata, loomScriptMountSchema } from '@loom-studio/shared/loom-scripts'
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createBlobStore } from '@loom-studio/asset-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
@@ -17,6 +17,46 @@ afterEach(async () => {
 })
 
 describe('Loom Script Application RPC', () => {
+  it('previews exactly the selected Narrative or Agent source for rules and extractors', async () => {
+    const runtime = await createRuntime()
+    for (const targets of [['narrative'], ['agent-session'], ['narrative', 'agent-session']] as const) {
+      const script = serializeLoomScriptMetadata({
+        formatVersion: 1, metadataId: 'preview.source', name: 'Preview source', scriptVersion: '1.0.0',
+        runtime: 'declarative', requestedCapabilities: [], contributions: [
+          { kind: 'text-transform', id: 'replace', rule: { name: 'Replace', enabled: true, orderIndex: 0,
+            targets: [...targets], phases: ['display'], matcher: { kind: 'regex', pattern: 'Alice', flags: 'g' },
+            effect: { kind: 'replace', replacement: 'Bob' } } },
+          { kind: 'text-extractor', id: 'extract', extractor: { name: 'Extract', enabled: true, orderIndex: 0,
+            targets: [...targets], matcher: { kind: 'regex', pattern: '(Alice|Bob)', flags: 'g', contentGroup: 1 },
+            parser: 'text', strategy: 'latest-valid', artifactType: 'preview.text' } },
+        ],
+      })
+      for (const previewSource of ['narrative', 'agent-session'] as const) {
+        const result = await callApplicationRpc(runtime, 'application.previewLoomScript', {
+          source: script, text: 'Alice', previewSource,
+        }) as Awaited<ReturnType<typeof runtime.previewLoomScript>>
+        const active = (targets as readonly string[]).includes(previewSource)
+        expect(result.output).toBe(active ? 'Bob' : 'Alice')
+        expect(result.matches).toHaveLength(active ? 1 : 0)
+        expect(result.extractions[0]?.values).toEqual(active ? ['Bob'] : [])
+      }
+      const compatible = await callApplicationRpc(runtime, 'application.previewLoomScript', { source: script, text: 'Alice' }) as Awaited<ReturnType<typeof runtime.previewLoomScript>>
+      expect(compatible.output).toBe((targets as readonly string[]).includes('narrative') ? 'Bob' : 'Alice')
+    }
+    await expect(callApplicationRpc(runtime, 'application.previewLoomScript', { source: source(), text: '', previewSource: 'unknown' })).rejects.toThrow()
+  })
+
+  it('imports directly into a scope in one registered mutation', async () => {
+    const runtime = await createRuntime()
+    const target = { kind: 'card', cardId: 'role' }
+    const imported = await callApplicationRpc(runtime, 'application.importLoomScript', {
+      owner: target, fileName: 'rpc.loom.js', source: source(), mount: { target, orderIndex: 4 },
+    }) as any
+    const listed = await callApplicationRpc(runtime, 'application.listLoomScriptMounts', { target }) as any
+    expect(listed.mounts).toEqual([expect.objectContaining({ scriptDocumentId: imported.script.id,
+      target, orderIndex: 4, enabled: false, grantedCapabilities: [] })])
+  })
+
   it('imports, exports, mounts, enables, and grants through the registered RPC methods', async () => {
     const runtime = await createRuntime()
     const imported = await callApplicationRpc(runtime, 'application.importLoomScript', {

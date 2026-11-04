@@ -3,6 +3,67 @@ import { describe, expect, it, vi } from 'vitest'
 import { callApplicationRpc as handleAgentsRpc } from '../../support/trpc-caller.js'
 
 describe('application Agent Run RPC', () => {
+  it.each([false, true])('cancels owner deletion without retaining a recoverable checkpoint (checkpoint: %s)', async checkpoint => {
+    let signal: AbortSignal | undefined
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        signal = context.abortSignal
+        if (checkpoint) context.agentRun!.onSuspended!({
+          sourceRunId: context.agentRun!.runId,
+          messages: [{ role: 'user', content: 'Deleted owner' }],
+          userEntry: { id: 'user', agentSessionId: 'deleted', sequence: 1, entry: { kind: 'message', role: 'user', content: 'Deleted owner' }, createdAt: '2026-11-04T00:00:00Z' },
+        })
+        throw Object.assign(new Error('Agent Session deleted'), { name: 'AbortError', code: 'agent.session_deleted' })
+      },
+    } as unknown as ApplicationRuntime
+    const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', {
+      agentSessionId: 'deleted', input: 'Wait.',
+    }) as { runId: string }
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(signal?.aborted).toBe(false)
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
+      .toMatchObject({ done: true, state: 'cancelled', events: expect.arrayContaining([{ type: 'cancelled', runId, reason: 'Agent Session deleted' }]) })
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.resume', { runId }))
+      .toMatchObject({ runId, accepted: false, state: 'cancelled' })
+  })
+
+  it('invalidates both continuation and source checkpoints when its owner is deleted during resume preparation', async () => {
+    let calls = 0
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        calls++
+        if (calls === 1) {
+          context.agentRun!.onSuspended!({
+            sourceRunId: context.agentRun!.runId,
+            messages: [{ role: 'user', content: 'Resume then delete' }],
+            userEntry: { id: 'user', agentSessionId: 'deleted', sequence: 1, entry: { kind: 'message', role: 'user', content: 'Resume then delete' }, createdAt: '2026-11-04T00:00:00Z' },
+          })
+          throw new Error('Recoverable interruption')
+        }
+        expect(context.agentRun!.continuation).toBeDefined()
+        throw Object.assign(new Error('Agent Session deleted'), { name: 'AbortError', code: 'agent.session_deleted' })
+      },
+    } as unknown as ApplicationRuntime
+    const source = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'deleted', input: 'Wait.' }) as { runId: string }
+    await new Promise<void>(resolve => setImmediate(resolve))
+    const continuation = await handleAgentsRpc(runtime, 'application.agent.run.resume', source) as { runId: string }
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.state', continuation)).toMatchObject({ state: 'cancelled' })
+    for (const { runId } of [source, continuation]) {
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.resume', { runId })).toMatchObject({ accepted: false })
+    }
+    expect(calls).toBe(2)
+  })
+
+  it('keeps unrelated AbortError failures as failed', async () => {
+    const runtime = {
+      invokeAgentTurn: async () => { throw new DOMException('Unrelated abort', 'AbortError') },
+    } as unknown as ApplicationRuntime
+    const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'other', input: 'Wait.' }) as { runId: string }
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.state', { runId })).toMatchObject({ state: 'failed' })
+  })
+
   it('deduplicates concurrent and completed sends while rejecting changed payloads for the same ID', async () => {
     let calls = 0
     const finish = Promise.withResolvers<void>()
@@ -165,11 +226,11 @@ describe('application Agent Run RPC', () => {
         emit({ type: 'text-delta', runId, providerRunId: 'provider', providerStep: 1, delta })
       emit({ type: 'reasoning-delta', runId, providerRunId: 'provider', providerStep: 1, reasoningId: 'r', delta: 'Thinking' })
       const reset = await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }) as {
-        replayExpired: boolean; partialText: string; events: unknown[]; nextCursor: number
+        replayExpired: boolean; partialEvents: { delta: string }[]; events: unknown[]; nextCursor: number
       }
       expect(reset).toMatchObject({ replayExpired: true, events: [], nextCursor: 202 })
-      expect(reset.partialText).toBe(delta.repeat(200))
-      expect(reset).toMatchObject({ partialReasoning: 'Thinking' })
+      expect(reset.partialEvents[0].delta).toBe(delta.repeat(200))
+      expect(reset).toMatchObject({ partialEvents: expect.arrayContaining([expect.objectContaining({ type: 'reasoning-delta', delta: 'Thinking' })]) })
       expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: reset.nextCursor }))
         .toMatchObject({ events: [], nextCursor: 202, done: false })
       emit({ type: 'text-delta', runId, providerRunId: 'provider', providerStep: 1, delta: 'tail' })
@@ -189,7 +250,7 @@ describe('application Agent Run RPC', () => {
       },
     } as unknown as ApplicationRuntime
     const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'tools', input: 'Write' }) as { runId: string }
-    const input = (toolCallId: string, delta: string) => emit({ type: 'tool-input-delta', runId, providerRunId: 'provider', providerStep: 1, toolCallId, toolName: 'codeact_json', delta })
+    const input = (toolCallId: string, delta: string) => emit({ type: 'tool-input-delta', runId, providerRunId: 'provider', providerStep: 1, streamId: `tool:${toolCallId}`, toolCallId, toolName: 'codeact_json', delta })
     const snapshot = () => handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 })
     try {
       // Evict the replay without finishing the current Provider step.
@@ -198,15 +259,17 @@ describe('application Agent Run RPC', () => {
       input('b', 'second')
       const before = await snapshot()
       input('a', '}')
-      expect(before).toMatchObject({ replayExpired: true, partialToolInputs: [{ toolCallId: 'a', delta: '{' }, { toolCallId: 'b', delta: 'second' }] })
-      expect(await snapshot()).toMatchObject({ partialToolInputs: [{ toolCallId: 'a', delta: '{}' }, { toolCallId: 'b', delta: 'second' }] })
+      expect(before).toMatchObject({ replayExpired: true, partialEvents: expect.arrayContaining([expect.objectContaining({ toolCallId: 'a', delta: '{' }), expect.objectContaining({ toolCallId: 'b', delta: 'second' })]) })
+      expect(await snapshot()).toMatchObject({ partialEvents: expect.arrayContaining([expect.objectContaining({ toolCallId: 'a', delta: '{}' }), expect.objectContaining({ toolCallId: 'b', delta: 'second' })]) })
       emit({ type: 'transcript-appended', runId, entries: [{ id: 'saved', agentSessionId: 'tools', runId, sequence: 1, createdAt: '',
-        entry: { kind: 'tool-invocation', invocationId: 'invocation-a', providerItemId: 'a', toolId: 'codeact', exposedName: 'codeact_json', transport: 'native-function', status: 'proposed' } }] })
-      expect(await snapshot()).toMatchObject({ partialToolInputs: [] })
+        entry: { streamId: 'tool:a', kind: 'tool-invocation', invocationId: 'invocation-a', providerItemId: 'a', toolId: 'codeact', exposedName: 'codeact_json', transport: 'native-function', status: 'proposed' } }] })
+      const committed = await snapshot() as { partialEvents: { streamId?: string }[] }
+      expect(committed.partialEvents.some(event => event.streamId === 'tool:a')).toBe(false)
+      expect(committed.partialEvents.some(event => event.streamId === 'tool:b')).toBe(true)
       input('c', 'unfinished')
       finish.resolve()
       await new Promise<void>(resolve => setImmediate(resolve))
-      expect(await snapshot()).toMatchObject({ done: true, partialToolInputs: [] })
+      expect(await snapshot()).toMatchObject({ done: true, partialEvents: [] })
     } finally { finish.resolve() }
   })
 
@@ -225,7 +288,7 @@ describe('application Agent Run RPC', () => {
         .toMatchObject({ done: true, state: 'completed', events: expect.arrayContaining([expect.objectContaining({ type: 'completed' })]) })
       await vi.advanceTimersByTimeAsync(120_000)
       expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
-        .toMatchObject({ done: true, state: 'completed', replayExpired: true, events: [], partialText: '' })
+        .toMatchObject({ done: true, state: 'completed', replayExpired: true, events: [], partialEvents: [] })
       expect(await handleAgentsRpc(runtime, 'application.agent.run.state', { runId })).toMatchObject({ state: 'completed' })
     } finally { vi.useRealTimers() }
   })

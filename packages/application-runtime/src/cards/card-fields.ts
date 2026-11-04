@@ -1,6 +1,6 @@
 import { normalizeMacroOptions } from '@loom-studio/shared'
 import type { CardSourceContent } from '../types.js'
-import type { CardBundleArtifact } from './workspace-types.js'
+import type { CardBundleArtifact } from './card-bundle-types.js'
 import { normalizeLore, normalizeMacros, normalizeOpening, normalizeOptionalString, normalizePreset } from './card.js'
 
 // Identity, media, State and extension adoption have separate ownership and validation.

@@ -157,6 +157,7 @@ export type AddLoreMountInput = PromptResourceWriteContext & {
 }
 
 export type ReplaceLoreMountsInput = PromptResourceWriteContext & {
+  expectedMountIds: string[]
   source: LoreMountSource
   mounts: Array<Pick<AddLoreMountInput, 'loreResourceId' | 'reference' | 'orderIndex' | 'origin'>>
 }
@@ -178,6 +179,7 @@ export type AddPresetToolMountInput = PromptResourceWriteContext & {
 }
 
 export type ReplacePresetToolMountsInput = PromptResourceWriteContext & {
+  expectedMountIds: string[]
   presetResourceId: string
   mounts: Array<Omit<AddPresetToolMountInput, keyof PromptResourceWriteContext | 'presetResourceId'>>
 }
@@ -208,6 +210,9 @@ export type PresetToolMountMutationResult = {
 }
 
 export type PromptResourceTransaction = {
+  listResources(input?: ListPromptResourcesInput): PromptResourcePage
+  listLoreMounts(input?: ListLoreMountsInput): LoreMount[]
+  listPresetToolMounts(input?: ListPresetToolMountsInput): PresetToolMount[]
   createResource(input: Omit<CreatePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   mutateResource(input: Omit<MutatePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   deleteResource(input: Omit<DeletePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource

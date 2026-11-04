@@ -1,4 +1,4 @@
-import { collectPromptInputs } from '../../../packages/application-runtime/src/cards/workspace-codec.js'
+import { collectPromptInputs } from '../../../packages/application-runtime/src/cards/card-bundle-codec.js'
 import { createVariableRenderContext } from '../../../packages/application-runtime/src/prompt/variables.js'
 import type { ObservationBuild } from '../../../packages/application-runtime/src/observability/types.js'
 import { describe, expect, it } from 'vitest'

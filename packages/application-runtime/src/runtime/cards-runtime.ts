@@ -1,6 +1,7 @@
+import { forgetDeletedSessionSummaries } from '../agents/session-summary.js'
 import { validateCardFramework } from '../cards/card-framework.js'
 import type { LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
-import { listScriptTextTransformRules } from '../scripts/loom-script-text-migration.js'
+import { listScriptTextTransformRules } from '../scripts/script-text-resources.js'
 import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
 import type { NarrativeTimeline } from '@loom-studio/application-data'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
@@ -25,9 +26,9 @@ import {
 import {
   exportCardArtifact,
   importCardBundle as importWorkspaceCardBundle,
-} from '../cards/workspace.js'
-import { assertEmbeddedExtensionPackages, isCardBundleArtifact, maxEmbeddedExtensionArchiveBase64Bytes } from '../cards/workspace-codec.js'
-import type { CardBundleArtifact } from '../cards/workspace-types.js'
+} from '../cards/card-bundle.js'
+import { assertEmbeddedExtensionPackages, isCardBundleArtifact, maxEmbeddedExtensionArchiveBase64Bytes } from '../cards/card-bundle-codec.js'
+import type { CardBundleArtifact } from '../cards/card-bundle-types.js'
 import {
   validateStateDefinitionDraft,
   validateTimelineStateBinding,
@@ -118,6 +119,7 @@ async function deleteCards(
   if (cardIds.length > 100) throw new Error('deleteCards cannot delete more than 100 Cards at once')
 
   const commit = async (): Promise<DeleteCardsResult> => {
+    const deletedSessionIds = new Set<string>()
     let stale = false
     const subscription = ctx.dataEngine.subscribeCommits(() => { stale = true })
     // ponytail: reject concurrent writes during the deletion snapshot; replace with scoped revision checks if contention becomes common.
@@ -208,6 +210,7 @@ async function deleteCards(
             for (const timelines of timelinesByCard.values()) {
               for (const timeline of timelines) {
                 narrativeTx!.deleteTimeline({ timelineId: timeline.id })
+                deletedSessionIds.add(timeline.id)
                 await tombstoneExtensionStorageScope(documents, { kind: 'agent-session', agentSessionId: timeline.id })
                 if (ctx.agents) {
                   const agents = ctx.agents.transaction(dataTx)
@@ -217,6 +220,7 @@ async function deleteCards(
                     page = agents.listSessions({ timelineId: timeline.id, limit: 100 })
                     for (const session of page.sessions) {
                       agents.deleteSession({ agentSessionId: session.id })
+                      deletedSessionIds.add(session.id)
                       await tombstoneExtensionStorageScope(documents, {
                         kind: 'agent-session', agentSessionId: session.id,
                       })
@@ -273,6 +277,7 @@ async function deleteCards(
           return true as const
         }, { allowEmpty: true }),
       )
+      forgetDeletedSessionSummaries(ctx.agents, deletedSessionIds)
       return { cardIds, deleted: true, mutation: { changesetId: result.commit.changesetId } }
     } finally {
       subscription.dispose()
@@ -573,6 +578,7 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
       input: UpdateCardPromptResourcesInput,
       requestContext?: RuntimeRequestContext,
     ): Promise<UpdateCardPromptResourcesResult> => {
+      if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) throw new Error('Card resource updates require expectedVersion')
       if (new Set(input.promptResourceIds).size !== input.promptResourceIds.length) throw new Error('Duplicate prompt resource id')
       if (input.externalPromptResourceIds !== undefined
         && (new Set(input.externalPromptResourceIds).size !== input.externalPromptResourceIds.length
@@ -597,7 +603,7 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
             ...(input.externalPromptResourceIds !== undefined ? { externalPromptResourceIds: [...input.externalPromptResourceIds] } : {}),
             updatedAt: ctx.now(),
           }),
-          expectedVersion: card.version,
+          expectedVersion: input.expectedVersion,
         })
       }))
       return {
@@ -747,7 +753,6 @@ async function buildTimelineRuntimeContextInternal(
     timelineId: input.timelineId,
     sourceCardId: input.card.id,
     sourceCardVersion: input.card.version,
-    fallbackUserName: input.cardContent.userName?.trim() || 'User',
     stateEntityTypes: structuredClone(materializedState.entityTypes),
     stateEntities: structuredClone(materializedState.entities),
     stateComponents: structuredClone(materializedState.components),

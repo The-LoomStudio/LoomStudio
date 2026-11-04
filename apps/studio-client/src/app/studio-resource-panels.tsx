@@ -73,13 +73,16 @@ export function StudioResourcePanels(props: {
   return {
     preset: (active: boolean) => (
       <LazyPresetWorkbench
+        promptResourceApi={state.api.promptResources}
+        onNavigateResource={path => { void navigation.openPath(path) }}
+        onRelatedResourceChanged={async () => { await state.refreshResourceConsumers(); uiState.bumpLoomScriptRefreshToken() }}
         active={active}
         key={state.endpoint}
         {...contextAssetEditorProps}
         resourceBindings={{ api: state.api.promptResources, endpoint: state.endpoint }}
         searchMatch={props.searchMatch}
         textTransformsApi={state.textTransformsApi}
-        onOpenTextUse={(kind, id) => navigation.openPath(`/studio/text-transforms?${kind === 'rule' ? 'ruleId' : 'extractorId'}=${encodeURIComponent(id)}&temporary=1`)}
+        onOpenTextUse={(_kind, id) => navigation.openPath(`/studio/extensions?extensionView=scripts&scriptFilter=rules&scriptId=${encodeURIComponent(id)}&temporary=1`)}
         modelProfiles={state.modelProfiles}
         onCreateModel={state.createModelProfile}
         onListModels={state.listProviderModels}
@@ -107,8 +110,9 @@ export function StudioResourcePanels(props: {
         providersReady={state.startup.ready('providers')}
         toolMounts={state.presetToolMounts}
         onReplaceToolMounts={state.replacePresetToolMounts}
-        onReplaceLoreMounts={(source, mounts) => state.replaceLoreMounts(source, mounts, 'mounts')}
+        onReplaceLoreMounts={(source, mounts, expectedMountIds) => state.replaceLoreMounts(source, mounts, 'mounts', expectedMountIds)}
         onUpdateTool={state.updateAgentTool}
+        onOpenTool={id => navigation.openPath(`/studio/agents?toolId=${encodeURIComponent(id)}`)}
         routeToolId={navigation.route.panel === 'agent' && !navigation.route.resourceId && !navigation.route.assetId ? navigation.searchParams.get('toolId') ?? undefined : undefined}
         routeAssetId={navigation.route.panel === 'agent' ? navigation.route.assetId : undefined}
         searchQuery={navigation.route.panel === 'agent' ? navigation.searchQuery : ''}

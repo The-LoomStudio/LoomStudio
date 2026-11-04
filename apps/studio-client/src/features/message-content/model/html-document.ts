@@ -19,7 +19,7 @@ export function buildHtmlDocument(source: string, token: string): string {
   // Prepend the policy before any user-provided script, meta, or base element.
   const bootstrap = parseFragment(`<meta http-equiv="Content-Security-Policy" content="${HTML_PREVIEW_CSP}">
 <meta name="referrer" content="no-referrer">
-<style>:root,html,body{background:transparent !important;margin:0}html{overflow-wrap:anywhere}img,video,canvas,svg{max-width:100%}</style>
+<style>:root,html,body{background:transparent !important;margin:0}html{overflow-wrap:anywhere}body{display:flow-root}img,video,canvas,svg{max-width:100%}</style>
 <script>
 (() => {
   const token = ${JSON.stringify(token).replace(/</g, '\\u003c')};

@@ -3,7 +3,7 @@
 .sources { display: flex; gap: 10px; }
 .sources button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 4px 0; font-size: var(--loom-font-size-2); color: var(--loom-color-text-subtle); }
 .sources button[aria-pressed='true'] { color: var(--loom-color-text); border-bottom-color: var(--loom-color-accent); }
-.search { flex: 1; min-width: 140px; }
+.search { width: 100%; min-width: 0; }
 .toolbar select { width: auto; min-width: 90px; font-size: var(--loom-font-size-2); }
 .technical { display: flex; align-items: center; gap: 6px; color: var(--loom-color-text-muted); white-space: nowrap; }
 .actions { display: flex; align-items: center; gap: 2px; }
@@ -12,7 +12,7 @@
 .status p { margin: 6px 12px; }
 .error { color: var(--loom-color-danger); }
 .recordsShell { min-height: 0; flex: 1; position: relative; }
-.records { height: 100%; box-sizing: border-box; overflow: auto; padding: 8px 10px 52px; }
+.records { height: 100%; box-sizing: border-box; overflow: auto; padding: 0 10px 52px; }
 .empty { padding: 20px 10px; color: var(--loom-color-text-subtle); }
 .latest { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; justify-content: center; gap: 6px; max-width: calc(100% - 24px); border: 0; background: var(--loom-color-surface-raised); color: var(--loom-color-info); font-size: var(--loom-font-size-2); }
 .latest[data-level='warn'] { color: var(--loom-color-warning); }
@@ -39,3 +39,13 @@
 }
 
 .controls { flex: none; }
+
+.toolbar .technical { margin-inline-start: auto; }
+.sourceFilter { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.sourceFilter select { flex: 1; min-width: 0; }
+.sourceFilter > button { flex-shrink: 0; }
+.sourceFilter > button[data-active='true'] { color: var(--loom-color-accent); background: color-mix(in srgb, var(--loom-color-accent) 12%, transparent); }
+.filterDialog { width: min(440px, calc(100vw - 32px)); }
+.extraFilters { display: grid; gap: 16px; }
+.extraFilters label { display: grid; gap: 6px; color: var(--loom-color-text-muted); }
+.extraFilters > button { justify-self: start; }

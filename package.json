@@ -30,7 +30,6 @@
     "extension:author-build": "tsx scripts/pack/build-extension-authoring.ts",
     "official:pack": "tsx scripts/pack/pack-official-content.ts",
     "example:character-status": "tsx scripts/pack/pack-character-status-example.ts",
-    "data:migrate": "tsx scripts/data/migrate-data-directory.ts",
     "test": "vitest run",
     "test:typecheck": "tsc -p tests/tsconfig.json --incremental false",
     "test:extensions": "LOOM_TEST_SCOPE=extensions vitest run",
@@ -76,5 +75,10 @@
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "sonner@2.0.7": "patches/sonner@2.0.7.patch"
+    }
   }
 }

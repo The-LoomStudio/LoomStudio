@@ -48,7 +48,7 @@ export type AgentToolResultStatus =
   | 'aborted'
   | 'skipped'
 
-export type AgentTranscriptEntryData =
+export type AgentTranscriptEntryData = { streamId?: string } & (
   | {
       kind: 'user-interjection'
       withdrawn?: boolean
@@ -63,11 +63,11 @@ export type AgentTranscriptEntryData =
   | { kind: 'interjection-applied'; requestId: string }
   | { kind: 'interjection-discarded'; requestId: string }
   | {
-      /** Saved handoff; retired history stays stored. Legacy entries retire their preceding segment. */
+      /** Saved handoff; retired history stays stored. */
       kind: 'work-summary'
       content: string
-      /** Host-selected boundaries; absent on legacy summaries. */
-      boundary?: {
+      /** Host-selected source and retirement boundaries. */
+      boundary: {
         sourceThroughSequence: number
         retiredThroughSequence: number
         adoptedWorkspaceRevisionId?: string
@@ -167,12 +167,16 @@ export type AgentTranscriptEntryData =
       measurementId?: string
     }
 
+)
+
 export type AgentTranscriptEntry = {
   id: string
   agentSessionId: string
   parentEntryId?: string
   roundId?: string
   candidateId?: string
+  /** Runtime read projection; not a second persisted ordering system. */
+  timelinePosition?: { anchorNodeId?: string; exchangeId?: string }
   sequence: number
   runId?: string
   entry: AgentTranscriptEntryData

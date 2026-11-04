@@ -1182,7 +1182,7 @@ describe('Native Function Tool Loop', () => {
       }))
       await fixture.runtime.appendAgentTranscriptEntries({
         agentSessionId: fixture.sessionId, expectedEntryCount: page.session.entryCount,
-        entries: [{ entry: { kind: 'work-summary', content: 'Recovered without replaying old tools.' } }],
+        entries: [{ entry: { kind: 'work-summary', content: 'Recovered without replaying old tools.', boundary: { sourceThroughSequence: page.session.entryCount, retiredThroughSequence: page.session.entryCount } } }],
       })
     } finally { release(); fixture.close() }
   })
@@ -1303,6 +1303,64 @@ describe('Native Function Tool Loop', () => {
     )
     fixture.close()
   })
+
+  it('projects and extracts actual runtime Narrative and samples every processing phase through workers', async () => {
+    const fixture = await createFixture({ execute: vi.fn(), invokeChat: async () => { throw new Error('No provider call expected') } })
+    try {
+      for (const phase of ['prompt', 'display', 'classify'] as const) await fixture.runtime.upsertTextTransformRule({
+        ruleId: `workspace.${phase}`, rule: { name: phase, owner: { kind: 'workspace' }, enabled: true, orderIndex: 0,
+          matcher: { kind: 'regex', pattern: '(?<=R)AW', flags: 'g' }, effect: { kind: 'replace', replacement: phase },
+          targets: ['narrative'], phases: [phase] },
+      })
+      const { card } = await fixture.runtime.createCard({ name: 'Projection source' })
+      const { timeline, branch } = await fixture.runtime.createNarrativeTimeline({ cardId: card.id, openingContent: 'RAW' })
+      const source = { kind: 'narrative' as const, timelineId: timeline.id, branchId: branch.id }
+      const original = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+      for (const phase of ['prompt', 'display', 'classify'] as const) {
+        const sample = await fixture.runtime.sampleNarrative({ timelineId: timeline.id, branchId: branch.id,
+          selection: { kind: 'tail', count: 1 }, processing: { phase, ...(phase === 'prompt' ? { presetId: original.session.agentPresetId } : {}) } })
+        expect(sample.text).toBe(`R${phase}`)
+        expect(sample.nodes[0]!.body.raw).toBe('RAW')
+      }
+      await fixture.runtime.upsertTextExtractor({ extractorId: 'workspace.extract', extractor: {
+        name: 'Extract', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0, targets: ['narrative'],
+        matcher: { kind: 'regex', pattern: '(?<=R)display', flags: 'g' }, parser: 'text', strategy: 'all-matches', artifactType: 'text/plain',
+      } })
+      expect((await fixture.runtime.projectHistory({ source, phase: 'display' })).snapshot.entries[0]!.text).toBe('Rdisplay')
+      const inspection = await fixture.runtime.inspectTextPipeline({ source, phase: 'display' })
+      expect(inspection.snapshot.entries[0]!.text).toBe('Rdisplay')
+      expect(inspection.artifacts).toHaveLength(1)
+      expect((await fixture.runtime.extractHistory({ source, extractorId: 'workspace.extract' })).extraction.values).toEqual(['display'])
+    } finally { fixture.close() }
+  })
+
+  it('fails isolated classification without saving raw partial Narrative or adopting it', async () => {
+    const raw = `${'a'.repeat(20_000)}!`
+    const fixture = await createFixture({ execute: vi.fn(), invokeChat: async request => {
+      request.onEvent?.({ type: 'text-delta', delta: raw })
+      return { provider: 'test', model: 'test-model', text: raw, finishReason: 'stop', message: { role: 'assistant', content: raw } }
+    } })
+    try {
+      await fixture.runtime.upsertTextTransformRule({ ruleId: 'workspace.deadline', rule: {
+        name: 'Deadline', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0,
+        matcher: { kind: 'regex', pattern: '(a+)+$', flags: '' }, effect: { kind: 'replace', replacement: 'X' },
+        targets: ['agent-session'], phases: ['classify'],
+      } })
+      const original = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+      const { card } = await fixture.runtime.createCard({ name: 'Isolated writer' })
+      const { timeline, branch } = await fixture.runtime.createNarrativeTimeline({ cardId: card.id })
+      await fixture.runtime.updateAgentSession({ agentSessionId: timeline.id, agentPresetId: original.session.agentPresetId, narrativeMode: 'automatic' })
+      await expect(fixture.runtime.invokeAgentTurn({ agentSessionId: timeline.id, input: 'Write.',
+        narrativeTarget: { timelineId: timeline.id, branchId: branch.id } })).rejects.toMatchObject({ code: 'text.execution_timeout' })
+      const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: timeline.id })
+      expect(page.entries.filter(item => item.entry.kind === 'message' && item.entry.role === 'assistant')).toEqual([])
+      expect(page.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ entry: expect.objectContaining({ kind: 'run-state', state: 'failed', reason: expect.stringContaining('execution deadline') }) }),
+      ]))
+      const projected = await fixture.runtime.projectHistory({ source: { kind: 'narrative', timelineId: timeline.id, branchId: branch.id }, phase: 'display' })
+      expect(projected.snapshot.entries).toEqual([])
+    } finally { fixture.close() }
+  }, 15_000)
 
   it('promotes reasoning before scanning content tools and ignores fake calls inside reasoning', async () => {
     let calls = 0
@@ -1474,7 +1532,7 @@ async function createFixture(input: {
     config: {},
     enabledModelIds: ['test-model'],
   })
-  await runtime.replacePresetToolMounts({
+  await runtime.replacePresetToolMounts({ expectedMountIds: (await runtime.listPresetToolMounts({ presetId: preset.resource.id })).mounts.map(mount => mount.id),
     presetId: preset.resource.id,
     mounts: input.mounts ?? tools.map((tool, orderIndex) => ({
       toolId: tool.id,

@@ -9,6 +9,7 @@ export type CardDirectoryPreview = {
 export type CardDirectorySaveResult = {
   directory: string
   changedFiles: number
+  cleanupWarning?: string
 }
 
 export type CardDirectoryEntry = {

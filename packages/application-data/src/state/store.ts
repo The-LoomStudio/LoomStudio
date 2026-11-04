@@ -66,13 +66,7 @@ export function createStateStore(options: CreateStateStoreOptions): StateStore {
 
   const materializedRevisions = new Map<string, StateRevision>()
 
-  engine.migrate({
-    namespace: migrationNamespace,
-    migrations: [
-      { version: 1, migrate: migrateVersionOne },
-      { version: 2, migrate: migrateVersionTwo },
-    ],
-  })
+  engine.initializeSchema({ namespace: migrationNamespace, version: 2, initialize: initializeStateSchema })
   assertStateSchema(engine.database)
 
   function transaction(tx: SqliteDataTransaction): StateTransaction {
@@ -524,87 +518,9 @@ function mapScope(value: unknown): StateScope {
   }
 }
 
-function migrateVersionOne(database: DatabaseSync): void {
-  database.exec(`
-    CREATE TABLE state_scopes (
-      id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL CHECK (kind IN ('global', 'timeline')),
-      owner_id TEXT NOT NULL,
-      head_revision_id TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      deleted_at TEXT,
-      UNIQUE(kind, owner_id),
-      CHECK (kind = 'global' OR head_revision_id IS NULL),
-      FOREIGN KEY(head_revision_id) REFERENCES state_revisions(id)
-    );
 
-    CREATE TABLE state_revisions (
-      id TEXT PRIMARY KEY,
-      scope_id TEXT NOT NULL REFERENCES state_scopes(id),
-      parent_revision_id TEXT REFERENCES state_revisions(id),
-      changeset_id TEXT NOT NULL,
-      snapshot_json TEXT NOT NULL,
-      operations_json TEXT NOT NULL,
-      idempotency_key TEXT,
-      created_at TEXT NOT NULL
-    );
 
-    CREATE UNIQUE INDEX idx_state_revisions_scope_idempotency
-      ON state_revisions(scope_id, idempotency_key)
-      WHERE idempotency_key IS NOT NULL;
-    CREATE INDEX idx_state_revisions_scope_created
-      ON state_revisions(scope_id, created_at, id);
-    CREATE INDEX idx_state_revisions_parent
-      ON state_revisions(parent_revision_id);
-  `)
-}
 
-function migrateVersionTwo(database: DatabaseSync): void {
-  database.exec(`
-    DROP INDEX idx_state_revisions_scope_idempotency;
-    DROP INDEX idx_state_revisions_scope_created;
-    DROP INDEX idx_state_revisions_parent;
-
-    ALTER TABLE state_revisions RENAME TO state_revisions_v1;
-
-    CREATE TABLE state_revisions (
-      id TEXT PRIMARY KEY,
-      scope_id TEXT NOT NULL REFERENCES state_scopes(id),
-      parent_revision_id TEXT REFERENCES state_revisions(id),
-      changeset_id TEXT NOT NULL,
-      snapshot_json TEXT,
-      delta_json TEXT,
-      operations_json TEXT NOT NULL,
-      idempotency_key TEXT,
-      checkpoint_distance INTEGER NOT NULL DEFAULT 0,
-      delta_bytes_since_checkpoint INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      CHECK (snapshot_json IS NOT NULL OR (parent_revision_id IS NOT NULL AND delta_json IS NOT NULL))
-    );
-
-    INSERT INTO state_revisions (
-      id, scope_id, parent_revision_id, changeset_id,
-      snapshot_json, delta_json, operations_json, idempotency_key,
-      checkpoint_distance, delta_bytes_since_checkpoint, created_at
-    )
-    SELECT
-      id, scope_id, parent_revision_id, changeset_id,
-      snapshot_json, NULL, operations_json, idempotency_key,
-      0, 0, created_at
-    FROM state_revisions_v1;
-
-    DROP TABLE state_revisions_v1;
-
-    CREATE UNIQUE INDEX idx_state_revisions_scope_idempotency
-      ON state_revisions(scope_id, idempotency_key)
-      WHERE idempotency_key IS NOT NULL;
-    CREATE INDEX idx_state_revisions_scope_created
-      ON state_revisions(scope_id, created_at, id);
-    CREATE INDEX idx_state_revisions_parent
-      ON state_revisions(parent_revision_id);
-  `)
-}
 
 function assertStateSchema(database: DatabaseSync): void {
   const foreignKeys = database.prepare("PRAGMA foreign_key_list('state_scopes')").all() as Array<{ table?: string; from?: string; to?: string }>
@@ -694,4 +610,47 @@ function isUniqueConstraint(error: unknown): boolean {
 
 function operation(kind: DataCommitOperation['kind'], entityId: string, entityType: string): DataCommitOperation {
   return { store: 'state', kind, entityId, entityType }
+}
+
+
+function initializeStateSchema(database: DatabaseSync): void {
+  database.exec(`
+CREATE TABLE state_scopes (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('global', 'timeline')),
+      owner_id TEXT NOT NULL,
+      head_revision_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT,
+      UNIQUE(kind, owner_id),
+      CHECK (kind = 'global' OR head_revision_id IS NULL),
+      FOREIGN KEY(head_revision_id) REFERENCES state_revisions(id)
+    );
+
+CREATE TABLE state_revisions (
+      id TEXT PRIMARY KEY,
+      scope_id TEXT NOT NULL REFERENCES state_scopes(id),
+      parent_revision_id TEXT REFERENCES state_revisions(id),
+      changeset_id TEXT NOT NULL,
+      snapshot_json TEXT,
+      delta_json TEXT,
+      operations_json TEXT NOT NULL,
+      idempotency_key TEXT,
+      checkpoint_distance INTEGER NOT NULL DEFAULT 0,
+      delta_bytes_since_checkpoint INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      CHECK (snapshot_json IS NOT NULL OR (parent_revision_id IS NOT NULL AND delta_json IS NOT NULL))
+    );
+
+CREATE UNIQUE INDEX idx_state_revisions_scope_idempotency
+      ON state_revisions(scope_id, idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX idx_state_revisions_scope_created
+      ON state_revisions(scope_id, created_at, id);
+
+CREATE INDEX idx_state_revisions_parent
+      ON state_revisions(parent_revision_id);
+  `)
 }

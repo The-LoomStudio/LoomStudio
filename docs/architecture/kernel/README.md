@@ -122,7 +122,7 @@ Kernel 将 `docs.write`、`docs.delete` 和 `docs.revertChangeset` 转交 Docume
 
 Kernel 启动后订阅注入的领域无关 Data Commit Source。当前 Studio Server 直接注入共享 SQLite Data Engine；测试或其他宿主组合可直接注入普通 Document Store，其 `subscribeCommits` 已满足订阅合同。未来其他权威 Store 复用同一 Engine 提交入口，而不是让 Kernel 依赖 Narrative 或 Agent 业务接口。
 
-每次成功提交统一发布一次 `data.changed`。如果 Commit Fact 中包含 `store: documents` operation，Kernel 再投影一次兼容的 `docs.changed`：
+每次成功提交发布 `data.changed`。如果 Commit Fact 中包含 `store: documents` operation，Kernel 再投影 `docs.changed`。小提交各保持一条原形 payload；大提交在同一 changesetId 下按完整 UTF-8 JSON 的 64 KiB 预算拆分，携带 `chunk: { index, count }`（index 从 0 开始），每片 eventId 独立。同名分片按序发送；docs 的 operations/documents 成对切分，保留操作顺序。下图表示逻辑投影，不代表大提交的物理事件数量：
 
 ```text
 docs.write / docs.delete
@@ -204,3 +204,10 @@ callRpc(method, params, context)
 - Kernel 开始或停止公开某项平台服务。
 
 历史设计材料保留在 [`讨论归档`](../../archive/discussion/README.md) 中；新的开放问题和实施范围由 [Plan](../../workbench/plans/README.md) 承接。
+
+
+`data.changed`、`docs.changed`、`docs.rollback.completed` 的 definition version 为 2。回滚完成沿用 docs 分片规则并保留 targetChangesetId；通知失败进入 Diagnostics，已提交结果不变，只有实际 revert 失败才发布 rollback.failed。data/docs 独立准备与发送，一方失败不跳过另一方。单个 operation summary 本身超过预算不在当前支持范围内；不截断身份或拆分事务。
+
+未过滤的 Studio SSE 桥接层按 changesetId 重组完整 data 批次后回调；暂存总计最多 4 MiB，10 秒缺片超时、非法序号、重复、断线或超限丢弃半批并刷新权威数据，卸载只释放状态。直接 Commit Source 订阅者仍收到完整事实。
+
+Card 扩展每片按提交版本、归属和安装身份过滤；空片不发送，payload 不携带全局 chunk。每条是授权范围的独立失效提示，不承诺完整事务，不能按 changesetId 去重后忽略后续通知。Server 在 Kernel start 后、Extension Manager 初始化前从原始 Commit Source 安装唯一 extensions.data.changed 派生发布者，每提交一次；启动失败及 close 释放，SSE 连接仅负责投递。派生通知与 data 分片之间不提供跨订阅者全序。

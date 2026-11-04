@@ -11,70 +11,17 @@ export const DropdownMenuContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
 >(({ className, sideOffset = 4, children, ...props }, forwardedRef) => {
   const portalContainer = React.useContext(DialogPortalContext)
-  const contentRef = React.useRef<HTMLDivElement | null>(null)
-  const [highlight, setHighlight] = React.useState<{ top: number; height: number; visible: boolean; moved: boolean }>({
-    top: 0,
-    height: 0,
-    visible: false,
-    moved: false,
-  })
-
-  const setMergedRef = React.useCallback(
-    (node: HTMLDivElement | null) => {
-      contentRef.current = node
-      if (typeof forwardedRef === 'function') forwardedRef(node)
-      else if (forwardedRef) (forwardedRef as React.MutableRefObject<HTMLDivElement | null>).current = node
-    },
-    [forwardedRef],
-  )
-
-  const handlePointerOver = (event: React.PointerEvent<HTMLDivElement>) => {
-    const container = contentRef.current
-    if (!container) return
-    const item = (event.target as HTMLElement | null)?.closest<HTMLElement>('.loom-ui-menu-item:not([data-disabled])')
-    if (!item || !container.contains(item)) {
-      setHighlight(prev => (prev.visible ? { ...prev, visible: false, moved: false } : prev))
-      return
-    }
-    const containerRect = container.getBoundingClientRect()
-    const itemRect = item.getBoundingClientRect()
-    const top = itemRect.top - containerRect.top + container.scrollTop
-    const height = itemRect.height
-
-    setHighlight(prev => {
-      if (prev.visible && prev.top === top && prev.height === height) return prev
-      return { top, height, visible: true, moved: prev.visible }
-    })
-  }
-
-  const handlePointerLeave = () => {
-    setHighlight(prev => ({ ...prev, visible: false, moved: false }))
-  }
 
   return (
     <DropdownMenuPrimitive.Portal container={portalContainer}>
       <DropdownMenuPrimitive.Content
         {...props}
         collisionBoundary={props.collisionBoundary ?? portalContainer}
-        ref={setMergedRef}
+        ref={forwardedRef}
         className={menuClass('loom-ui-menu', className)}
         data-menu-kind="dropdown"
         sideOffset={sideOffset}
-        onPointerOver={handlePointerOver}
-        onPointerLeave={handlePointerLeave}
       >
-        <div
-          className="loom-ui-menu-hover-indicator"
-          style={{
-            transform: `translateY(${highlight.top}px)`,
-            height: `${highlight.height}px`,
-            opacity: highlight.visible ? 1 : 0,
-            transition: highlight.moved
-              ? 'transform 150ms cubic-bezier(0.16, 1, 0.3, 1), height 150ms cubic-bezier(0.16, 1, 0.3, 1), opacity 120ms ease'
-              : 'opacity 120ms ease',
-          }}
-          aria-hidden="true"
-        />
         {children}
       </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>

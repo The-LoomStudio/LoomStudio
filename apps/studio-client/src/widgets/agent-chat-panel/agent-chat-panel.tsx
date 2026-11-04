@@ -257,6 +257,7 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
                   key={rowKey}
                   open={expansion.isOpen(item.id, initiallyOpen(item.id))}
                   followWork
+                  streaming={props.activeRun?.status === 'running'}
                   onInspect={smooth.pause}
                   onToggle={() => { smooth.pause(); expansion.toggle(item.id, initiallyOpen(item.id)) }}
                   content={item.content}
@@ -353,6 +354,7 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
 }, (previous, next) => previous.active === false && next.active === false)
 
 function AgentReasoningBlock(props: {
+  streaming?: boolean
   label: string
   content: string
   open: boolean
@@ -385,7 +387,7 @@ function AgentReasoningBlock(props: {
       </button>
 
       <ToolCollapse open={open} className={styles.reasoningCollapse}>
-          {props.followWork ? <StreamingViewport label="思考内容" active={open} onInspect={props.onInspect}>
+          {props.followWork ? <StreamingViewport label="思考内容" active={open} streaming={props.streaming} onInspect={props.onInspect}>
             {sentences.map((line, idx) => <p key={idx} className={styles.reasoningSentence}>{line}</p>)}
           </StreamingViewport> : <div className={styles.reasoningViewport}>
             {sentences.map((line, idx) => (

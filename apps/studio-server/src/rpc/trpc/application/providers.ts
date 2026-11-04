@@ -3,6 +3,7 @@ import type {
 } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import {
+  readNumber,
   readOptionalNumber,
   readOptionalObject,
   readOptionalString,
@@ -40,7 +41,8 @@ export const providersProcedures = {
       config: readOptionalObject(params, 'config'),
       enabledModelIds: readOptionalStringArray(params, 'enabledModelIds'),
       tokenMultipliers: readTokenMultipliers(params),
-      expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+      credential: readOptionalStringRecord(params, 'credential'),
+      expectedVersion: readNumber(params, 'expectedVersion'),
     }
   })).mutation(({ ctx, input }) => ctx.runtime.updateProviderProfile(input, ctx.request)),
   'replaceProviderCredential': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['replaceProviderCredential']>[0] => {

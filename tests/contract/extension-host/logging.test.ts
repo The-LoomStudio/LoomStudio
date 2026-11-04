@@ -48,6 +48,28 @@ describe('extension host logging contract', () => {
     expect(page.items.every(item => item.extension?.installationId === a)).toBe(true)
   })
 
+  it.each([false, true])('records the actual disposal outcome (failure: %s)', async fails => {
+    const logs = createMemoryLogSink({ capacity: 20 })
+    const root = createRootLogger({ service: 'test', instanceId: 'dispose', sinks: [logs] })
+    const { kernel, extensionHost } = createExtensionHostHarness({ logger: root.child('extension') })
+    await kernel.start()
+    const packageId = 'example.disposeLogs'
+    const directory = createExtensionFixture('dispose-logs', {
+      manifest: manifest(packageId, []),
+      source: `export function activate(ctx) { ctx.lifecycle.onDispose(() => { ${fails ? "throw new Error('dispose failed')" : ''} }); }`,
+    })
+    try {
+      await extensionHost.discover(directory)
+      await extensionHost.activate(packageId, 'server')
+      const disposal = extensionHost.dispose(packageId, 'server')
+      if (fails) await expect(disposal).rejects.toThrow('Extension scope cleanup failed')
+      else await disposal
+      const entry = logs.list().find(item => item.event === 'extension.disposed')!
+      expect(entry.data).toMatchObject({ outcome: fails ? 'failed' : 'completed', state: fails ? 'dispose_failed' : 'disposed' })
+      expect(entry.extension).toMatchObject({ packageId, moduleId: 'server', runtime: 'server', instanceId: expect.any(String) })
+    } finally { await extensionHost.disposeAll().catch(() => {}); await kernel.stop() }
+  })
+
   it('records lifecycle summaries without plugin paths or failure messages', async () => {
     const logs = createMemoryLogSink({ capacity: 20 })
     const root = createRootLogger({ service: 'test', instanceId: 'test-1', sinks: [logs] })

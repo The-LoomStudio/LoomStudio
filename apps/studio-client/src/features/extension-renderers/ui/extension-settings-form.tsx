@@ -1,6 +1,7 @@
 import { Button, Checkbox, Field, TextInput, Textarea, type FieldControlProps } from '@loom-studio/ui'
 import type {
   ExtensionConfigEntry,
+  ExtensionInstallationTarget,
   ExtensionSettingContribution,
   ExtensionStorageScope,
   JsonValue,
@@ -16,21 +17,28 @@ type ExtensionSettingsFormProps = {
   api: Pick<StudioApi['extensionRuntime'], 'getConfig' | 'listConfigs' | 'upsertConfig'>
   configRevision: number
   packageId: string
-  scopeContext: { cardId?: string; timelineId?: string; agentSessionId?: string }
+  target: ExtensionInstallationTarget
+  scopeContext: { cardId?: string; timelineId?: string; timelineCardId?: string; agentSessionId?: string; agentSessionCardId?: string }
   settings: readonly ExtensionSettingContribution[]
   t: Translator
 }
 
 export function ExtensionSettingsForm(props: ExtensionSettingsFormProps) {
-  const identity = JSON.stringify([props.packageId, props.settings.map(setting => resolveSettingScope(setting, props.scopeContext))])
+  const [source, setSource] = useState({ api: props.api, epoch: 0 })
+  let epoch = source.epoch
+  if (source.api !== props.api) {
+    epoch++
+    setSource({ api: props.api, epoch })
+  }
+  const identity = JSON.stringify([epoch, props.packageId, props.target, props.settings.map(setting => resolveSettingScope(setting, props.scopeContext, props.target))])
   return <ExtensionSettingsFields key={identity} {...props} />
 }
 
 function ExtensionSettingsFields(props: ExtensionSettingsFormProps) {
   const resolved = useMemo(() => props.settings
-    .map(setting => ({ setting, scope: resolveSettingScope(setting, props.scopeContext) }))
+    .map(setting => ({ setting, scope: resolveSettingScope(setting, props.scopeContext, props.target) }))
     .sort((left, right) => (left.setting.suggestedOrder ?? 0) - (right.setting.suggestedOrder ?? 0)
-      || left.setting.label.localeCompare(right.setting.label)), [props.scopeContext, props.settings])
+      || left.setting.label.localeCompare(right.setting.label)), [props.scopeContext, props.settings, props.target])
   const [entries, setEntries] = useState<Record<string, ExtensionConfigEntry>>()
   const [loadError, setLoadError] = useState<string>()
   const [loadAttempt, setLoadAttempt] = useState(0)
@@ -47,7 +55,7 @@ function ExtensionSettingsFields(props: ExtensionSettingsFormProps) {
     setEntries(undefined)
     setLoadError(undefined)
     const scopes = uniqueScopes(resolved.flatMap(item => item.scope ? [item.scope] : []))
-    void Promise.all(scopes.map(async scope => await props.api.listConfigs({ packageId: props.packageId, scope })))
+    void Promise.all(scopes.map(async scope => await props.api.listConfigs({ packageId: props.packageId, target: props.target, scope })))
       .then(results => {
         if (disposed) return
         setEntries(Object.fromEntries(results.flatMap(result => result.configs).map(entry => [configKey(entry.scope, entry.key), entry])))
@@ -80,26 +88,22 @@ function ExtensionSettingsFields(props: ExtensionSettingsFormProps) {
               setting={setting}
               t={props.t}
               onCommit={async (value, expectedVersion) => {
-                try {
-                  const result = await props.api.upsertConfig({
-                    packageId: props.packageId,
-                    scope,
-                    key: setting.id,
-                    value,
-                    ...(expectedVersion === undefined ? {} : { expectedVersion }),
-                  })
-                  if (mountedRef.current) setEntries(current => current ? { ...current, [configKey(scope, setting.id)]: result.config } : current)
-                  return result.config
-                } catch (error) {
-                  if (!mountedRef.current) throw error
-                  try {
-                    const latest = await props.api.getConfig({ packageId: props.packageId, scope, key: setting.id })
-                    if (mountedRef.current && latest.config) setEntries(current => current ? { ...current, [configKey(scope, setting.id)]: latest.config! } : current)
-                  } catch {
-                    // Preserve the write failure; refreshing the competing version is best-effort recovery.
-                  }
-                  throw error
-                }
+                const result = await props.api.upsertConfig({
+                  packageId: props.packageId, target: props.target, scope, key: setting.id, value,
+                  ...(expectedVersion === undefined ? {} : { expectedVersion }),
+                })
+                if (mountedRef.current) setEntries(current => current ? { ...current, [configKey(scope, setting.id)]: result.config } : current)
+                return result.config
+              }}
+              onLoadLatest={async () => (await props.api.getConfig({ packageId: props.packageId, target: props.target, scope, key: setting.id })).config}
+              onUseLatest={entry => {
+                setEntries(current => {
+                  if (!current) return current
+                  const next = { ...current }
+                  if (entry) next[configKey(scope, setting.id)] = entry
+                  else delete next[configKey(scope, setting.id)]
+                  return next
+                })
               }}
             />
           ) : (
@@ -119,12 +123,18 @@ function SettingField(props: {
   setting: ExtensionSettingContribution
   t: Translator
   onCommit(value: JsonValue, expectedVersion?: number): Promise<ExtensionConfigEntry>
+  onLoadLatest(): Promise<ExtensionConfigEntry | null>
+  onUseLatest(entry: ExtensionConfigEntry | null): void
 }) {
   const inputId = `extension-setting-${props.setting.id}`
   const [draft, setDraftState] = useState<boolean | string>(() => toDraft(props.setting, props.entry?.value ?? props.setting.default))
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
+  const [recovery, setRecovery] = useState<{ loading: boolean; latest?: ExtensionConfigEntry | null; error?: string }>()
+  const recoveryRef = useRef(false)
+  const editableRef = useRef(false)
+  editableRef.current = !props.disabled && !props.setting.readOnly
   const draftRef = useRef(draft)
   const dirtyRef = useRef(dirty)
   const versionRef = useRef(props.entry?.version)
@@ -135,7 +145,7 @@ function SettingField(props: {
   const mountedRef = useRef(false)
 
   useEffect(() => {
-    if (dirtyRef.current || savingRef.current) return
+    if (dirtyRef.current || savingRef.current || recoveryRef.current) return
     versionRef.current = props.entry?.version
     const nextDraft = toDraft(props.setting, props.entry?.value ?? props.setting.default)
     draftRef.current = nextDraft
@@ -154,19 +164,49 @@ function SettingField(props: {
   }, [])
 
   function setDraft(value: boolean | string): void {
+    if (!dirtyRef.current && !savingRef.current) versionRef.current = props.entry?.version
     draftRef.current = value
     dirtyRef.current = true
     setDraftState(value)
     setDirty(true)
+    if (!recoveryRef.current) setError(undefined)
+  }
+
+  async function loadLatest(): Promise<void> {
+    setRecovery({ loading: true })
+    try {
+      const latest = await props.onLoadLatest()
+      if (mountedRef.current) setRecovery({ loading: false, latest })
+    } catch (reason) {
+      if (mountedRef.current) setRecovery({ loading: false, error: reason instanceof Error ? reason.message : String(reason) })
+    }
+  }
+
+  function resolveFailure(useDraft: boolean): void {
+    if (!editableRef.current || !recovery || recovery.loading || recovery.latest === undefined) return
+    if (timerRef.current) clearTimeout(timerRef.current)
+    hasQueuedRef.current = false
+    versionRef.current = recovery.latest?.version
+    props.onUseLatest(recovery.latest)
+    recoveryRef.current = false
+    setRecovery(undefined)
     setError(undefined)
+    if (useDraft) commit()
+    else {
+      const value = toDraft(props.setting, recovery.latest?.value ?? props.setting.default)
+      draftRef.current = value
+      dirtyRef.current = false
+      setDraftState(value)
+      setDirty(false)
+    }
   }
 
   async function drainQueue(): Promise<void> {
-    if (savingRef.current || !mountedRef.current) return
+    if (savingRef.current || !mountedRef.current || recoveryRef.current || !editableRef.current) return
     savingRef.current = true
     setSaving(true)
     try {
-      while (hasQueuedRef.current && mountedRef.current) {
+      while (hasQueuedRef.current && mountedRef.current && !recoveryRef.current && editableRef.current) {
         const value = queuedRef.current!
         hasQueuedRef.current = false
         try {
@@ -181,7 +221,10 @@ function SettingField(props: {
         } catch (reason) {
           hasQueuedRef.current = false
           if (!mountedRef.current) return
+          recoveryRef.current = true
+          if (timerRef.current) clearTimeout(timerRef.current)
           setError(reason instanceof Error ? reason.message : String(reason))
+          await loadLatest()
         }
       }
     } finally {
@@ -192,7 +235,7 @@ function SettingField(props: {
 
   function commit(): void {
     if (timerRef.current) clearTimeout(timerRef.current)
-    if (props.disabled || !mountedRef.current || !dirtyRef.current) return
+    if (!editableRef.current || recoveryRef.current || !mountedRef.current || !dirtyRef.current) return
     const parsed = parseSettingValue(props.setting, draftRef.current, props.t)
     if (!parsed.ok) {
       setError(parsed.error)
@@ -208,7 +251,7 @@ function SettingField(props: {
     timerRef.current = setTimeout(commit, TEXT_COMMIT_DELAY_MS)
   }
 
-  const status = saving ? props.t('renderer.settingSaving') : dirty && !error ? props.t('renderer.settingUnsaved') : undefined
+  const status = saving ? props.t('renderer.settingSaving') : dirty && !error && !recovery ? props.t('renderer.settingUnsaved') : undefined
   function renderControl(fieldControlProps: FieldControlProps) {
     const common = {
       ...fieldControlProps,
@@ -244,7 +287,18 @@ function SettingField(props: {
 
   return (
     <Field id={inputId} label={props.setting.label} description={props.setting.description} error={error}>
-      {controlProps => <>{renderControl(controlProps)}{status ? <small className={styles.status}>{status}</small> : null}</>}
+      {controlProps => <>{renderControl(controlProps)}{status ? <small className={styles.status}>{status}</small> : null}
+        {recovery && <div className={styles.recovery}>
+          <p>{props.t('renderer.settingRecoveryNeeded')}</p>
+          {recovery.loading ? <p role="status">{props.t('renderer.settingLatestLoading')}</p> : recovery.error ? <>
+            <p role="alert">{recovery.error}</p>
+            <Button type="button" disabled={props.disabled || props.setting.readOnly} onClick={() => void loadLatest()}>{props.t('renderer.settingLatestRetry')}</Button>
+          </> : <>
+            <Button type="button" disabled={props.disabled || props.setting.readOnly} onClick={() => resolveFailure(false)}>{props.t(recovery.latest ? 'renderer.settingUseServer' : 'renderer.settingUseDefault')}</Button>
+            <Button type="button" disabled={props.disabled || props.setting.readOnly} onClick={() => resolveFailure(true)}>{props.t('renderer.settingReapplyDraft')}</Button>
+          </>}
+        </div>}
+      </>}
     </Field>
   )
 }
@@ -286,13 +340,15 @@ function sameDraftValue(setting: ExtensionSettingContribution, draft: boolean | 
 
 function resolveSettingScope(
   setting: ExtensionSettingContribution,
-  context: { cardId?: string; timelineId?: string; agentSessionId?: string },
+  context: { cardId?: string; timelineId?: string; timelineCardId?: string; agentSessionId?: string; agentSessionCardId?: string },
+  target: ExtensionInstallationTarget,
 ): ExtensionStorageScope | undefined {
   const scope = setting.scope ?? 'global'
-  if (scope === 'global') return { kind: 'global' }
-  if (scope === 'card') return context.cardId ? { kind: 'card', cardId: context.cardId } : undefined
-  if (scope === 'timeline') return context.timelineId ? { kind: 'timeline', timelineId: context.timelineId } : undefined
-  return context.agentSessionId ? { kind: 'agent-session', agentSessionId: context.agentSessionId } : undefined
+  if (scope === 'global') return target.kind === 'global' ? { kind: 'global' } : undefined
+  if (scope === 'card') return context.cardId && (target.kind === 'global' || target.cardId === context.cardId) ? { kind: 'card', cardId: context.cardId } : undefined
+  if (scope === 'timeline') return context.timelineId && (target.kind === 'global' || context.timelineCardId === target.cardId) ? { kind: 'timeline', timelineId: context.timelineId } : undefined
+  if (scope === 'agent-session') return context.agentSessionId && (target.kind === 'global' || context.agentSessionCardId === target.cardId) ? { kind: 'agent-session', agentSessionId: context.agentSessionId } : undefined
+  return undefined
 }
 
 function uniqueScopes(scopes: ExtensionStorageScope[]): ExtensionStorageScope[] {

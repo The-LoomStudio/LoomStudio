@@ -40,16 +40,14 @@ describe('context asset tree operation invariants', () => {
     expect(nodes).toEqual(original)
   })
 
-  it('keeps only live order references when applying draft updates', () => {
-    fc.assert(fc.property(fc.array(fc.constantFrom('entry-a', 'entry-b', 'missing')), references => {
+  it('keeps only live slot ranks when applying draft updates', () => {
+    fc.assert(fc.property(fc.array(fc.constantFrom('slot-a', 'slot-b', 'missing')), references => {
       const nodes = baseTree()
-      const updated = updateContextAssetNode(nodes, 'order', { orderList: references,
-        slotRanks: [...nodes[0]!.children![1]!.slotRanks!, { zoneId: 'lore.stable', slotKey: 'missing', rankKey: 'a2' }] })
+      const updated = updateContextAssetNode(nodes, 'order', { slotRanks: references.map((slotKey, index) => ({ zoneId: 'lore.stable', slotKey, rankKey: `a${index}` })) })
       const flattened = flattenContextAssetNodes(updated)
       expect(new Set(flattened.map(node => node.id)).size).toBe(flattened.length)
-      expect(flattened.find(node => node.id === 'order')?.orderList).toEqual(references.filter(id => id !== 'missing'))
-      expect(flattened.find(node => node.id === 'order')?.slotRanks?.map(rank => rank.slotKey)).toEqual(['slot-a', 'slot-b'])
-      expect(flattenContextAssetNodes(nodes).find(node => node.id === 'order')?.orderList).toEqual(['entry-a', 'entry-b'])
+      expect(flattened.find(node => node.id === 'order')?.slotRanks?.map(rank => rank.slotKey)).toEqual(references.filter(slotKey => slotKey !== 'missing'))
+      expect(flattenContextAssetNodes(nodes).find(node => node.id === 'order')?.slotRanks?.map(rank => rank.slotKey)).toEqual(['slot-a', 'slot-b'])
     }), { numRuns: 100 })
   })
 })
@@ -69,7 +67,6 @@ function baseTree(): ContextAssetNode[] {
       id: 'order',
       label: 'Order',
       kind: 'order',
-      orderList: ['entry-a', 'entry-b'],
       slotRanks: [{ zoneId: 'lore.stable', slotKey: 'slot-a', rankKey: 'a0' }, { zoneId: 'lore.stable', slotKey: 'slot-b', rankKey: 'a1' }],
     }],
   }]
@@ -82,13 +79,15 @@ function entry(id: string, slotKey: string, entryOrder: number): ContextAssetNod
     kind: 'entry',
     enabled: true,
     body: '',
-    projection: {
-      zoneId: 'lore.stable',
-      lifecycle: 'always',
-      slotKey,
-      entryOrder,
-      order: `entry: ${entryOrder}`,
-      sourceKind: 'actual',
+    capabilities: {
+      lifecycle: { lifecycle: 'always' },
+      projection: {
+        zoneId: 'lore.stable',
+        slotKey,
+        entryOrderHint: entryOrder,
+        order: `entry: ${entryOrder}`,
+        sourceKind: 'actual',
+      },
     },
   }
 }

@@ -2,7 +2,7 @@ import type { ObservationBuild } from '../observability/types.js'
 import type { PromptResourceStore } from '@loom-studio/application-data'
 import type { ExtensionPromptAddition, ExtensionPromptBuildInput } from '@loom-studio/extension-sdk'
 import { renderVariableMacros } from '@loom-studio/shared'
-import { readPromptResourceInputs } from '../cards/workspace.js'
+import { readPromptResourceInputs } from '../cards/card-bundle.js'
 import { fromStoredResource } from './prompt-resource-mapper.js'
 import { isExtensionResourceAvailable } from '../runtime/extension-resource-access.js'
 import { isPromptActivation } from './prompt-activation.js'
@@ -50,7 +50,7 @@ export async function readExtensionPromptInputs(input: {
       throw new Error('Prompt content requires a target anchor and text')
     if (item.localDepth !== undefined && (typeof item.localDepth !== 'number' || !Number.isFinite(item.localDepth)))
       throw new Error('Prompt content localDepth must be finite')
-    if (item.roleHint !== undefined && !['system', 'developer', 'user', 'assistant'].includes(item.roleHint))
+    if (item.roleHint !== undefined && !['system', 'user', 'assistant'].includes(item.roleHint))
       throw new Error('Invalid Prompt content role')
     if (item.activation && !isPromptActivation(item.activation))
       throw new Error('Invalid Prompt content activation')

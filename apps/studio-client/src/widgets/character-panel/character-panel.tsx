@@ -1,7 +1,7 @@
 import { StoryHero } from '../../shared/ui/story-hero/story-hero.js'
 import { CardDeleteConfirmation } from '../../features/cards/ui/card-delete-confirmation.js'
 import { ArrowDownUp, ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, Circle, CloudDownload, Combine, Download, FileArchive, Folder, GitFork, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, Dialog, SearchField, Toggle, type MenuAction } from '@loom-studio/ui'
 import { formatDateTime, type Translator } from '../../shared/i18n/index.js'
 import { useCharacterGalleryStore, type CharacterGroupFilter } from './character-gallery-store.js'
@@ -87,7 +87,8 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [exportCard, setExportCard] = useState<CharacterCardSummary>()
   const [profileTab, setProfileTab] = useState<'profile' | 'attachments'>(() => props.resourceDirectoryOpen ? 'attachments' : 'profile')
   const { discovered, closeDiscovery, refreshing, refreshError, refreshGallery } = useCardDirectoryDiscovery(props.directoryApi, props.onRefreshCards)
-  const { remoteImportOpen, setRemoteImportOpen, remoteImportUrl, changeRemoteImportUrl, remoteImportError, remoteImportBusy, closeRemoteImport, importRemoteCard } = useRemoteCardImport(props.onImportCards, props.t)
+  const { remoteImportProgress, remoteImportOpen, setRemoteImportOpen, remoteImportUrl, changeRemoteImportUrl, remoteImportError, remoteImportUrlInvalid, remoteImportBusy, closeRemoteImport, importRemoteCard } = useRemoteCardImport(props.onImportCards, props.t)
+  const remoteImportErrorId = useId()
   const characterPanelRef = useRef<HTMLDivElement>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const backgroundInputRef = useRef<HTMLInputElement>(null)
@@ -381,9 +382,11 @@ export function CharacterPanel(props: CharacterPanelProps) {
         onClose={closeRemoteImport}
       >
         <form className={styles.remoteImportForm} id="remote-card-import-form" onSubmit={event => { event.preventDefault(); void importRemoteCard() }}>
-          <label><span>{props.t('character.importRemoteUrl')}</span><input autoFocus disabled={remoteImportBusy} inputMode="url" placeholder="https://cdn.example.com/card.png" type="url" value={remoteImportUrl} onChange={event => changeRemoteImportUrl(event.target.value)} /></label>
+          <label><span>{props.t('character.importRemoteUrl')}</span><input autoFocus disabled={remoteImportBusy} aria-invalid={remoteImportUrlInvalid || undefined} aria-errormessage={remoteImportUrlInvalid ? remoteImportErrorId : undefined} aria-describedby={remoteImportUrlInvalid ? remoteImportErrorId : undefined} inputMode="url" placeholder="https://cdn.example.com/card.png" type="url" value={remoteImportUrl} onChange={event => changeRemoteImportUrl(event.target.value)} /></label>
           <p>{props.t('character.importRemoteWarning')}</p>
-          {remoteImportError ? <p aria-live="polite" className={styles.remoteImportError}>{remoteImportError}</p> : null}
+          {remoteImportBusy && <p role="status">{remoteImportProgress}</p>}
+          {!remoteImportBusy && <p>下载大小由远端服务器提供；未提供时会显示已下载量。角色信息将在下载解析后读取。</p>}
+          {remoteImportError ? <p id={remoteImportErrorId} aria-live="polite" className={styles.remoteImportError}>{remoteImportError}</p> : null}
         </form>
       </Dialog>
       <CardDeleteConfirmation

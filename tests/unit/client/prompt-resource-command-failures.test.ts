@@ -23,7 +23,7 @@ describe('Prompt Resource command outcomes', () => {
       runMutation: async action => {
         try { return await action() } catch (error) { report(error); throw error }
       },
-      recordEdit: vi.fn(), promptResources: resources,
+      recordEdit: vi.fn(), loreMounts: [], presetToolMounts: [], promptResources: resources,
       setPromptResources: update => { resources = update(resources) },
       setLoreMounts: vi.fn(), setPresetToolMounts: vi.fn(),
       invalidatePromptResourceState: refresh,
@@ -56,7 +56,7 @@ describe('Prompt Resource command outcomes', () => {
         replacePresetToolMounts: async () => { throw failure },
       } } as unknown as StudioApi,
       t: createTranslator('en-US'), runMutation: action => action(),
-      recordEdit: vi.fn(), promptResources: [],
+      recordEdit: vi.fn(), loreMounts: [], presetToolMounts: [], promptResources: [],
       setPromptResources: vi.fn(), setLoreMounts: setMounts, setPresetToolMounts: setMounts,
       invalidatePromptResourceState: vi.fn(),
       refreshCards: vi.fn(), refreshCardTimelines: vi.fn(),

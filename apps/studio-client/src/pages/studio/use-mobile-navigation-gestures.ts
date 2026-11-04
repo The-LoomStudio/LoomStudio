@@ -81,9 +81,6 @@ export function useMobileNavigationGestures(enabled: boolean, onNavigation: () =
     const begin = (event: TouchEvent) => {
       cancel()
       if (event.touches.length !== 1 || !(event.target instanceof Element) || event.target.closest(excluded) || window.getSelection()?.toString()) return
-      for (let node: Element | null = event.target; node; node = node.parentElement) {
-        if (node.scrollWidth > node.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(node).overflowX)) return
-      }
       start = { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY, target: event.target, time: event.timeStamp }
     }
     const move = (event: TouchEvent) => {
@@ -93,6 +90,14 @@ export function useMobileNavigationGestures(enabled: boolean, onNavigation: () =
       if (!horizontal) {
         if (Math.abs(dy) > 12 && Math.abs(dy) >= Math.abs(dx)) { reset(); return }
         if (Math.abs(dx) < 16 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+        for (let node: Element | null = start.target; node; node = node.parentElement) {
+          if (!/auto|scroll/.test(getComputedStyle(node).overflowX)) continue
+          const remaining = node.scrollWidth - node.clientWidth
+          // Native horizontal scrollers keep ownership while they can consume this direction.
+          // RTL scroll offsets differ between engines: leave those scrollers native.
+          if (remaining > 1 && (getComputedStyle(node).direction === 'rtl'
+            || (dx < 0 ? node.scrollLeft < remaining - 1 : node.scrollLeft > 1))) { reset(); return }
+        }
         horizontal = true
         lastX = start.x; lastTime = start.time; velocity = 0
         if (dx > 0) {

@@ -79,4 +79,37 @@ describe('Renderer Session Host', () => {
     handle.dispose()
     expect(handle.state()).toBe('revoked')
   })
+
+  it.each([null, undefined])('does not allocate channels or accumulate failed attempts when window.open returns %s', opened => {
+    const channel = vi.fn(function () { return { postMessage: vi.fn(), close: vi.fn() } })
+    let nextWindow: { opener: unknown; close(): void } | null | undefined = opened
+    vi.stubGlobal('BroadcastChannel', channel)
+    vi.stubGlobal('window', { location: { href: 'https://studio.test/' }, open: () => nextWindow })
+    const host = createRendererSessionHost()
+    const registration = {
+      owner: { kind: 'extension' as const, packageId: 'example.page', moduleId: 'client' },
+      contributionId: 'page',
+      definition: { id: 'page', name: 'Page', surface: 'standalone.page' as const, instanceScope: 'workspace' as const },
+      frame: { src: '/page.html' }, mount: vi.fn(),
+    }
+    try {
+      const first = host.open(registration, { kind: 'workspace', key: 'workspace' })
+      const second = host.open(registration, { kind: 'workspace', key: 'workspace' })
+      expect(channel).not.toHaveBeenCalled()
+      expect(host.summaries()).toEqual([expect.objectContaining({ sessionId: second.sessionId, state: 'disconnected' })])
+      expect(first.state()).toBe('revoked')
+      const close = vi.fn()
+      nextWindow = { opener: undefined, close }
+      const recovered = host.open(registration, { kind: 'workspace', key: 'workspace' })
+      expect(channel).toHaveBeenCalledOnce()
+      expect(second.state()).toBe('revoked')
+      expect(host.summaries()).toEqual([expect.objectContaining({ sessionId: recovered.sessionId, state: 'opening' })])
+      recovered.dispose()
+      expect(close).toHaveBeenCalledOnce()
+      expect(host.summaries()).toEqual([])
+    } finally {
+      host.dispose()
+      vi.unstubAllGlobals()
+    }
+  })
 })

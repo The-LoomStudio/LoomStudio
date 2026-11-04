@@ -1,3 +1,4 @@
+import { toolMessageExchanges } from './observation-tool-messages.js'
 import { compareMessages } from './observation-message-diff.js'
 import { t as defaultTranslator, type Translator } from '../../../shared/i18n/index.js'
 import type { ObservationEntry, ObservationSummary } from '../../../entities/observation.js'
@@ -26,6 +27,11 @@ export function mapObservationStep(summary: ObservationSummary, entry?: Observat
   const linkedBuild = buildEntry && buildEntry.id === summary.buildId ? buildEntry : undefined
   const build = current?.build ?? linkedBuild?.build
   const messages = summary.kind === 'build' ? build?.messages : request?.messages
+  const exchanges = toolMessageExchanges(messages ?? [], [
+    ...(build?.transformations ?? []).filter(item => evidenceObject(item)?.kind === 'session-tool'),
+    ...(previous?.request?.toolExecutions ?? []),
+  ])
+  const buildToolExchanges = toolMessageExchanges(build?.messages ?? [], (build?.transformations ?? []).filter(item => evidenceObject(item)?.kind === 'session-tool')).flatMap(items => items ?? [])
   const previousMessages = previous?.request?.messages
   const estimate = request?.estimate && typeof request.estimate === 'object' ? request.estimate as Record<string, unknown> : undefined
   // Estimates belong to prepared input. Gateway normalization can change message positions.
@@ -34,6 +40,7 @@ export function mapObservationStep(summary: ObservationSummary, entry?: Observat
   const sources = build?.sources
   const delta = previousMessages && messages ? compareMessages(previousMessages, messages) : undefined
   const responseMessage = evidenceObject(evidenceObject(request?.response)?.message)
+  const reasoning = evidenceObject(request?.response)?.reasoning
   const assistantContent = request?.assistantContent ?? (responseMessage?.role === 'assistant' && typeof responseMessage.content === 'string' ? responseMessage.content : '')
   const returnedCalls = responseMessage?.role === 'assistant' && Array.isArray(responseMessage.tool_calls) ? responseMessage.tool_calls : []
   const output = summary.output
@@ -53,6 +60,7 @@ export function mapObservationStep(summary: ObservationSummary, entry?: Observat
     model: request?.model ? request.model.modelId : undefined,
     finishReason: request?.finishReason,
     response: assistantContent.trim() ? { id: `${summary.id}:response`, role: 'assistant', content: assistantContent, raw: responseMessage } : undefined,
+    reasoning: typeof reasoning === 'string' && reasoning.trim() ? { id: `${summary.id}:reasoning`, role: 'assistant', content: reasoning, raw: reasoning } : undefined,
     outputRecorded: request?.assistantContent !== undefined || responseMessage !== undefined,
     messages: (messages ?? []).map((message, index) => {
       const fragmentIds = build?.messageFragments?.[index]
@@ -60,10 +68,14 @@ export function mapObservationStep(summary: ObservationSummary, entry?: Observat
       const source = !request && fragmentIds ? sources?.find(item => item.fragmentIds?.some(id => fragmentIds.includes(id))) : undefined
       return {
         id: `${summary.id}:${index}`, position: index + 1, role: message.role, content: message.content ?? '', raw: message, toolCalls: message.role === 'assistant' ? message.tool_calls?.map(call => ({ name: call.function.name, arguments: call.function.arguments })) : undefined, sourceId: source?.id,
+        exchanges: exchanges[index],
         estimatedTokens: typeof messageEstimates?.[index] === 'number' ? messageEstimates[index] : undefined,
+        changeKind: delta?.changes.get(index),
         change: delta?.changes.has(index) ? t(delta.changes.get(index) === 'added' ? 'observation.positionAdded' : 'observation.positionChanged') : undefined,
       }
     }),
+    previousMessages: previousMessages?.map((message, index) => ({ id: `${previous!.id}:${index}`, role: message.role, content: message.content ?? '', toolCalls: message.role === 'assistant' ? message.tool_calls?.map(call => ({ name: call.function.name, arguments: call.function.arguments })) : undefined })),
+    previousToolDefinitions: previous?.request?.tools,
     removedMessages: delta?.removed.map(index => {
       const message = previousMessages![index]
       return { id: `${summary.id}:removed:${index}`, position: index + 1, role: message.role, content: message.content ?? '', raw: message, change: t('observation.removedMessage'), toolCalls: message.role === 'assistant' ? message.tool_calls?.map(call => ({ name: call.function.name, arguments: call.function.arguments })) : undefined }
@@ -80,7 +92,10 @@ export function mapObservationStep(summary: ObservationSummary, entry?: Observat
         if (fragmentMessages) return fragmentMessages.map((message, messageNumber) => ({ ...base, messageIndex: fragmentMessages.length === 1 ? base.messageIndex : undefined, id: `${source.id}:${index}:${messageNumber}`, role: typeof evidenceObject(message)?.role === 'string' ? String(evidenceObject(message)?.role) : undefined, rendered: String(evidenceObject(message)?.content ?? '') }))
         return [{ ...base, id: `${source.id}:${index}`, role: typeof placement?.role === 'string' ? placement.role : undefined, rendered: typeof item?.rendered === 'string' ? item.rendered : '' }]
       })
-      return { ...source, included: !!source.fragmentIds?.length || injections.length > 0,
+      const sourceToolIds = new Set((build?.transformations ?? []).map(evidenceObject).filter(item => item?.kind === 'session-tool' && item.sourceNodeId === source.id).map(item => item!.callId))
+      const sourceExchanges = buildToolExchanges.filter(item => sourceToolIds.has(item.callId))
+      const uniqueExchanges = [...new Map(sourceExchanges.map(item => [item.callId, item])).values()]
+      return { ...source, exchanges: uniqueExchanges.length ? uniqueExchanges : undefined, included: !!source.fragmentIds?.length || injections.length > 0,
         injections, originalRecorded: source.original !== undefined, reason: sourceReason(source.reason, t), path: source.path ?? t('observation.sourcePathMissing'), original: formatEvidence(source.original, t), rendered: formatEvidence(source.rendered, t) }
     }),
     variables: (build?.variables ?? []).filter(variable => variable.hostId !== undefined && emittedSourceIds.has(variable.hostId)).map(variable => ({ ...variable, value: formatEvidence(variable.value, t), source: variable.source })),

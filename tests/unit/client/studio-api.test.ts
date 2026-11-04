@@ -6,6 +6,28 @@ import { describe, expect, it } from 'vitest'
 import { createStudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
 describe('studio client typed api', () => {
+  it('aborts a prompt resource list transport with its caller signal', async () => {
+    const started = Promise.withResolvers<void>()
+    let transportSignal: AbortSignal | undefined
+    let body: unknown
+    const api = createStudioApi(createStudioTrpcClient({ fetch: async (_url, init) => {
+      transportSignal = init?.signal ?? undefined
+      body = JSON.parse(String(init?.body))
+      started.resolve()
+      return new Promise<Response>((_resolve, reject) => {
+        transportSignal!.addEventListener('abort', () => reject(transportSignal!.reason), { once: true })
+      })
+    } }))
+    const controller = new AbortController()
+    const request = api.promptResources.list('lore', controller.signal)
+    const settled = request.catch(error => error)
+    await started.promise
+    expect(body).toEqual({ resourceKind: 'lore' })
+    controller.abort()
+    expect(await settled).toBeInstanceOf(Error)
+    expect(transportSignal?.aborted).toBe(true)
+  })
+
   it('preserves explicit story and session names at creation', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {}))
@@ -26,6 +48,11 @@ describe('studio client typed api', () => {
     }))
     await api.textTransforms.listRules()
     await api.textTransforms.listRules({ kind: 'card', cardId: 'a' })
+    await api.textTransforms.listRuleSummaries()
+    await api.textTransforms.listRuleSummaries({ kind: 'workspace' })
+    await api.textTransforms.listExtractorSummaries()
+    await api.loomScripts.getSummary('script-a')
+    await api.agentTools.getSummary('tool-a')
     await api.states.listDefinitions()
     await api.states.listDefinitions('timeline-template', ['state-a'])
     await api.states.listDefinitions(undefined, [])
@@ -34,6 +61,11 @@ describe('studio client typed api', () => {
     expect(calls).toEqual([
       { method: 'application.listTextTransformRules', params: {} },
       { method: 'application.listTextTransformRules', params: { owner: { kind: 'card', cardId: 'a' } } },
+      { method: 'application.listTextTransformRuleSummaries', params: {} },
+      { method: 'application.listTextTransformRuleSummaries', params: { owner: { kind: 'workspace' } } },
+      { method: 'application.listTextExtractorSummaries', params: undefined },
+      { method: 'application.getLoomScriptSummary', params: { scriptDocumentId: 'script-a' } },
+      { method: 'application.getAgentToolSummary', params: { toolId: 'tool-a' } },
       { method: 'application.listStateDefinitions', params: {} },
       { method: 'application.listStateDefinitions', params: { kind: 'timeline-template', ids: ['state-a'] } },
       { method: 'application.listStateDefinitions', params: { ids: [] } },
@@ -209,7 +241,7 @@ describe('studio client typed api', () => {
     const reverted = await api.history.revert('change-1')
     await api.cards.list()
     await api.cards.update({ cardId: 'card-1', name: 'Renamed' })
-    await api.cards.updatePromptResources({ cardId: 'card-1', promptResourceIds: ['resource-1'] })
+    await api.cards.updatePromptResources({ expectedVersion: 1, cardId: 'card-1', promptResourceIds: ['resource-1'] })
     await api.cards.previewDeletion('card-1')
     await api.cards.delete('card-1', { includePlayData: true })
     await api.cards.deleteMany(['card-1', 'card-2'], { includePromptResources: true })
@@ -224,7 +256,7 @@ describe('studio client typed api', () => {
       { method: 'application.revertChangeset', params: { changesetId: 'change-1' } },
       { method: 'application.listCards', params: {} },
       { method: 'application.updateCard', params: { cardId: 'card-1', name: 'Renamed' } },
-      { method: 'application.updateCardPromptResources', params: { cardId: 'card-1', promptResourceIds: ['resource-1'] } },
+      { method: 'application.updateCardPromptResources', params: { expectedVersion: 1, cardId: 'card-1', promptResourceIds: ['resource-1'] } },
       { method: 'application.previewCardDeletion', params: { cardId: 'card-1' } },
       { method: 'application.deleteCard', params: { cardId: 'card-1', includePlayData: true } },
       { method: 'application.deleteCards', params: { cardIds: ['card-1', 'card-2'], includePromptResources: true } },
@@ -369,7 +401,7 @@ describe('studio client typed api', () => {
       'application.duplicatePromptResource': { resource: { id: 'resource-3' } },
       'application.deletePromptResource': { deleted: true },
       'application.importPromptResource': { resource: { id: 'resource-4' } },
-      'application.exportPromptResource': { artifact: { format: 'loom.promptResource', schemaVersion: 1 } },
+      'application.exportPromptResource': { artifact: { format: 'loom.promptResource', schemaVersion: 2 } },
       'application.importPromptResourceZip': { resource: { id: 'resource-zip-import' } },
       'application.exportPromptResourceZip': { fileName: 'preset-resource.zip', base64: 'UEs=' },
       'application.createPromptResourceAsset': { resource: { id: 'resource-1' } },
@@ -389,7 +421,7 @@ describe('studio client typed api', () => {
     await api.promptResources.delete('resource-1')
     await api.promptResources.import({
       format: 'loom.promptResource',
-      schemaVersion: 1,
+      schemaVersion: 2,
       resourceKind: 'preset',
       rootNode: { id: 'root', label: 'Preset', kind: 'module' },
     })
@@ -400,10 +432,10 @@ describe('studio client typed api', () => {
     await api.promptResources.updateAsset({ resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' })
     await api.promptResources.updateAssets({ resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] })
     await api.promptResources.listLoreMounts({ kind: 'preset', id: 'resource-1' })
-    await api.promptResources.replaceLoreMounts({ source: { kind: 'preset', id: 'resource-1' }, loreResourceIds: ['setting-1'] })
+    await api.promptResources.replaceLoreMounts({ expectedMountIds: [], source: { kind: 'preset', id: 'resource-1' }, loreResourceIds: ['setting-1'] })
     await api.promptResources.listPresetToolMounts({ presetId: 'resource-1' })
     await api.promptResources.replacePresetToolMounts({
-      presetId: 'resource-1',
+      expectedMountIds: [], presetId: 'resource-1',
       mounts: [{ toolId: 'official/test_structured', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } }],
     })
     await api.promptResources.moveAsset({ resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' })
@@ -415,7 +447,7 @@ describe('studio client typed api', () => {
       { method: 'application.createPromptResource', params: { resourceKind: 'preset', name: 'Preset' } },
       { method: 'application.duplicatePromptResource', params: { resourceId: 'resource-1' } },
       { method: 'application.deletePromptResource', params: { resourceId: 'resource-1' } },
-      { method: 'application.importPromptResource', params: { artifact: { format: 'loom.promptResource', schemaVersion: 1, resourceKind: 'preset', rootNode: { id: 'root', label: 'Preset', kind: 'module' } } } },
+      { method: 'application.importPromptResource', params: { artifact: { format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset', rootNode: { id: 'root', label: 'Preset', kind: 'module' } } } },
       { method: 'application.exportPromptResource', params: { resourceId: 'resource-1' } },
       { method: 'application.importPromptResourceZip', params: { base64: 'UEs=' } },
       { method: 'application.exportPromptResourceZip', params: { resourceId: 'resource-1' } },
@@ -423,9 +455,9 @@ describe('studio client typed api', () => {
       { method: 'application.updatePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' } },
       { method: 'application.updatePromptResourceAssets', params: { resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] } },
       { method: 'application.listLoreMounts', params: { source: { kind: 'preset', id: 'resource-1' } } },
-      { method: 'application.replaceLoreMounts', params: { source: { kind: 'preset', id: 'resource-1' }, loreResourceIds: ['setting-1'] } },
+      { method: 'application.replaceLoreMounts', params: { expectedMountIds: [], source: { kind: 'preset', id: 'resource-1' }, loreResourceIds: ['setting-1'] } },
       { method: 'application.listPresetToolMounts', params: { presetId: 'resource-1' } },
-      { method: 'application.replacePresetToolMounts', params: { presetId: 'resource-1', mounts: [{ toolId: 'official/test_structured', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } }] } },
+      { method: 'application.replacePresetToolMounts', params: { expectedMountIds: [], presetId: 'resource-1', mounts: [{ toolId: 'official/test_structured', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } }] } },
       { method: 'application.movePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' } },
       { method: 'application.deletePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1' } },
     ])

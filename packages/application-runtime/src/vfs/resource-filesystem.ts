@@ -34,6 +34,7 @@ export type ResourceVfsOptions = {
   resources?: {
     store: Pick<PromptResourceStore, 'getResource'>
     ids: readonly string[]
+    globalCatalog?(): Promise<Array<{ id: string; owners: string[] }>>
     access(resourceId: string, nodeId: string): 'read' | 'locked' | 'hidden'
     write?(input: {
       resourceId: string
@@ -115,6 +116,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
   const pathOwners = new Map<string, string>()
   const observed = new Map<string, ObservedRead>()
   let authorMode = options.resourceMode === 'author'
+  let globalAuthor = false
 
   async function workspaceStructure(action: 'create' | 'move' | 'delete' | 'copy', args: unknown[], signal: AbortSignal, control?: VfsApprovalControl) {
     if (!options.workspace) throw vfsError('vfs.not_found', 'Workspace is unavailable')
@@ -183,14 +185,16 @@ export function createResourceVfs(options: ResourceVfsOptions) {
       files.push({ path: '/resources', kind: 'directory', identity: 'resources' })
       if (path === '/' || path === '/resources' || path.startsWith('/resources/')) {
         const resources = []
-        for (const id of options.resources.ids) {
+        const globalCatalog = globalAuthor ? await options.resources.globalCatalog!() : []
+        const owners = new Map(globalCatalog.map(entry => [entry.id, entry.owners]))
+        for (const id of new Set([...options.resources.ids, ...owners.keys()])) {
           signal.throwIfAborted()
           const resource = await options.resources.store.getResource(id)
             if (resource && !resource.tombstoned && (authorMode || resource.rootNode.enabled !== false)
               && options.resources.access(id, resource.rootNodeId) !== 'hidden')
             resources.push(resource)
         }
-        const roots = allocateNames(resources.map(resource => ({ id: resource.id, label: resource.label })))
+        const roots = allocateNames(resources.map(resource => ({ id: resource.id, label: owners.has(resource.id) ? `${owners.get(resource.id)!.join('、')} · ${resource.label}` : resource.label })))
         for (const [index, resource] of resources.entries()) {
           const root = `/resources/${roots[index]}`
           const state = options.resources.access(resource.id, resource.rootNodeId)
@@ -327,21 +331,30 @@ export function createResourceVfs(options: ResourceVfsOptions) {
 
   return {
     async setAuthorMode(args: unknown[], signal: AbortSignal, control?: VfsApprovalControl) {
-      if (args.length !== 1 || typeof args[0] !== 'boolean')
-        throw vfsError('vfs.invalid_arguments', 'Use ctx.setAuthorMode(true | false).')
+      const requestedScope = args[1] ?? 'mounted'
+      if (args.length < 1 || args.length > 2 || typeof args[0] !== 'boolean'
+        || (requestedScope !== 'mounted' && requestedScope !== 'global') || (!args[0] && args.length > 1))
+        throw vfsError('vfs.invalid_arguments', "Use ctx.setAuthorMode(true, 'mounted' | 'global') or ctx.setAuthorMode(false).")
+      const nextGlobal = args[0] && requestedScope === 'global'
       signal.throwIfAborted()
-      if (args[0] && !authorMode) {
+      if (nextGlobal && !options.resources?.globalCatalog)
+        throw vfsError('vfs.author_unavailable', 'Global character resources are unavailable in this host.')
+      if (args[0] && (!authorMode || nextGlobal && !globalAuthor)) {
         if (!options.approveMutation) throw vfsError('vfs.author_denied', 'Author mode requires user approval in this host.')
         await approveMutation({
           action: 'author-mode', path: '/resources', kind: 'prompt-resource',
-          before: '游玩视图：正文，不包含停用条目与作者元数据。',
-          after: '本轮 Run 开放已挂载资源的作者视图：包括停用条目与 Metadata。访问锁仍生效；修改仍需单独批准。',
+          authorScope: nextGlobal ? 'global' : 'mounted',
+          before: authorMode ? '本轮已挂载资源的作者视图。' : '游玩视图：正文，不包含停用条目与作者元数据。',
+          after: nextGlobal
+            ? '本轮 Run 开放所有角色卡已有的 Preset / Lore 资源，包括停用条目与 Metadata。共享资源修改会影响关联角色；不开放角色创建、其他聊天记录或故事状态。修改仍需单独批准。'
+            : '本轮 Run 开放已挂载资源的作者视图：包括停用条目与 Metadata。访问锁仍生效；修改仍需单独批准。',
         }, signal, control)
       }
       signal.throwIfAborted()
       authorMode = args[0]
+      globalAuthor = nextGlobal
       observed.clear()
-      return { mode: authorMode ? 'author' : 'play' }
+      return { mode: authorMode ? 'author' : 'play', scope: globalAuthor ? 'global' : 'mounted' }
     },
     async ls(args: unknown[], signal: AbortSignal, control?: VfsApprovalControl) {
       const path = vfsPath(args[0] ?? '/')
@@ -836,6 +849,16 @@ export function createResourceVfs(options: ResourceVfsOptions) {
   ): Promise<void> {
     signal.throwIfAborted()
     if (!options.approveMutation) return
+    let globalTarget: File | undefined
+    if (globalAuthor && preview.kind === 'prompt-resource' && preview.action !== 'author-mode') {
+      globalTarget = (await snapshot(preview.path, signal)).find(file => file.path === preview.path)
+      if (globalTarget?.binding?.kind !== 'prompt-resource') throw vfsError('vfs.not_found', 'Resource is no longer available.')
+      const resourceId = globalTarget.binding.resourceId
+      const owners = (await options.resources!.globalCatalog!()).find(entry => entry.id === resourceId)?.owners
+      const ownership = owners ? `关联角色：${owners.join('、')}。修改共享资源会影响所有引用者。` : '当前已挂载资源。'
+      preview = { ...preview, authorScope: 'global',
+        before: `${ownership}\n\n${preview.before}`, after: `${ownership}\n\n${preview.after}` }
+    }
     const decision = await (approvalControl
       ? approvalControl.waitForUser(() => options.approveMutation!(preview, signal))
       : options.approveMutation(preview, signal))
@@ -844,6 +867,11 @@ export function createResourceVfs(options: ResourceVfsOptions) {
       throw vfsError('vfs.approval_invalid', 'Approval must explicitly allow or deny the proposed change. Nothing was written.')
     if (decision.decision === 'deny')
       throw vfsError('vfs.denied', decision.reason ?? 'The proposed resource change was denied.')
+    if (globalTarget) {
+      const current = (await snapshot(preview.path, signal)).find(file => file.path === preview.path)
+      if (!current || current.identity !== globalTarget.identity || current.state === 'locked')
+        throw vfsError('vfs.baseline_changed', 'Resource ownership or access changed during approval. Read it again.')
+    }
   }
 }
 

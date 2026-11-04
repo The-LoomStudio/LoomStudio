@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createBlobStore } from '@loom-studio/asset-store'
@@ -16,8 +16,9 @@ async function setup() {
   const directory = await mkdtemp(join(tmpdir(), 'loom-timeline-workspace-'))
   const engine = createSqliteDataEngine({ filename: ':memory:', createId: prefix => `${prefix}-${randomUUID()}`, now: () => new Date().toISOString() })
   const narratives = createNarrativeStore({ engine })
+  const documents = createSqliteDocumentStore({ engine })
   const runtime = createApplicationRuntime({ dataEngine: engine, narratives,
-    documents: createSqliteDocumentStore({ engine }), promptResources: createPromptResourceStore({ engine }),
+    documents, promptResources: createPromptResourceStore({ engine }),
     blobs: createBlobStore({ engine, rootDirectory: directory, createId: prefix => `${prefix}-${randomUUID()}`, now: () => new Date().toISOString() }),
   })
   const { card } = await runtime.createCard({ name: 'Workspace' })
@@ -25,10 +26,56 @@ async function setup() {
   const target = { timelineId: story.timeline.id, branchId: story.branch.id }
   const mutate = async (operations: Parameters<typeof runtime.mutateTimelineWorkspace>[0]['operations']) =>
     runtime.mutateTimelineWorkspace({ ...target, expectedRevisionId: (await runtime.getTimelineWorkspace(target)).id, operations })
-  return { engine, narratives, runtime, story, target, mutate, close: async () => { engine.close(); await rm(directory, { recursive: true, force: true }) } }
+  return { engine, documents, narratives, runtime, story, target, mutate, close: async () => { engine.close(); await rm(directory, { recursive: true, force: true }) } }
 }
 
 describe('Timeline Workspace foundation', () => {
+  it('receives opaque participant data in the core import transaction and rolls both back on failure', async () => {
+    const f = await setup()
+    try {
+      const { archive } = await f.runtime.exportTimelineArchive({ timelineId: f.target.timelineId })
+      archive.participants.push({ namespace: 'future.data', version: 1, payload: { value: 'preserve' } })
+      const participate = f.documents.participateTransaction.bind(f.documents)
+      let sawPending = false
+      const spy = vi.spyOn(f.documents, 'participateTransaction').mockImplementation((tx, action, options) =>
+        participate(tx, documents => action(new Proxy(documents, { get(target, key, receiver) {
+          if (key === 'write') return async (input: Parameters<typeof documents.write>[0]) => {
+            if (input.type === 'airp.timelineArchivePending') { sawPending = true; throw new Error('Pending storage unavailable') }
+            return documents.write(input)
+          }
+          return Reflect.get(target, key, receiver)
+        } })), options))
+      await expect(f.runtime.importTimelineArchive({ source: JSON.stringify(archive) })).rejects.toThrow('Pending storage unavailable')
+      spy.mockRestore()
+      expect(sawPending).toBe(true)
+      expect((await f.runtime.listNarrativeTimelines()).timelines.map(t => t.id)).toEqual([f.target.timelineId])
+    } finally { vi.restoreAllMocks(); await f.close() }
+  })
+
+  it('returns the committed Timeline when participant receipt cleanup fails without replaying the participant', async () => {
+    const f = await setup()
+    try {
+      const { archive } = await f.runtime.exportTimelineArchive({ timelineId: f.target.timelineId })
+      archive.participants.push({ namespace: 'known.data', version: 1, payload: { value: 'known' } },
+        { namespace: 'future.data', version: 1, payload: { value: 'opaque' } })
+      const imported = vi.fn()
+      const handle = f.runtime.registerTimelineArchiveParticipant({ namespace: 'known.data', version: 1,
+        export: () => undefined, import: imported })
+      const transact = f.documents.transact.bind(f.documents)
+      vi.spyOn(f.documents, 'transact').mockImplementation((input, action) => {
+        if (input.reason === 'application.importTimelineArchive.pendingParticipants') throw new Error('Receipt unavailable')
+        return transact(input, action)
+      })
+      const result = await f.runtime.importTimelineArchive({ source: JSON.stringify(archive) })
+      expect(imported).toHaveBeenCalledTimes(1)
+      expect(result.participantFailures.some(failure => failure.message.includes('Do not repeat'))).toBe(true)
+      handle.unregister()
+      const exported = await f.runtime.exportTimelineArchive({ timelineId: result.timelineId })
+      expect(exported.archive.participants.map(block => block.namespace)).toEqual(['known.data', 'future.data'])
+      expect((await f.runtime.listNarrativeTimelines()).timelines).toHaveLength(2)
+    } finally { vi.restoreAllMocks(); await f.close() }
+  })
+
   it('exports a consistent archive while a node edit waits behind the read snapshot', async () => {
     const f = await setup()
     const entered = Promise.withResolvers<void>()
@@ -131,8 +178,7 @@ describe('Timeline Workspace foundation', () => {
       delete legacy.recoveryPoints
       for (const node of legacy.nodes) { delete node.floor; delete node.workspaceRevisionId }
       for (const branch of legacy.branches) delete branch.workspaceHeadRevisionId
-      const legacyImport = await f.runtime.importTimelineArchive({ source: JSON.stringify(legacy) })
-      expect((await f.runtime.getNarrativePage({ timelineId: legacyImport.timelineId })).nodes.map(node => node.floor)).toEqual([1, 2])
+      await expect(f.runtime.importTimelineArchive({ source: JSON.stringify(legacy) })).rejects.toThrow('Workspace block is missing')
       // A pruned archive can carry sparse stable positions; it never renumbers surviving nodes.
       archive.nodes[0]!.floor = 728
       archive.nodes[1]!.floor = 730

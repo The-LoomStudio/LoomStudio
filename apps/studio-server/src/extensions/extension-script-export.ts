@@ -113,7 +113,7 @@ export function createExtensionScriptArchiveExporter(options: {
         const primaryContributionId = Object.keys(script.textResourceIds ?? {}).find(id => metadata.contributions.some(item => item.kind === 'text-transform' && item.id === id))
         if (!primaryContributionId) throw new Error(`Packaged primary text rule was removed from Script: ${contribution.id}`)
         const mount = mounts.find(item => item.content.scriptDocumentId === document.id
-          && item.content.origin.legacyRuleId === script.textResourceIds![primaryContributionId])
+          && (installed.target.kind === 'card' ? item.content.target.kind === 'card' && item.content.target.cardId === installed.target.cardId : item.content.target.kind === 'user'))
         const relative = posix.normalize(contribution.source)
         if (relative === '..' || relative.startsWith('../') || contribution.source.includes('\\')) throw new Error(`Extension text rule path escapes its package: ${contribution.source}`)
         const path = paths.get(posix.join(root, relative))

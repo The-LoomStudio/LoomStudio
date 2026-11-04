@@ -27,7 +27,7 @@ describe('provider settings model', () => {
       currentId: 'deleted-agent',
       profiles,
       storedId: 'agent-a',
-    })).toBe('deleted-agent')
+    })).toBe('agent-a')
     expect(chooseAgentPresetId({
       profiles,
     })).toBe('agent-a')
@@ -35,11 +35,11 @@ describe('provider settings model', () => {
       currentId: 'deleted-agent',
       profiles: [],
       storedId: 'agent-a',
-    })).toBe('deleted-agent')
+    })).toBeUndefined()
     expect(chooseAgentPresetId({
       profiles,
       storedId: 'deleted-agent',
-    })).toBe('deleted-agent')
+    })).toBe('agent-a')
   })
 })
 

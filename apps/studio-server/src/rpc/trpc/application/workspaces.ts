@@ -4,7 +4,6 @@ import type {
   ApplicationRuntime,
 
   PromptAssetPatch,
-  PromptProviderRole,
   PromptResourceCompositionCapabilities,
   PromptResourceKind,
   PromptResourceNode
@@ -130,7 +129,6 @@ export const workspacesProcedures = {
       label: readOptionalString(params, 'label'),
       meta: readOptionalString(params, 'meta'),
       enabled: readOptionalBoolean(params, 'enabled'),
-      orderList: isRecord(params) ? readOptionalStringArrayValue(params.orderList, 'orderList') : undefined,
 
     }
   })).mutation(({ ctx, input }) => ctx.runtime.updatePromptResourceAsset(input, ctx.request)),
@@ -211,7 +209,6 @@ function readPromptAssetPatches(params: JsonValue | undefined, key: string): Pro
       enabled: readOptionalBoolean(value, 'enabled'),
       label: readOptionalString(value, 'label'),
       meta: readOptionalString(value, 'meta'),
-      orderList: readOptionalStringArrayValue(value.orderList, `${key}[${index}].orderList`),
     }
   })
 }
@@ -229,8 +226,6 @@ function readPromptResourceNodeValue(value: JsonValue | undefined, key: string):
     body: typeof value.body === 'string' ? value.body : undefined,
     meta: typeof value.meta === 'string' ? value.meta : undefined,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
-    configRows: readConfigRows(value.configRows, `${key}.configRows`),
-    orderList: readOptionalStringArrayValue(value.orderList, `${key}.orderList`),
     capabilities: readPromptCapabilitiesValue(value.capabilities, `${key}.capabilities`),
     children: Array.isArray(value.children)
       ? value.children.map((child, index) => readPromptResourceNodeValue(child, `${key}.children[${index}]`))
@@ -255,23 +250,6 @@ function readPromptAssetCategory(value: JsonValue | undefined, key: string): Pro
   throw new Error(`Expected prompt asset category: ${key}`)
 }
 
-function readConfigRows(value: JsonValue | undefined, key: string): Array<{ label: string; value: string }> | undefined {
-  if (value === undefined) return undefined
-  if (!Array.isArray(value)) throw new Error(`Expected config rows: ${key}`)
-  return value.map((item, index) => {
-    if (!isRecord(item) || typeof item.label !== 'string' || typeof item.value !== 'string') {
-      throw new Error(`Expected config row: ${key}[${index}]`)
-    }
-    return { label: item.label, value: item.value }
-  })
-}
-
-function readOptionalStringArrayValue(value: JsonValue | undefined, key: string): string[] | undefined {
-  if (value === undefined) return undefined
-  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) throw new Error(`Expected string array: ${key}`)
-  return value
-}
-
 function readOptionalPromptCapabilities(params: JsonValue | undefined, key: string): PromptResourceCompositionCapabilities | undefined {
   if (!isRecord(params) || params[key] === undefined) return undefined
   return readPromptCapabilitiesValue(params[key], key)
@@ -294,13 +272,13 @@ function readPromptCapabilitiesValue(value: JsonValue | undefined, key: string):
     throw new Error(`Expected localDepth number: ${key}.localDepth`)
   }
 
-  if (value.roleHint !== undefined && !isPromptProviderRole(value.roleHint)) {
-    throw new Error(`Expected roleHint PromptProviderRole: ${key}.roleHint`)
+  if (value.roleHint !== undefined && !isPromptAuthorRole(value.roleHint)) {
+    throw new Error(`Expected Prompt author role: ${key}.roleHint`)
   }
 
   return value as unknown as PromptResourceCompositionCapabilities
 }
 
-function isPromptProviderRole(value: JsonValue | undefined): value is PromptProviderRole {
-  return value === 'system' || value === 'developer' || value === 'assistant' || value === 'user'
+function isPromptAuthorRole(value: JsonValue | undefined): value is NonNullable<PromptResourceCompositionCapabilities['roleHint']> {
+  return value === 'system' || value === 'assistant' || value === 'user'
 }

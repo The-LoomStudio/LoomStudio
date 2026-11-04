@@ -1,19 +1,19 @@
 import type { NarrativeNode } from '@loom-studio/application-data'
 import {
-  projectHistoryEntries,
   defaultHistoryProjectionBudget,
   type HistoryProjectionBudget,
   type TextTransformPhase,
   type TextTransformRuleEntry,
 } from '../transforms/history-text.js'
+import { projectHistoryEntriesIsolated } from '../transforms/history-text-isolation.js'
 import type { NarrativeSampleRequest, NarrativeSampleResult } from './sampling.js'
 
-export function projectNarrativeNodes(
+export async function projectNarrativeNodes(
   input: { timelineId: string; branchId: string; nodes: NarrativeNode[] },
   options: { phase: TextTransformPhase; rules: TextTransformRuleEntry[]; budget?: Partial<HistoryProjectionBudget> },
 ) {
   const source = { kind: 'narrative' as const, timelineId: input.timelineId, branchId: input.branchId }
-  return projectHistoryEntries({
+  return projectHistoryEntriesIsolated({
     source,
     phase: options.phase,
     entries: input.nodes.map(node => ({
@@ -25,14 +25,14 @@ export function projectNarrativeNodes(
   })
 }
 
-export function projectNarrativeSample(
+export async function projectNarrativeSample(
   sample: NarrativeSampleResult,
   options: Pick<NarrativeSampleRequest, 'maxNodes' | 'maxCharacters'> & {
     phase: TextTransformPhase; rules: TextTransformRuleEntry[]
   },
-): NarrativeSampleResult {
+): Promise<NarrativeSampleResult> {
   const maxCharacters = options.maxCharacters ?? defaultHistoryProjectionBudget.maxOutputCharacters
-  const snapshot = projectNarrativeNodes(sample, {
+  const snapshot = await projectNarrativeNodes(sample, {
     phase: options.phase, rules: options.rules,
     budget: {
       maxEntries: options.maxNodes ?? defaultHistoryProjectionBudget.maxEntries,

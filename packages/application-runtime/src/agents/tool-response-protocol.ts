@@ -2,7 +2,8 @@ import type { ChatMessage } from '@loom-studio/shared'
 import type { GatewayChatResult } from '../types.js'
 import type { ToolDefinition, ToolInvocation, ToolResult } from './tool-registry.js'
 import type { CompiledToolExposure } from './tool-prompt-build.js'
-import { projectHistoryEntries, type TextTransformRuleEntry } from '../transforms/history-text.js'
+import { type TextTransformRuleEntry } from '../transforms/history-text.js'
+import { projectHistoryEntriesIsolated } from '../transforms/history-text-isolation.js'
 import { createLoomContentScannerState, finishLoomContentScan, pushLoomContentChunk, renderLoomContentToolResult } from './content-transport.js'
 import { renderToolResult } from './tool-result-text.js'
 
@@ -12,7 +13,7 @@ type ResponseTool = {
 }
 
 /** Decode only: execution and transcript/checkpoint ordering belong to the loop. */
-export function decodeToolResponse<T extends ResponseTool>({
+export async function decodeToolResponse<T extends ResponseTool>({
   providerResult, sessionId, classificationRules, byExposedName, contentTools, createInvocationId,
 }: {
   providerResult: GatewayChatResult
@@ -51,11 +52,11 @@ export function decodeToolResponse<T extends ResponseTool>({
   let blockIndex = 0
   const protectedContent = rawContent.replace(/<loom_tool name="[A-Za-z0-9_.:/-]+">[\s\S]*?<\/loom_tool>/g,
     () => tokens[blockIndex++]!)
-  const promoted = classifyAssistantContent(protectedContent, sessionId,
+  const promoted = await classifyAssistantContent(protectedContent, sessionId,
     classificationRules.filter(rule => rule.effect.kind === 'promote-reasoning'))
   const restore = (text: string) => tokens.reduce((value, token, index) => value.replaceAll(token, blocks[index]![0]), text)
   const prose = tokens.reduce((text, token) => text.replaceAll(token, ''), promoted.text)
-  const classified = classifyAssistantContent(prose, sessionId,
+  const classified = await classifyAssistantContent(prose, sessionId,
     classificationRules.filter(rule => rule.effect.kind !== 'promote-reasoning'))
   classified.reasoning = promoted.reasoning.map(part => ({ ...part, content: restore(part.content) }))
   const contentScan = { ...rawScan, text: classified.text,
@@ -114,13 +115,13 @@ export function encodeToolResultMessage(
   }
 }
 
-export function classifyAssistantContent(
+export async function classifyAssistantContent(
   content: string,
   sessionId: string,
   rules: TextTransformRuleEntry[],
 ) {
   if (!content || rules.length === 0) return { text: content, reasoning: [] as import('../transforms/history-text.js').PromotedReasoningPart[] }
-  const snapshot = projectHistoryEntries({
+  const snapshot = await projectHistoryEntriesIsolated({
     source: { kind: 'agent-session', sessionId },
     phase: 'classify',
     entries: [{
