@@ -10,6 +10,7 @@ export function useConversationViewport(options: {
   pinnedId?: string
   overscan?: number
   followInitially?: boolean
+  anchorReadingPosition?: boolean
   restoration?: ConversationPositionScope
 }) {
   const active = options.active !== false
@@ -43,6 +44,17 @@ export function useConversationViewport(options: {
       return indices.sort((a, b) => a - b)
     }, [pinnedIndex]),
   })
+
+  useLayoutEffect(() => {
+    if (!options.anchorReadingPosition) return
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => {
+      const scroll = scrollRef.current
+      // Keep the first visible row in place when rows above it resize.
+      // The follow controller owns scroll writes while following the bottom.
+      return !smooth.followingRef.current && !!scroll && item.end <= (instance.scrollOffset ?? scroll.scrollTop)
+    }
+    return () => { virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined }
+  }, [options.anchorReadingPosition, smooth.followingRef, virtualizer])
 
   useConversationPosition({ key: options.restoration, initial: position, active, scrollRef, virtualizer, items: options.items, followingRef: smooth.followingRef, interruptionRef: smooth.interruptionRef })
 

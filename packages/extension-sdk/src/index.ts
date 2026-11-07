@@ -1,3 +1,4 @@
+export type { ResourceSourceKind, ResourceSourceReference, ResourceSourceCandidate, ResourceSourceAdapter, ResourceDistribution } from './resource-sources.js'
 export type * from './agent-tasks.js'
 export type * from './worker-context.js'
 import type { ExtensionAgentTaskCreate, ExtensionAgentTaskInvoke, ExtensionAgentTaskResult, ExtensionAgentTaskSnapshot, ExtensionAgentTaskProgress } from './agent-tasks.js'
@@ -765,6 +766,7 @@ export type ExtensionModuleManifest = {
     'vfs.provide'?: boolean
     'state.contribute'?: boolean
     'state.read'?: boolean
+    'resources.provide'?: boolean
     'state.write'?: boolean
     'state.processContent'?: boolean
     'ui.notify'?: boolean
@@ -797,6 +799,8 @@ export type ExtensionManifest = {
   author?: string
   homepage?: string
   repository?: string
+  distribution?: import('./resource-sources.js').ResourceDistribution
+  update?: { manifestUrl: string }
   dependencies?: ExtensionDependency[]
   tags?: string[]
   engines: {
@@ -993,6 +997,14 @@ export type ExtensionStateMutationInput = {
   idempotencyKey?: string
 }
 
+export type ExtensionStateDefinitionMigration = {
+  target: Extract<ExtensionStateTarget, { scope: 'timeline' }>
+  expectedRevisionId: string
+  expectedDefinitionVersion: number
+  idempotencyKey: string
+  bindings: Array<{ path: string; schema: JsonObject; value: JsonValue }>
+}
+
 export type ExtensionStateMutationResult = {
   snapshot: ExtensionStateSnapshot
   changesetId: string
@@ -1091,7 +1103,18 @@ export type ExtensionActivationContext = {
   narrativeContext: {
     register(provider: NarrativeContextProvider): ExtensionRegistrationHandle
   }
+  resourceSources: {
+    credentials: {
+      get(name: string): Promise<Record<string, string> | undefined>
+      set(name: string, values: Record<string, string>): Promise<void>
+      remove(name: string): Promise<void>
+    }
+    register(adapter: import('./resource-sources.js').ResourceSourceAdapter): ExtensionRegistrationHandle
+  }
   state: {
+    /** Requires active timeline.run scope and ownership of accepted bindings. Definitions are shared by all branches. */
+    definitions(target: Extract<ExtensionStateTarget, { scope: 'timeline' }>): Promise<{ version: number; bindings: Array<{ path: string; schema: JsonObject; installationId?: string }> }>
+    migrate(input: ExtensionStateDefinitionMigration): Promise<ExtensionStateMutationResult>
     contribute(contribution: StateContribution, options?: {
       initialize?: import('./state-initialization.js').ExtensionStateInitializer
     }): ExtensionRegistrationHandle

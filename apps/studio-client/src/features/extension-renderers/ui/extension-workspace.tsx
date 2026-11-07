@@ -1,4 +1,5 @@
-import { ExtensionResourceUpdateDialog } from './extension-resource-update-dialog.js'
+import { PackageResourceReviewDialog, type ResourceCopyInput } from '../../resource-updates/ui/package-resource-review-dialog.js'
+import type { ResourceCopyResult } from '../../resource-updates/ui/resource-update-review.js'
 import { ExtensionModuleBatches } from './extension-module-batches.js'
 import { RecoveryPanel } from './extension-recovery-panel.js'
 import { MobileTabPages } from '../../../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
@@ -59,6 +60,9 @@ export function ExtensionWorkspace(props: {
   extensionRuntime: Pick<StudioApi['extensionRuntime'], 'getConfig' | 'listConfigs' | 'upsertConfig'>
   extensionApi: StudioApi['extensions']
   renderScripts(header: ReactNode, category: 'rules' | 'runtime'): ReactNode
+  headerActions?: ReactNode
+  onSaveResourceCopy?(input: ResourceCopyInput): Promise<ResourceCopyResult>
+  onOpenResourceCopy?(result: ResourceCopyResult): void
   onRefreshExtensions(): Promise<unknown>
   onCharacterImported(): Promise<unknown>
   runtimeError?: string
@@ -116,8 +120,12 @@ export function ExtensionWorkspace(props: {
   const [batchRevision, setBatchRevision] = useState(0)
   const [resourceUpdate, setResourceUpdate] = useState<{
     title: string; fromVersion: string; input: Parameters<StudioApi['extensions']['previewPackageResources']>[0]
-    apply(fingerprint: string): Promise<unknown>
+    apply(fingerprint: string, keepPromptResourceIds: string[]): Promise<unknown>
   }>()
+  const resourceUpdateDialog = resourceUpdate ? <PackageResourceReviewDialog api={props.extensionApi}
+    title={resourceUpdate.title} fromVersion={resourceUpdate.fromVersion} input={resourceUpdate.input}
+    onApply={resourceUpdate.apply} onSaveCopy={props.onSaveResourceCopy} onOpenCopy={props.onOpenResourceCopy}
+    onClose={() => setResourceUpdate(undefined)} /> : null
   const registrations = props.host.list('shell.workspace-panel')
   const activeKey = props.host.activeContributionKey('shell.workspace-panel', WORKSPACE_SCOPE_KEY)
   const active = registrations.find(registration => rendererContributionKey(registration) === activeKey)
@@ -163,9 +171,7 @@ export function ExtensionWorkspace(props: {
       <RecoveryPanel api={props.extensionApi} t={props.t} revision={props.packages} />
       <ExtensionModuleBatches api={props.extensionApi} t={props.t} revision={batchRevision} />
       </div>
-      {resourceUpdate ? <ExtensionResourceUpdateDialog api={props.extensionApi} t={props.t}
-        title={resourceUpdate.title} fromVersion={resourceUpdate.fromVersion} input={resourceUpdate.input}
-        onApply={resourceUpdate.apply} onClose={() => setResourceUpdate(undefined)} /> : null}
+      {resourceUpdateDialog}
         <RendererSurfaceHost activeContributionKey={activeKey} className={styles.renderer} host={props.host} scope={{ kind: 'workspace', key: WORKSPACE_SCOPE_KEY }} surface="shell.workspace-panel" />
       </section>
     )
@@ -313,6 +319,7 @@ export function ExtensionWorkspace(props: {
       { id: 'scripts', label: '脚本' },
       { id: 'rules', label: '正则' },
     ]} />
+    {view === 'packages' ? props.headerActions : null}
     {view === 'packages' ? <button type="button" className={styles.installPackageBtn}
       onClick={() => setInstallOpen(true)} title={props.t('renderer.install')} aria-label={props.t('renderer.install')}>
       <PackagePlus size={14} aria-hidden="true" />
@@ -331,6 +338,7 @@ export function ExtensionWorkspace(props: {
   const packagePage = () => (
     <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel" data-loom-mobile-page="">
       {runtimeAlert}
+      {resourceUpdateDialog}
       {view === 'packages' && installOpen ? <RemoteExtensionInstall api={props.extensionApi} t={props.t}
         onClose={() => setInstallOpen(false)} onInstalled={props.onRefreshExtensions} /> : null}
       {view === 'packages' && removal ? <Dialog open title={props.t('renderer.uninstall')} dismissible={!busyKey} onClose={() => setRemoval(undefined)}
@@ -360,6 +368,7 @@ export function ExtensionWorkspace(props: {
                   { id: 'rules', label: '正则' },
                 ]}
               />
+              {view === 'packages' ? props.headerActions : null}
                         {view === 'packages' ? (
                 <button
                   type="button"
@@ -445,7 +454,7 @@ export function ExtensionWorkspace(props: {
                             packageVersion: archive.version, expectedInstallationVersion: installed.version }
                           setResourceUpdate({ title: archive.packageId, fromVersion: installed.packageVersion,
                             input: { ...input, target: { kind: 'card', cardId: card.id } },
-                            apply: fingerprint => props.onUpdateCardPackage({ ...input, expectedPreviewFingerprint: fingerprint }) })
+                            apply: (fingerprint: string, keepPromptResourceIds: string[]) => props.onUpdateCardPackage({ ...input, expectedPreviewFingerprint: fingerprint, keepPromptResourceIds }) })
                         }}
                       ><RefreshCw aria-hidden="true" size={16} /></button>
                       <button
@@ -613,7 +622,7 @@ export function ExtensionWorkspace(props: {
                             const input = { packageId: selected.packageId, packageVersion: selected.version,
                               expectedInstallationVersion: installation.version }
                             setResourceUpdate({ title: selected.displayName, fromVersion: installation.packageVersion, input,
-                              apply: fingerprint => props.onUpdateResources({ ...input, expectedPreviewFingerprint: fingerprint }) })
+                              apply: (fingerprint: string, keepPromptResourceIds: string[]) => props.onUpdateResources({ ...input, expectedPreviewFingerprint: fingerprint, keepPromptResourceIds }) })
                           }}
                           title={props.t('renderer.updateResources')} aria-label={props.t('renderer.updateResources')}
                         >

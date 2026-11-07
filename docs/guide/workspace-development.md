@@ -78,6 +78,8 @@ Architecture 维护系统关系与跨模块合同；Workspace README 维护包�
 | Extension 作者侧 Manifest、Activation Context 与 Capability 类型 | [`packages/extension-sdk/README.md`](../../packages/extension-sdk/README.md)                               | [`architecture/extensions/`](../architecture/extensions/)   |
 | Server Extension 的加载、授权与 Instance 生命周期                | [`packages/extension-sdk/extension-host/README.md`](../../packages/extension-sdk/extension-host/README.md) | [`architecture/extensions/`](../architecture/extensions/)   |
 | 本地独立命令行沙箱、Kernel CRUD 与 CodeAct 快速自测              | [`apps/playground/README.md`](../../apps/playground/README.md)                                             | [`architecture/kernel/`](../architecture/kernel/)           |
+| 跨端共享类型、通用契约与 PromptResource 规范                      | [`packages/shared/README.md`](../../packages/shared/README.md)                                             | [系统总览](../architecture/system-overview.md)               |
+| 系统级非阻塞错误、告警与领域诊断收集                              | [`packages/diagnostics/README.md`](../../packages/diagnostics/README.md)                                   | [`architecture/platform/logging.md`](../architecture/platform/logging.md) |
 
 全仓 Package 职责与本地 README 请参阅 [`project-structure.md`](project-structure.md)。Client 文件和测试路由只在 [Client README](../../apps/studio-client/README.md#任务到文件与验证入口)维护。
 

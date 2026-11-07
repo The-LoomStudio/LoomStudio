@@ -35,11 +35,11 @@ export function useSmoothFollow({ scrollRef, contentRef, enabled = true, scopeId
     if (!enabled) return
     const element = scrollRef.current
     if (!element) return
-    element.dataset.streamScroll = ''
     let frame = 0
     let previousTime = 0
     let previousTop = element.scrollTop
     let previousMaximum = Math.max(0, element.scrollHeight - element.clientHeight)
+    element.dataset.streamScroll = ''
     let writtenTop: number | undefined
     let userMoving = false
     let touchY = 0

@@ -1,3 +1,4 @@
+import { request as httpRequest } from 'node:http'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import type { AssetStore } from '@loom-studio/asset-store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -150,5 +151,91 @@ describe('protected HTTP Origin boundary', () => {
       expect(response.status).toBe(204)
       expect(response.headers.get('set-cookie')).toContain('HttpOnly')
     }
+  })
+
+  it('rejects private network origins when allowPrivateNetworkOrigins is disabled', async () => {
+    for (const lanOrigin of ['http://192.168.1.50:18011', 'http://10.0.0.1:18011', 'http://macbook.local:18011']) {
+      const response = await fetch(`${origin}/auth/session`, {
+        method: 'POST',
+        headers: { origin: lanOrigin, host: new URL(lanOrigin).host },
+      })
+      expect(response.status).toBe(403)
+    }
+  })
+})
+
+describe('LAN mode private network Origin boundary', () => {
+  let server: ReturnType<typeof createStudioHttpServer>
+  let serverOrigin: string
+
+  const postSession = (url: string, headers: Record<string, string>) =>
+    new Promise<{ status: number; cookie?: string }>((resolve, reject) => {
+      const parsed = new URL(url)
+      const req = httpRequest({
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname,
+        method: 'POST',
+        headers,
+      }, res => {
+        resolve({
+          status: res.statusCode ?? 0,
+          cookie: res.headers['set-cookie']?.[0],
+        })
+      })
+      req.on('error', reject)
+      req.end()
+    })
+
+  beforeEach(async () => {
+    server = createStudioHttpServer({
+      auth: createApplicationSessionAuth({
+        allowedOrigins: [viteOrigin],
+        allowPrivateNetworkOrigins: true,
+      }),
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Missing test address')
+    serverOrigin = `http://127.0.0.1:${address.port}`
+  })
+
+  afterEach(async () => { await server.shutdown() })
+
+  it('accepts RFC 1918 and local mDNS origins when allowPrivateNetworkOrigins is enabled', async () => {
+    const validOrigins = [
+      'http://192.168.1.100:18011',
+      'http://10.10.0.5:18011',
+      'http://172.20.1.2:18011',
+      'http://macbook-air.local:18011',
+    ]
+    for (const lanOrigin of validOrigins) {
+      const host = new URL(lanOrigin).host
+      const response = await postSession(`${serverOrigin}/auth/session`, { origin: lanOrigin, host })
+      expect(response.status).toBe(204)
+      expect(response.cookie).toContain('HttpOnly')
+    }
+  })
+
+  it('still rejects public IP and external domain origins in LAN mode', async () => {
+    const forbiddenOrigins = [
+      'http://8.8.8.8:18011',
+      'http://1.1.1.1:18011',
+      'http://evil.com:18011',
+      'http://172.32.0.1:18011',
+    ]
+    for (const forbidden of forbiddenOrigins) {
+      const host = new URL(forbidden).host
+      const response = await postSession(`${serverOrigin}/auth/session`, { origin: forbidden, host })
+      expect(response.status).toBe(403)
+    }
+  })
+
+  it('rejects origin-host mismatch even with private IP', async () => {
+    const response = await postSession(`${serverOrigin}/auth/session`, {
+      origin: 'http://192.168.1.100:18011',
+      host: '192.168.1.200:18011',
+    })
+    expect(response.status).toBe(403)
   })
 })

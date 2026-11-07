@@ -1,3 +1,4 @@
+import { createResourceDownloadsClient } from './resource-downloads-client.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { ExtensionEntityRef, ExtensionInstallationTarget, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type { LogHistoryQuery, LogQuery } from '@loom-studio/logging'
@@ -128,6 +129,7 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       install: (input: { packageId: string; digest: string }) => trpc.official.installContent.mutate(input),
       export: (input: { packageId: string; digest: string }) => trpc.official.exportContent.query(input),
     },
+    resourceDownloads: createResourceDownloadsClient(trpc),
     extensions: {
       listRecoveryRecords: () => trpc.extensions.listRecoveryRecords.query(),
       listModuleBatches: () => trpc.extensions.listModuleBatches.query(),
@@ -143,7 +145,7 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       finishOfficialSetup: () => trpc.extensions.finishOfficialSetup.mutate(undefined),
       list: (target?: ExtensionInstallationTarget) => trpc.extensions.listPackages.query(target ? { target } : {}),
       installCard: (input: { cardId: string; packageId: string; expectedCardVersion: number }) => trpc.extensions.installCardPackage.mutate(input),
-      updateCard: (input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string }) => trpc.extensions.updateCardPackage.mutate(input),
+      updateCard: (input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }) => trpc.extensions.updateCardPackage.mutate(input),
       uninstallCard: (input: { cardId: string; packageId: string; expectedInstallationVersion: number }) => trpc.extensions.uninstallCardPackage.mutate(input),
       installZip: (base64: string) => trpc.extensions.installPackageZip.mutate({ base64 }),
       enable: (packageId: string, moduleId: string, grants?: { ui?: Array<'ui.notify'>; 'events.subscribe'?: import('@loom-studio/extension-sdk').EventCapabilityCategory[]; assets?: Array<'assets.read' | 'assets.publish'> }, target?: ExtensionInstallationTarget) => trpc.extensions.enableModule.mutate({ packageId, moduleId, ...(grants ? { grants } : {}), ...(target ? { target } : {}) }),
@@ -156,9 +158,9 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       importCharacter: (input: { packageId: string; characterId: string; digest: string; allowDuplicate?: boolean }) => trpc.extensions.importCharacter.mutate(input),
       exportPackage: (input: { packageId: string; version: string }) => trpc.extensions.exportPackage.query(input),
       importCardResources: (input: { cardId: string; packageId: string; expectedCardVersion: number }) => trpc.extensions.importCardPackageResources.mutate(input),
-      updateCardResources: (input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string }) => trpc.extensions.updateCardPackageResources.mutate(input),
+      updateCardResources: (input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }) => trpc.extensions.updateCardPackageResources.mutate(input),
       removeCardResources: (input: { cardId: string; packageId: string; expectedInstallationVersion: number }) => trpc.extensions.removeCardPackageResources.mutate(input),
-      updateResources: (input: { packageId: string; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string }) => trpc.extensions.updatePackageResources.mutate(input),
+      updateResources: (input: { packageId: string; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }) => trpc.extensions.updatePackageResources.mutate(input),
       removeResources: (packageId: string) => trpc.extensions.removePackageResources.mutate({ packageId }),
       diagnostics: (packageId?: string, moduleId?: string) => trpc.extensions.getDiagnostics.query({
         ...(packageId ? { packageId } : {}),
@@ -305,7 +307,7 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       summarize: (input: { agentSessionId: string; branchId?: string }) => trpc.application.summarizeAgentSession.mutate({ ...input, branchId: input.branchId }),
       cancelSummary: (agentSessionId: string) => trpc.application.cancelAgentSessionSummary.mutate({ agentSessionId }),
 
-      listRuns: (input?: { timelineId?: string }) => trpc.application['agent.run.list'].query(input ?? {}),
+      listRuns: (input?: { timelineId?: string }, signal?: AbortSignal) => trpc.application['agent.run.list'].query(input ?? {}, { signal }),
       create: (input: CreateAgentSessionInput) => trpc.application['createAgentSession'].mutate({
         ...input, title: input.title ?? createDefaultTitle('session'),
       }),

@@ -113,7 +113,7 @@ export const messages = {
   'rail.model': 'モデル',
   'rail.agent': 'Agent プリセット',
   'rail.user': 'マイページ',
-  'rail.play': 'プレイ',
+  'rail.play': 'キャラクター',
   'rail.recent': '履歴',
   'rail.sessions': '履歴',
   'rail.resource': 'リソース',

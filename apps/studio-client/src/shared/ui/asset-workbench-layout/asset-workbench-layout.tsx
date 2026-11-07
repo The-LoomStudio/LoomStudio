@@ -15,6 +15,7 @@ type AssetWorkbenchLayoutProps = {
   resizeLabel: string
   toolbar?: ReactNode
   viewMode: AssetViewMode
+  deferHiddenDetail?: boolean
   mobilePane?: 'explorer' | 'detail'
   onMobilePaneChange?: (pane: 'explorer' | 'detail') => void
 }
@@ -55,6 +56,7 @@ export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
       masterWidth={props.explorerWidth}
       onMasterWidthChange={props.onExplorerWidthChange}
       detailMinWidth={0}
+      deferHiddenDetail={props.deferHiddenDetail}
       resizeLabel={props.resizeLabel}
       mobilePane={props.mobilePane === 'detail' ? 'detail' : 'master'}
       onMobilePaneChange={pane => props.onMobilePaneChange?.(pane === 'master' ? 'explorer' : 'detail')}

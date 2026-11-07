@@ -12,6 +12,8 @@ import type { PromptResourceContent, PromptResourceNode, PromptResourceKind } fr
 import { normalizeMacros } from '../cards/card.js'
 
 type PromptResourceMetadata = JsonObject & {
+  release?: NonNullable<PromptResourceContent['metadata']>['release']
+  sourcePackage?: PromptResourceContent['sourcePackage']
   icon?: NonNullable<PromptResourceContent['metadata']>['icon']
   historyPolicy?: PromptResourceContent['historyPolicy']
   model?: PromptResourceContent['model']
@@ -43,6 +45,8 @@ export function toStoredResourceInput(input: {
       throw new Error('Invalid Prompt tree: message sequences and Message blocks cannot be nested inside Message blocks')
   }
   const metadata: PromptResourceMetadata = {}
+  if (input.content.metadata?.release) metadata.release = structuredClone(input.content.metadata.release)
+  if (input.content.sourcePackage) metadata.sourcePackage = structuredClone(input.content.sourcePackage)
   if (input.content.metadata?.icon) metadata.icon = structuredClone(input.content.metadata.icon)
   if (input.content.historyPolicy !== undefined) metadata.historyPolicy = input.content.historyPolicy
   if (input.content.useCardLore !== undefined) metadata.useCardLore = input.content.useCardLore
@@ -91,7 +95,11 @@ export function toStoredNode(node: PromptResourceNode): StoredPromptResourceTree
 export function fromStoredResource(resource: StoredPromptResource): PromptResourceContent & { id: string; version: number; tombstoned?: boolean } {
   const metadata = resource.metadata as PromptResourceMetadata
   return {
-    ...(metadata.icon ? { metadata: { icon: structuredClone(metadata.icon) } } : {}),
+    ...((metadata.icon || metadata.release) ? { metadata: {
+      ...(metadata.icon ? { icon: structuredClone(metadata.icon) } : {}),
+      ...(metadata.release ? { release: structuredClone(metadata.release) } : {}),
+    } } : {}),
+    ...(metadata.sourcePackage ? { sourcePackage: structuredClone(metadata.sourcePackage) } : {}),
     resourceKind: resource.resourceKind,
     rootNode: fromStoredNode(resource.rootNode),
     ...(resource.resourceKind === 'preset' ? { historyPolicy: metadata.historyPolicy ?? 'persistent' } : {}),

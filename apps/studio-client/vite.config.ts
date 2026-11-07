@@ -86,7 +86,7 @@ export default defineConfig({
     },
   },
   server: {
-    host: '127.0.0.1',
+    host: process.env.STUDIO_CLIENT_HOST ?? (process.env.LOOM_DEV_LAN === '1' ? '0.0.0.0' : '127.0.0.1'),
     port: clientPort,
     proxy: {
       '/auth': studioServerUrl,
@@ -95,5 +95,12 @@ export default defineConfig({
       '/extensions': studioServerUrl,
       '/trpc': studioServerUrl,
     },
+  },
+  preview: {
+    proxy: Object.fromEntries(['/auth', '/assets', '/cards', '/extensions', '/trpc'].map(path => [path, {
+      target: studioServerUrl,
+      // Keep the browser's Host and Origin paired for same-origin session checks.
+      changeOrigin: false,
+    }])),
   },
 })

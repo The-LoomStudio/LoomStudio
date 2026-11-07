@@ -111,7 +111,8 @@ export function ScriptManagementPanel(props: {
     const script = scripts.find(item => item.id === props.initialScriptId || item.contributions.some(contribution => contribution.kind !== 'renderer' && (item.textResourceIds?.[contribution.id] ?? `${item.id}:${contribution.id}`) === props.initialScriptId))
     if (script && (!props.category || scriptMatchesFilter(script, props.category))) {
       initialSelectionRef.current = props.initialScriptId
-      setScopeTab('user')
+      setScopeTab('select')
+      setSelectedOwner(`owner:${JSON.stringify(script.owner)}`)
       if (!scriptMatchesFilter(script, filter)) setFilter(scriptMatchesFilter(script, 'rules') ? 'rules' : 'runtime')
       void selectScript(script)
     }
@@ -130,10 +131,17 @@ export function ScriptManagementPanel(props: {
   const dirty = Boolean(draft && (draft.source !== draft.savedSource || draft.fileName !== draft.savedFileName || !draft.script))
   const settingsDirty = selectedMounts.some(mount => settingsDrafts[mount.id] !== undefined && !sameSettings(settingsDrafts[mount.id]!, mount.settings ?? {}))
   const tags = useMemo(() => [...new Set(scripts.flatMap(script => script.tags ?? []))].sort((left, right) => left.localeCompare(right)), [scripts])
-  const scopeScripts = scripts.filter(script => scope === 'select' ? false : scopeOwner ? JSON.stringify(script.owner) === JSON.stringify(scopeOwner) : scope !== 'card' || !props.cardId
-    || script.owner.kind === 'card' && script.owner.cardId === props.cardId
-    || mounts.some(mount => mount.scriptDocumentId === script.id
-      && (mount.target.kind === 'user' || mount.target.kind === 'card' && mount.target.cardId === props.cardId)))
+  const scopeScripts = scripts.filter(script => {
+    if (scopeOwner) return JSON.stringify(script.owner) === JSON.stringify(scopeOwner)
+    if (scope === 'select') return false
+    const scriptTarget = ownerTarget(script.owner)
+    const globallyOwned = scriptTarget.kind === 'user'
+    const currentCardOwned = scriptTarget.kind === 'card' && scriptTarget.cardId === props.cardId
+    const globallyAdopted = mounts.some(mount => mount.scriptDocumentId === script.id && mount.target.kind === 'user')
+    if (scope === 'user') return globallyOwned || globallyAdopted
+    return currentCardOwned || mounts.some(mount => mount.scriptDocumentId === script.id
+      && (mount.target.kind === 'user' || mount.target.kind === 'card' && mount.target.cardId === props.cardId))
+  })
   const visibleScripts = scopeScripts.filter(script => scriptMatchesFilter(script, filter) && (!tag || script.tags?.includes(tag))
     && `${script.name} ${script.metadataId} ${props.getOwnerName?.(script.owner) ?? ''} ${(script.tags ?? []).join(' ')}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
 

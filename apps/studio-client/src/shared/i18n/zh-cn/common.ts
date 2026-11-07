@@ -111,7 +111,7 @@ export const messages = {
   'rail.model': '模型',
   'rail.agent': 'Agent 预设',
   'rail.user': '我的',
-  'rail.play': '游玩',
+  'rail.play': '角色',
   'rail.recent': '历史',
   'rail.sessions': '历史',
   'rail.resource': '资源',

@@ -108,8 +108,15 @@ export type ListLoreMountsResult = z.infer<typeof listLoreMountsResultSchema>
 export type ReplaceLoreMountsInput = z.infer<typeof replaceLoreMountsInputSchema>
 export type ReplaceLoreMountsResult = z.infer<typeof replaceLoreMountsResultSchema>
 
+export const resourceReleaseSchema = z.object({
+  id: z.string().min(1),
+  version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/),
+  update: z.object({ manifestUrl: z.url().refine(value => { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && !url.hash }) }).optional(),
+}).strict()
+
 /** Package-owned display metadata; references remain meaningful when a preset is copied. */
 export const promptResourceDisplayMetadataSchema = z.object({
+  release: resourceReleaseSchema.optional(),
   icon: z.object({
     kind: z.literal('package'),
     packageId: z.string().regex(/^[A-Za-z0-9._-]+$/),

@@ -46,7 +46,11 @@
     "data:reset": "tsx scripts/data/reset-dev-data.ts",
     "lint": "oxlint . --ignore-pattern \"official/extensions/**\"",
     "dev:server": "node scripts/dev/dev-with-packages.mjs server",
+    "dev:server:lan": "node scripts/dev/dev-with-packages.mjs server --lan",
     "dev:client": "node scripts/dev/dev-with-packages.mjs client",
+    "dev:client:lan": "node scripts/dev/dev-with-packages.mjs client --lan",
+    "preview:client": "pnpm --filter @loom-studio/studio-client build && pnpm --filter @loom-studio/studio-client exec vite preview --config vite.config.ts --host 127.0.0.1 --port 18013 --strictPort",
+    "preview:client:lan": "pnpm --filter @loom-studio/studio-client build && pnpm --filter @loom-studio/studio-client exec vite preview --config vite.config.ts --host 0.0.0.0 --port 18013 --strictPort",
     "playground": "pnpm --filter @loom-studio/playground start"
   },
   "devDependencies": {

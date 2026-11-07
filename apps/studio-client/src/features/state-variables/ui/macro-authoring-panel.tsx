@@ -265,7 +265,7 @@ export function MacroAuthoringExplorer(props: { controller: MacroAuthoringContro
         {nodes.length === 0 ? (
           <span className={styles.emptyState}>{search ? t('macroInspector.searchEmpty') : t('macroAuthoring.empty')}</span>
         ) : (
-          <FileTree canOpenFolderDetails={() => true}
+          <FileTree
           ariaLabel={t('macroAuthoring.title')}
           nodes={nodes}
           selectedId={controller.selectedNodeId}

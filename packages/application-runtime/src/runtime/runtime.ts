@@ -1,3 +1,6 @@
+import { createPromptPackageUpdateMethods } from './prompt-package-updates.js'
+import { createCardPackageUpdateMethods } from './card-package-updates.js'
+import { createStateMigrationMethods } from './state-migration.js'
 import { createResourceAuthoringRuntimeMethods } from './resource-authoring-runtime.js'
 import { createObservabilityRuntimeMethods } from './observability-runtime.js'
 import type { ObservationBuild } from '../observability/types.js'
@@ -88,7 +91,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     ...createCardsRuntimeMethods(ctx),
+    ...createCardPackageUpdateMethods(ctx),
     ...createCardDirectoryRuntimeMethods(ctx),
+    ...createStateMigrationMethods(ctx),
     ...createResourceAuthoringRuntimeMethods(ctx),
     ...createNarrativeRuntimeMethods(ctx),
     ...createSwipeRuntimeMethods(ctx),
@@ -135,6 +140,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
     ...createMacroConfigurationRuntimeMethods(ctx),
     ...createPromptRuntimeMethods(ctx),
+    ...createPromptPackageUpdateMethods(ctx),
     ...createSearchRuntimeMethods(ctx),
     ...createStateRuntimeMethods(ctx),
     ...createUserProfilesRuntimeMethods(ctx),

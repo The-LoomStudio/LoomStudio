@@ -168,7 +168,7 @@ export function createBuiltinHandlers(kernel: Kernel,
       const extensionPackage = await requireExtensionManager(options).updateCardPackage({
         cardId, packageId: readString(params, 'packageId'), packageVersion: readString(params, 'packageVersion'),
         expectedCardVersion: cardVersion, expectedInstallationVersion: installationVersion,
-        expectedPreviewFingerprint: readPreviewFingerprint(params),
+        expectedPreviewFingerprint: readPreviewFingerprint(params), keepPromptResourceIds: readKeepPromptResources(params),
       })
       eventBus.emit('extensions.changed', {
         packageId: extensionPackage.packageId, target: { kind: 'card', cardId }, action: 'updated',
@@ -296,7 +296,7 @@ export function createBuiltinHandlers(kernel: Kernel,
         packageId: readString(params, 'packageId'),
         packageVersion: readString(params, 'packageVersion'),
         expectedInstallationVersion,
-        expectedPreviewFingerprint: readPreviewFingerprint(params),
+        expectedPreviewFingerprint: readPreviewFingerprint(params), keepPromptResourceIds: readKeepPromptResources(params),
       })
     },
     'extensions.listCharacters': async (params: JsonValue | undefined) => {
@@ -346,7 +346,7 @@ export function createBuiltinHandlers(kernel: Kernel,
       }
       return await requireExtensionManager(options).importCardPackageResources({
         cardId: readString(params, 'cardId'), packageId: readString(params, 'packageId'), expectedCardVersion: cardVersion,
-        update: { packageVersion: readString(params, 'packageVersion'), expectedInstallationVersion: installationVersion, expectedPreviewFingerprint: readPreviewFingerprint(params) },
+        update: { packageVersion: readString(params, 'packageVersion'), expectedInstallationVersion: installationVersion, expectedPreviewFingerprint: readPreviewFingerprint(params), keepPromptResourceIds: readKeepPromptResources(params) },
       })
     },
     'extensions.removeCardPackageResources': async (params: JsonValue | undefined) => {
@@ -553,4 +553,11 @@ function readPreviewFingerprint(params: JsonValue | undefined): string | undefin
   if (!isRecord(params) || params.expectedPreviewFingerprint === undefined) return undefined
   if (typeof params.expectedPreviewFingerprint !== 'string' || !params.expectedPreviewFingerprint) throw new Error('Expected preview fingerprint')
   return params.expectedPreviewFingerprint
+}
+
+function readKeepPromptResources(params: unknown): string[] | undefined {
+  if (!isRecord(params) || params.keepPromptResourceIds === undefined) return undefined
+  const value = params.keepPromptResourceIds
+  if (!Array.isArray(value) || value.length > 1000 || value.some(id => typeof id !== 'string' || !id)) throw new Error('Expected resource IDs to preserve')
+  return value as string[]
 }

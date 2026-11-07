@@ -1,7 +1,8 @@
+import { ResourceDownloadsLauncher } from '../resource-downloads/resource-downloads-launcher.js'
 import { StoryHero } from '../../shared/ui/story-hero/story-hero.js'
 import { CardDeleteConfirmation } from '../../features/cards/ui/card-delete-confirmation.js'
-import { ArrowDownUp, ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, Circle, CloudDownload, Combine, Download, FileArchive, Folder, GitFork, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
+import { ArrowDownUp, ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, Circle, Combine, Download, FileArchive, Folder, GitFork, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, Dialog, SearchField, Toggle, type MenuAction } from '@loom-studio/ui'
 import { formatDateTime, type Translator } from '../../shared/i18n/index.js'
 import { useCharacterGalleryStore, type CharacterGroupFilter } from './character-gallery-store.js'
@@ -20,7 +21,6 @@ import type { OpeningChoice } from '../../features/cards/model/opening-choice.js
 import type { CharacterCardSummary } from '../../features/cards/model/character-card-summary.js'
 import { useCharacterProfileEditor } from '../../features/cards/model/use-character-profile-editor.js'
 import { useCardDirectoryDiscovery } from '../../features/cards/model/use-card-directory-discovery.js'
-import { useRemoteCardImport } from '../../features/cards/model/use-remote-card-import.js'
 import { notify } from '../../shared/notifications/index.js'
 
 type NarrativeTimelineView = { id: string; title?: string; createdAt: string; updatedAt: string }
@@ -36,7 +36,7 @@ type CharacterPanelProps = {
   onCreateTimelineFromCard(cardId: string, choice?: OpeningChoice, cardVersion?: number): Promise<boolean | void>
   onExportCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard' | 'directory'): Promise<void>
   directoryApi?: CardDirectoryApi
-  resourceApi: Pick<import('../../shared/api/studio-api.js').StudioApi, 'cards' | 'narratives' | 'textTransforms' | 'loomScripts' | 'states' | 'extensions' | 'extensionRuntime' | 'portableExtensionPayloads'>
+  resourceApi: Pick<import('../../shared/api/studio-api.js').StudioApi, 'cards' | 'narratives' | 'textTransforms' | 'loomScripts' | 'states' | 'extensions' | 'extensionRuntime' | 'portableExtensionPayloads' | 'resourceDownloads' | 'promptResources'>
   endpoint: string
   onChangeResourceNode(id: string, partial: Partial<import('../../entities/index.js').ContextAssetNode>): void
   onCommitResourceNode(id: string, partial: Partial<import('../../entities/index.js').ContextAssetNode>): void
@@ -87,8 +87,6 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [exportCard, setExportCard] = useState<CharacterCardSummary>()
   const [profileTab, setProfileTab] = useState<'profile' | 'attachments'>(() => props.resourceDirectoryOpen ? 'attachments' : 'profile')
   const { discovered, closeDiscovery, refreshing, refreshError, refreshGallery } = useCardDirectoryDiscovery(props.directoryApi, props.onRefreshCards)
-  const { remoteImportProgress, remoteImportOpen, setRemoteImportOpen, remoteImportUrl, changeRemoteImportUrl, remoteImportError, remoteImportUrlInvalid, remoteImportBusy, closeRemoteImport, importRemoteCard } = useRemoteCardImport(props.onImportCards, props.t)
-  const remoteImportErrorId = useId()
   const characterPanelRef = useRef<HTMLDivElement>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const backgroundInputRef = useRef<HTMLInputElement>(null)
@@ -366,29 +364,6 @@ export function CharacterPanel(props: CharacterPanelProps) {
           <ExportOption description={props.t('character.exportLoomCardDescription')} icon={<FileArchive aria-hidden="true" />} label={props.t('character.exportLoomCard')} onClick={() => exportCard && exportSelectedCard(exportCard, 'loomcard')} />
         </div>
       </Dialog>
-      <Dialog
-        actions={(
-          <>
-            <button disabled={remoteImportBusy} type="button" onClick={closeRemoteImport}>{props.t('character.cancel')}</button>
-            <button disabled={remoteImportBusy || !remoteImportUrl.trim()} form="remote-card-import-form" type="submit">{props.t('character.importRemoteAction')}</button>
-          </>
-        )}
-        className={styles.exportDialog}
-        closeOnBackdrop
-        description={props.t('character.importRemoteDescription')}
-        dismissible={!remoteImportBusy}
-        open={remoteImportOpen}
-        title={props.t('character.importRemote')}
-        onClose={closeRemoteImport}
-      >
-        <form className={styles.remoteImportForm} id="remote-card-import-form" onSubmit={event => { event.preventDefault(); void importRemoteCard() }}>
-          <label><span>{props.t('character.importRemoteUrl')}</span><input autoFocus disabled={remoteImportBusy} aria-invalid={remoteImportUrlInvalid || undefined} aria-errormessage={remoteImportUrlInvalid ? remoteImportErrorId : undefined} aria-describedby={remoteImportUrlInvalid ? remoteImportErrorId : undefined} inputMode="url" placeholder="https://cdn.example.com/card.png" type="url" value={remoteImportUrl} onChange={event => changeRemoteImportUrl(event.target.value)} /></label>
-          <p>{props.t('character.importRemoteWarning')}</p>
-          {remoteImportBusy && <p role="status">{remoteImportProgress}</p>}
-          {!remoteImportBusy && <p>下载大小由远端服务器提供；未提供时会显示已下载量。角色信息将在下载解析后读取。</p>}
-          {remoteImportError ? <p id={remoteImportErrorId} aria-live="polite" className={styles.remoteImportError}>{remoteImportError}</p> : null}
-        </form>
-      </Dialog>
       <CardDeleteConfirmation
         busy={props.busy}
         count={pendingDeleteIds?.length ?? 0}
@@ -451,7 +426,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                     <div className={styles.galleryActions}>
                       {props.directoryApi ? <button aria-label={props.t('directory.refresh')} className={styles.toolbarButton} disabled={refreshing || props.busy} title={props.t('directory.refresh')} type="button" onClick={() => void refreshGallery()}><RefreshCw aria-hidden="true" /></button> : null}
                       <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.import')} type="button" onClick={() => cardImportInputRef.current?.click()}><Upload aria-hidden="true" /></button>
-                      <button aria-label={props.t('character.importRemote')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.importRemote')} type="button" onClick={() => setRemoteImportOpen(true)}><CloudDownload aria-hidden="true" /></button>
+                      <ResourceDownloadsLauncher compact kind="card" api={props.resourceApi.resourceDownloads} cardId={targetCardId} promptResourceApi={props.resourceApi.promptResources} onChanged={props.onRefreshCards} />
                       <button aria-label={props.t('character.create')} className={styles.createButton} disabled={props.busy} title={props.t('character.create')} type="button" onClick={() => void props.onCreateCard().catch(err => {
                         notify.failure('角色操作未完成', err)
                       })}><Plus aria-hidden="true" /></button>
@@ -530,6 +505,10 @@ export function CharacterPanel(props: CharacterPanelProps) {
             </header>
             <section className={styles.profileIdentity}>
               <div><h2>{selected.name}</h2><p>{props.t('character.invalidCard')}</p></div>
+              {selected.artifactId ? <dl className={styles.workIdentity}>
+                <div><dt>{props.t('character.artifactId')}</dt><dd><code>{selected.artifactId}</code></dd></div>
+                {selected.derivedFrom ? <div><dt>{props.t('character.derivedFrom')}</dt><dd><code>{selected.derivedFrom.artifactId}</code></dd></div> : null}
+              </dl> : null}
               <div className={styles.startActions}>
                 <button className={styles.toolbarButton} aria-label={props.t('character.continueNarrative')} title={props.t('character.continueNarrative')} disabled type="button"><Play aria-hidden="true" /></button>
                 <button className={styles.toolbarButton} aria-label={props.t('character.newNarrative')} title={props.t('character.newNarrative')} disabled type="button"><Plus aria-hidden="true" /></button>
@@ -661,9 +640,6 @@ export function CharacterPanel(props: CharacterPanelProps) {
               />
             </div>
             {profileTab === 'attachments' ? <div role="tabpanel" id="card-attachments-panel" aria-labelledby="card-attachments-tab"><CardResourceDirectory key={selected.id} api={props.resourceApi} endpoint={props.endpoint} directoryApi={props.directoryApi} cardId={selected.id} resources={props.resources ?? []} onChangeNode={props.onChangeResourceNode} onCommitNode={props.onCommitResourceNode} onRefreshCards={props.onRefreshCards} onOpenLore={props.onOpenLore} selectedTreeId={props.resourceDirectorySelectedId} expandedTreeIds={props.resourceDirectoryExpandedIds} onTreeStateChange={props.onResourceDirectoryStateChange} t={props.t} /></div> : <div role="tabpanel" id="card-profile-panel" aria-labelledby="card-profile-tab">
-              {selected.artifactId ? <p className={styles.workIdentity}>{props.t('character.artifactId')}: <code>{selected.artifactId}</code>
-                {selected.derivedFrom ? <><br />{props.t('character.derivedFrom')}: <code>{selected.derivedFrom.artifactId}</code></> : null}
-              </p> : null}
               <section className={styles.profileContent}>
                 <div>
                   <h3>{props.t('character.description')}</h3>

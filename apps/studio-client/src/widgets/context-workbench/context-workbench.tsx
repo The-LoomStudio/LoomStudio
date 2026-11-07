@@ -278,6 +278,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   return (
     <>
     <AssetWorkbenchLayout
+      deferHiddenDetail
       explorerWidth={explorerLayout.explorerWidth}
       hasSelection={hasDetailSelection}
       mobilePane={mobilePane}

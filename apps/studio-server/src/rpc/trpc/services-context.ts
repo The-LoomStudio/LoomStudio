@@ -16,6 +16,9 @@ type RpcCallContext = {
 type KernelRpcCaller = Pick<import('@loom-studio/kernel').Kernel, 'callRpc'>
 
 export type StudioRpcServices = {
+  resourceDownloads?: import('../../resource-downloads/service.js').ResourceDownloadService
+  resourceDownloadUse?: ReturnType<typeof import('../../resource-adoption/download-use.js').createResourceDownloadUse>
+
   dashboard?: {
     statistics: import('@loom-studio/application-data').StatisticsStore
     storage: ReturnType<typeof import('../../statistics/storage-snapshot.js').createStorageSnapshot>

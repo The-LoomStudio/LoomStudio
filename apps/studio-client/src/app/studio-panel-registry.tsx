@@ -446,6 +446,7 @@ export function createStudioPanels(input: {
         configRevision={clientExtensions.configRevision}
         runtimeError={clientExtensions.error?.message ?? input.extensionCardContext.error}
         extensionRuntime={state.api.extensionRuntime}
+        resourceDownloadsApi={state.api.resourceDownloads}
         extensionApi={state.api.extensions}
         onCharacterImported={async () => { await state.refreshCards() }}
         scriptPreviewContext={state.agentChatSession && uiState.agentPanelOpen ? 'agent-session' : state.narrativeTimeline ? 'narrative' : state.agentChatSession ? 'agent-session' : undefined}

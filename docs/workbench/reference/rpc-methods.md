@@ -33,6 +33,9 @@
 | Loom Script；`application.importLoomScript`、`application.createLoomScriptMount` | [loom-scripts.ts](../../../apps/studio-server/src/rpc/trpc/application/loom-scripts.ts) | [Loom Script Runtime](../../architecture/extensions/loom-script-runtime.md) |
 | 扩展私有配置与记录 | [extension-records.ts](../../../apps/studio-server/src/rpc/trpc/application/extension-records.ts) | [扩展数据合同](../../architecture/application/extension/data-and-portable-payload.md) |
 | Card 携带的扩展数据 | [portable-payloads.ts](../../../apps/studio-server/src/rpc/trpc/application/portable-payloads.ts) | [Portable Payload](../../architecture/application/extension/data-and-portable-payload.md) |
+| 全局搜索；`application.search` | [search.ts](../../../apps/studio-server/src/rpc/trpc/application/search.ts) | [全局资源搜索](../../architecture/application/global-resource-search.md) |
+| 用户背景目录与资产；`application.getUserBackgrounds`、`application.updateUserBackgrounds` | [user-backgrounds.ts](../../../apps/studio-server/src/rpc/trpc/application/user-backgrounds.ts) | [user-backgrounds-runtime.ts](../../../packages/application-runtime/src/runtime/user-backgrounds-runtime.ts) |
+| 模型观测与运行日志；`application.listModelObservations`、`application.getModelObservationDetail` | [observability.ts](../../../apps/studio-server/src/rpc/trpc/application/observability.ts) | [模型观测与日志](../../architecture/platform/logging.md) |
 
 ## 其他 Namespace 与数据面
 
@@ -45,6 +48,8 @@
 | `settings.*` | [services.ts](../../../apps/studio-server/src/rpc/trpc/services.ts)，不是 Lore Prompt Resource |
 | `official.*` | [official-content.ts](../../../apps/studio-server/src/official/official-content.ts)；[官方内容](../../../official/README.md) |
 | `directories.*` | [card-directory-catalog.ts](../../../apps/studio-server/src/resource-directories/card-directory-catalog.ts) |
+| `resourceDownloads.*`：下载、版本检查、卡片更新采用 | [resource-downloads.ts](../../../apps/studio-server/src/rpc/trpc/resource-downloads.ts)；[资源下载服务](../../../apps/studio-server/src/resource-downloads/README.md)与[资源更新计划](../plans/resource-download-and-update-plan.md) |
+| `dashboard.*`：仪表盘概览、模型用量与存储快照 | [dashboard.ts](../../../apps/studio-server/src/rpc/trpc/dashboard.ts)；[Dashboard 方案](../plans/dashboard-statistics-and-resource-inventory-plan.md) |
 | HTTP 认证、Asset、Card 文件、Extension 文件与 SSE | [Server README](../../../apps/studio-server/README.md#当前-http-面)、[http/](../../../apps/studio-server/src/http/)；不把文件接口当成 RPC |
 
 ## 旧名称与合同陷阱

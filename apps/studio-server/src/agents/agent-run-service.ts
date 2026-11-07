@@ -18,7 +18,6 @@ type AgentRun = {
   pendingCompletion?: Extract<AgentRunEvent, { type: 'completed' }>
   replayTimer?: ReturnType<typeof setTimeout>
   state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'
-  promise?: Promise<unknown>
   sendRequestDigest?: string
   request?: InvokeAgentTurnInput
   sourceRunId?: string
@@ -47,11 +46,16 @@ type AgentRunSubscription = {
 
 const receiptLocks = new WeakMap<ApplicationRuntime, Map<string, Promise<unknown>>>()
 const runStores = new WeakMap<ApplicationRuntime, Map<string, AgentRun>>()
+const runListListeners = new WeakMap<ApplicationRuntime, (sessionId: string) => void>()
 const maxRetainedRuns = 128
 // ponytail: Serialized budgets bound replay payload, not total JS heap; tune with production workloads.
 const maximumRunEventBytes = 1024 * 1024
 const maximumReplayBytes = 8 * 1024 * 1024
 const completedReplayMs = 2 * 60_000
+
+export function setAgentRunListChangeListener(runtime: ApplicationRuntime, listener: (sessionId: string) => void) {
+  runListListeners.set(runtime, listener)
+}
 
 // Run ownership stays in the server; the RPC adapter only translates requests.
 export function getAgentRunService(runtime: ApplicationRuntime) {
@@ -137,9 +141,6 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         }
       }
       const run = startAgentRun(runtime, context, request)
-      runs.set(run.id, run)
-      pruneCompletedRuns(runs)
-      void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
       return { runId: run.id }
       })
     },
@@ -151,16 +152,19 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         const target = entries.find(item => item.id === input.entryId)
         if (active && (target?.entry.kind !== 'user-interjection' || target.entry.requestId === active.request?.interjectionRequestId)) throw new Error('这条输入正在执行，请等待结束或暂停后再提交')
         const result = await runtime.reviseAgentInput(input, context)
+        let discarded = false
         if (target?.entry.kind === 'message') for (const run of runs.values()) {
           if (run.sessionId === input.agentSessionId && run.state === 'suspended') {
             run.checkpoint = undefined; run.request = undefined; run.abandoned = true; run.state = 'cancelled'; clearRunReplay(run)
+            discarded = true
           }
         }
         if (active) appendRunEvent(active, { type: 'transcript-appended', runId: active.id, entries: [result.entry] })
-        if (!result.rerun) return result
+        if (!result.rerun) {
+          if (discarded) runListListeners.get(runtime)?.(input.agentSessionId)
+          return result
+        }
         const run = startAgentRun(runtime, context, interjectionRequest(input.agentSessionId, result.entry))
-        runs.set(run.id, run)
-        void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
         return { ...result, runId: run.id }
       })
     },
@@ -179,8 +183,6 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         const lastState = entries.findLast(item => item.entry.kind === 'run-state')?.entry
         if (lastState?.kind === 'run-state' && ['suspended', 'failed', 'aborted'].includes(lastState.state)) return receipt
         const run = startAgentRun(runtime, context, interjectionRequest(input.agentSessionId, receipt.entry))
-        runs.set(run.id, run)
-        void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
         return { ...receipt, runId: run.id }
       })
     },
@@ -282,6 +284,7 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
       run.abandoned = true
       run.request = undefined
       clearRunReplay(run)
+      runListListeners.get(runtime)?.(run.sessionId)
       return { runId: run.id, accepted: true, state: run.state }
       })
     },
@@ -302,10 +305,6 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         if (source.continuationRunId) return { runId: source.continuationRunId, sourceRunId: source.id, accepted: true }
         if (source.checkpoint && source.request) {
           const run = startAgentRun(runtime, context, source.request, source.id, source.checkpoint, source)
-          runs.set(run.id, run)
-          pruneCompletedRuns(runs)
-          void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
-          source.continuationRunId = run.id
           return { runId: run.id, sourceRunId: source.id, accepted: true, state: run.state }
         }
       }
@@ -320,9 +319,6 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         })
         if (recovered) {
           const run = startAgentRun(runtime, context, recovered.request, recovered.continuation.sourceRunId, recovered.continuation)
-          runs.set(run.id, run)
-          pruneCompletedRuns(runs)
-          void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
           return { runId: run.id, sourceRunId: recovered.continuation.sourceRunId, accepted: true, state: run.state }
         }
       }
@@ -331,8 +327,6 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         const pending = readPendingInterjections(await readSessionEntries(runtime, sessionId))
         if (pending.length) {
           const run = startAgentRun(runtime, context, interjectionRequest(sessionId, pending[0]!))
-          runs.set(run.id, run)
-          void run.promise!.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
           return { runId: run.id, accepted: true, state: run.state }
         }
       }
@@ -356,16 +350,17 @@ function startAgentRun(
   continuation?: AgentRun['checkpoint'],
   source?: AgentRun,
 ): AgentRun {
-  if ([...getRunStore(runtime).values()].some(run => run.state === 'running' && run.sessionId === request.agentSessionId))
+  const runs = getRunStore(runtime)
+  if ([...runs.values()].some(run => run.state === 'running' && run.sessionId === request.agentSessionId))
     throw Object.assign(new Error('Agent Session already has an executing Run'), { code: 'agent.session_busy' })
-  const id = !continuation && !sourceRunId && request.requestId ? request.requestId : createId('run', id => getRunStore(runtime).has(id))
+  const id = !continuation && !sourceRunId && request.requestId ? request.requestId : createId('run', id => runs.has(id))
   const controller = new AbortController()
   const timestamp = new Date().toISOString()
   const run: AgentRun = {
     id, createdAt: timestamp, updatedAt: timestamp, controller, request, sourceRunId, sessionId: request.agentSessionId,
     receivedInterjections: Boolean(request.interjectionRequestId),
     ...(continuation ? { checkpoint: continuation } : {}),
-    events: [], eventSizes: [], eventBytes: 0, firstCursor: 0, nextCursor: 0, partialEvents: [], state: 'running', promise: Promise.resolve(), mutationApprovals: new Map(),
+    events: [], eventSizes: [], eventBytes: 0, firstCursor: 0, nextCursor: 0, partialEvents: [], state: 'running', mutationApprovals: new Map(),
     ...(request.requestId ? { sendRequestDigest: continuation?.recovery?.sendRequestDigest ?? source?.sendRequestDigest ?? sendRequestDigest(request) } : {}),
   }
   const transferCheckpoint = () => {
@@ -456,7 +451,7 @@ function startAgentRun(
       }),
     },
   })
-  run.promise = (async () => {
+  const execution = (async () => {
     let result = await invoke(request)
     for (;;) {
       const next = await withReceiptLock(runtime, run.sessionId, async () => {
@@ -496,7 +491,6 @@ function startAgentRun(
         : { type: 'failed', runId: id, error: { name: error instanceof Error ? error.name : 'UnknownError', message: reason } })
   }).finally(() => {
     run.controller = undefined
-    run.promise = undefined
     run.partialEvents = []
     const retainedColdCheckpoint = !source && continuation !== undefined && run.checkpoint === continuation
     if (run.state !== 'suspended' && !retainedColdCheckpoint || !run.checkpoint && source?.checkpoint) {
@@ -510,7 +504,14 @@ function startAgentRun(
       pruneCompletedRuns(getRunStore(runtime))
     }, completedReplayMs)
     run.replayTimer.unref()
+    pruneCompletedRuns(runs)
+    runListListeners.get(runtime)?.(run.sessionId)
   })
+  void execution.catch(() => undefined)
+  runs.set(run.id, run)
+  if (source) source.continuationRunId = run.id
+  pruneCompletedRuns(runs)
+  runListListeners.get(runtime)?.(run.sessionId)
   return run
 }
 

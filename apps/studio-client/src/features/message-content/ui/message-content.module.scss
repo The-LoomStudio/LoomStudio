@@ -24,7 +24,7 @@
 
 .previewReservation {
   overflow: clip;
-  transition: height 180ms ease-out;
+  &[data-animate-height] { transition: height 180ms ease-out; }
 }
 
 .previewSkeleton {
@@ -42,7 +42,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .previewShell[data-ready] .preview { animation: none; }
-  .previewReservation { transition: none; }
+  .previewReservation[data-animate-height] { transition: none; }
 }
 
 .content {

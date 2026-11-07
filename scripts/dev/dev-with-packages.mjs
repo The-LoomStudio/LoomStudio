@@ -4,12 +4,21 @@ import { developmentDataEnvironment } from '../lib/development-data-paths.mjs'
 
 const target = process.argv[2]
 if (target !== 'server' && target !== 'client') {
-  console.error('Usage: node scripts/dev/dev-with-packages.mjs <server|client>')
+  console.error('Usage: node scripts/dev/dev-with-packages.mjs <server|client> [--lan]')
   process.exit(1)
+}
+const isLan = process.argv.includes('--lan') || process.env.LOOM_DEV_LAN === '1'
+
+if (isLan) {
+  console.log('\x1b[33m[LoomStudio]\x1b[0m ⚠️ 局域网移动端直连调试模式已启用 (LAN Mode)。仅允许 RFC 1918 私网直连，请勿在不可信网络下暴露！')
 }
 
 const repositoryRoot = resolve(import.meta.dirname, '../..')
-const developmentEnvironment = { ...developmentDataEnvironment(repositoryRoot), NODE_ENV: 'development' }
+const developmentEnvironment = {
+  ...developmentDataEnvironment(repositoryRoot),
+  NODE_ENV: 'development',
+  ...(isLan ? { LOOM_DEV_LAN: '1' } : {}),
+}
 const initialBuild = spawnSync('pnpm', ['run', 'build:packages'], {
   cwd: repositoryRoot,
   env: developmentEnvironment,
@@ -17,11 +26,15 @@ const initialBuild = spawnSync('pnpm', ['run', 'build:packages'], {
 })
 if (initialBuild.status !== 0) process.exit(initialBuild.status ?? 1)
 
+const clientArgs = isLan
+  ? ['exec', 'vite', '--config', 'apps/studio-client/vite.config.ts', '--host', '0.0.0.0']
+  : ['exec', 'vite', '--config', 'apps/studio-client/vite.config.ts']
+
 const processes = [
   start('studio-packages', ['exec', 'tsc', '-b', 'tsconfig.packages.json', '--watch', '--preserveWatchOutput']),
   target === 'server'
     ? start('studio-server', ['exec', 'tsx', 'watch', '--include', 'packages/**/dist/**/*', '--include', 'official/**', '--include', 'tests/fixtures/extensions/**/dist/**/*', '--exclude', '**/*.tsbuildinfo', 'apps/studio-server/src/main.ts'])
-    : start('studio-client', ['exec', 'vite', '--config', 'apps/studio-client/vite.config.ts']),
+    : start('studio-client', clientArgs),
 ]
 
 let stopping = false

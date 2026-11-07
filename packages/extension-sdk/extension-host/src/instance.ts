@@ -500,7 +500,58 @@ export function createContext(
         return handle
       },
     },
+    resourceSources: {
+      credentials: {
+        get: name => {
+          assertScopeActive(instance)
+          if (!moduleManifest.capabilities?.['resources.provide'] || record.target.kind !== 'global' || !options.resourceSourceCredentials) throw new Error('Source credentials are unavailable or not authorized')
+          return instance.scope.run(() => options.resourceSourceCredentials!.get(packageManifest.id, name))
+        },
+        set: (name, values) => {
+          assertScopeActive(instance)
+          if (!moduleManifest.capabilities?.['resources.provide'] || record.target.kind !== 'global' || !options.resourceSourceCredentials) throw new Error('Source credentials are unavailable or not authorized')
+          return instance.scope.run(() => options.resourceSourceCredentials!.set(packageManifest.id, name, structuredClone(values)))
+        },
+        remove: name => {
+          assertScopeActive(instance)
+          if (!moduleManifest.capabilities?.['resources.provide'] || record.target.kind !== 'global' || !options.resourceSourceCredentials) throw new Error('Source credentials are unavailable or not authorized')
+          return instance.scope.run(() => options.resourceSourceCredentials!.remove(packageManifest.id, name))
+        },
+      },
+      register: adapter => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['resources.provide'] !== true) throw new Error('Resource sources require resources.provide')
+        if (record.target.kind !== 'global') throw new Error('Resource sources require a global installation')
+        if (!adapter.id.startsWith(`${packageManifest.id}/`)) throw new Error('Resource source ID must use its package namespace')
+        if (!adapter.links.length || adapter.links.some(link => !link.hostname || !link.pathPrefix.startsWith('/'))) throw new Error('Resource source requires exact hosts and absolute path prefixes')
+        if (!options.registerResourceSource) throw new Error('Resource source registration is unavailable')
+        const signalFor = (signal: AbortSignal) => AbortSignal.any([signal, instance.scope.signal])
+        const handle = options.registerResourceSource({
+          ...adapter,
+          links: structuredClone(adapter.links),
+          resolve: (input, signal) => instance.scope.run(() => adapter.resolve(input, signalFor(signal))),
+          ...(adapter.prepare ? { prepare: (candidate, signal) => instance.scope.run(() => adapter.prepare!(candidate, signalFor(signal))) } : {}),
+          ...(adapter.check ? { check: (input, signal) => instance.scope.run(() => adapter.check!(input, signalFor(signal))) } : {}),
+        })
+        instance.scope.track(`resource-source:${adapter.id}`, handle)
+        return handle
+      },
+    },
     state: {
+      definitions: target => {
+        assertScopeActive(instance)
+        if (!moduleManifest.capabilities?.['state.read'] || !moduleManifest.capabilities?.['state.contribute']) throw new Error('Definition inspection requires state.read and state.contribute')
+        const lease = timelineWork.getStore()?.lease
+        if (!lease || !options.readStateDefinitions) throw new Error('State definitions require an active timeline.run scope')
+        return instance.scope.run(() => options.readStateDefinitions!(structuredClone(target), { packageId: packageManifest.id, lease }))
+      },
+      migrate: input => {
+        assertScopeActive(instance)
+        if (!moduleManifest.capabilities?.['state.write'] || !moduleManifest.capabilities?.['state.contribute']) throw new Error('State migration requires state.write and state.contribute')
+        const lease = timelineWork.getStore()?.lease
+        if (!lease || !options.migrateState) throw new Error('State migration requires an active timeline.run scope')
+        return instance.scope.run(() => options.migrateState!(structuredClone(input), { packageId: packageManifest.id, lease }))
+      },
       registerContentHandler: handler => {
         assertScopeActive(instance)
         for (const capability of ['state.processContent', 'state.read', 'state.write'] as const) {

@@ -218,6 +218,11 @@ export function toStateDefinitionEntry(document: DocumentRecord<StateDefinitionC
 }
 
 function validateSchema(schema: JsonObject, path: string): void {
+  const supported = new Set(['type', 'properties', 'required', 'items', 'additionalProperties', 'enum', 'minimum', 'maximum', 'minLength', 'maxLength', 'title', 'description', 'default', 'examples', '$schema', '$id', '$comment'])
+  for (const key of Object.keys(schema)) {
+    if (!supported.has(key) && !key.startsWith('x-')) throw new StateDefinitionError('state.schema_unsupported', `Unsupported State Schema keyword ${key} at ${path}`)
+  }
+
   const allowedTypes = new Set(['null', 'boolean', 'number', 'integer', 'string', 'array', 'object'])
   const types = Array.isArray(schema.type) ? schema.type : [schema.type]
   if (schema.type !== undefined && (!types.length || types.some(type => typeof type !== 'string' || !allowedTypes.has(type)))) {

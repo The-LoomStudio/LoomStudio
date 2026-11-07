@@ -1,11 +1,12 @@
 import type { ActiveAgentRun } from '../model/use-narrative-runtime.js'
 import type { AgentTranscriptEntry } from '../../../entities/index.js'
 import { resolveAgentRuntimePhase } from '../model/agent-runtime-phase.js'
-import { useId, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useId, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, Dialog, IconButton } from '@loom-studio/ui'
 import { AlertCircle, Check, LoaderCircle, ChevronUp, CircleX, ExternalLink, Pause, Play, RefreshCw } from 'lucide-react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { subscribeExtensionEvents } from '../../../shared/api/extension-events.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import styles from './agent-task-menu.module.scss'
 
@@ -22,7 +23,9 @@ export function AgentTaskMenu(props: {
   onResumed(sessionId: string, runId: string): void
   onAbandoned(sessionId: string): Promise<void>
 }) {
-  const { api, endpoint, t } = props
+  const { api, endpoint, timelineId, t } = props
+  const queryClient = useQueryClient()
+  const [eventsConnected, setEventsConnected] = useState(false)
   const [open, setOpen] = useState(false)
   const [allOpen, setAllOpen] = useState(false)
   const contentId = useId()
@@ -31,19 +34,48 @@ export function AgentTaskMenu(props: {
   const [error, setError] = useState<string>()
   const [abandon, setAbandon] = useState<Task>()
   const tasks = useQuery({
-    queryKey: ['agent-tasks', endpoint, props.timelineId],
-    queryFn: () => api.agentSessions.listRuns({ timelineId: props.timelineId }),
-    enabled: Boolean(props.timelineId),
-    refetchInterval: query => open || query.state.data?.tasks.some(task => task.state === 'running') || props.activeRun?.status === 'running' ? 2000 : 10000,
+    queryKey: ['agent-tasks', endpoint, 'timeline', timelineId],
+    queryFn: ({ signal }) => api.agentSessions.listRuns({ timelineId }, signal),
+    enabled: Boolean(timelineId),
+    refetchInterval: query => {
+      if (eventsConnected) return false
+      return open || query.state.data?.tasks.some(task => task.state === 'running') || props.activeRun?.status === 'running' ? 2000 : 10000
+    },
     retry: false,
   })
   const allTasks = useQuery({
     queryKey: ['agent-tasks', endpoint, 'all'],
-    queryFn: () => api.agentSessions.listRuns(),
+    queryFn: ({ signal }) => api.agentSessions.listRuns(undefined, signal),
     enabled: allOpen,
-    refetchInterval: allOpen ? 2000 : false,
+    refetchInterval: !eventsConnected && allOpen ? 2000 : false,
     retry: false,
   })
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return
+    const refresh = async (changedTimelineId?: string | null) => {
+      const filters = {
+        queryKey: ['agent-tasks', endpoint],
+        predicate: ({ queryKey }: { queryKey: readonly unknown[] }) =>
+          queryKey[2] === 'all' || changedTimelineId === undefined || queryKey[3] === changedTimelineId,
+      }
+      // A request already in flight may have read the snapshot before this event.
+      await queryClient.cancelQueries(filters)
+      await queryClient.invalidateQueries(filters, { cancelRefetch: false })
+    }
+    return subscribeExtensionEvents({
+      onConnected: () => {
+        setEventsConnected(true)
+        void refresh()
+      },
+      onError: () => setEventsConnected(false),
+      events: {
+        'agent.run-list.changed': event => {
+          const { timelineId: changedTimelineId } = (JSON.parse(event.data) as { payload: { timelineId?: string | null } }).payload
+          void refresh(changedTimelineId)
+        },
+      },
+    })
+  }, [endpoint, queryClient])
   const currentTasks = tasks.data?.tasks ?? []
   const counts = (['running', 'suspended', 'interrupted', 'failed'] as const)
     .map(state => ({ state, count: currentTasks.filter(task => task.state === state).length }))
@@ -90,8 +122,10 @@ export function AgentTaskMenu(props: {
     } finally {
       busyRef.current = false
       setBusy(undefined)
-      if (props.timelineId) void tasks.refetch()
-      if (allOpen) void allTasks.refetch()
+      if (!eventsConnected) {
+        if (timelineId) void tasks.refetch()
+        if (allOpen) void allTasks.refetch()
+      }
     }
   }
 

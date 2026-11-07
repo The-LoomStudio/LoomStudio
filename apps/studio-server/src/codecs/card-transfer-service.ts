@@ -46,6 +46,11 @@ export function createCardTransferService({ applicationRuntime, assets, director
     }
   }
   const importCardArchive = async (input: Awaited<ReturnType<typeof decodeCardBundleZip>>, clientId: string, newCardId?: string) => {
+    input.artifact.card.media = await prepareUpdateMedia(input, clientId)
+    return applicationRuntime.importCardBundle({ artifact: input.artifact, newCardId }, { clientId })
+  }
+  const prepareUpdateMedia = async (input: Pick<Awaited<ReturnType<typeof decodeCardBundleZip>>, 'avatar' | 'background'>, clientId: string) => {
+    if (!assets) throw new Error('Assets unavailable')
     const createMedia = async (media: CardBundleMedia, kind: string) => (await assets!.createMediaAsset({
       source: media.mediaType === 'image/png' && isPng(media.bytes) ? stripPngTextMetadata(media.bytes) : media.bytes,
       kind,
@@ -56,8 +61,9 @@ export function createCardTransferService({ applicationRuntime, assets, director
     })).asset.id
     const avatarAssetId = await createMedia(input.avatar, 'card.avatar')
     const coverAssetId = input.background ? await createMedia(input.background, 'card.background') : undefined
-    input.artifact.card.media = { avatarAssetId, ...(coverAssetId ? { coverAssetId } : {}) }
-    return applicationRuntime.importCardBundle({ artifact: input.artifact, newCardId }, { clientId })
+    // ponytail: AssetStore writes precede the Card CAS; rejection can leave unreferenced
+    // immutable assets. Reclaim through the shared asset lifecycle, not by deleting blobs here.
+    return { avatarAssetId, ...(coverAssetId ? { coverAssetId } : {}) }
   }
   const finishImportedCard = async (result: Awaited<ReturnType<typeof applicationRuntime.importCardBundle>>) => {
     await saveImportedCard(result.card.id).catch(error => { throw new Error(`Card imported as ${result.card.id}, but directory save failed. Do not import again. ${error instanceof Error ? error.message : String(error)}`) })
@@ -65,6 +71,29 @@ export function createCardTransferService({ applicationRuntime, assets, director
   }
   const importArchiveAndSave = async (input: Awaited<ReturnType<typeof decodeCardBundleZip>>, clientId: string) => {
     return finishImportedCard(await importCardArchive(input, clientId))
+  }
+  const importPng = async (source: Uint8Array, clientId: string) => {
+    if (!assets) throw new Error('Assets unavailable')
+
+        const archive = readCardPngArchive(source) ?? readPolyglotArchive(source)
+        if (archive) return await importArchiveAndSave(await decodeCardBundleZip(archive), clientId)
+        const converted = await importConversions.cardPng(source, { clientId: clientId })
+        const artifact = converted.artifact
+        const avatarBytes = converted.avatarBytes ?? readPngImageBytes(source)
+        const media = await assets.createMediaAsset({
+          source: stripPngTextMetadata(avatarBytes),
+          kind: 'card.avatar',
+          mediaType: 'image/png',
+          maxBytes: 32 * 1024 * 1024,
+          actor: { kind: 'client', id: clientId },
+          reason: 'application.importCardPng.media',
+        })
+        artifact.card.media = {
+          avatarAssetId: media.asset.id,
+        }
+        const result = await applicationRuntime.importCardBundle({ artifact }, { clientId: clientId })
+        return finishImportedCard(result)
+
   }
   const http: Pick<Parameters<typeof createStudioHttpServer>[0], 'cardMedia' | 'cardPng'> = {
     cardMedia: {
@@ -80,26 +109,7 @@ export function createCardTransferService({ applicationRuntime, assets, director
         // ponytail: M0 不引入图片转码依赖；非 PNG 头像暂用内置 PNG，接入图像管线后再统一转码。
         return encodeCardBundlePng(avatar.mediaType === 'image/png' && isPng(avatar.bytes) ? avatar.bytes : defaultCardPng, encodeCardBundleZip(bundle))
       },
-      import: async (source, session) => {
-        const archive = readCardPngArchive(source) ?? readPolyglotArchive(source)
-        if (archive) return await importArchiveAndSave(await decodeCardBundleZip(archive), session.clientId)
-        const converted = await importConversions.cardPng(source, { clientId: session.clientId })
-        const artifact = converted.artifact
-        const avatarBytes = converted.avatarBytes ?? readPngImageBytes(source)
-        const media = await assets.createMediaAsset({
-          source: stripPngTextMetadata(avatarBytes),
-          kind: 'card.avatar',
-          mediaType: 'image/png',
-          maxBytes: 32 * 1024 * 1024,
-          actor: { kind: 'client', id: session.clientId },
-          reason: 'application.importCardPng.media',
-        })
-        artifact.card.media = {
-          avatarAssetId: media.asset.id,
-        }
-        const result = await applicationRuntime.importCardBundle({ artifact }, { clientId: session.clientId })
-        return finishImportedCard(result)
-      },
+      import: (source, session) => importPng(source, session.clientId),
       exportBundle: async cardId => encodeCardBundleZip(await readCardExport(cardId)),
       importBundle: async (source, session) => await importArchiveAndSave(await decodeCardBundleZip(source), session.clientId),
       exportPolyglot: async cardId => {
@@ -109,5 +119,5 @@ export function createCardTransferService({ applicationRuntime, assets, director
       },
     } : undefined,
   }
-  return { readCardExport, importCardArchive, importArchiveAndSave, ...http }
+  return { prepareUpdateMedia, readCardExport, importCardArchive, importArchiveAndSave, importDownloaded: async (source: Uint8Array, clientId: string) => isPng(source) ? importPng(source, clientId) : importArchiveAndSave(await decodeCardBundleZip(source), clientId), ...http }
 }

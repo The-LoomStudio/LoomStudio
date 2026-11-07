@@ -2,7 +2,7 @@ import { createAgentStore, type AgentTranscriptEntryData } from '@loom-studio/ap
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import type { ApplicationRuntime, RuntimeRequestContext } from '@loom-studio/application-runtime'
 import { describe, expect, it, vi } from 'vitest'
-import { getAgentRunService } from '../../../apps/studio-server/src/agents/agent-run-service.js'
+import { getAgentRunService, setAgentRunListChangeListener } from '../../../apps/studio-server/src/agents/agent-run-service.js'
 import { createAgentsRuntimeMethods } from '../../../packages/application-runtime/src/runtime/agents-runtime.js'
 import { callApplicationRpc } from '../../support/trpc-caller.js'
 
@@ -127,8 +127,13 @@ describe('Agent task list', () => {
   it('offers live checkpoint recovery and shows only the continuation while it runs', async () => {
     const f = fixture()
     const pending = Promise.withResolvers<void>()
+    const snapshots: Array<ReturnType<typeof f.service.list>> = []
     try {
       await f.seed('paused')
+      setAgentRunListChangeListener(f.runtime, sessionId => {
+        expect(sessionId).toBe('paused')
+        snapshots.push(f.service.list({ timelineId: 'story' }))
+      })
       f.runtime.invokeAgentTurn = vi.fn(async (_input, context?: RuntimeRequestContext) => {
         if (context!.agentRun!.continuation) { await pending.promise; return { runId: context!.agentRun!.runId } as never }
         await new Promise<void>((_resolve, reject) => context!.abortSignal!.addEventListener('abort', () => {
@@ -141,16 +146,23 @@ describe('Agent task list', () => {
         return {} as never
       })
       const original = await f.service.create({ agentSessionId: 'paused', input: 'PRIVATE INPUT' })
+      expect((await snapshots[0])?.tasks[0]).toMatchObject({ runId: original.runId, state: 'running' })
       f.service.cancel(original.runId, 'user-pause')
       await new Promise<void>(resolve => setImmediate(resolve))
       expect((await f.service.list()).tasks).toEqual([expect.objectContaining({
         runId: original.runId, state: 'suspended', canResume: true, canAbandon: true, canPause: false,
       })])
+      expect((await snapshots[1])?.tasks[0]).toMatchObject({ runId: original.runId, state: 'suspended', canResume: true })
       const continued = await f.service.resume({ runId: original.runId })
       const { tasks } = await f.service.list()
       expect(tasks).toHaveLength(1)
       expect(tasks[0]).toMatchObject({ runId: continued.runId, state: 'running', canPause: true, canResume: false, canAbandon: false })
       expect(JSON.stringify(tasks)).not.toContain('PRIVATE')
+      expect((await snapshots[2])?.tasks[0]).toMatchObject({ runId: continued.runId, state: 'running' })
+      pending.resolve()
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect((await snapshots[3])?.tasks[0]).toMatchObject({ runId: continued.runId, state: 'completed', canPause: false })
+      expect(snapshots).toHaveLength(4)
     } finally {
       pending.resolve()
       await new Promise<void>(resolve => setImmediate(resolve))

@@ -1,0 +1,22 @@
+.catalog, .detail { padding: 20px; color: var(--loom-color-text); }
+.catalog { height: 100%; display: flex; flex-direction: column; gap: 10px; }
+.catalog h2, .detail h2 { margin: 0; }
+.catalog p, .detail p { color: var(--loom-color-text-muted); line-height: 1.7; }
+.catalog input { background: var(--loom-color-surface); color: var(--loom-color-text); border: 1px solid var(--loom-color-border); padding: 10px; border-radius: 6px; font: inherit; }
+.list { overflow: auto; min-height: 0; }
+.row { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; width: 100%; text-align: left; border: 0; border-radius: 6px; padding: 12px; margin-bottom: 4px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.row[aria-pressed='true'] { background: var(--loom-color-surface); outline: 1px solid var(--loom-color-border); outline-offset: -1px; }
+.row small, .row span, .detail small { color: var(--loom-color-text-muted); font-size: var(--loom-font-size-2); }
+.detail { overflow: auto; height: 100%; }
+.detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.9; margin: 10px 0; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+.compare section { padding: 16px; border: 1px solid var(--loom-color-border); border-radius: 8px; background: var(--loom-color-surface); }
+.compare h3 { font-size: var(--loom-font-size-3); margin: 0 0 10px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0; }
+@media (max-width: 800px) { .compare { grid-template-columns: 1fr; } }
+.copyAction { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.savedCopy { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 10px; border: 1px solid var(--loom-color-border); border-radius: 6px; }
+.copyDialog { display: grid; gap: 12px; line-height: 1.7; }
+.copyDialog p { margin: 0; color: var(--loom-color-text-muted); }
+.copyDialog label { display: grid; gap: 6px; }
+.copyDialog input { background: var(--loom-color-surface); color: var(--loom-color-text); border: 1px solid var(--loom-color-border); padding: 10px; border-radius: 6px; font: inherit; }

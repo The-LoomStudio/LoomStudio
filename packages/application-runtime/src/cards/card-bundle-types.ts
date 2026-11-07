@@ -81,6 +81,8 @@ export type CardBundleImportManifest = {
 }
 
 export type ImportBundleContent = {
+  /** Stable author identities mapped at import/update; not a review history. */
+  resourceMappings?: { resources: Record<string, string>; nodes: Record<string, string>; scripts?: Record<string, string>; extensions?: Record<string, string> }
   cardId: string
   documentIds: string[]
   promptResourceIds: string[]

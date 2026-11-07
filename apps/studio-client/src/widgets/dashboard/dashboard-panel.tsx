@@ -30,6 +30,13 @@ const resourceGroups = [
   { title: '故事与会话', ids: ['timelines', 'sessions'] },
 ]
 
+function CharacterAvatar({ row }: { row: PlayRow }) {
+  const [failed, setFailed] = useState(false)
+  return <span className={styles.avatar} style={toneStyle(row.tone)}>{row.canOpen && !failed
+    ? <img src={`/cards/${encodeURIComponent(row.id)}/media/avatar`} alt="" loading="lazy" onError={() => setFailed(true)} />
+    : row.name.slice(0, 1)}</span>
+}
+
 export function DashboardDialog(props: Props & { open: boolean; onClose(): void; headerActions?: ReactNode; detailContent?: ReactNode }) {
   const [view, setView] = useWorkbenchView<DashboardView>('dashboard.tab', 'overview', views.map(view => view.id))
   const snapshot = view === 'resources' || view === 'storage'
@@ -78,7 +85,7 @@ export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewC
   </button>)}</div>
 
   const playList = (rows: PlayRow[]) => rows.length ? <div>{rows.map((row, index) => <button type="button" key={row.id} className={styles.playRow} onClick={event => open({ kind: 'card', id: row.id }, event.currentTarget)}>
-    <span className={styles.rank}>{String(index + 1).padStart(2, '0')}</span><span className={styles.avatar} style={toneStyle(row.tone)}>{row.name.slice(0, 1)}</span>
+    <span className={styles.rank}>{String(index + 1).padStart(2, '0')}</span><CharacterAvatar row={row} />
     <span className={styles.rowCopy}><strong>{row.name}</strong><small>{row.stories.length} 个故事 · {number(row.sends)} 次发送</small></span><span className={styles.rowValue}><strong>{number(row.sends)} 次发送</strong><small>发送 {row.activeDays} 天</small></span><ChevronRight size={14} />
   </button>)}</div> : <Empty title={search ? '没有找到匹配的角色' : '还没有游玩记录'} description={search ? '试试角色名称或故事关键词。' : '开始一段故事后，在这里回看你的足迹。'} />
 

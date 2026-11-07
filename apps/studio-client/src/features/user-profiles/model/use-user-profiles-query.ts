@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 
@@ -8,7 +7,7 @@ export type UserProfilesConfig = UserProfilesResult['config']
 export type UserProfile = UserProfilesConfig['profiles'][number]
 
 export function useUserProfilesQuery(api: StudioApi['userProfiles'], endpoint: string) {
-  const query = useQuery({
+  return useQuery({
     queryKey: userProfilesQueryKey(endpoint),
     queryFn: () => api.get(),
     retry: false,
@@ -16,11 +15,5 @@ export function useUserProfilesQuery(api: StudioApi['userProfiles'], endpoint: s
     refetchOnMount: 'always',
     refetchOnWindowFocus: 'always',
   })
-  useEffect(() => {
-    const refresh = () => { void query.refetch({ cancelRefetch: false }) }
-    window.addEventListener('focus', refresh)
-    return () => window.removeEventListener('focus', refresh)
-  }, [query.refetch])
-  return query
 }
 

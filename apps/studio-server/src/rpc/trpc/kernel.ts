@@ -16,7 +16,7 @@ const globalPackage = z.strictObject({ packageId: z.string() }, { error: issue =
 const moduleInput = pkg.extend({ moduleId: z.string(), target: target.optional() })
 const version = z.number().int({ error: 'Expected a positive integer' }).positive({ error: 'Expected a positive integer' })
 const installCard = pkg.extend({ cardId: z.string(), expectedCardVersion: version })
-const updateCard = installCard.extend({ packageVersion: z.string(), expectedInstallationVersion: version, expectedPreviewFingerprint: z.string().min(1).optional() })
+const updateCard = installCard.extend({ packageVersion: z.string(), expectedInstallationVersion: version, expectedPreviewFingerprint: z.string().min(1).optional(), keepPromptResourceIds: z.array(z.string().min(1)).max(1000).optional() })
 const removeCard = pkg.extend({ cardId: z.string(), expectedInstallationVersion: version })
 const source = z.discriminatedUnion('kind', [z.object({ kind: z.literal('git'), url: z.string(), ref: z.string().optional() }), z.object({ kind: z.literal('zip'), url: z.string() })])
 const capabilityGrants = z.object({ ui: z.array(z.literal('ui.notify')).optional(), 'events.subscribe': z.array(z.union([z.enum(['documents', 'narrative', 'agent', 'diagnostics', 'platform-data', 'state']), z.templateLiteral(['extension:', z.string()])])).optional(), assets: z.array(z.enum(['assets.read', 'assets.publish'])).optional() })
@@ -57,7 +57,7 @@ export const extensionsRouter = t.router({
   reloadModule: procedure.input(moduleInput).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.reloadModule', input)),
   importPackageResources: procedure.input(globalPackage).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.importPackageResources', input)),
   removePackageResources: procedure.input(globalPackage).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.removePackageResources', input)),
-  updatePackageResources: procedure.input(globalPackage.extend({ packageVersion: z.string(), expectedInstallationVersion: version, expectedPreviewFingerprint: z.string().min(1).optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.updatePackageResources', input)),
+  updatePackageResources: procedure.input(globalPackage.extend({ packageVersion: z.string(), expectedInstallationVersion: version, expectedPreviewFingerprint: z.string().min(1).optional(), keepPromptResourceIds: z.array(z.string().min(1)).max(1000).optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.updatePackageResources', input)),
   listCharacters: procedure.input(pkg).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.listCharacters', input)),
   previewCharacter: procedure.input(pkg.extend({ characterId: z.string().min(1) })).query(({ ctx, input }) => callBuiltin(ctx, 'extensions.previewCharacter', input)),
   importCharacter: procedure.input(pkg.extend({ characterId: z.string().min(1), digest: z.string().min(1), allowDuplicate: z.boolean().optional() })).mutation(({ ctx, input }) => callBuiltin(ctx, 'extensions.importCharacter', input)),

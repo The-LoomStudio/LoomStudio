@@ -114,6 +114,7 @@ export async function importCardBundle(input: {
   if (failedPreparation) {
     throw failedPreparation.reason
   }
+  if (new Set(preparedScripts.map(item => item.metadata.metadataId)).size !== preparedScripts.length) throw new Error('Card Script metadataId must be unique within its package')
   const textResourceReferences = importedTextResourceReferences(preparedScripts)
   const preparedPackageResults = await Promise.allSettled(extensionPackages.map(async archive => ({
     archive,
@@ -142,6 +143,7 @@ export async function importCardBundle(input: {
       const importBundleId = createId('import-bundle')
       const textPipelineDocumentIds: string[] = []
       const scriptDocumentIds: string[] = []
+      const scriptMappings: Record<string, string> = {}
       const scriptMountIds: string[] = []
       for (const item of preparedRules) {
         const mountId = createId('loom-script-mount')
@@ -237,6 +239,7 @@ export async function importCardBundle(input: {
           },
           expectedVersion: 'new',
         })
+        Object.defineProperty(scriptMappings, item.metadata.metadataId, { value: script.id, enumerable: true })
         scriptDocumentIds.push(script.id)
         scriptMountIds.push(mount.id)
       }
@@ -326,6 +329,12 @@ export async function importCardBundle(input: {
           promptResourceIds: resourceIds,
           assetIds: readCardAssetIds(artifact.card.media),
           sourceArtifact: artifact,
+          resourceMappings: {
+            scripts: scriptMappings,
+            extensions: Object.fromEntries(preparedPackages.map(item => [item.archive.packageId, item.prepared.blob.id])),
+            resources: Object.fromEntries(artifact.contextAssets.map((root, index) => [root.id, resourceIds[index]!])),
+            nodes: Object.fromEntries(findNodes(artifact.contextAssets, () => true).map(node => [node.id, importedNodeIds.get(node.id) ?? node.id])),
+          },
           sourceArtifactRef,
           bindings,
           importedAt: timestamp,

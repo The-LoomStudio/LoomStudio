@@ -147,3 +147,5 @@ export { toolReferenceSchema, extensionToolMountSchema, authoringToolMountSchema
 export type { AgentToolReference, ExtensionToolMount } from "./tool-mount-contracts.js"
 export { summarizePackageResource, packageResourceSummaryKinds } from './package-resource-summary.js'
 export type { PackageResourceSummary, PackageResourceSummaryKind } from './package-resource-summary.js'
+
+export { resourceReleaseSchema } from './prompt-resource-contracts.js'

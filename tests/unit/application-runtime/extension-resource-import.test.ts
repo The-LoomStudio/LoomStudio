@@ -52,6 +52,115 @@ function fixture() {
 }
 
 describe('Extension prompt resource import', () => {
+  it('previews content and keeps chosen local resources while adopting the package version', async () => {
+    const { engine, runtime, input, promptResources } = fixture()
+    try {
+      const installed = await runtime.importExtensionPackageResources(input)
+      const id = installed.promptResources[0]!.resourceId
+      const original = (await promptResources.getResource(id))!
+      await promptResources.mutateResource({ actor: { kind: 'system', id: 'test' }, reason: 'player-edit', resourceId: id, expectedVersion: original.version,
+        mutations: [{ kind: 'tree.replace', rootNode: { ...original.rootNode, label: 'Player version' } }] })
+      const installation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!
+      const update = { ...input, packageVersion: '2.0.0', update: { expectedInstallationVersion: installation.version } }
+      const preview = await runtime.previewExtensionPackageResources(update)
+      expect(preview.items[0]!.content?.local?.rootNode.label).toBe('Player version')
+      expect(preview.items[0]!.content?.incoming?.rootNode.label).toBe('Writer')
+      await expect(runtime.importExtensionPackageResources({ ...update, update: { ...update.update, keepPromptResourceIds: [id] } })).rejects.toThrow('requires a current update preview')
+      await runtime.importExtensionPackageResources({ ...update, update: { ...update.update, expectedPreviewFingerprint: preview.fingerprint, keepPromptResourceIds: [id] } })
+      expect((await runtime.getPromptResource({ resourceId: id })).resource.rootNode.label).toBe('Player version')
+      expect((await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!.packageVersion).toBe('2.0.0')
+      await runtime.importExtensionPackageResources({ ...input, packageVersion: '2.0.0' })
+      expect((await runtime.getPromptResource({ resourceId: id })).resource.rootNode.label).toBe('Player version')
+      const nextInstallation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!
+      const next = await runtime.previewExtensionPackageResources({ ...input, packageVersion: '3.0.0', update: { expectedInstallationVersion: nextInstallation.version } })
+      expect(next.items[0]!.content?.local?.rootNode.label).toBe('Player version')
+      expect(next.items[0]!.content?.incoming?.rootNode.label).toBe('Writer')
+    } finally { await engine.close() }
+  })
+
+  it('retains a selected author-removed Lore and rejects keeping another installation resource', async () => {
+    const { engine, runtime, input } = fixture()
+    try {
+      input.promptResources[0]!.contribution.resourceKind = 'lore'
+      const artifact = input.promptResources[0]!.artifact
+      if (!isPromptResourceArtifact(artifact)) throw new Error('Invalid fixture')
+      artifact.resourceKind = 'lore'
+      const installed = await runtime.importExtensionPackageResources(input)
+      const id = installed.promptResources[0]!.resourceId
+      const installation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!
+      const update = { ...input, packageVersion: '2.0.0', promptResources: [], update: { expectedInstallationVersion: installation.version } }
+      const preview = await runtime.previewExtensionPackageResources(update)
+      expect(preview.items[0]).toMatchObject({ action: 'remove', resourceId: id, content: { local: { resourceKind: 'lore' } } })
+      await expect(runtime.importExtensionPackageResources({ ...update, update: { ...update.update, expectedPreviewFingerprint: preview.fingerprint, keepPromptResourceIds: ['other-resource'] } })).rejects.toThrow('outside this installation')
+      await runtime.importExtensionPackageResources({ ...update, update: { ...update.update, expectedPreviewFingerprint: preview.fingerprint, keepPromptResourceIds: [id] } })
+      expect((await runtime.getPromptResource({ resourceId: id })).resource.rootNode.label).toBe('Writer')
+    } finally { await engine.close() }
+  })
+
+  it('saves an independent personal copy before update without switching existing references', async () => {
+    const { engine, runtime, input, promptResources } = fixture()
+    try {
+      input.promptResources.push({ contribution: { id: 'knowledge', resourceKind: 'lore', source: 'knowledge.json' }, artifact: {
+        format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'lore', rootNode: { id: 'example.writer.knowledge-root', kind: 'module', label: 'Knowledge' },
+      } })
+      input.promptResources[0]!.contribution.loreMounts = [{ resourceId: 'knowledge' }]
+      input.loomScripts = [{ contribution: { id: 'status', source: 'status.loom.js' }, source: [
+        '// ==LoomScript==', '// @format 1', '// @id example.writer.status', '// @name Status',
+        '// @version 1.0.0', '// @runtime client-sandbox',
+        '// @contribution {"kind":"renderer","id":"status","surface":"narrative.entry.inline","scope":"node","inputs":["match:status"]}',
+        '// ==/LoomScript==', 'export const renderers = {}',
+      ].join('\n') }]
+      input.promptResources[0]!.contribution.scriptMounts = [{ scriptId: 'status' }]
+      const installed = await runtime.importExtensionPackageResources(input)
+      const id = installed.promptResources[0]!.resourceId
+      const source = (await runtime.getPromptResource({ resourceId: id })).resource
+      await expect(runtime.duplicatePromptResource({ resourceId: id, expectedVersion: source.version + 1 })).rejects.toThrow('changed')
+      const copy = (await runtime.duplicatePromptResource({ resourceId: id, expectedVersion: source.version, name: 'My Writer' })).resource
+      expect(copy.id).not.toBe(id)
+      expect(copy.rootNode.id).not.toBe(source.rootNode.id)
+      expect(copy.rootNode.label).toBe('My Writer')
+      expect(copy.origin).toBeUndefined()
+      expect(copy.sourceArtifactRef).toBeUndefined()
+      expect(copy.macros).toEqual(source.macros)
+      const scriptMounts = (await runtime.listLoomScriptMounts()).mounts
+      const sourceScriptMount = scriptMounts.find(mount => mount.target.kind === 'preset' && mount.target.presetId === id)!
+      const copyScriptMount = scriptMounts.find(mount => mount.target.kind === 'preset' && mount.target.presetId === copy.id)!
+      expect(copyScriptMount.id).not.toBe(sourceScriptMount.id)
+      expect(copyScriptMount.scriptDocumentId).toBe(sourceScriptMount.scriptDocumentId)
+      expect(copyScriptMount.origin).toEqual({ kind: 'manual' })
+      const mounts = await promptResources.listLoreMounts({ source: { kind: 'preset', id: copy.id } })
+      expect(mounts[0]!.loreResourceId).toBe(installed.promptResources[1]!.resourceId)
+      expect(mounts[0]!.origin).not.toMatchObject({ kind: 'extension-package' })
+      const installation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!
+      await runtime.importExtensionPackageResources({ ...input, packageVersion: '2.0.0', update: { expectedInstallationVersion: installation.version } })
+      expect((await runtime.getPromptResource({ resourceId: copy.id })).resource.rootNode.label).toBe('My Writer')
+      expect((await runtime.getPromptResource({ resourceId: id })).resource.rootNode.label).toBe('Writer')
+    } finally { await engine.close() }
+  })
+
+  it('keeps preset bindings and rejects deleting a directly referenced Lore without a keep choice', async () => {
+    const { engine, runtime, input, promptResources } = fixture()
+    try {
+      input.promptResources.push({ contribution: { id: 'knowledge', resourceKind: 'lore', source: 'knowledge.json' }, artifact: {
+        format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'lore', rootNode: { id: 'example.writer.knowledge', kind: 'module', label: 'Knowledge' },
+      } })
+      input.promptResources[0]!.contribution.loreMounts = [{ resourceId: 'knowledge' }]
+      const installed = await runtime.importExtensionPackageResources(input)
+      const presetId = installed.promptResources[0]!.resourceId
+      const loreId = installed.promptResources[1]!.resourceId
+      const mounts = await promptResources.listLoreMounts({ source: { kind: 'preset', id: presetId } })
+      const installation = (await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!
+      const nextPreset = structuredClone(input.promptResources[0]!)
+      nextPreset.contribution.loreMounts = []
+      const update = { ...input, packageVersion: '2.0.0', promptResources: [nextPreset], update: { expectedInstallationVersion: installation.version } }
+      const preview = await runtime.previewExtensionPackageResources(update)
+      await expect(runtime.importExtensionPackageResources({ ...update, update: { ...update.update, expectedPreviewFingerprint: preview.fingerprint, keepPromptResourceIds: [presetId] } })).rejects.toThrow('Kept preset references a removed Lore')
+      await runtime.importExtensionPackageResources({ ...update, update: { ...update.update, expectedPreviewFingerprint: preview.fingerprint, keepPromptResourceIds: [presetId, loreId] } })
+      expect(await promptResources.listLoreMounts({ source: { kind: 'preset', id: presetId } })).toEqual(mounts)
+      expect((await runtime.getPromptResource({ resourceId: loreId })).resource.rootNode.label).toBe('Knowledge')
+    } finally { await engine.close() }
+  })
+
   it('resolves tool Lore references within each installation without adopting or duplicating Lore', async () => {
     const { engine, runtime, input } = fixture()
     try {
@@ -559,13 +668,37 @@ describe('Extension prompt resource import', () => {
       expect(prepareWrite).not.toHaveBeenCalled()
       expect(await promptResources.listResources({ includeTombstone: true })).toEqual(beforeResources)
       expect(await documents.list({ includeTombstone: true })).toEqual(beforeDocuments)
-      expect(preview.items).toEqual([expect.objectContaining({ kind: 'preset', action: 'update', localChanges: 'unknown', resourceId: installed.promptResources[0]!.resourceId })])
+      expect(preview.items).toEqual([expect.objectContaining({ kind: 'preset', action: 'unchanged', localChanges: 'unknown', resourceId: installed.promptResources[0]!.resourceId })])
       expect(preview.items.some(item => item.resourceId === other.promptResources[0]!.resourceId)).toBe(false)
       const resource = await promptResources.getResource(installed.promptResources[0]!.resourceId)
       await promptResources.mutateResource({ actor: { kind: 'system', id: 'test' }, reason: 'test.preview-edit', resourceId: resource!.id, expectedVersion: resource!.version,
         mutations: [{ kind: 'resource.update', patch: { label: 'Local edit' } }] })
       await expect(runtime.importExtensionPackageResources({ ...update, update: { ...update.update, expectedPreviewFingerprint: preview.fingerprint } })).rejects.toThrow('preview the package update again')
       expect((await runtime.listExtensionInstallations()).installations.find(item => item.id === installed.installationId)!.packageVersion).toBe('1.0.0')
+    } finally { await engine.close() }
+  })
+
+  it('rejects a changed resource kind in both preview and apply', async () => {
+    const { engine, runtime, input } = fixture()
+    try {
+      await runtime.importExtensionPackageResources(input)
+      const installation = (await runtime.listExtensionInstallations()).installations[0]!
+      const original = input.promptResources[0]!
+      const update = {
+        ...input,
+        packageVersion: '2.0.0',
+        promptResources: [{
+          contribution: { ...original.contribution, resourceKind: 'lore' as const },
+          artifact: {
+            format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'lore',
+            rootNode: { id: 'example.writer.root', kind: 'module', label: 'Replacement Lore' },
+          },
+        }],
+        update: { expectedInstallationVersion: installation.version },
+      }
+      await expect(runtime.previewExtensionPackageResources(update)).rejects.toThrow('Extension resource kind changed')
+      await expect(runtime.importExtensionPackageResources(update)).rejects.toThrow('Extension resource kind changed')
+      expect((await runtime.listExtensionInstallations()).installations[0]).toEqual(installation)
     } finally { await engine.close() }
   })
 

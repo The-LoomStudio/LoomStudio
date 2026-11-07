@@ -1,3 +1,4 @@
+import { resourceReleaseSchema } from '@loom-studio/shared'
 import { normalizeCardBundleArtifact, type CardBundleArtifact, type PortableExtensionPayloadArtifact } from '@loom-studio/application-runtime/artifacts'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
 import { crc32 } from 'node:zlib'
@@ -18,6 +19,7 @@ type LoomCardPayloadManifest = Omit<PortableExtensionPayloadArtifact, 'content'>
 type LoomScriptAttachmentArtifact = NonNullable<CardBundleArtifact['scriptAttachments']>[number]
 
 type LoomCardManifest = {
+  release?: ReturnType<typeof resourceReleaseSchema.parse>
   schema: 'loom.cardBundle.zip.v2'
   resources: CardFilesIndex
   media?: {
@@ -68,6 +70,7 @@ export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<strin
   const resourceEntries: Record<string, Uint8Array> = {}
   const manifest: LoomCardManifest = {
     schema: 'loom.cardBundle.zip.v2',
+    ...(artifact.metadata?.release ? { release: resourceReleaseSchema.parse(artifact.metadata.release) } : {}),
     extensionPackages: extensionPackages.map((archive, index) => ({
       packageId: archive.packageId, version: archive.version, path: `extension-packages/${index}.zip`,
     })),
@@ -166,6 +169,7 @@ export function decodeCardBundleFiles(files: Map<string, Uint8Array>): CardBundl
   const extensionPackages = readExtensionPackages(files, manifest.extensionPackages)
   const scriptAttachments = readScriptAttachments(files, manifest.scriptAttachments)
   const artifact = restoreCardFiles(manifest.resources, files)
+  if (manifest.release !== undefined) artifact.metadata = { ...artifact.metadata, release: resourceReleaseSchema.parse(manifest.release) }
   return {
     artifact: normalizeCardBundleArtifact({ ...artifact, extensionPayloads, extensionPackages, scriptAttachments }),
     avatar,

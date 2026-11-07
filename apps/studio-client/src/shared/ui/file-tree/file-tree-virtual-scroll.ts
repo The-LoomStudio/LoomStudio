@@ -18,11 +18,12 @@ export const observeFileTreeOffset: typeof observeElementOffset = (instance, cal
 }
 
 export const measureFileTreeElement: typeof measureElement = (element, entry, instance) => {
-  // Hidden kept-alive rows report zero size. Preserve their measurements so
-  // showing the panel does not generate bogus scroll-anchor corrections.
-  if (!element.getClientRects().length) {
-    const index = instance.indexFromElement(element)
-    return instance.itemSizeCache.get(instance.options.getItemKey(index)) ?? instance.options.estimateSize(index)
+  // Ref attachment runs during commit. Let the observer supply the actual size
+  // so attaching rows does not force layout. Hidden rows retain their size.
+  if (entry || typeof ResizeObserver === 'undefined') {
+    const size = measureElement(element, entry, instance)
+    if (size > 0) return size
   }
-  return measureElement(element, entry, instance)
+  const index = instance.indexFromElement(element)
+  return instance.itemSizeCache.get(instance.options.getItemKey(index)) ?? instance.options.estimateSize(index)
 }

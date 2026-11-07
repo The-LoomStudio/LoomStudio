@@ -125,6 +125,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     scopeId: props.timelineId,
     pinnedId: rounds.find(round => round.nodes.some(node => node.id === editingId))?.id,
     followInitially: !props.anchorNodeId,
+    anchorReadingPosition: true,
     overscan: props.overscan ?? (Number.isInteger(storedOverscan) && storedOverscan >= 0 && storedOverscan <= 50 ? storedOverscan : 5),
   })
   const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((node, index) => ({

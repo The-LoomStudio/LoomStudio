@@ -10,6 +10,8 @@ import type { TextTransformRuleDraft } from '../transforms/history-text.js'
 export type PromptResourceKind = 'preset' | 'lore' | 'logic' | 'runtime' | 'history' | 'prompt' | (string & {})
 
 export type PromptResourceContent = {
+  /** Author-to-local identity mapping for standalone package updates, not review history. */
+  sourcePackage?: { releaseId: string; rootId: string; nodeIds: Record<string, string>; attachmentsDigest: string }
   metadata?: import("@loom-studio/shared").PromptResourceDisplayMetadata
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode

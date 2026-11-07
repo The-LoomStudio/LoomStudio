@@ -21,7 +21,7 @@ import {
   placeholder,
 } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { readYamlScalarTokenClass } from '../../lib/yaml-scalar-highlight.js'
 import {
   buildChangedChunks,
@@ -240,7 +240,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
     },
   }), [])
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!hostRef.current) return
 
     const view = new EditorView({

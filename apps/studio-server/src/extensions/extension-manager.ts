@@ -103,7 +103,7 @@ export function createServerExtensionManager(options: {
     loomScripts?: Array<{ contribution: { id: string; source: string; orderIndex?: number; groupOrder?: number }; source: string }>
     target?: ExtensionInstallationTarget
     expectedCardVersion?: number
-    update?: { expectedInstallationVersion: number; expectedPreviewFingerprint?: string }
+    update?: { expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }
     packageId: string
     packageVersion: string
     dependencies?: import('@loom-studio/extension-sdk').ExtensionManifest['dependencies']
@@ -488,15 +488,15 @@ export function createServerExtensionManager(options: {
     await options.host.activate(record.manifest.id, moduleId, target)
   }
 
-  type ResourceUpdate = { expectedInstallationVersion: number; packageVersion: string; expectedPreviewFingerprint?: string }
+  type ResourceUpdate = { expectedInstallationVersion: number; packageVersion: string; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }
   type CardResourceSource = { record: PackageCatalogRecord; cardId: string; expectedCardVersion: number }
-  function importResources(packageId: string, update?: ResourceUpdate, cardSource?: CardResourceSource): Promise<ImportedExtensionPackageResources>
+  function importResources(packageId: string, update?: ResourceUpdate, cardSource?: CardResourceSource, beforeCommit?: () => Promise<void>): Promise<ImportedExtensionPackageResources>
   function importResources(packageId: string, update: ResourceUpdate, cardSource: CardResourceSource | undefined, preview: true): Promise<import('@loom-studio/application-runtime').PreviewExtensionPackageResourcesResult>
   async function importResources(
     packageId: string,
     update?: ResourceUpdate,
     cardSource?: CardResourceSource,
-    preview?: true,
+    mode?: true | (() => Promise<void>),
   ): Promise<ImportedExtensionPackageResources | import('@loom-studio/application-runtime').PreviewExtensionPackageResourcesResult> {
     assertInitialized(initialized)
     const record = cardSource?.record ?? requireAvailablePackage(catalog, packageId)
@@ -515,33 +515,47 @@ export function createServerExtensionManager(options: {
     const assetKey = assetSourceKey(packageId, target, record.manifest.version)
     importingAssetSources.set(assetKey, record)
     try {
-    const payload: Parameters<typeof options.importPackageResources>[0] = {
-      packageId,
-      packageVersion: record.manifest.version,
-      ...(record.manifest.dependencies ? { dependencies: structuredClone(record.manifest.dependencies) } : {}),
-      ...(record.manifest.participation ? { participation: record.manifest.participation } : {}),
-      source: cardSource ? { kind: 'card' }
-        : record.remote ? { kind: record.remote.source.kind, url: record.remote.source.url }
-          : { kind: 'local', directory: record.directory },
-      loomScripts: await Promise.all((record.manifest.contributes?.loomScripts ?? []).map(async contribution => ({
-        contribution, source: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode((await readFileFromPackage(record, contribution.source)).bytes),
-      }))),
-      ...(cardSource ? { target: { kind: 'card' as const, cardId: cardSource.cardId }, expectedCardVersion: cardSource.expectedCardVersion } : {}),
-      ...(update ? { update: { expectedInstallationVersion: update.expectedInstallationVersion, expectedPreviewFingerprint: update.expectedPreviewFingerprint } } : {}),
-      promptResources,
-      agentTools: await Promise.all((record.manifest.contributes?.agentTools ?? []).map(async contribution => ({
-        contribution, definition: await readPackageJson(record, contribution.source),
-      }))),
-      transformRules: await Promise.all((record.manifest.contributes?.transformRules ?? []).map(async contribution => ({
-        contribution, artifact: await readPackageJson(record, contribution.source),
-      }))),
-      textExtractors: await Promise.all((record.manifest.contributes?.textExtractors ?? []).map(async contribution => ({
-        contribution, artifact: await readPackageJson(record, contribution.source),
-      }))),
-    }
-    if (preview) return await options.previewPackageResources({ ...payload, update: payload.update! })
-    const imported = await options.importPackageResources(payload)
-    return { packageId, version: record.manifest.version, ...imported }
+      const payload: Parameters<typeof options.importPackageResources>[0] = {
+        packageId,
+        packageVersion: record.manifest.version,
+        ...(record.manifest.dependencies ? { dependencies: structuredClone(record.manifest.dependencies) } : {}),
+        ...(record.manifest.participation ? { participation: record.manifest.participation } : {}),
+        source: cardSource ? { kind: 'card' }
+          : record.remote ? { kind: record.remote.source.kind, url: record.remote.source.url }
+            : { kind: 'local', directory: record.directory },
+        loomScripts: await Promise.all((record.manifest.contributes?.loomScripts ?? []).map(async contribution => ({
+          contribution, source: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode((await readFileFromPackage(record, contribution.source)).bytes),
+        }))),
+        ...(cardSource ? { target: { kind: 'card' as const, cardId: cardSource.cardId }, expectedCardVersion: cardSource.expectedCardVersion } : {}),
+        ...(update ? { update: { expectedInstallationVersion: update.expectedInstallationVersion, expectedPreviewFingerprint: update.expectedPreviewFingerprint, keepPromptResourceIds: update.keepPromptResourceIds } } : {}),
+        promptResources,
+        agentTools: await Promise.all((record.manifest.contributes?.agentTools ?? []).map(async contribution => ({
+          contribution, definition: await readPackageJson(record, contribution.source),
+        }))),
+        transformRules: await Promise.all((record.manifest.contributes?.transformRules ?? []).map(async contribution => ({
+          contribution, artifact: await readPackageJson(record, contribution.source),
+        }))),
+        textExtractors: await Promise.all((record.manifest.contributes?.textExtractors ?? []).map(async contribution => ({
+          contribution, artifact: await readPackageJson(record, contribution.source),
+        }))),
+      }
+      if (mode === true) return await options.previewPackageResources({ ...payload, update: payload.update! })
+      if (mode) {
+        if (payload.update?.expectedPreviewFingerprint) {
+          const reviewed = await options.previewPackageResources({ ...payload, update: payload.update })
+          if (reviewed.fingerprint !== payload.update.expectedPreviewFingerprint) {
+            throw new Error('Extension resources changed; preview the package update again')
+          }
+        }
+        await mode()
+      }
+      try {
+        const imported = await options.importPackageResources(payload)
+        return { packageId, version: record.manifest.version, ...imported }
+      } catch (error) {
+        if (!mode) throw error
+        throw new Error(`Card package update failed; old modules remain stopped: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+      }
     } finally { importingAssetSources.delete(assetKey) }
   }
 
@@ -998,14 +1012,9 @@ export function createServerExtensionManager(options: {
       const previousStates = new Map((previous.manifest.modules ?? []).map(module => [
         module.id, { module, desired: readDesiredState(options.stateStore, input.packageId, module.id, target) },
       ]))
-      await stopCardPackage(previous, target)
-      try {
-        await importResources(input.packageId, {
-          expectedInstallationVersion: input.expectedInstallationVersion, packageVersion: input.packageVersion, expectedPreviewFingerprint: input.expectedPreviewFingerprint,
-        }, { ...input, record: next })
-      } catch (error) {
-        throw new Error(`Card package update failed; old modules remain stopped: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
-      }
+      await importResources(input.packageId, {
+        expectedInstallationVersion: input.expectedInstallationVersion, packageVersion: input.packageVersion, expectedPreviewFingerprint: input.expectedPreviewFingerprint, keepPromptResourceIds: input.keepPromptResourceIds,
+      }, { ...input, record: next }, () => stopCardPackage(previous, target))
       // The archive/resources are committed now. A restart failure must not roll them back or resume old code.
       try {
         await forgetCardPackage(previous, target)

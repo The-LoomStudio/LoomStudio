@@ -67,3 +67,17 @@ it('gives smooth following sole ownership of the bottom instead of stacking virt
   expect(hooks.options?.anchorTo).toBe('start')
   expect(hooks.options?.followOnAppend).toBe(false)
 })
+
+it('anchors history above the viewport and gives bottom following sole ownership of resize scrolls', () => {
+  const viewport = render({ items: [{ id: 'round' }], anchorReadingPosition: true })
+  const cleanups = hooks.effects.map(effect => effect())
+  viewport.scrollRef.current = { scrollTop: 200 } as HTMLDivElement
+  const shouldAdjust = viewport.virtualizer.shouldAdjustScrollPositionOnItemSizeChange!
+  const row = { index: 0, key: 'round', start: 100, end: 210, size: 110, lane: 0 }
+  viewport.virtualizer.scrollOffset = 220
+  expect(shouldAdjust(row, 100, viewport.virtualizer)).toBe(false)
+  viewport.smooth.pause()
+  expect(shouldAdjust(row, 100, viewport.virtualizer)).toBe(true)
+  expect(shouldAdjust({ ...row, end: 230 }, 100, viewport.virtualizer)).toBe(false)
+  for (const cleanup of cleanups) cleanup?.()
+})

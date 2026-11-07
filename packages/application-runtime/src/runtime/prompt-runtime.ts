@@ -1,3 +1,4 @@
+import { promptPackageAttachmentsDigest, promptPackageNodeIds } from './prompt-package-updates.js'
 import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
 import type { PromptResourceMutation, PromptResourceMutationResult } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
@@ -25,6 +26,7 @@ import type {
   DeletePromptResourceInput,
   DeletePromptResourceResult,
   DuplicatePromptResourceInput,
+  ExtensionInstallationContent,
   ExportPromptResourceInput,
   ExportPromptResourceResult,
   GetPromptResourceInput,
@@ -122,26 +124,44 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
     duplicatePromptResource: async (input: DuplicatePromptResourceInput, requestContext?: RuntimeRequestContext): Promise<CreatePromptResourceResult> => {
       const source = await ctx.promptResources.getResource(input.resourceId)
       if (!source) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+      if (input.expectedVersion !== undefined && source.version !== input.expectedVersion) throw new Error('Prompt resource changed; review it again before saving a copy')
       const sourceContent = fromStoredResource(source)
       const duplicateContent = clonePromptResourceContent(sourceContent, ctx.createId, input.name?.trim() || `${sourceContent.rootNode.label} Copy`)
       const sourceMounts = source.resourceKind === 'preset'
         ? await ctx.promptResources.listLoreMounts({ source: { kind: 'preset', id: source.id } })
         : []
+      const sourceInstallation = sourceContent.origin?.kind === 'extension-package' && sourceContent.origin.installationId
+        ? await ctx.documents.get(sourceContent.origin.installationId, { includeTombstone: true }) : null
       const sourceToolMounts = source.resourceKind === 'preset'
         ? await ctx.promptResources.listPresetToolMounts({ presetResourceId: source.id })
+        : []
+      const sourceScriptMounts = source.resourceKind === 'preset'
+        ? (await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount)).filter(mount => mount.content.target.kind === 'preset' && mount.content.target.presetId === source.id)
         : []
       const transaction = await ctx.dataEngine.transact({
         ...promptResourceWriteContext(requestContext),
         reason: 'application.duplicatePromptResource',
       }, async dataTx => {
         const resourceTx = ctx.promptResources.transaction(dataTx)
+        let page = resourceTx.listResources({ limit: 100 })
+        let current = page.resources.find(resource => resource.id === source.id)
+        while (!current && page.nextCursor) {
+          page = resourceTx.listResources({ limit: 100, cursor: page.nextCursor })
+          current = page.resources.find(resource => resource.id === source.id)
+        }
+        if (!current || current.version !== source.version) throw new Error('Prompt resource changed; review it again before saving a copy')
+        if (JSON.stringify(resourceTx.listLoreMounts({ source: { kind: 'preset', id: source.id } })) !== JSON.stringify(sourceMounts)
+          || JSON.stringify(resourceTx.listPresetToolMounts({ presetResourceId: source.id })) !== JSON.stringify(sourceToolMounts)) throw new Error('Preset bindings changed; review it again before saving a copy')
         const created = resourceTx.createResource(toStoredResourceInput({ content: duplicateContent }))
         const mounts = sourceMounts.map(mount => resourceTx.addLoreMount({
           source: { kind: 'preset', id: created.id },
           loreResourceId: mount.resolvedLoreResourceId === null ? null : mount.resolvedLoreResourceId ?? mount.loreResourceId,
-          ...(mount.reference ? { reference: mount.reference } : {}),
+          ...(mount.reference ? { reference: mount.reference.kind === 'package'
+            ? { kind: 'external' as const, resourceId: mount.resolvedLoreResourceId ?? mount.loreResourceId ?? mount.reference.contributionId,
+              ...(sourceContent.origin?.kind === 'extension-package' && sourceInstallation?.type === applicationDocumentTypes.extensionInstallation ? { origin: { packageId: sourceContent.origin.packageId, contributionId: mount.reference.contributionId, target: (sourceInstallation.content as ExtensionInstallationContent).target.kind } } : {}),
+            }
+            : mount.reference } : {}),
           orderIndex: mount.orderIndex,
-          origin: mount.origin,
         }))
         const toolMounts = sourceToolMounts.map(mount => resourceTx.addPresetToolMount({
           presetResourceId: created.id,
@@ -151,8 +171,20 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
           ...(mount.activation ? { activation: mount.activation } : {}),
           ...(mount.provider ? { provider: mount.provider } : {}),
           ...(mount.content ? { content: mount.content } : {}),
-          origin: mount.origin,
         }))
+        if (source.resourceKind === 'preset') await requireDocumentParticipant(ctx).participateTransaction(dataTx, async documents => {
+          const currentScriptMounts = (await listDocuments<LoomScriptMountContent>(documents, applicationDocumentTypes.loomScriptMount))
+            .filter(mount => mount.content.target.kind === 'preset' && mount.content.target.presetId === source.id)
+          if (JSON.stringify(currentScriptMounts.map(mount => [mount.id, mount.version])) !== JSON.stringify(sourceScriptMounts.map(mount => [mount.id, mount.version]))) throw new Error('Preset script bindings changed; review it again before saving a copy')
+          for (const mount of sourceScriptMounts) {
+            if ((await documents.get(mount.id))?.version !== mount.version) throw new Error('Preset script bindings changed; review it again before saving a copy')
+            const { origin: _origin, ...content } = mount.content
+            await writeDocument<LoomScriptMountContent>(documents, {
+              id: ctx.createId('loom-script-mount'), type: applicationDocumentTypes.loomScriptMount, expectedVersion: 'new',
+              content: { ...content, origin: { kind: 'manual' }, target: { kind: 'preset', presetId: created.id }, createdAt: ctx.now(), updatedAt: ctx.now() },
+            })
+          }
+        }, { allowEmpty: true })
         return { resource: created, mounts, toolMounts }
       })
       return {
@@ -222,10 +254,13 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
       if (artifact.scriptAttachments?.length && artifact.resourceKind !== 'preset') {
         throw new Error('Only Preset Prompt Resources can import Loom Script attachments')
       }
+      const rootNode = clonePromptResourceNode(artifact.rootNode, ctx.createId)
       const content: PromptResourceContent = {
         ...(artifact.metadata ? { metadata: structuredClone(artifact.metadata) } : {}),
         resourceKind: artifact.resourceKind,
-        rootNode: clonePromptResourceNode(artifact.rootNode, ctx.createId),
+        rootNode,
+        ...(artifact.metadata?.release ? { sourcePackage: { releaseId: artifact.metadata.release.id, rootId: artifact.rootNode.id,
+          nodeIds: promptPackageNodeIds(artifact.rootNode, rootNode), attachmentsDigest: promptPackageAttachmentsDigest(artifact) } } : {}),
         ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
         ...(artifact.macros !== undefined ? { macros: normalizeMacros(artifact.macros, 'Preset') } : {}),
         ...(artifact.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(artifact.macroOptions) } : {}),
@@ -594,8 +629,10 @@ function clonePromptResourceContent(
 ): PromptResourceContent {
   const rootNode = clonePromptResourceNode(source.rootNode, createId)
   if (name?.trim()) rootNode.label = name.trim()
+  const { origin: _origin, sourceArtifactRef: _sourceArtifactRef, sourcePackage: _sourcePackage, metadata, ...personalContent } = source
   return {
-    ...source,
+    ...personalContent,
+    ...(metadata?.icon ? { metadata: { icon: structuredClone(metadata.icon) } } : {}),
     rootNode,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,

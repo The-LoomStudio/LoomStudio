@@ -10,6 +10,14 @@ import type { StateContribution, TimelineStateBinding, TimelineStateTemplateDraf
 import { describe, expect, it } from 'vitest'
 
 describe('state definitions', () => {
+  it('rejects unsupported schema constraints instead of silently ignoring them', () => {
+    expect(() => validateStateDefinitionDraft({ kind: 'timeline-template', templateVersion: 1,
+      schema: { type: 'object', properties: { name: { type: 'string', pattern: '^safe$' } } }, initial: { name: 'unsafe' },
+    })).toThrow()
+    expect(() => validateStateDefinitionDraft({ kind: 'timeline-template', templateVersion: 1,
+      schema: { type: 'object', properties: { name: { type: 'string', 'x-editor': 'text' } } }, initial: { name: 'value' },
+    })).not.toThrow()
+  })
   it('materializes timeline bindings from template defaults and card overrides', () => {
     const result = materializeTimelineState({
       bindings: [{ path: 'characters.alice', templateId: 'person', templateVersion: 1, initial: { gold: 3 } }],

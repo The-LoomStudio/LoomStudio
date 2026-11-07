@@ -41,6 +41,7 @@ export function HtmlPreview(props: { value: string }) {
       element.style.height = `${height}px`
     }
     let mountFrame = 0
+    let animateHeightFrame = 0
     // Let the message shell paint at its reserved height before creating the iframe.
     const layoutFrame = requestAnimationFrame(() => {
       mountFrame = requestAnimationFrame(() => {
@@ -53,6 +54,7 @@ export function HtmlPreview(props: { value: string }) {
             onMessage: data => {
               const measured = readHtmlHeight(data, token)
               if (measured === undefined) return
+              const key = cacheKey()
               if (!committed) {
                 active.current?.dispose()
                 active.current = candidate
@@ -60,11 +62,19 @@ export function HtmlPreview(props: { value: string }) {
                 staging.style.cssText = ''
               }
               height = measured
-              htmlHeightCache.write(cacheKey(), height)
+              htmlHeightCache.write(key, height)
               instance?.markReady()
               if (instance) instance.frame.inert = false
               applySize()
               setReady(true)
+              if (!element.hasAttribute('data-animate-height') && animateHeightFrame === 0) {
+                // Paint the first measured height before enabling later transitions.
+                animateHeightFrame = requestAnimationFrame(() => {
+                  animateHeightFrame = requestAnimationFrame(() => {
+                    element.dataset.animateHeight = ''
+                  })
+                })
+              }
             },
             onFailure: message => {
               if (!active.current) element.style.height = ''
@@ -85,6 +95,7 @@ export function HtmlPreview(props: { value: string }) {
     return () => {
       cancelAnimationFrame(layoutFrame)
       cancelAnimationFrame(mountFrame)
+      cancelAnimationFrame(animateHeightFrame)
       if (!committed) candidate.dispose()
     }
   }, [props.value])

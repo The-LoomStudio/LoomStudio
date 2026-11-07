@@ -1,3 +1,4 @@
+import { resourceReleaseSchema } from '@loom-studio/shared'
 import type { PromptResourceArtifact } from '@loom-studio/application-runtime/artifacts'
 import { unzipSync, zipSync } from 'fflate'
 import { validateBundlePath } from './card-bundle-files.js'
@@ -10,6 +11,7 @@ export function encodePromptResourceZip(artifact: PromptResourceArtifact): Uint8
   const index = projectPromptResourceFiles(artifact, files)
   files['index.json'] = new TextEncoder().encode(JSON.stringify(index, null, 2) + '\n')
   files['manifest.json'] = new TextEncoder().encode(JSON.stringify({
+    ...(artifact.metadata?.release ? { release: resourceReleaseSchema.parse(artifact.metadata.release) } : {}),
     schema: 'loom.promptResource.zip.v2', resourceKind: artifact.resourceKind, artifactPath: 'index.json',
   }))
   return zipSync(files)
@@ -36,6 +38,7 @@ export function decodePromptResourceZip(source: Uint8Array): PromptResourceArtif
   const stored = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(artifactBytes))
   if (!isPromptResourceFilesIndex(stored)) throw new Error('Invalid Prompt Resource ZIP artifact')
   const artifact = restorePromptResourceFiles(stored, new Map(Object.entries(files)))
+  if (manifest.release !== undefined) artifact.metadata = { ...artifact.metadata, release: resourceReleaseSchema.parse(manifest.release) }
   if (artifact.resourceKind !== manifest.resourceKind) throw new Error('Invalid Prompt Resource ZIP artifact')
   return artifact
 }

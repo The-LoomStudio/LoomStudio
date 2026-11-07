@@ -59,12 +59,23 @@ async function publicEndpoint(url: URL) {
   return addresses[0]!
 }
 
-export async function downloadExtensionZip(source: ExtensionDownloadSource, redirects = 0, limits = { maxBytes: downloadLimit, timeoutMs: 120_000 }): Promise<Uint8Array> {
+export type DownloadOptions = {
+  maxBytes?: number
+  timeoutMs?: number
+  signal?: AbortSignal
+  onProgress?(receivedBytes: number, totalBytes?: number): void
+}
+
+export async function downloadExtensionZip(source: ExtensionDownloadSource, redirects = 0, options: DownloadOptions = {}): Promise<Uint8Array> {
+  const limits = { maxBytes: options.maxBytes ?? downloadLimit, timeoutMs: options.timeoutMs ?? 120_000 }
+  options.signal?.throwIfAborted()
   if (source.kind !== 'zip') throw new Error('ZIP source is required')
-  const url = new URL(source.url)
+  const url = new URL(parseDownloadSource(source).url)
   const endpoint = await publicEndpoint(url)
+  options.signal?.throwIfAborted()
   return new Promise((resolve, reject) => {
     const req = request(url, {
+      signal: options.signal,
       family: endpoint.family,
       lookup: (_host, _options, callback) => callback(null, endpoint.address, endpoint.family),
       headers: { 'User-Agent': 'LoomStudio-Extension-Installer' },
@@ -74,7 +85,7 @@ export async function downloadExtensionZip(source: ExtensionDownloadSource, redi
         if (!response.headers.location || redirects >= 5) return reject(new Error('Extension download redirect limit exceeded'))
         try {
           const next = parseDownloadSource({ kind: 'zip', url: new URL(response.headers.location, url).href })
-          downloadExtensionZip(next, redirects + 1, limits).then(resolve, reject)
+          downloadExtensionZip(next, redirects + 1, options).then(resolve, reject)
         } catch (error) { reject(error) }
         return
       }
@@ -83,12 +94,19 @@ export async function downloadExtensionZip(source: ExtensionDownloadSource, redi
         reject(new Error(`Extension download failed: HTTP ${response.statusCode}`))
         return
       }
+      const declaredSize = Number(response.headers['content-length'])
+      const totalBytes = Number.isSafeInteger(declaredSize) && declaredSize >= 0 ? declaredSize : undefined
+      if (totalBytes !== undefined && totalBytes > limits.maxBytes) {
+        response.destroy()
+        reject(new Error(`Extension download exceeds ${limits.maxBytes} bytes`))
+        return
+      }
       const chunks: Buffer[] = []
       let bytes = 0
       response.on('data', (chunk: Buffer) => {
         bytes += chunk.length
         if (bytes > limits.maxBytes) response.destroy(new Error(`Extension download exceeds ${limits.maxBytes} bytes`))
-        else chunks.push(chunk)
+        else { chunks.push(chunk); options.onProgress?.(bytes, totalBytes) }
       })
       response.on('error', reject)
       response.on('end', () => resolve(Buffer.concat(chunks)))
@@ -100,7 +118,7 @@ export async function downloadExtensionZip(source: ExtensionDownloadSource, redi
   })
 }
 
-export async function extensionGit(args: string[], cwd?: string): Promise<string> {
+export async function extensionGit(args: string[], cwd?: string, signal?: AbortSignal): Promise<string> {
   try {
     const result = await exec('git', [
       '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always',
@@ -109,7 +127,7 @@ export async function extensionGit(args: string[], cwd?: string): Promise<string
       '-c', 'core.fsmonitor=false', '-c', 'http.extraHeader=',
       '-c', 'http.cookieFile=', '-c', 'http.saveCookies=false', ...args,
     ], {
-      cwd, timeout: 120_000, maxBuffer: 1024 * 1024,
+      cwd, signal, timeout: 120_000, maxBuffer: 1024 * 1024,
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1',
         GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' },
     })
@@ -120,8 +138,8 @@ export async function extensionGit(args: string[], cwd?: string): Promise<string
   }
 }
 
-async function remoteGit(args: string[], url: URL, cwd = tmpdir()): Promise<string> {
-  const version = await extensionGit(['--version'])
+async function remoteGit(args: string[], url: URL, cwd = tmpdir(), signal?: AbortSignal): Promise<string> {
+  const version = await extensionGit(['--version'], undefined, signal)
   const match = /git version (\d+)\.(\d+)/.exec(version)
   if (!match || Number(match[1]) < 2 || (Number(match[1]) === 2 && Number(match[2]) < 37)) throw new Error('Git 2.37 or newer is required for safe HTTPS extension fetching')
   const endpoint = await publicEndpoint(url)
@@ -130,31 +148,33 @@ async function remoteGit(args: string[], url: URL, cwd = tmpdir()): Promise<stri
     '-c', 'http.curloptResolve=',
     '-c', `http.curloptResolve=${url.hostname}:${url.port || '443'}:${address}`,
     '-c', 'http.sslVerify=true', ...args,
-  ], cwd)
+  ], cwd, signal)
 }
 
-export async function acquireExtension(sourceInput: unknown, parent: string): Promise<ExtensionCandidate> {
+export async function acquireExtension(sourceInput: unknown, parent: string, options: DownloadOptions = {}): Promise<ExtensionCandidate> {
+  options.signal?.throwIfAborted()
   const source = parseDownloadSource(sourceInput)
   await mkdir(parent, { recursive: true })
   const root = await mkdtemp(join(parent, 'candidate-'))
   try {
     if (source.kind === 'zip') {
-      const installed = await installExtensionPackageFromZip({ source: await downloadExtensionZip(source), installedDirectory: root })
+      const installed = await installExtensionPackageFromZip({ source: await downloadExtensionZip(source, 0, options), installedDirectory: root })
       return { ...installed, source }
     }
     const url = new URL(source.url)
     const repository = join(root, 'repository')
-    await remoteGit(['clone', '--depth=1', '--no-checkout', '--no-tags', '--', source.url, repository], url, root)
-    let ref = source.ref ?? (await extensionGit(['symbolic-ref', 'refs/remotes/origin/HEAD'], repository)).replace('refs/remotes/origin/', 'refs/heads/')
+    await remoteGit(['clone', '--depth=1', '--no-checkout', '--no-tags', '--', source.url, repository], url, root, options.signal)
+    let ref = source.ref ?? (await extensionGit(['symbolic-ref', 'refs/remotes/origin/HEAD'], repository, options.signal)).replace('refs/remotes/origin/', 'refs/heads/')
     if (!/^[a-f0-9]{40}$/i.test(ref) && !ref.startsWith('refs/heads/') && !ref.startsWith('refs/tags/')) {
-      const refs = await remoteGit(['ls-remote', '--exit-code', source.url, `refs/heads/${ref}`, `refs/tags/${ref}`], url)
+      const refs = await remoteGit(['ls-remote', '--exit-code', source.url, `refs/heads/${ref}`, `refs/tags/${ref}`], url, undefined, options.signal)
       if (refs.split('\n').some(line => line.endsWith(`\trefs/heads/${ref}`))) ref = `refs/heads/${ref}`
       else if (refs.split('\n').some(line => line.endsWith(`\trefs/tags/${ref}`))) ref = `refs/tags/${ref}`
       else throw new Error('Selected Git branch or Tag does not exist')
     }
-    await remoteGit(['fetch', '--depth=1', '--no-tags', 'origin', ref], url, repository)
-    await extensionGit(['checkout', '--detach', 'FETCH_HEAD'], repository)
-    const commit = await extensionGit(['rev-parse', 'HEAD'], repository)
+    await remoteGit(['fetch', '--depth=1', '--no-tags', 'origin', ref], url, repository, options.signal)
+    await extensionGit(['checkout', '--detach', 'FETCH_HEAD'], repository, options.signal)
+    const commit = await extensionGit(['rev-parse', 'HEAD'], repository, options.signal)
+    options.signal?.throwIfAborted()
     const installed = await installExtensionPackageFromDirectory({ sourceDirectory: repository, installedDirectory: join(root, 'validated') })
     await cp(join(repository, '.git'), join(installed.directory, '.git'), { recursive: true })
     return { ...installed, source: { ...source, ref }, commit }

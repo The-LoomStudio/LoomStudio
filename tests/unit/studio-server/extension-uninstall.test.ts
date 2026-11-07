@@ -387,11 +387,12 @@ it('previews Global and pending Card archive materials and forwards the reviewed
   const reads: Array<string | undefined> = []
   const imports: Array<Parameters<Parameters<typeof createServerExtensionManager>[0]['importPackageResources']>[0]> = []
   const previews: Array<Parameters<Parameters<typeof createServerExtensionManager>[0]['previewPackageResources']>[0]> = []
-  const { manager, installations } = createRuntime(paths, oldArchive, {
+  let fingerprint = 'reviewed'
+  const { manager, installations, stateStore, host } = createRuntime(paths, oldArchive, {
     readCardPackage: async input => { reads.push(input.source); return { cardVersion: 1, archive: input.source === 'installed' ? installedArchive : pendingArchive } },
     previewPackageResources: async input => {
       previews.push(input)
-      return { packageId, installationId: extensionInstallationId(packageId, input.target ?? { kind: 'global' }), packageVersion: input.packageVersion, expectedInstallationVersion: input.update.expectedInstallationVersion, fingerprint: 'reviewed', items: [], warnings: [] }
+      return { packageId, installationId: extensionInstallationId(packageId, input.target ?? { kind: 'global' }), packageVersion: input.packageVersion, expectedInstallationVersion: input.update.expectedInstallationVersion, fingerprint, items: [], warnings: [] }
     },
     importPackageResources: async input => { imports.push(input); if (input.target?.kind === 'card' && input.update) installedArchive = pendingArchive; return { installationId: 'fixture-installation', promptResources: [], agentTools: [], transformRules: [], textExtractors: [] } },
   })
@@ -408,8 +409,22 @@ it('previews Global and pending Card archive materials and forwards the reviewed
   const cardPreview = await manager.previewPackageResources({ packageId, packageVersion: '2.0.0', expectedInstallationVersion: 1, target, expectedCardVersion: 1 })
   expect(reads).toEqual([undefined])
   expect(previews.at(-1)).toMatchObject({ packageVersion: '2.0.0', target, expectedCardVersion: 1, loomScripts: [{ source: '// pending Card script' }] })
-  await manager.updateCardPackage({ cardId: 'A', packageId, expectedCardVersion: 1, packageVersion: '2.0.0', expectedInstallationVersion: 1, expectedPreviewFingerprint: cardPreview.fingerprint })
-  expect(imports.at(-1)).toMatchObject({ packageVersion: '2.0.0', target, update: { expectedInstallationVersion: 1, expectedPreviewFingerprint: 'reviewed' }, loomScripts: [{ source: '// pending Card script' }] })
+  await manager.enableModule(packageId, 'second', undefined, target)
+  const activeInstanceId = host.list().find(item => item.moduleId === 'second' && item.target.kind === 'card')?.instance?.instanceId
+  expect(activeInstanceId).toBeDefined()
+  const update = { cardId: 'A', packageId, expectedCardVersion: 1, packageVersion: '2.0.0', expectedInstallationVersion: 1 }
+  const beforeImportCount = imports.length
+  fingerprint = 'changed'
+  await expect(manager.updateCardPackage({ ...update, expectedPreviewFingerprint: cardPreview.fingerprint }))
+    .rejects.toThrow('preview the package update again')
+  expect(imports).toHaveLength(beforeImportCount)
+  expect(stateStore.get(packageId, 'second', target)?.enabled).toBe(true)
+  expect(host.list().find(item => item.moduleId === 'second' && item.target.kind === 'card')?.instance?.instanceId).toBe(activeInstanceId)
+
+  const refreshed = await manager.previewPackageResources({ ...update, target })
+  await manager.updateCardPackage({ ...update, expectedPreviewFingerprint: refreshed.fingerprint })
+  expect(stateStore.get(packageId, 'second', target)?.enabled).toBe(true)
+  expect(imports.at(-1)).toMatchObject({ packageVersion: '2.0.0', target, update: { expectedInstallationVersion: 1, expectedPreviewFingerprint: 'changed' }, loomScripts: [{ source: '// pending Card script' }] })
 })
 
 it('revokes event grants through Manager reload, disposing old callbacks and denying the new instance', async () => {

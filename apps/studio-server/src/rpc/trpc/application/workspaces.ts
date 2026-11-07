@@ -56,6 +56,7 @@ export const workspacesProcedures = {
     return {
       resourceId: readString(params, 'resourceId'),
       name: readOptionalString(params, 'name'),
+      expectedVersion: readOptionalNumber(params, 'expectedVersion'),
     }
   })).mutation(({ ctx, input }) => ctx.runtime.duplicatePromptResource(input, ctx.request)),
   'deletePromptResource': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['deletePromptResource']>[0] => {

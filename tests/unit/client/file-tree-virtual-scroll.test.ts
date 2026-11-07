@@ -33,7 +33,11 @@ it('reconciles a silently clamped offset when a kept-alive viewport becomes visi
     expect(virtualizer.getVirtualItems()[0]?.index).toBeGreaterThan(0)
     const row = document.createElement('div')
     row.dataset.index = '0'
-    vi.spyOn(row, 'getClientRects').mockReturnValue({ length: 0 } as DOMRectList)
+    const readRects = vi.spyOn(row, 'getClientRects')
+    const readHeight = vi.spyOn(row, 'offsetHeight', 'get')
+    expect(measureFileTreeElement(row, undefined, virtualizer)).toBe(40)
+    expect(readRects).not.toHaveBeenCalled()
+    expect(readHeight).not.toHaveBeenCalled()
     virtualizer.resizeItem(0, 40)
     const hiddenEntry = { borderBoxSize: [{ blockSize: 0, inlineSize: 200 }] } as unknown as ResizeObserverEntry
     expect(measureFileTreeElement(row, hiddenEntry, virtualizer)).toBe(40)

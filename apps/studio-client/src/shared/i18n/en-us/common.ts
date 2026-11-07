@@ -113,7 +113,7 @@ export const messages = {
   'rail.model': 'Models',
   'rail.agent': 'Agent Presets',
   'rail.user': 'Me',
-  'rail.play': 'Play',
+  'rail.play': 'Characters',
   'rail.recent': 'History',
   'rail.sessions': 'History',
   'rail.resource': 'Resources',

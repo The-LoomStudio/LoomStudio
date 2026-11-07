@@ -8,6 +8,17 @@ import { defaultCardPng, encodeCardBundlePng, readCardPngArchive } from '../../.
 import { normalizeOpening } from '../../../packages/application-runtime/src/cards/card.js'
 
 describe('Loom Card ZIP', () => {
+  it('round-trips published release metadata through ZIP and embedded PNG without changing work identity', async () => {
+    const release = { id: 'author.fog-harbor', version: '1.3.0', update: { manifestUrl: 'https://cdn.example/manifest.json' } }
+    const artifact: CardBundleArtifact = { schemaVersion: 4, artifactId: 'local-work-identity', displayName: '雾港纪事', card: { name: '雾港纪事' }, contextAssets: [], metadata: { release } }
+    const encoded = encodeCardBundleZip({ artifact, avatar: { bytes: defaultCardPng, mediaType: 'image/png' } })
+    expect(JSON.parse(new TextDecoder().decode(unzipSync(encoded)['manifest.json'])).release).toEqual(release)
+    const decoded = await decodeCardBundleZip(readCardPngArchive(encodeCardBundlePng(defaultCardPng, encoded))!)
+    expect(decoded.artifact.artifactId).toBe('local-work-identity')
+    expect(decoded.artifact.metadata?.release).toEqual(release)
+    expect((await decodeCardBundleZip(encodeCardBundleZip(decoded))).artifact.metadata?.release).toEqual(release)
+  })
+
   it('assigns missing opening IDs once and preserves titles and IDs through repeated ZIP round trips', async () => {
     const opening = normalizeOpening({ title: 'Default', content: 'Hello', alternatives: [{ title: 'Alternative', content: 'Welcome' }] })
     expect(opening.id).toBeTruthy()

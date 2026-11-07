@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 import { parseLoomScriptSource } from '@loom-studio/shared/loom-scripts'
 import { createTextRuleScriptTemplate } from '../../../apps/studio-client/src/features/loom-scripts/model/script-template.js'
-import { act, createElement } from 'react'
+import { act, createElement, type ComponentProps } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ScriptManagementPanel } from '../../../apps/studio-client/src/features/loom-scripts/ui/script-management-panel.js'
@@ -13,13 +13,13 @@ import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/in
 const roots: ReturnType<typeof createRoot>[] = []
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); useStudioLayoutStore.setState({ viewPreferences: {} }) })
 afterEach(async () => { for (const root of roots.splice(0)) await act(async () => root.unmount()); document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
-async function render(api = createScriptManagementPreviewApi(), initialFilter: 'rules' | 'runtime' | null = 'runtime', cardId = 'preview-card') {
+async function render(api = createScriptManagementPreviewApi(), initialFilter: 'rules' | 'runtime' | null = 'runtime', cardId = 'preview-card', scopes?: ComponentProps<typeof ScriptManagementPanel>['scopes']) {
   const host = document.createElement('div')
   document.body.append(host)
   const root = createRoot(host)
   roots.push(root)
   const changed = vi.fn()
-  await act(async () => root.render(createElement(QueryClientProvider, { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) }, createElement(ScriptManagementPanel, { endpoint: 'test', api, initialFilter: initialFilter ?? undefined, cardId, onScriptsChanged: changed, t: createTranslator('zh-CN') }))))
+  await act(async () => root.render(createElement(QueryClientProvider, { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) }, createElement(ScriptManagementPanel, { endpoint: 'test', api, initialFilter: initialFilter ?? undefined, cardId, scopes, onScriptsChanged: changed, t: createTranslator('zh-CN') }))))
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
   return { host, api, changed, root }
 }
@@ -69,14 +69,46 @@ describe('script management scope controls', () => {
     const other = await api.import({ owner: { kind: 'card', cardId: 'other-card' }, fileName: 'other.loom.js', source: '// @name 其他角色规则' })
     const { host } = await render(api)
     expect(host.textContent).toContain('preview-card')
-    expect(host.textContent).toContain('other-card')
-    expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).not.toBeNull()
+    expect(host.textContent).not.toContain('other-card')
+    expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).toBeNull()
     await click([...host.querySelectorAll('[aria-label="脚本查看范围"] [role="tab"]')].find(node => node.textContent === '当前角色')!)
     expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).toBeNull()
     expect(host.querySelector('[data-file-tree-node-id="status"]')).toBeNull()
     expect(host.querySelector('[data-file-tree-node-id="scene-card"]')).not.toBeNull()
     await click([...host.querySelectorAll('[aria-label="脚本查看范围"] [role="tab"]')].find(node => node.textContent === '全局')!)
-    expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).not.toBeNull()
+    expect(host.querySelector(`[data-file-tree-node-id="${other.script.id}"]`)).toBeNull()
+  })
+
+  it('separates global ownership and adoption from current-card resources, including extension installations', async () => {
+    const api = createScriptManagementPreviewApi('empty')
+    const globalOwner = { kind: 'extension' as const, packageId: 'global.package', installationId: 'global-installation' }
+    const cardOwner = { kind: 'extension' as const, packageId: 'card.package', installationId: 'card-installation' }
+    const otherOwner = { kind: 'extension' as const, packageId: 'other.package', installationId: 'other-installation' }
+    const add = async (owner: Parameters<typeof api.import>[0]['owner']) => (await api.import({ owner, fileName: 'example.loom.js', source: '// @name Example' })).script
+    const global = await add(globalOwner)
+    const card = await add(cardOwner)
+    const other = await add(otherOwner)
+    const personal = await add({ kind: 'user' })
+    const adopted = await add({ kind: 'card', cardId: 'other-card' })
+    await api.createMount({ scriptDocumentId: adopted.id, target: { kind: 'user' }, orderIndex: 0 })
+    await api.createMount({ scriptDocumentId: global.id, target: { kind: 'user' }, orderIndex: 0 })
+    const { host } = await render(api, 'runtime', 'preview-card', [
+      { owner: globalOwner, target: { kind: 'user' } },
+      { owner: cardOwner, target: { kind: 'card', cardId: 'preview-card' } },
+      { owner: otherOwner, target: { kind: 'card', cardId: 'other-card' } },
+    ])
+    const row = (id: string) => host.querySelector(`[data-file-tree-node-id="${id}"]`)
+    expect(row(global.id)).not.toBeNull()
+    expect(row(personal.id)).not.toBeNull()
+    expect(row(adopted.id)).not.toBeNull()
+    expect(row(card.id)).toBeNull()
+    expect(row(other.id)).toBeNull()
+    await click([...host.querySelectorAll('[aria-label="脚本查看范围"] [role="tab"]')].find(node => node.textContent === '当前角色')!)
+    expect(row(global.id)).not.toBeNull()
+    expect(row(adopted.id)).not.toBeNull()
+    expect(row(card.id)).not.toBeNull()
+    expect(row(other.id)).toBeNull()
+    expect(row(personal.id)).toBeNull()
   })
 
   it('shows the enabled role mount even when creation targets global, and stops only that mount', async () => {

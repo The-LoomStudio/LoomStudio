@@ -32,6 +32,7 @@ export type MasterDetailWorkbenchProps = {
   drilldown?: boolean
   hasSelection?: boolean
   hideBackBar?: boolean
+  deferHiddenDetail?: boolean
   navigationScope?: 'workspace' | 'local'
 }
 
@@ -67,6 +68,12 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
 
   const singlePane = isNarrow || props.drilldown === true
   const showDetailOnly = singlePane && mobilePane === 'detail' && props.hasSelection !== false
+
+  const detailVisible = !singlePane || showDetailOnly
+  const [hasShownDetail, setHasShownDetail] = useState(false)
+  useLayoutEffect(() => {
+    if (props.deferHiddenDetail && detailVisible) setHasShownDetail(true)
+  }, [props.deferHiddenDetail, detailVisible])
 
   const forwardAvailableRef = useRef(false)
   const showDetailOnlyRef = useRef(showDetailOnly)
@@ -211,7 +218,7 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
         </div>
       ) : null}
       <div className={styles.detailBody}>
-        {props.children}
+        {(!props.deferHiddenDetail || detailVisible || hasShownDetail) && props.children}
       </div>
     </section>
   )

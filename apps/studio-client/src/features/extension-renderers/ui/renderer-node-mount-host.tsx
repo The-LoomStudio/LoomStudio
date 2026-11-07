@@ -133,7 +133,9 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
           scope={scope}
         />
       ))}
-      <div ref={contentRef}>{props.children}</div>
+      {/* Range mounts split and extract text nodes. Rebuild changed source text so
+          React never reconciles new Markdown against those mutated nodes. */}
+      <div key={props.displayText ?? props.rawText} ref={contentRef}>{props.children}</div>
       {[...projection.inline].reverse().map(projected => (
         <InlineRendererPortal
           contentRoot={contentRef.current}

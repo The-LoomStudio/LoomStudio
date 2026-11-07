@@ -111,3 +111,6 @@ ST 扩展导入时只将世界书写入 Prompt Resource，不再复制进内联 
 - [PNG 容器](../../../apps/studio-server/src/codecs/card-png.ts)
 - [Server 接线](../../../apps/studio-server/src/main.ts)
 - [角色扩展安装与私有文件路由](../../../apps/studio-server/src/extensions/extension-manager.ts)
+
+
+远程下载的原生 Card 另有 `resourceDownloads.previewCardUpdate/applyCardUpdate` 路径，执行包与 SQL 的一次性比较。内部导入映射维护作者节点、脚本 metadataId 与归档身份；它不是逐项审阅历史。该路径可更新文字资源、可证明归属的脚本／载荷／内嵌扩展归档和媒体，保留玩家选择及挂载设置；新声明不自动授权，归档不自动安装。State 和缺乏稳定源身份的旧规则仍拒绝隐式覆盖。合同与范围见[资源下载服务](../../../apps/studio-server/src/resource-downloads/README.md)。

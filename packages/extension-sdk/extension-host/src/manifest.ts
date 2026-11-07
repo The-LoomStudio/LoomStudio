@@ -60,6 +60,26 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     throw new Error('Manifest participation must be timeline when declared')
   }
   if (!manifest.displayName) throw new Error('Manifest displayName is required')
+  const publicUrl = (value: unknown): void => {
+    if (typeof value !== 'string') throw new Error('Distribution URL must be a string')
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('Distribution URL must be HTTPS without credentials or fragment')
+  }
+  if (manifest.distribution !== undefined) {
+    const distribution = manifest.distribution
+    if (!isRecord(distribution)) throw new Error('Manifest distribution must be an object')
+    if (distribution.kind === 'git' || distribution.kind === 'url') {
+      publicUrl(distribution.url)
+      if (distribution.kind === 'git' && distribution.ref !== undefined && (typeof distribution.ref !== 'string' || !distribution.ref.trim())) throw new Error('Distribution ref must be non-empty')
+    } else if (distribution.kind === 'release') {
+      publicUrl(distribution.repository)
+      if (distribution.provider !== 'github' || typeof distribution.asset !== 'string' || !distribution.asset.trim()) throw new Error('Release distribution requires github and an asset name')
+    } else throw new Error('Unsupported distribution kind')
+  }
+  if (manifest.update !== undefined) {
+    if (!isRecord(manifest.update)) throw new Error('Manifest update must be an object')
+    publicUrl(manifest.update.manifestUrl)
+  }
   if (manifest.dependencies !== undefined) {
     if (!Array.isArray(manifest.dependencies) || manifest.dependencies.length > 100) throw new Error('Manifest dependencies must be a bounded array')
     const ids = new Set<string>()
@@ -298,7 +318,7 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     if (eventCapabilities !== undefined && (!Array.isArray(eventCapabilities) || !eventCapabilities.every(value => typeof value === 'string'))) {
       throw new Error(`Module capabilities.events.subscribe must be a string array: ${moduleManifest.id}`)
     }
-    for (const capability of ['assets.publish', 'assets.read', 'ai.invoke', 'macros.provide', 'prompt.process', 'narrative.context.provide', 'narrative.read', 'agent.tasks', 'vfs.provide', 'state.contribute', 'state.read', 'state.write', 'state.processContent', 'ui.notify'] as const) {
+    for (const capability of ['assets.publish', 'assets.read', 'ai.invoke', 'macros.provide', 'prompt.process', 'narrative.context.provide', 'narrative.read', 'agent.tasks', 'vfs.provide', 'resources.provide', 'state.contribute', 'state.read', 'state.write', 'state.processContent', 'ui.notify'] as const) {
       const requested = moduleManifest.capabilities?.[capability]
       if (requested !== undefined && typeof requested !== 'boolean') {
         throw new Error(`Module capabilities.${capability} must be a boolean: ${moduleManifest.id}`)

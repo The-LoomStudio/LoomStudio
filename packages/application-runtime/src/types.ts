@@ -207,10 +207,16 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
     nodes: Array<{ id: string; text: string }>
     complete: boolean
   }>
+  previewPromptPackageUpdate(input: PreviewPromptPackageUpdateInput): Promise<PreviewPromptPackageUpdateResult>
+  applyPromptPackageUpdate(input: ApplyPromptPackageUpdateInput, context?: RuntimeRequestContext): Promise<ApplyPromptPackageUpdateResult>
+  previewCardPackageUpdate(input: PreviewCardPackageUpdateInput): Promise<PreviewCardPackageUpdateResult>
+  applyCardPackageUpdate(input: ApplyCardPackageUpdateInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
   captureCardDirectoryState(input: { cardId: string }): Promise<{ artifact: CardBundleArtifact; snapshot: JsonObject }>
   applyCardDirectoryState(input: { cardId: string; artifact: CardBundleArtifact; snapshot: JsonObject }, context?: RuntimeRequestContext): Promise<{ mutation: { changesetId: string } }>
   initialize(): Promise<void>
   installOfficialContent(input: InstallOfficialContentInput, context?: RuntimeRequestContext): Promise<InstallOfficialContentResult>
+  getExtensionStateDefinitions: ReturnType<typeof import('./runtime/state-migration.js').createStateMigrationMethods>['getExtensionStateDefinitions']
+  migrateExtensionState: ReturnType<typeof import('./runtime/state-migration.js').createStateMigrationMethods>['migrateExtensionState']
   getStateSnapshot(input: GetStateSnapshotInput): Promise<GetStateSnapshotResult>
   inspectStateSources(input: InspectStateSourcesInput): Promise<StateSourcesInspection>
   applyStateMutation(input: ApplyStateMutationInput, context?: RuntimeRequestContext): Promise<ApplyStateMutationResult>
@@ -1209,6 +1215,38 @@ export type CardSummary = Pick<CardFrameworkFields, 'catalogSource'> & {
   updatedAt: string
 }
 
+export type PreviewPromptPackageUpdateInput = { resourceId: string; artifact: PromptResourceArtifact }
+export type PreviewPromptPackageUpdateResult = {
+  resourceId: string; expectedVersion: number; fingerprint: string
+  local: PromptResourceArtifact; incoming: PromptResourceArtifact; blockingChanges: string[]
+}
+export type ApplyPromptPackageUpdateInput = PreviewPromptPackageUpdateInput & { expectedVersion: number; fingerprint: string; keepLocal?: boolean }
+export type ApplyPromptPackageUpdateResult = { resource: GetPromptResourceResult['resource']; mutation?: MutationReceipt }
+
+export type CardPackageEditableField = 'name' | 'userName' | 'description' | 'preset' | 'opening' | 'lore' | 'macros' | 'macroOptions'
+export type PreviewCardPackageUpdateInput = { cardId: string; expectedVersion: number; artifact: CardBundleArtifact }
+export type ApplyCardPackageUpdateInput = PreviewCardPackageUpdateInput & {
+  expectedFingerprint: string
+  keepPromptResourceIds?: string[]
+  keepCardFields?: CardPackageEditableField[]
+  /** Host-only decoded media; never accept arbitrary asset IDs from a package/RPC. */
+  hostPreparedMedia?: CardMediaRefs
+}
+export type PreviewCardPackageUpdateResult = {
+  cardId: string
+  expectedVersion: number
+  artifactId: string
+  fingerprint: string
+  items: Array<{
+    sourceId: string; resourceId?: string; localVersion?: number; kind: string; name: string
+    action: 'add' | 'update' | 'remove' | 'unchanged'
+    local?: PromptResourceArtifact; incoming?: PromptResourceArtifact
+  }>
+  attachmentChanges: Array<{ kind: 'script' | 'payload' | 'extension'; id: string; name: string; action: 'add' | 'update' | 'remove'; addedCapabilities?: string[]; addedContributions?: string[]; addedRequirements?: string[]; requiresAdoption?: boolean }>
+  cardFields: Array<{ field: CardPackageEditableField; local: JsonValue; incoming: JsonValue }>
+  blockingChanges: string[]
+}
+
 export type UpdateCardInput = {
   cardId: string
   extensionAdoptions?: CardExtensionAdoption[]
@@ -1587,6 +1625,7 @@ export type CreatePromptResourceResult = {
 }
 
 export type DuplicatePromptResourceInput = {
+  expectedVersion?: number
   resourceId: string
   name?: string
 }
@@ -1864,7 +1903,7 @@ export type ImportExtensionPackageResourcesInput = {
   source?: ExtensionInstallationSource
   loomScripts?: Array<{ contribution: { id: string; source: string; orderIndex?: number; groupOrder?: number }; source: string }>
   expectedCardVersion?: number
-  update?: { expectedInstallationVersion: number; expectedPreviewFingerprint?: string }
+  update?: { expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }
   packageId: string
   packageVersion: string
   target?: ExtensionInstallationTarget
@@ -1913,6 +1952,7 @@ export type PreviewExtensionPackageResourcesResult = {
     name?: string
     action: 'add' | 'update' | 'remove' | 'unchanged'
     localChanges: 'unknown' | 'none' | 'modified'
+    content?: { localVersion?: number; local?: PromptResourceArtifact; incoming?: PromptResourceArtifact }
     references?: Array<{ kind: string; id: string; name?: string }>
   }>
   warnings: string[]

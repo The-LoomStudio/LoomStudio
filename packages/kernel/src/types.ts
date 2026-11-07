@@ -200,7 +200,7 @@ export type ExtensionManagementService = {
   finishOfficialSetup?(): Promise<{ completed: true }>
   listPackages(target?: ExtensionInstallationTarget): ManagedExtensionPackage[]
   installCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number }): Promise<ManagedExtensionPackage>
-  updateCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string }): Promise<ManagedExtensionPackage>
+  updateCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }): Promise<ManagedExtensionPackage>
   uninstallCardPackage(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<RemovedExtensionPackage>
   installPackage(sourceDirectory: string): Promise<ManagedExtensionPackage>
   installPackageZip(source: Uint8Array): Promise<ManagedExtensionPackage>
@@ -210,9 +210,9 @@ export type ExtensionManagementService = {
   reloadModule(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ManagedExtensionModule>
   importPackageResources(packageId: string): Promise<ImportedExtensionPackageResources>
   exportPackage(input: { packageId: string; version: string }): Promise<{ packageId: string; version: string; archiveBase64: string }>
-  importCardPackageResources(input: { cardId: string; packageId: string; expectedCardVersion: number; update?: { packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string } }): Promise<ImportedExtensionPackageResources>
+  importCardPackageResources(input: { cardId: string; packageId: string; expectedCardVersion: number; update?: { packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] } }): Promise<ImportedExtensionPackageResources>
   removeCardPackageResources(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<RemovedExtensionPackageResources>
-  updatePackageResources(input: { packageId: string; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string }): Promise<ImportedExtensionPackageResources>
+  updatePackageResources(input: { packageId: string; packageVersion: string; expectedInstallationVersion: number; expectedPreviewFingerprint?: string; keepPromptResourceIds?: string[] }): Promise<ImportedExtensionPackageResources>
   removePackageResources(packageId: string): Promise<RemovedExtensionPackageResources>
 }
 

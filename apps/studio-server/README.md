@@ -59,6 +59,7 @@ pnpm exec vitest run tests/unit/studio-server tests/integration/studio-server
 - [`src/platform/`](./src/platform/)：本地运行路径、系统代理与网络设置（`local-paths.ts`, `system-proxy.ts`, `network-settings.ts`）。
 - [`src/logging/`](./src/logging/)：结构化日志观测适配器（`ai-gateway-logging.ts`, `document-store-logging.ts`）。
 - [`src/extensions/`](./src/extensions/)：Package Source、安装、desired state 和 Server Module 编排。
+- [资源下载与查更](./src/resource-downloads/README.md)：来源适配、后端暂存、任务与版本记录；采用由 `resource-adoption` 交给现有 Runtime／安装器。
 - [`src/scripts/`](./src/scripts/)：Loom Script 的 Server 实例协调、源码准备与停止清理。
 
 ```text

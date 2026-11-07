@@ -20,7 +20,8 @@ export function subscribeDataCommits(
   const refresh = () => { clear(); if (!recovering) { recovering = true; onConnected() } }
   const unsubscribe = subscribeExtensionEvents({
     onConnected: () => { clear(); recovering = false; onConnected() },
-    onError: refresh, events: { 'data.changed': event => {
+    // A disconnected backend cannot serve recovery snapshots. Wait for open before rereading.
+    onError: () => { clear(); recovering = true }, events: { 'data.changed': event => {
     let payload: unknown
     try {
       payload = JSON.parse(event.data)

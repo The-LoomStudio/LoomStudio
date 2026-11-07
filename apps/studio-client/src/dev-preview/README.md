@@ -16,3 +16,8 @@
 用例覆盖复杂修剪、捕获引用、顺序、Unicode 零宽、流式临时末尾、三档手机消息流式、保存时推理分块和嵌套渲染边界。第三档能观察内容增长和 iframe 重建编号，不能作为已实现 CTX 连续更新的证据；显式 iframe 嵌套也不等于 Markdown 自动递归渲染。
 
 验证入口：`tests/integration/application-runtime/regex-preview.test.ts` 使用独立临时目录，检查原生规则与 SQLite 关闭重开，测试结束清理目录。
+
+
+### 资源下载与更新
+
+`/dev/preview/resource-updates`：雾港纪事的下载／依赖／Lore 与预设审阅理念原型。支持模拟失败、重试、取消、筛选、内容选择、手工合并及第二次作者更新。纯内存状态；Storage 在加载共享组件前隔离；不调用认证或业务 API。刷新恢复初始样例。共享视图位于 `features/resource-updates/ui/resource-update-review.tsx`。

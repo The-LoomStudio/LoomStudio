@@ -1,8 +1,12 @@
+import { createSourceCredentialStore } from './resource-adoption/source-credentials.js'
+import { createResourceDownloadService } from './resource-downloads/service.js'
+import { createResourceDownloadUse } from './resource-adoption/download-use.js'
 import { createExtensionCharacterCatalog } from './extensions/extension-character-catalog.js'
 import { createStorageSnapshot } from './statistics/storage-snapshot.js'
 import { readSqliteSpaceUsage } from '@loom-studio/data-engine'
 import { createStatisticsStore } from '@loom-studio/application-data'
 import { createExtensionAgentTasks } from './extensions/extension-agent-tasks.js'
+import { setAgentRunListChangeListener } from './agents/agent-run-service.js'
 import { createExtensionApplicationAdapter } from './extensions/extension-application-adapter.js'
 import { createCardTransferService } from './codecs/card-transfer-service.js'
 import {
@@ -246,7 +250,13 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   })
   const extensionAgentTasks = createExtensionAgentTasks({ runtime: applicationRuntime, documents })
   const extensionFileData = createExtensionFileData(localPaths.dataRoot, documents)
+  const resourceDownloads = createResourceDownloadService({ directory: join(localPaths.cacheRoot, 'resource-downloads'), logger: options.logger?.child('resource.downloads') })
   const extensionHost = createExtensionHost({
+    resourceSourceCredentials: createSourceCredentialStore(join(localPaths.configRoot, 'source-credentials.json'), secrets),
+    registerResourceSource: adapter => resourceDownloads.registerAdapter({
+      ...adapter,
+      matches: url => url.protocol === 'https:' && adapter.links.some(link => url.hostname === link.hostname && url.pathname.startsWith(link.pathPrefix)),
+    }),
     resolveFileDataDirectory: extensionFileData.directory,
     serverModuleSnapshotRoot: join(options.extensionInstalledDirectory ?? join(installationRoot, 'extensions'), '.runtime'),
     documents,
@@ -338,6 +348,22 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     name: 'directories.media.changed', owner: { kind: 'kernel' }, version: 1,
     visibility: 'public', stability: 'experimental', summary: 'Card directory media changed',
   })
+  const agentRunListChanged = 'agent.run-list.changed'
+  kernel.getEventBus().registerDefinition({
+    name: agentRunListChanged, owner: { kind: 'kernel' }, version: 1,
+    visibility: 'internal', stability: 'experimental', summary: 'Agent task list changed',
+  })
+  const publishAgentRunListChange = (timelineId?: string | null) => {
+    kernel.getEventBus().emit(agentRunListChanged, timelineId === undefined ? {} : { timelineId }, { source: 'studio-server' })
+  }
+  setAgentRunListChangeListener(applicationRuntime, sessionId => {
+    void agents?.getSession(sessionId).then(session => {
+      publishAgentRunListChange(session ? session.timelineId ?? null : undefined)
+    }).catch(error => {
+      logger?.warn('Could not scope Agent task list update', { event: 'agent.run_list_notification_failed', error })
+      publishAgentRunListChange()
+    })
+  })
   const directoryCatalog = createCardDirectoryCatalog({
     dataRoot: localPaths.dataRoot,
     listCardIds: async () => {
@@ -383,6 +409,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     saveImportedCard,
   })
   const rpcServices: StudioRpcServices = {
+    resourceDownloads,
     dashboard: statistics ? { statistics, storage: createStorageSnapshot(localPaths, options.sqlitePath ?? localPaths.databaseFile), database: () => readSqliteSpaceUsage(dataEngine!) } : undefined,
     scripts,
     directoryCatalog, directoryResources: resourceDirectories, directoryImporter, startupDirectoryScan,
@@ -405,12 +432,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
   }
   const cardTransfer = createCardTransferService({ applicationRuntime, assets, directoryMedia, importConversions, saveImportedCard })
+  rpcServices.resourceDownloadUse = createResourceDownloadUse({ downloads: resourceDownloads, extensions: extensionManager, runtime: applicationRuntime, cards: cardTransfer })
   const characterCatalog = createExtensionCharacterCatalog({ runtime: applicationRuntime, readPackage: packageId => extensionManager.readCharacterPackage(packageId), importArchive: cardTransfer.importArchiveAndSave })
   const server = createStudioHttpServer({
     trpcServices: rpcServices,
     applicationRuntime,
     auth: createApplicationSessionAuth({
       allowedOrigins: options.applicationSessionOrigins ?? (options.runtimeMode === 'production' ? [] : [defaultClientOrigin]),
+      allowPrivateNetworkOrigins: options.runtimeMode === 'development' && process.env.LOOM_DEV_LAN === '1',
     }),
     clientDirectory: options.clientDirectory,
     assets,
@@ -431,7 +460,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionEvents: {
       subscribe: handler => {
         const eventBus = kernel.getEventBus()
-        return eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed', 'directories.media.changed', 'data.changed'], handler)
+        return eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed', 'directories.media.changed', 'data.changed', agentRunListChanged], handler)
       },
     },
     logger: options.rpcLogger,
@@ -445,6 +474,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       })
       try {
         await secrets?.retryPendingCleanup({ actor: { kind: 'system', id: 'studio-server' }, reason: 'server.start.secret-cleanup' })
+        await resourceDownloads.initialize()
         await startupDirectoryScan
         const deletionRecoveryErrors = await resourceDirectories!.recoverDeletions(async id => {
           const document = await documents.get(id)
@@ -468,6 +498,13 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         await kernel.start()
         commitPublisher ??= (dataEngine ?? documents).subscribeCommits(commit => {
           kernel.getEventBus().emit('extensions.data.changed', { changesetId: commit.changesetId }, { publisher: { kind: 'kernel' } })
+          const timelines = new Set<string | null>()
+          for (const operation of commit.operations) {
+            if (operation.entityType === 'agent.session' && operation.kind !== 'create') {
+              timelines.add(operation.scope?.entityType === 'narrative.timeline' ? operation.scope.entityId : null)
+            }
+          }
+          if (timelines.size) publishAgentRunListChange(timelines.size === 1 ? timelines.values().next().value : undefined)
         })
         await extensionManager.initialize()
         await scripts.resolve({ workspaceId: 'workspace' })
@@ -490,6 +527,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         })
         return { port: actualPort }
       } catch (error) {
+        await resourceDownloads.close()
         commitPublisher?.dispose()
         commitPublisher = undefined
         mediaWatcher?.dispose()
@@ -508,6 +546,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       mediaWatcher?.dispose()
       mediaWatcher = undefined
       try {
+        await resourceDownloads.close()
         await server.shutdown()
         try { await scripts.dispose() } finally { await kernel.stop() }
       } finally {

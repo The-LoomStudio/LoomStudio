@@ -174,6 +174,12 @@ export type ExtensionHostOptions = {
     instanceId: string
     target: ExtensionInstallationTarget
   }): Disposable
+  resourceSourceCredentials?: {
+    get(packageId: string, name: string): Promise<Record<string, string> | undefined>
+    set(packageId: string, name: string, values: Record<string, string>): Promise<void>
+    remove(packageId: string, name: string): Promise<void>
+  }
+  registerResourceSource?(adapter: import('@loom-studio/extension-sdk').ResourceSourceAdapter): Disposable
   registerStateContentHandler?(handler: import('@loom-studio/extension-sdk').ExtensionStateContentHandler, owner: {
     packageId: string
     target: ExtensionInstallationTarget
@@ -212,6 +218,8 @@ export type ExtensionHostOptions = {
   canRunTimelineWork?(input: { timelineId: string; installationId: string }): Promise<boolean>
   listTimelineTargets?(input: { installationId: string }): Promise<import('@loom-studio/extension-sdk').ExtensionTimelineTarget[]>
   subscribeTimelineTargets?(input: { installationId: string }, listener: () => void): { dispose(): void }
+  readStateDefinitions?(target: Extract<ExtensionStateTarget, { scope: 'timeline' }>, owner: { packageId: string; lease: import('@loom-studio/extension-sdk').ExtensionTimelineLease }): Promise<{ version: number; bindings: Array<{ path: string; schema: import('@loom-studio/shared').JsonObject; installationId?: string }> }>
+  migrateState?(input: import('@loom-studio/extension-sdk').ExtensionStateDefinitionMigration, owner: { packageId: string; lease: import('@loom-studio/extension-sdk').ExtensionTimelineLease }): Promise<ExtensionStateMutationResult>
   readState?(target: ExtensionStateTarget, owner: { packageId: string; moduleId: string; instanceId: string; lease?: import('@loom-studio/extension-sdk').ExtensionTimelineLease }): Promise<ExtensionStateSnapshot>
   writeState?(input: ExtensionStateMutationInput, owner: { packageId: string; moduleId: string; instanceId: string; lease?: import('@loom-studio/extension-sdk').ExtensionTimelineLease }): Promise<ExtensionStateMutationResult>
   canAccessState?(target: ExtensionStateTarget, installation: ExtensionInstallationTarget): Promise<boolean>

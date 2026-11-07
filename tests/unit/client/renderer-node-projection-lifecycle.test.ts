@@ -30,7 +30,7 @@ it('removes old inline ranges while new text or owner projection is pending and 
   const render = (text: string, timelineId = 'story-a') => act(async () => {
     root.render(createElement(RendererNodeMountHost, {
       host, surface: 'narrative', nodeId: 'entry', timelineId, rawText: text,
-      children: createElement('span', { key: text }, text),
+      children: createElement('span', null, text, createElement('em', null)),
     }))
   })
   const inline: Projection = {

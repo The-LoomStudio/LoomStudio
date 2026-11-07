@@ -1388,9 +1388,18 @@
   }
 }
 .workIdentity {
-  overflow-wrap: anywhere;
-  color: var(--loom-color-text-muted);
-  font-size: 12px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  margin:8px 0;
+  min-width:0;
+  font-size:var(--loom-font-size-1);
+  color:var(--loom-color-text-muted);
+  overflow-wrap:anywhere;
+  > div { display:flex; flex-wrap:wrap; gap:4px 8px; }
+  dt { flex:none; }
+  dd { margin:0; min-width:0; }
+  code { font:inherit; }
 }
 
 :global(html[data-loom-glass-panels='true']),

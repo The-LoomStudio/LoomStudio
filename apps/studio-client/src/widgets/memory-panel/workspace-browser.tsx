@@ -1,7 +1,7 @@
 import { createId } from '@loom-studio/shared'
 import { useEffect, useRef, useState } from 'react'
 import { Button, Dialog, TextInput, SearchField, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, type MenuAction } from '@loom-studio/ui'
-import { ArrowLeft, Check, ChevronRight, Copy, Download, File, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image, MoreHorizontal, Pencil, Plus, RefreshCw, Save, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, Copy, Download, File, FileCode2, FilePlus2, FileText, Folder, FolderOpen, FolderPlus, Image, MoreHorizontal, Pencil, Plus, Save, Trash2, Upload } from 'lucide-react'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { FileTree, type FileTreeNode } from '../../shared/ui/file-tree/file-tree.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'

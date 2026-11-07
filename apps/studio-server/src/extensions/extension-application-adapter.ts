@@ -72,6 +72,8 @@ type ApplicationAdapter = Pick<Parameters<typeof createExtensionHost>[0],
   | 'canRunTimelineWork'
   | 'listTimelineTargets'
   | 'subscribeTimelineTargets'
+  | 'readStateDefinitions'
+  | 'migrateState'
   | 'readState'
   | 'canAccessState'
   | 'writeState'
@@ -289,6 +291,12 @@ export function createExtensionApplicationAdapter({
     canRunTimelineWork: input => applicationRuntime.isTimelineExtensionActive(input),
     listTimelineTargets: input => applicationRuntime.listTimelineExtensionTargets(input),
     subscribeTimelineTargets: (input, listener) => applicationRuntime.subscribeTimelineExtensionTargets(input, listener),
+    readStateDefinitions: (target, owner) => applicationRuntime.getExtensionStateDefinitions(target, owner),
+    migrateState: async (input, owner) => {
+      const scope = timelineToolScope(input.target)
+      const write = () => applicationRuntime.migrateExtensionState(input, owner)
+      return scope?.withNarrativeWrite ? scope.withNarrativeWrite(write) : write()
+    },
     readState: async (target, owner) => {
       const scope = timelineToolScope(target)
       if (owner.lease) await applicationRuntime.assertTimelineExtensionWork(owner.lease)

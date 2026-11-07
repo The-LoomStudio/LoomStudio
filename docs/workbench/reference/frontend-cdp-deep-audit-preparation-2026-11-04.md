@@ -8,7 +8,7 @@
 
 在已有 [CDP 实战指南](../../guide/frontend-cdp-diagnostics.md)基础上，补齐请求瀑布、DevTools 请求详情、主线程火焰图与渲染流水线的关联取证。已有审查包含 Network 事件、对象生命周期、调用计数与取消实验，不能笼统认定之前只看了 Console；本轮重点是这些局部证据尚不能回答的整条交互耗时。
 
-先与[既有审计报告](../../archive/issues/frontend-cdp-investigation-2026-11-04.md)、[修复计划](../plans/frontend-cdp-remediation-2026-11-04.md)和[后续事项](../issues/audit-follow-ups.md)去重。历史缺陷重新核实，真实环境延期项不因新增专审自动恢复执行。
+先与[既有审计报告](../../archive/issues/frontend-cdp-investigation-2026-11-04.md)、[修复计划](../../archive/plans/frontend-cdp-remediation-2026-11-04.md)和[后续事项](../issues/audit-follow-ups.md)去重。历史缺陷重新核实，真实环境延期项不因新增专审自动恢复执行。
 
 ## 工具与现场
 

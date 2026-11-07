@@ -1,3 +1,4 @@
+import { ResourceUpdateNotifications } from '../features/resource-updates/ui/resource-update-notifications.js'
 import { ExtensionIdentityContext } from '../shared/ui/extension-icon/extension-icon.js'
 import { AgentMutationApprovalDialog } from '../widgets/agent-chat-panel/agent-mutation-approval-dialog.js'
 import { useUserBackgrounds } from '../features/backgrounds/model/use-user-backgrounds.js'
@@ -867,6 +868,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
 
   return (
     <ExtensionIdentityContext.Provider value={[...clientExtensions.packages, ...clientExtensions.cardPackages]}>
+      <ResourceUpdateNotifications api={state.api.resourceDownloads} endpoint={state.endpoint} ready={overlaysReady} onOpen={() => { void navigation.openPath('/studio/extensions?downloads=1') }} />
       {themeController.startupReady ? <StartupReady onDismissed={onStartupDismissed} /> : null}
       <OfficialExtensionSetup api={state.api.extensions} ready={overlaysReady && !assistantGuide && state.startup.ready('cards')} t={state.t}
         onInstalled={async () => {

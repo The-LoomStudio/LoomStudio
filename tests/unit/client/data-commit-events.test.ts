@@ -3,6 +3,7 @@ import { subscribeDataCommits } from '../../../apps/studio-client/src/shared/api
 
 class TestEventSource extends EventTarget {
   static OPEN = 1
+  static CLOSED = 2
   static instances: TestEventSource[] = []
   readyState = 0
   closed = false
@@ -78,6 +79,56 @@ it('shares transport, synchronizes late subscribers and retires only the last su
   stop()
 })
 
+it('refreshes the session and restores one shared stream after a terminal EventSource failure', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('EventSource', TestEventSource)
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(null, { status: 503 }))
+    .mockResolvedValue(new Response(null, { status: 204 }))
+  vi.stubGlobal('fetch', fetch)
+  const commit = vi.fn()
+  const first = vi.fn()
+  const second = vi.fn()
+  const stopFirst = subscribeDataCommits(commit, first)
+  const stopSecond = subscribeDataCommits(vi.fn(), second)
+  try {
+    const old = TestEventSource.instances[0]!
+    old.emit('open')
+    old.readyState = 0
+    old.emit('error')
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(fetch).not.toHaveBeenCalled()
+    old.close()
+    old.emit('error')
+    old.emit('error')
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(TestEventSource.instances).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(fetch).toHaveBeenLastCalledWith('/auth/session', { method: 'POST', credentials: 'same-origin' })
+    expect(TestEventSource.instances).toHaveLength(2)
+    const restored = TestEventSource.instances[1]!
+    first.mockClear()
+    second.mockClear()
+    old.emit('open')
+    expect(first).not.toHaveBeenCalled()
+    restored.emit('open')
+    expect(first).toHaveBeenCalledOnce()
+    expect(second).toHaveBeenCalledOnce()
+    restored.emit('data.changed', JSON.stringify({ payload: { operations: [{ entityType: 'agent.session', entityId: 'session' }] } }))
+    expect(commit).toHaveBeenCalledOnce()
+    restored.close()
+    restored.emit('error')
+    stopFirst()
+    stopSecond()
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(fetch).toHaveBeenCalledTimes(2)
+  } finally {
+    stopFirst()
+    stopSecond()
+    vi.useRealTimers()
+  }
+})
+
 it('reassembles interleaved commits and refreshes instead of delivering incomplete batches', () => {
   vi.stubGlobal('EventSource', TestEventSource)
   const commit = vi.fn(), refresh = vi.fn()
@@ -95,6 +146,10 @@ it('reassembles interleaved commits and refreshes instead of delivering incomple
   send('duplicate', 0); send('duplicate', 0)
   expect(refresh).toHaveBeenCalledTimes(3)
   send('disconnect', 0); stream.emit('error')
+  expect(refresh).toHaveBeenCalledTimes(3)
+  stream.emit('error')
+  expect(refresh).toHaveBeenCalledTimes(3)
+  stream.emit('open')
   expect(refresh).toHaveBeenCalledTimes(4)
   send('ok', 0); send('ok', 1)
   expect(commit).toHaveBeenCalledTimes(3)

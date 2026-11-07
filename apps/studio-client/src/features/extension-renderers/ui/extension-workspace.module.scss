@@ -7,8 +7,11 @@
 }
 
 .management {
-  grid-template-rows: auto minmax(0, 1fr);
+  display:flex;
+  flex-direction:column;
 }
+.management > [data-mobile-master-detail] { flex:1; min-height:0; }
+.management > .managementNotices { flex:none; }
 
 .managementNotices {
   max-height: 32vh;

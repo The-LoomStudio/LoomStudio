@@ -383,7 +383,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
   }
 }
 
-function assertRuntimeTrust(script: LoomScriptContent, grants: readonly string[]): void {
+export function assertRuntimeTrust(script: LoomScriptContent, grants: readonly string[]): void {
   const independentDeclarations = script.contributions.some(contribution => contribution.kind !== 'renderer' && !contribution.requiresCode)
   if (script.runtime !== 'declarative' && script.runtime !== 'client-sandbox' && !independentDeclarations && !grants.includes(`runtime.${script.runtime}`)) {
     throw new Error(`Explicit trust is required for ${script.runtime} ${script.runtime === 'client-worker' ? 'browser worker' : 'in-process'} code`)
@@ -401,7 +401,7 @@ function assertFileName(fileName: string): void {
 }
 
 /** Capture user values only when explicitly adopting; later global edits do not mutate a running instance. */
-async function adoptSettings(
+export async function adoptSettings(
   documents: import('@loom-studio/document-store').DocumentTransaction,
   mount: LoomScriptMountContent, script: LoomScriptContent, settings: LoomScriptSettings,
 ): Promise<LoomScriptSettings> {
