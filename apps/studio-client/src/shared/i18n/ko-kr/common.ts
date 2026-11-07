@@ -58,6 +58,7 @@ export const messages = {
 
   'common.batchSelected': '{{count}}개 선택됨',
   'common.clearSelection': '선택 해제',
+  'common.close': '닫기',
   'common.batchConfirm': '선택한 {{count}}개 항목에 이 작업을 적용할까요?',
   'common.batchEnable': '활성화',
   'common.batchDisable': '비활성화',
@@ -134,6 +135,8 @@ export const messages = {
   'longTextEditor.undoClear': '지우기 취소',
   'longTextEditor.undoEdit': '마지막 편집 취소',
   'longTextEditor.restoreInitial': '처음 버전으로 복원',
+  'longTextEditor.diff': '차이점 보기',
+  'longTextEditor.diffTitle': '변경 차이점 보기',
   'longTextEditor.sourceMode': '소스 보기 및 편집',
   'longTextEditor.previewMode': '미리보기',
   'longTextEditor.previewEmpty': '미리 볼 내용이 없습니다.',
@@ -155,4 +158,8 @@ export const messages = {
   'history.context.delete': '항목 삭제',
   'history.context.reorder': '항목 순서 변경',
   'rail.modelIncomplete': '모델 설정이 완료되지 않았습니다',
+  'common.confirm': '확인',
+  'common.cancel': '취소',
+  'common.confirmTitle': '작업 확인',
+  'common.confirmDelete': '삭제 확인',
 } satisfies Record<keyof typeof zhCN, string>

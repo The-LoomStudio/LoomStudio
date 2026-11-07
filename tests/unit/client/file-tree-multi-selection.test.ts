@@ -146,3 +146,22 @@ it('uses the whole selection in the context menu', async () => {
   await setup()
   expect(row('folder').querySelector('svg.lucide-info')).toBeNull()
  })
+
+ it('does not collapse folder on contextmenu or secondary click', async () => {
+  const onSelect = vi.fn()
+  const onExpandedIdsChange = vi.fn()
+  const folder: FileTreeNode = { id: 'folder', label: 'Folder', kind: 'folder', children: [{ id: 'file', label: 'File', kind: 'entry' }] }
+  await act(async () => root.render(createElement(FileTree, {
+    ariaLabel: 'Resources', nodes: [folder], expandedIds: ['folder'], onExpandedIdsChange, onSelect,
+    getActions: () => [{ id: 'action', label: 'Action', onSelect: () => {} }],
+    getDisclosureLabel: node => node.label, getDragLabel: node => node.label, moreActionsLabel: 'More',
+  })))
+  // Contextmenu event on the folder row
+  await act(async () => row('folder').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 20, clientY: 20 })))
+  expect(onExpandedIdsChange).not.toHaveBeenCalled()
+  // Click with button: 2 or ctrlKey immediately during context menu interaction
+  await act(async () => row('folder').dispatchEvent(new MouseEvent('click', { bubbles: true, button: 2 })))
+  expect(onExpandedIdsChange).not.toHaveBeenCalled()
+  await act(async () => row('folder').dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })))
+  expect(onExpandedIdsChange).not.toHaveBeenCalled()
+ })

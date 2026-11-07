@@ -58,6 +58,7 @@ export const messages = {
 
   'common.batchSelected': '{{count}} 件を選択',
   'common.clearSelection': '選択解除',
+  'common.close': '閉じる',
   'common.batchConfirm': '選択した {{count}} 件にこの操作を適用しますか？',
   'common.batchEnable': '有効化',
   'common.batchDisable': '無効化',
@@ -134,6 +135,8 @@ export const messages = {
   'longTextEditor.undoClear': 'クリアを元に戻す',
   'longTextEditor.undoEdit': '直前の編集を元に戻す',
   'longTextEditor.restoreInitial': '開いた時のバージョンに戻す',
+  'longTextEditor.diff': '差分を表示',
+  'longTextEditor.diffTitle': '変更差分を表示',
   'longTextEditor.sourceMode': 'ソースを表示・編集',
   'longTextEditor.previewMode': 'プレビュー表示',
   'longTextEditor.previewEmpty': 'プレビューする内容がありません。',
@@ -155,4 +158,8 @@ export const messages = {
   'history.context.delete': 'エントリー削除',
   'history.context.reorder': 'エントリー順序変更',
   'rail.modelIncomplete': 'モデル設定が不完全です',
+  'common.confirm': '確認',
+  'common.cancel': 'キャンセル',
+  'common.confirmTitle': '操作確認',
+  'common.confirmDelete': '削除の確認',
 } satisfies Record<keyof typeof zhCN, string>

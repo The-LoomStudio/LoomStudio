@@ -378,6 +378,9 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           previewEmptyLabel={props.t('longTextEditor.previewEmpty')}
           previewModeLabel={props.t('longTextEditor.previewMode')}
           restoreInitialLabel={props.t('longTextEditor.restoreInitial')}
+          diffLabel={props.t('longTextEditor.diff')}
+          diffTitle={props.t('longTextEditor.diffTitle')}
+          t={props.t}
           placeholder={isTextLike ? props.t('context.contentPlaceholder') : props.t('context.notesPlaceholder')}
           spellCheck={false}
           sourceModeLabel={props.t('longTextEditor.sourceMode')}

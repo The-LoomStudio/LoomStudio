@@ -56,6 +56,7 @@ export const messages = {
 
   'common.batchSelected': '已选 {{count}} 项',
   'common.clearSelection': '清空选择',
+  'common.close': '关闭',
   'common.batchConfirm': '确认对所选 {{count}} 项执行此操作？',
   'common.batchEnable': '启用',
   'common.batchDisable': '停用',
@@ -132,6 +133,8 @@ export const messages = {
   'longTextEditor.undoClear': '撤销清空',
   'longTextEditor.undoEdit': '撤销上一步编辑',
   'longTextEditor.restoreInitial': '恢复打开时版本',
+  'longTextEditor.diff': '查看差异',
+  'longTextEditor.diffTitle': '修改差异比对',
   'longTextEditor.sourceMode': '查看和编辑源码',
   'longTextEditor.previewMode': '渲染预览',
   'longTextEditor.previewEmpty': '当前没有可渲染的内容。',
@@ -153,4 +156,8 @@ export const messages = {
   'history.context.delete': '删除条目',
   'history.context.reorder': '调整条目顺序',
   'rail.modelIncomplete': '模型配置不完整',
+  'common.confirm': '确定',
+  'common.cancel': '取消',
+  'common.confirmTitle': '操作确认',
+  'common.confirmDelete': '确认删除',
 } as const

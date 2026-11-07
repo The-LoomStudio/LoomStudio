@@ -201,4 +201,17 @@ describe('Context Asset explorer action outcomes', () => {
     await pending
     expect(state.props.onSelectId).not.toHaveBeenCalled()
   })
+
+  it('merges parent and ancestor IDs into expandedIds when adding a child node', async () => {
+    const parent = { id: 'parent-folder', kind: 'folder' as const, label: 'Parent' }
+    const grandParent = { id: 'root-folder', kind: 'folder' as const, label: 'Root', children: [parent] }
+    const state = fixture()
+    state.props.displayNodes = [grandParent]
+    state.props.expandedIds = []
+    state.props.onAddNode = async () => 'new-entry'
+    const getActions = state.tree().props.getActions as (node: typeof parent) => Array<{ id: string; onSelect?(): Promise<void> }>
+    const addAction = getActions(parent).find(item => item.id === 'add')
+    await addAction?.onSelect?.()
+    expect(state.props.onExpandedIdsChange).toHaveBeenCalledWith(expect.arrayContaining(['root-folder', 'parent-folder']))
+  })
 })

@@ -101,12 +101,33 @@ export function ContextAssetExplorer(props: {
     props.onSelectId(node.id)
   }
   const canSelectResult = (context: typeof selectionContext) => mountedRef.current && context.active && selectionRef.current === context
-  const selectCreated = async (create: Promise<string | undefined>) => {
+  const selectCreated = async (create: Promise<string | undefined>, parentId?: string) => {
     const context = selectionRef.current
     setError(undefined)
+    const ensureExpanded = (targetParentId?: string) => {
+      if (!targetParentId || !props.onExpandedIdsChange) return
+      const path = findContextAssetPath(props.displayNodes, targetParentId)
+      const currentExpanded = new Set(props.expandedIds ?? [])
+      let changed = false
+      for (const node of path) {
+        if (!currentExpanded.has(node.id)) {
+          currentExpanded.add(node.id)
+          changed = true
+        }
+      }
+      if (!currentExpanded.has(targetParentId)) {
+        currentExpanded.add(targetParentId)
+        changed = true
+      }
+      if (changed) {
+        props.onExpandedIdsChange([...currentExpanded])
+      }
+    }
     try {
+      ensureExpanded(parentId)
       const id = await create
       if (id && canSelectResult(context)) {
+        ensureExpanded(parentId)
         props.onSelectId(id)
         setEditingId(id)
       }
@@ -192,13 +213,17 @@ export function ContextAssetExplorer(props: {
             return readContextAssetTreeActions({ ...item, category, ...((item as ContextAssetNode).category === 'preset-root' ? { kind: 'module' } : {}) } as ContextAssetNode, {
               insideMessage: path.some(node => node.kind === 'message'),
               hasMessageSequence: root ? flattenContextAssetNodes([root]).some(isPromptMessageSequence) : false,
-              onAddMessageSequence: props.onAddMessageSequenceNode ? async parentId => selectCreated(props.onAddMessageSequenceNode!(parentId)) : undefined,
-              onAdd: async parentId => selectCreated(props.onAddNode(parentId)),
-              onAddFolder: props.onAddFolderNode ? async parentId => selectCreated(props.onAddFolderNode!(parentId)) : undefined,
-              onAddAnchor: props.onAddAnchorNode ? async parentId => selectCreated(props.onAddAnchorNode!(parentId)) : undefined,
-              onAddMessageBlock: props.onAddMessageBlockNode ? async parentId => selectCreated(props.onAddMessageBlockNode!(parentId)) : undefined,
+              onAddMessageSequence: props.onAddMessageSequenceNode ? async parentId => selectCreated(props.onAddMessageSequenceNode!(parentId), parentId) : undefined,
+              onAdd: async parentId => selectCreated(props.onAddNode(parentId), parentId),
+              onAddFolder: props.onAddFolderNode ? async parentId => selectCreated(props.onAddFolderNode!(parentId), parentId) : undefined,
+              onAddAnchor: props.onAddAnchorNode ? async parentId => selectCreated(props.onAddAnchorNode!(parentId), parentId) : undefined,
+              onAddMessageBlock: props.onAddMessageBlockNode ? async parentId => selectCreated(props.onAddMessageBlockNode!(parentId), parentId) : undefined,
               onDelete: deleteNode,
-              onDuplicate: async id => selectCreated(props.onDuplicateNode(id)),
+              onDuplicate: async id => {
+                const path = findContextAssetPath(props.displayNodes, id)
+                const parentId = path.length > 1 ? path.at(-2)?.id : undefined
+                return selectCreated(props.onDuplicateNode(id), parentId)
+              },
               onRename: id => setEditingId(id),
               onViewAnchors: root?.id === item.id ? setAnchorRootId : undefined,
               onChangeRole: props.onChangeRole,
@@ -284,6 +309,18 @@ export function ContextAssetEditor(props: {
   onMetadataOpenChange(open: boolean): void
 }) {
   const node = props.node
+  const [committedBody, setCommittedBody] = useState(node?.body ?? '')
+  useEffect(() => {
+    setCommittedBody(node?.body ?? '')
+  }, [node?.id])
+
+  const handleCommitNode = (partial: Partial<ContextAssetNode>) => {
+    if (partial.body !== undefined) {
+      setCommittedBody(partial.body)
+    }
+    if (node) props.onCommitNode(node.id, partial)
+  }
+
   const pathNodes = props.pathNodes ?? []
   const sourceTokenNode = props.tokenNode ?? node
   const tokenNode = sourceTokenNode?.kind === 'script' ? { ...sourceTokenNode, kind: 'entry' } : sourceTokenNode
@@ -291,7 +328,7 @@ export function ContextAssetEditor(props: {
     .reduceRight((child, parent) => ({ ...parent, children: [child] }), tokenNode) : undefined
   const tokenScope = `${node?.id}:${pathNodes.map(item => item.id).join('/')}`
   const tokenSummary = node?.kind === 'entry' || node?.kind === 'script'
-    ? <TextTokenSummary text={node.body ?? ''} scope={tokenScope} t={props.t} />
+    ? <TextTokenSummary text={committedBody} scope={tokenScope} t={props.t} />
     : countRoot ? <ResourceTokenSummary roots={[countRoot]}
       scope={tokenScope} t={props.t} incomplete={props.tokenIncomplete} /> : undefined
 
@@ -308,14 +345,11 @@ export function ContextAssetEditor(props: {
           if (!node) return
           props.onChangeNode(node.id, { label })
         }}
-        onCommitLabel={label => {
-          if (!node) return
-          props.onCommitNode(node.id, { label })
-        }}
+        onCommitLabel={label => handleCommitNode({ label })}
         onEnabledChange={enabled => {
           if (!node) return
           props.onChangeNode(node.id, { enabled })
-          props.onCommitNode(node.id, { enabled })
+          handleCommitNode({ enabled })
         }}
         onMetadataOpenChange={props.onMetadataOpenChange}
       />
@@ -332,7 +366,7 @@ export function ContextAssetEditor(props: {
           node={node}
           presets={props.presets}
           onChangeNode={partial => props.onChangeNode(node.id, partial)}
-          onCommitNode={partial => props.onCommitNode(node.id, partial)}
+          onCommitNode={handleCommitNode}
           onMetadataOpenChange={props.onMetadataOpenChange}
           onEditorModeChange={props.onEditorModeChange}
           t={props.t}

@@ -64,6 +64,7 @@ type FileTreeProps = {
 export function FileTree(props: FileTreeProps) {
   const [contextOpen, setContextOpen] = useState(false)
   const [contextActions, setContextActions] = useState<MenuAction[]>([])
+  const lastContextMenuTimeRef = useRef(0)
   const [focusedId, setFocusedId] = useState<string>()
   const draggedIdRef = useRef<string | undefined>(undefined)
   const draggedElementRef = useRef<HTMLElement | undefined>(undefined)
@@ -80,7 +81,7 @@ export function FileTree(props: FileTreeProps) {
   const previousVisibleIdsRef = useRef(new Set<string>())
   const effectiveMotion = useEffectiveMotion()
   const slidingHover = useSlidingHover<HTMLDivElement>({
-    itemSelector: '[data-file-tree-node-id]',
+    itemSelector: '[role="treeitem"][data-file-tree-node-id]',
     insetX: 6,
     activeId: props.selectedId,
   })
@@ -386,6 +387,7 @@ export function FileTree(props: FileTreeProps) {
   }
 
   function handleContextMenu(event: MouseEvent<HTMLElement>) {
+    lastContextMenuTimeRef.current = Date.now()
     const id = event.target instanceof Element
       ? event.target.closest<HTMLElement>('[data-file-tree-node-id]')?.dataset.fileTreeNodeId
       : undefined
@@ -449,6 +451,7 @@ export function FileTree(props: FileTreeProps) {
         rovingId={rovingId}
         selectedId={props.selectedId}
         batchSelectedIds={props.getBatchActions ? selection.selected : undefined}
+        isContextMenuActive={isContextMenuActive}
         setTreeItemRef={(id, element) => {
           if (element) treeItemRefs.current.set(id, element)
           else treeItemRefs.current.delete(id)
@@ -459,6 +462,10 @@ export function FileTree(props: FileTreeProps) {
       />
     )
   }
+
+  const isContextMenuActive = useCallback(() => {
+    return contextOpen || Date.now() - lastContextMenuTimeRef.current < 400
+  }, [contextOpen])
 
   const hoverIndicatorElement = (
     <div
@@ -472,6 +479,7 @@ export function FileTree(props: FileTreeProps) {
     <>
     <ContextMenu onOpenChange={open => {
       setContextOpen(open)
+      lastContextMenuTimeRef.current = Date.now()
       if (!open) setContextActions([])
     }}>
       <ContextMenuTrigger asChild disabled={!props.getActions && !props.getBatchActions}>
@@ -504,6 +512,11 @@ export function FileTree(props: FileTreeProps) {
             if (node) selection.enter(node.id)
           }}
           onClickCapture={event => {
+            if (isContextMenuActive()) {
+              event.preventDefault()
+              event.stopPropagation()
+              return
+            }
             if (batchLocked && eventNode(event.target)) { event.preventDefault(); event.stopPropagation(); return }
             if (selection.consumeClick()) { event.preventDefault(); event.stopPropagation(); return }
             if (props.getBatchActions && event.target instanceof Element && !event.target.closest('button, input, textarea, select, a')) selection.clear()
@@ -610,6 +623,7 @@ function FileTreeRow(props: {
   rovingId?: string
   selectedId?: string
   batchSelectedIds?: Set<string>
+  isContextMenuActive?: () => boolean
   setTreeItemRef: (id: string, element: HTMLDivElement | null) => void
   variant?: 'tree' | 'flat' | 'indented'
   onFocusNode: (id: string) => void
@@ -680,7 +694,11 @@ function FileTreeRow(props: {
           aria-selected={selected}
           role="treeitem"
           tabIndex={props.node.id === props.rovingId ? 0 : -1}
-          onClick={() => props.onSelect(props.node)}
+          onClick={event => {
+            if (event.button !== 0 || event.ctrlKey) return
+            if (props.isContextMenuActive?.()) return
+            props.onSelect(props.node)
+          }}
           onFocus={() => props.onFocusNode(props.node.id)}
           onDragOver={event => props.onDragOver(event, props.node)}
           onDrop={event => props.onDrop(event, props.node)}
@@ -844,6 +862,7 @@ function FileTreeRow(props: {
       rovingId={props.rovingId}
       selectedId={props.selectedId}
       batchSelectedIds={props.batchSelectedIds}
+      isContextMenuActive={props.isContextMenuActive}
       setTreeItemRef={props.setTreeItemRef}
       variant={props.variant}
       onFocusNode={props.onFocusNode}
@@ -856,7 +875,7 @@ function FileTreeRow(props: {
       {props.node.isSection ? (
         <div
           className={styles.sectionRow}
-          data-file-tree-node-id={props.node.id}
+          data-file-tree-section-id={props.node.id}
           role="presentation"
           onDragOver={event => props.onDragOver(event, props.node)}
           onDrop={event => props.onDrop(event, props.node)}

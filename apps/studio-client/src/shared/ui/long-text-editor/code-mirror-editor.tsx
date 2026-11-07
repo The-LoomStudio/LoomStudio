@@ -4,7 +4,6 @@ import { defaultKeymap, history, historyKeymap, undo as undoChange, undoDepth } 
 import { javascript } from '@codemirror/lang-javascript'
 import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting, syntaxTree } from '@codemirror/language'
-import { Chunk } from '@codemirror/merge'
 import { getSearchQuery, search, searchKeymap, searchPanelOpen, SearchQuery, setSearchQuery } from '@codemirror/search'
 import { Annotation, Compartment, EditorState, RangeSet, RangeSetBuilder, StateField, Text, Transaction } from '@codemirror/state'
 import {
@@ -24,9 +23,6 @@ import { tags } from '@lezer/highlight'
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { readYamlScalarTokenClass } from '../../lib/yaml-scalar-highlight.js'
 import {
-  buildChangedChunks,
-  CHANGE_TRACKING_DIFF_CONFIG,
-  readChangedLines,
   readSelectionBoundaryLines,
 } from './code-mirror-change-tracking.js'
 import { loomEditorTheme } from './code-mirror-theme.js'
@@ -111,70 +107,11 @@ const yamlScalarHighlighting = EditorView.decorations.of(view => {
   return builder.finish()
 })
 
-class ChangeGutterMarker extends GutterMarker {
-  override readonly elementClass: string
-
-  constructor(readonly kind: 'added' | 'modified' | 'deleted') {
-    super()
-    this.elementClass = `cm-loom-gutter-${kind}`
-  }
-
-  override eq(other: ChangeGutterMarker) {
-    return other.kind === this.kind
-  }
-}
-
-const changeGutterMarkers = {
-  added: new ChangeGutterMarker('added'),
-  modified: new ChangeGutterMarker('modified'),
-  deleted: new ChangeGutterMarker('deleted'),
-} as const
-
 class ActiveLineGutterMarker extends GutterMarker {
   override readonly elementClass = 'cm-loom-gutter-active'
 }
 
 const activeLineGutterMarker = new ActiveLineGutterMarker()
-
-function changeTracking(baseline: Text) {
-  return StateField.define<{
-    chunks: readonly Chunk[]
-    decorations: DecorationSet
-    gutterMarkers: RangeSet<GutterMarker>
-  }>({
-    create(state) {
-      const chunks = buildChangedChunks(baseline, state.doc)
-      return { chunks, ...buildChangeMarks(state.doc, chunks) }
-    },
-    update(value, transaction) {
-      if (!transaction.docChanged) return value
-      const chunks = Chunk.updateB(
-        value.chunks,
-        baseline,
-        transaction.newDoc,
-        transaction.changes,
-        CHANGE_TRACKING_DIFF_CONFIG,
-      )
-      return { chunks, ...buildChangeMarks(transaction.newDoc, chunks) }
-    },
-    provide: field => [
-      EditorView.decorations.from(field, value => value.decorations),
-      gutterLineClass.from(field, value => value.gutterMarkers),
-    ],
-  })
-}
-
-function buildChangeMarks(current: Text, chunks: readonly Chunk[]) {
-  const changes = readChangedLines(current, chunks)
-  return {
-    decorations: Decoration.set(changes.map(change => (
-      Decoration.line({ class: `cm-loom-line-${change.kind}` }).range(current.line(change.line).from)
-    )), true),
-    gutterMarkers: RangeSet.of(changes.map(change => (
-      changeGutterMarkers[change.kind].range(current.line(change.line).from)
-    )), true),
-  }
-}
 
 function selectionBoundaryTracking() {
   return gutterLineClass.compute(['doc', 'selection'], buildSelectionBoundaryMarkers)
@@ -279,7 +216,6 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           yamlScalarHighlighting,
           EditorView.lineWrapping,
           loomEditorTheme,
-          changeTracking(Text.of(initialValueRef.current.split('\n'))),
           selectionBoundaryTracking(),
           readOnlyCompartmentRef.current.of([
             EditorState.readOnly.of(Boolean(props.disabled)),

@@ -58,6 +58,7 @@ export const messages = {
 
   'common.batchSelected': '{{count}} selected',
   'common.clearSelection': 'Clear selection',
+  'common.close': 'Close',
   'common.batchConfirm': 'Apply this operation to {{count}} selected items?',
   'common.batchEnable': 'Enable',
   'common.batchDisable': 'Disable',
@@ -134,6 +135,8 @@ export const messages = {
   'longTextEditor.undoClear': 'Undo clear',
   'longTextEditor.undoEdit': 'Undo last edit',
   'longTextEditor.restoreInitial': 'Restore opening version',
+  'longTextEditor.diff': 'View diff',
+  'longTextEditor.diffTitle': 'Compare changes',
   'longTextEditor.sourceMode': 'View and edit source',
   'longTextEditor.previewMode': 'Rendered preview',
   'longTextEditor.previewEmpty': 'There is no content to render.',
@@ -155,4 +158,8 @@ export const messages = {
   'history.context.delete': 'Delete Entry',
   'history.context.reorder': 'Reorder Entries',
   'rail.modelIncomplete': 'Model configuration incomplete',
+  'common.confirm': 'Confirm',
+  'common.cancel': 'Cancel',
+  'common.confirmTitle': 'Confirm Action',
+  'common.confirmDelete': 'Confirm Delete',
 } satisfies Record<keyof typeof zhCN, string>

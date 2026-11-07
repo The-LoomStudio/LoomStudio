@@ -258,6 +258,11 @@
   white-space: nowrap;
 }
 
+.diffDialogContent {
+  width: min(80vw, 760px);
+  max-width: 100%;
+}
+
 @media (max-width: 768px) {
   .toolbar { position:static; }
   .editor[data-compact='true'] .toolbar { position:static; }

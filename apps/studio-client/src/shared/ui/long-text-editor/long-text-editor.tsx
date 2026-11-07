@@ -1,5 +1,5 @@
 import { buildSearchMatchPattern, searchRevealKey, type SearchReveal } from '../../lib/search-match.js'
-import { Check, Code2, Copy, Eye, History, RotateCcw, Trash2, Undo2, X } from 'lucide-react'
+import { Check, Code2, Copy, Eye, GitCompare, History, RotateCcw, Trash2, Undo2, X } from 'lucide-react'
 import { forwardRef, lazy, Suspense, useEffect, useId, useImperativeHandle, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { CodeMirrorEditorHandle } from './code-mirror-editor.js'
 import {
@@ -7,7 +7,8 @@ import {
   reduceLongTextEditorState,
   type LongTextEditorMode,
 } from './long-text-editor-model.js'
-import { IconButton, SkeletonText } from '@loom-studio/ui'
+import { Button, Dialog, IconButton, SkeletonText } from '@loom-studio/ui'
+import { createTranslator, type Translator } from '../../i18n/index.js'
 import { useCopyFeedback } from '../../hooks/use-copy-feedback.js'
 import styles from './long-text-editor.module.scss'
 
@@ -19,6 +20,11 @@ const CodeMirrorEditor = lazy(async () => {
 const MarkdownPreview = lazy(async () => {
   const module = await import('./markdown-preview.js')
   return { default: module.MarkdownPreview }
+})
+
+const LazyReadOnlyDiff = lazy(async () => {
+  const module = await import('../read-only-diff/read-only-diff.js')
+  return { default: module.ReadOnlyDiff }
 })
 
 type LongTextEditorBaseProps = {
@@ -41,6 +47,9 @@ type LongTextEditorBaseProps = {
   revealMatch?: SearchReveal
   spellCheck?: boolean
   restoreInitialLabel: string
+  diffLabel?: string
+  diffTitle?: string
+  t?: Translator
   showLineNumbers?: boolean
   undoEditLabel: string
   undoLabel: string
@@ -72,8 +81,11 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
   const revealedRequestRef = useRef<string | undefined>(undefined)
   const [hasOpenedSource, setHasOpenedSource] = useState(props.mode === 'source')
   const [canUndo, setCanUndo] = useState(false)
+  const [diffOpen, setDiffOpen] = useState(false)
   const [state, dispatch] = useReducer(reduceLongTextEditorState, INITIAL_LONG_TEXT_EDITOR_STATE)
   const hasChanges = props.value !== initialValueRef.current
+  const translator = props.t ?? createTranslator('zh-CN')
+  const diffLabel = props.diffLabel ?? translator('longTextEditor.diff')
   const { feedback, copy } = useCopyFeedback()
   const copyStatus = feedback?.status ?? 'idle'
   const onModeChange = props.sourceOnly ? undefined : props.onModeChange
@@ -190,6 +202,15 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
           >
             <History aria-hidden="true" />
           </IconButton>
+          <IconButton
+            aria-label={diffLabel}
+            className={styles.action}
+            disabled={props.disabled || !hasChanges}
+            onClick={() => setDiffOpen(true)}
+            onMouseDown={event => event.preventDefault()}
+          >
+            <GitCompare aria-hidden="true" />
+          </IconButton>
           {!props.compact ? (
             <IconButton
               aria-label={copyStatus === 'idle' ? props.copyLabel : copyFeedback}
@@ -272,6 +293,30 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
           />
         </Suspense>
       ) : null}
+      {diffOpen && (
+        <Dialog
+          open
+          dismissible
+          onClose={() => setDiffOpen(false)}
+          title={props.diffTitle ?? (props.label ? `${props.label} · ${diffLabel}` : diffLabel)}
+          actions={(
+            <Button onClick={() => setDiffOpen(false)}>
+              {translator('common.close')}
+            </Button>
+          )}
+        >
+          <div className={styles.diffDialogContent}>
+            <Suspense fallback={<SkeletonText lines={6} />}>
+              <LazyReadOnlyDiff
+                before={initialValueRef.current}
+                after={props.value}
+                t={translator}
+                defaultExpanded
+              />
+            </Suspense>
+          </div>
+        </Dialog>
+      )}
       <span className={styles.liveRegion} aria-live="polite">{liveFeedback}</span>
     </section>
   )
