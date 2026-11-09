@@ -536,3 +536,9 @@
 
 .libraryTabs { flex-shrink: 0; border-bottom: 0 !important; padding: 8px 16px; }
 .libraryHost > .libraryPane { flex: 1; height: auto; }
+
+.toolbarActionGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

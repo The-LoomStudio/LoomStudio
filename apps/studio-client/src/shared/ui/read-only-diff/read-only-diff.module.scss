@@ -1,29 +1,147 @@
 .diff {
   min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-radius: var(--loom-radius-surface);
   background: var(--loom-color-surface-subtle);
+  border: 1px solid var(--loom-color-border);
 }
+
 .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  min-height: 28px;
   padding: 6px 12px;
-  color: var(--loom-color-text-muted);
-  font-size: var(--loom-font-size-2);
+  background: var(--loom-color-surface-subtle);
+  border-bottom: 1px solid var(--loom-color-divider);
 }
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.label {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  white-space: nowrap;
+}
+
+.stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--loom-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: 11px;
+}
+
+.addedBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--loom-color-success) 18%, transparent);
+  color: var(--loom-color-success);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.deletedBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--loom-color-danger) 18%, transparent);
+  color: var(--loom-color-danger);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.noChanges {
+  font-size: 11px;
+  color: var(--loom-color-text-muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.action {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  color: var(--loom-color-text-subtle);
+  padding: 0;
+  border: 0;
+  background: transparent !important;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--loom-radius-control);
+  transition: color 120ms ease;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    color: var(--loom-color-text);
+    background: transparent !important;
+  }
+
+  svg {
+    width: var(--loom-icon-size-3, 14px);
+    height: var(--loom-icon-size-3, 14px);
+  }
+}
+
+.actionActive {
+  color: var(--loom-color-accent-strong) !important;
+  background: transparent !important;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    color: var(--loom-color-accent-strong) !important;
+    background: transparent !important;
+  }
+}
+
 .editor {
-  --loom-long-text-editor-content-min-height: 140px;
-  height: min(45vh, 360px);
-  min-height: 140px;
-  padding: 0 6px 8px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+
+  :global(.cm-editor) {
+    height: 100%;
+    outline: none !important;
+  }
+
+  :global(.cm-scroller) {
+    height: 100%;
+    overflow: auto;
+  }
 }
 
 .flow {
+  height: auto;
   background: transparent;
+  border: none;
+
   .editor {
-    --loom-long-text-editor-content-min-height: 0px;
     height: auto;
     min-height: 0;
   }

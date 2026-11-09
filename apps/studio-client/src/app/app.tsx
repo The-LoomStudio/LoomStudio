@@ -632,6 +632,23 @@ export function App(props: {
       ) : undefined}
       onChangeInput={state.setAgentChatInput}
       onSelectProfile={state.selectAgentPreset}
+      onSavePresetModel={async (presetId, model) => {
+        const preset = state.agentPresets.find(p => p.id === presetId)
+        if (preset) {
+          await state.updatePresetModel({
+            agentPresetId: preset.id,
+            expectedVersion: preset.version,
+            model,
+            delivery: preset.delivery ?? 'stream',
+          })
+        }
+      }}
+      onOpenWorkbench={(presetId, nodeId) => {
+        const preset = state.agentPresets.find(p => p.id === presetId)
+        if (preset) {
+          void navigation.openResource('preset', preset.id, nodeId ?? preset.rootNode.id)
+        }
+      }}
       onSelectSession={id => { void openAgentSession(id) }}
       onNewSession={state.newAgentSession}
       onCreateSession={async presetId => {
@@ -809,6 +826,12 @@ export function App(props: {
               selectedId={state.narrativeAgentSession?.agentPresetId}
               t={state.t}
               onSelect={agentPresetId => { void state.configureNarrativeSession({ agentPresetId }) }}
+              onOpenWorkbench={(presetId, nodeId) => {
+                const preset = state.agentPresets.find(p => p.id === presetId)
+                if (preset) {
+                  void navigation.openResource('preset', preset.id, nodeId ?? preset.rootNode.id)
+                }
+              }}
             />}
             runStatus={state.narrativeActiveRun?.status === 'running' ? 'running' : state.narrativeActiveRun?.status === 'suspended' ? 'suspended' : 'idle'}
             onPause={() => { void state.pauseNarrativeRun() }}

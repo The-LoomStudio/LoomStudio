@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { PromptResource } from '../../entities/index.js'
-import { findContextAssetPath } from '../../features/prompt-resources/model/context-asset-tree.js'
+import { findContextAssetNode, findContextAssetPath } from '../../features/prompt-resources/model/context-asset-tree.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources/model/prompt-resource-view.js'
 import { ContextAssetHeader } from '../../features/prompt-resources/ui/context-asset-header/context-asset-header.js'
 import { buildContextPathSegments } from '../../features/prompt-resources/ui/context-asset-header/build-context-path-segments.js'
@@ -18,30 +18,34 @@ export function PresetWorkbenchHeader(props: {
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.agent
   const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
-  const selectedResource = props.selectedResourceId
-    ? presetResources.find(r => r.id === props.selectedResourceId)
-    : presetResources[0]
   const selectedId = useStudioLayoutStore(state => state.assetLayouts.preset.views[props.workspaceId]?.selectedId)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
 
-  const breadcrumbs = props.library ? [] : !selectedResource || !selectedId
+  const selectedResource = props.selectedResourceId
+    ? presetResources.find(r => r.id === props.selectedResourceId)
+    : (selectedId ? presetResources.find(resource => resource.id === selectedId || resource.rootNode.id === selectedId || Boolean(findContextAssetNode([resource.rootNode], selectedId))) : undefined)
+      ?? (props.library ? undefined : presetResources[0])
+
+  const isLibrary = Boolean(props.library && !selectedResource)
+
+  const breadcrumbs = isLibrary || !selectedResource || !selectedId
     ? []
     : buildContextPathSegments(
       findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId),
       (id: string) => {
-      setAssetPane('preset', props.workspaceId, 'detail')
-      openAssetDetail('preset', props.workspaceId, id)
+        setAssetPane('preset', props.workspaceId, 'detail')
+        openAssetDetail('preset', props.workspaceId, id)
       },
     )
 
   return (
     <ContextAssetHeader
       Icon={definition.Icon}
-      title={props.library ? '预设库' : props.t(definition.labelKey)}
+      title={isLibrary ? '预设库' : props.t(definition.labelKey)}
       breadcrumbs={breadcrumbs}
-      resources={props.library ? [] : presetResources}
-      selectedResourceId={props.library ? undefined : props.selectedResourceId ?? selectedResource?.id}
+      resources={isLibrary ? [] : presetResources}
+      selectedResourceId={isLibrary ? undefined : props.selectedResourceId ?? selectedResource?.id}
       t={props.t}
       onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
     />

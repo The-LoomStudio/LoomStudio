@@ -258,9 +258,39 @@
   white-space: nowrap;
 }
 
+.diffDialog {
+  width: min(94vw, 1080px) !important;
+  max-width: calc(100vw - 32px) !important;
+  height: min(84vh, 760px);
+  max-height: calc(var(--loom-viewport-height, 100dvh) - 32px);
+  display: flex;
+  flex-direction: column;
+
+  :global([data-loom-ui-dialog-frame]) {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  :global([data-loom-ui-dialog-body]) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 16px 16px;
+    overflow: hidden;
+  }
+}
+
 .diffDialogContent {
-  width: min(80vw, 760px);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
   max-width: 100%;
+  height: 100%;
 }
 
 @media (max-width: 768px) {

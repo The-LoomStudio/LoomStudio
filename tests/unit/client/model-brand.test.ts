@@ -20,4 +20,10 @@ describe('model brand resolution', () => {
   it('prefers a concrete provider hint over an OpenAI-compatible extension id', () => {
     expect(resolveProviderBrand('DeepSeek', 'https://api.deepseek.com', 'builtin.openai-compatible')).toBe('deepseek')
   })
+
+  it('maps custom providers without specific brand to protocol fallback (e.g. OpenAI icon for openai-compatible)', () => {
+    expect(resolveProviderBrand('youzi', 'https://api.youzi.ai/v1', 'official.openai-compatible')).toBe('openai')
+    expect(resolveProviderBrand('Fake AI', 'https://api.fake.ai/v1', 'official.openai-compatible')).toBe('openai')
+    expect(resolveProviderBrand('OpenAI 官方', 'https://api.openai.com/v1', 'official.openai')).toBe('openai')
+  })
 })

@@ -297,6 +297,7 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
         <Dialog
           open
           dismissible
+          className={styles.diffDialog}
           onClose={() => setDiffOpen(false)}
           title={props.diffTitle ?? (props.label ? `${props.label} · ${diffLabel}` : diffLabel)}
         >
@@ -305,8 +306,8 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
               <LazyReadOnlyDiff
                 before={initialValueRef.current}
                 after={props.value}
+                language={props.language}
                 t={translator}
-                defaultExpanded
               />
             </Suspense>
           </div>

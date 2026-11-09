@@ -197,4 +197,45 @@ describe('PresetWorkbench tree and rename ID mapping', () => {
     expect(onSelectResource).toHaveBeenCalledExactlyOnceWith('two')
   })
 
+  it('restores editing workbench from persisted selectedId in zustand and resets selectedId on return to library', () => {
+    const persistedPreset: PromptResource = {
+      id: 'preset-persisted',
+      version: 1,
+      resourceKind: 'preset',
+      rootNode: {
+        id: 'preset-root-1',
+        kind: 'module',
+        label: 'Persisted Preset',
+        children: [{ id: 'persisted-child', kind: 'message', label: 'Message Item' }],
+      },
+      createdAt: '',
+      updatedAt: '',
+    }
+    const onReturnToLibrary = vi.fn()
+    const setAssetSelectedIdSpy = vi.spyOn(useStudioLayoutStore.getState(), 'setAssetSelectedId')
+
+    const props = {
+      active: true,
+      resources: [persistedPreset],
+      loreMounts: [],
+      toolMounts: [],
+      tools: [],
+      draftResourceIds: [],
+      workspaceId: 'test-ws',
+      t: createTranslator('zh-CN'),
+      onReturnToLibrary,
+    } as unknown as ComponentProps<typeof PresetWorkbench>
+
+    hooks.cursor = 0
+    const tree = PresetWorkbench(props)
+    const arrangement = child(tree, 'PresetArrangementWorkbench')
+    expect(arrangement).toBeDefined()
+    expect(arrangement.props.selectedResourceId).toBe('preset-persisted')
+
+    // Returning to library should clear persisted selectedId in layout store
+    ;(arrangement.props.onReturnToLibrary as () => void)()
+    expect(setAssetSelectedIdSpy).toHaveBeenCalledWith('preset', 'test-ws', undefined)
+    expect(onReturnToLibrary).toHaveBeenCalled()
+  })
+
 })

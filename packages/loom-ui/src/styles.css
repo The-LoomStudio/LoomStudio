@@ -518,7 +518,8 @@ html[data-loom-glass-panels='true'] .loom-ui-menu {
 }
 
 .loom-ui-menu[data-menu-kind='context'] { transform-origin: var(--radix-context-menu-content-transform-origin); }
-.loom-ui-menu[data-menu-kind='dropdown'] { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
+.loom-ui-menu[data-menu-kind='dropdown'],
+.loom-ui-menu[data-menu-kind='dropdown-sub'] { transform-origin: var(--radix-dropdown-menu-content-transform-origin); }
 .loom-ui-menu-item {
   position: relative;
   z-index: 1;

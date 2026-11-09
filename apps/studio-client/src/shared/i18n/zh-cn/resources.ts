@@ -6,7 +6,7 @@ export const messages = {
   'context.anchors.unassignedHint': "这些条目没有注入目标，不会作为锚点贡献注入。",
   'context.anchors.disabled': "已停用（含上级停用）",
   'promptResource.temporaryHint': "临时查看，不会自动加入当前角色。",
-  'dashboard.open': '数据总览',
+  'dashboard.open': '统计',
   'promptResource.processingWarning': '提示词处理出现警告，部分 Lore 可能已跳过。请查看构建诊断。',
   'promptResource.invalidResources': '以下资源暂时无法读取；其他资源仍可使用。',
   'promptResource.invalidResourcesHelp': '原始数据已保留。请根据资源 ID 检查来源文件或备份，修复后重新加载。',

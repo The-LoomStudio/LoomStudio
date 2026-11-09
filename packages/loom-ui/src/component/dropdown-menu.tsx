@@ -5,6 +5,49 @@ import * as React from 'react'
 
 export const DropdownMenu = DropdownMenuPrimitive.Root
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
+export const DropdownMenuSub = DropdownMenuPrimitive.Sub
+
+export const DropdownMenuSubTrigger = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> & {
+    icon?: React.ReactNode
+    inset?: boolean
+  }
+>(({ children, className, icon, inset, ...props }, ref) => (
+  <DropdownMenuPrimitive.SubTrigger
+    {...props}
+    ref={ref}
+    className={menuClass('loom-ui-menu-item', className)}
+    data-inset={inset || undefined}
+  >
+    {icon ? <span aria-hidden="true" className="loom-ui-menu-leading">{icon}</span> : null}
+    <span className="loom-ui-menu-label">{children}</span>
+  </DropdownMenuPrimitive.SubTrigger>
+))
+DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName
+
+export const DropdownMenuSubContent = React.forwardRef<
+  React.ElementRef<typeof DropdownMenuPrimitive.SubContent>,
+  React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent>
+>(({ className, sideOffset = 4, children, ...props }, forwardedRef) => {
+  const portalContainer = React.useContext(DialogPortalContext)
+
+  return (
+    <DropdownMenuPrimitive.Portal container={portalContainer}>
+      <DropdownMenuPrimitive.SubContent
+        {...props}
+        collisionBoundary={props.collisionBoundary ?? portalContainer}
+        ref={forwardedRef}
+        className={menuClass('loom-ui-menu', className)}
+        data-menu-kind="dropdown-sub"
+        sideOffset={sideOffset}
+      >
+        {children}
+      </DropdownMenuPrimitive.SubContent>
+    </DropdownMenuPrimitive.Portal>
+  )
+})
+DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName
 
 export const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,

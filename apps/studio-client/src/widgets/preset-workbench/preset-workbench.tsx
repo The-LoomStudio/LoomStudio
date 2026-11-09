@@ -36,6 +36,7 @@ import type { AgentToolDefinition, Card, ContextAssetNode, PresetToolMount, Pres
 import styles from './preset-workbench.module.scss'
 import { AgentModelEditor } from '../../features/prompt-resources/ui/agent-model-editor.js'
 import { NarrativeRangePreview } from './narrative-range-preview.js'
+import { PresetModelQuickPicker } from './preset-model-quick-picker.js'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 
 function toolDisplayGroup(tool: AgentToolDefinition): string {
@@ -158,7 +159,13 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     if (props.routeToolId) { setLibraryTab('tools'); setLibraryToolId(props.routeToolId); setToolPane('detail') }
     else if (props.routeResourceId || props.routeAssetId) setLibraryTab('presets')
   }, [props.routeToolId, props.routeResourceId, props.routeAssetId])
-  const editing = libraryTab === 'presets' && Boolean(props.routeResourceId || props.routeAssetId || localEditingId)
+  const presetSelectedId = useStudioLayoutStore(state => state.assetLayouts.preset.views[props.workspaceId]?.selectedId)
+  const setAssetSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
+  const matchedPersistedPreset = useMemo(() => {
+    if (!presetSelectedId) return undefined
+    return presets.find(p => p.id === presetSelectedId || p.rootNode.id === presetSelectedId || Boolean(findContextAssetNode([p.rootNode], presetSelectedId)))
+  }, [presets, presetSelectedId])
+  const editing = libraryTab === 'presets' && Boolean(props.routeResourceId || props.routeAssetId || localEditingId || matchedPersistedPreset)
   useEffect(() => { if (!props.active) setConfigurationId(undefined) }, [props.active])
   const sourceOf = (preset: PromptResource): PresetCatalogSource => {
     const origin = preset.origin
@@ -184,6 +191,11 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const configure = (id: string) => { setConfigurationId(id); setSaveError(undefined) }
   const open = (id: string) => {
     setConfigurationId(undefined)
+    const target = presets.find(p => p.id === id)
+    if (target) {
+      useStudioLayoutStore.getState().openAssetDetail('preset', props.workspaceId, target.rootNode.id)
+      useStudioLayoutStore.getState().setAssetPane('preset', props.workspaceId, 'detail')
+    }
     if (props.onSelectResource) props.onSelectResource(id)
     else setLocalEditingId(id)
   }
@@ -215,7 +227,26 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         toolCount: props.toolMounts.filter(mount => mount.presetResourceId === preset.id && mount.defaultEnabled !== false).length,
         resourceCount: props.loreMounts.filter(mount => mount.source.kind === 'preset' && mount.source.id === preset.id).length + (preset.textUses?.length ?? 0),
         draft: props.draftResourceIds.includes(preset.id),
-      }))} actions={toolbar} itemActions={item => <>
+      }))} actions={toolbar}
+      renderModelAction={item => {
+        const preset = presets.find(p => p.id === item.id)
+        if (!preset) return null
+        return (
+          <div onClick={e => e.stopPropagation()}>
+            <PresetModelQuickPicker
+              preset={preset}
+              modelProfiles={props.modelProfiles}
+              providerAccounts={props.providerAccounts}
+              onListModels={props.onListModels}
+              onCreateModel={props.onCreateModel}
+              onSaveModel={props.onSaveModel}
+              t={props.t}
+              variant="inline"
+            />
+          </div>
+        )
+      }}
+      itemActions={item => <>
         <IconButton size="small" title="复制预设" aria-label={`复制${item.name}`} onClick={() => { void configureOperation(() => props.onDuplicateResource(item.id)).catch(() => undefined) }}><Copy size={16} /></IconButton>
         <IconButton size="small" title="删除预设" aria-label={`删除${item.name}`} onClick={() => {
           void (async () => {
@@ -227,8 +258,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       </>} onConfigure={configure} onOpen={open} />
     </div>
     {editing && <div className={styles.libraryPane}>
-      <PresetArrangementWorkbench {...props} selectedResourceId={localEditingId ?? props.selectedResourceId} onConfigure={configure}
-        onReturnToLibrary={() => { setLocalEditingId(undefined); props.onReturnToLibrary?.() }} />
+      <PresetArrangementWorkbench {...props} selectedResourceId={localEditingId ?? props.selectedResourceId ?? matchedPersistedPreset?.id} onConfigure={configure}
+        onReturnToLibrary={() => {
+          setLocalEditingId(undefined)
+          setAssetSelectedId('preset', props.workspaceId, undefined)
+          props.onReturnToLibrary?.()
+        }} />
     </div>}
     <PresetConfigurationDialog open={!!configured} title={configured?.rootNode.label ?? '预设配置'} source={configured ? sourceOf(configured).name : undefined}
       busy={saving} onClose={() => setConfigurationId(undefined)} headerActions={configured && <>
@@ -273,17 +308,27 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
   const setAssetExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
+  const setAssetSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.preset[props.workspaceId] ?? 'explorer')
   const legacyResource = props.routeAssetId && !props.routeResourceId
     ? presetResources.find(resource => findContextAssetNode([resource.rootNode], props.routeAssetId))
     : undefined
-  const selectedResourceId = props.routeResourceId ?? legacyResource?.id ?? props.selectedResourceId ?? internalSelectedResourceId
+  const nodeResource = explorerView.selectedId
+    ? presetResources.find(resource => resource.id === explorerView.selectedId || resource.rootNode.id === explorerView.selectedId || Boolean(findContextAssetNode([resource.rootNode], explorerView.selectedId)))
+    : undefined
+  const selectedResourceId = props.routeResourceId ?? legacyResource?.id ?? props.selectedResourceId ?? nodeResource?.id ?? internalSelectedResourceId
   const setSelectedResourceId = (id: string | undefined) => {
     setInternalSelectedResourceId(id)
     setAssetPane('preset', props.workspaceId, 'explorer')
-    if (id) props.onSelectResource?.(id)
+    if (id) {
+      props.onSelectResource?.(id)
+      const target = presetResources.find(p => p.id === id)
+      if (target) {
+        setAssetSelectedId('preset', props.workspaceId, target.rootNode.id)
+      }
+    }
   }
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId)
     ?? (selectedResourceId || props.routeAssetId ? undefined : presetResources[0])
@@ -308,7 +353,20 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     }
     setAssetExpandedIds('preset', props.workspaceId, [...expanded])
   }, [selectedResource, mainOrderNodes, props.workspaceId, setAssetExpandedIds])
-  const selectedId = explorerView.selectedId
+  const selectedNodeInCurrent = selectedResource && explorerView.selectedId
+    ? findContextAssetNode(workbenchNodes, explorerView.selectedId)
+    : undefined
+  const selectedId = selectedNodeInCurrent
+    ? explorerView.selectedId
+    : selectedResource?.rootNode.id
+
+  useEffect(() => {
+    if (!selectedId) return
+    if (explorerView.selectedId !== selectedId) {
+      setAssetSelectedId('preset', props.workspaceId, selectedId)
+    }
+  }, [explorerView.selectedId, selectedId, props.workspaceId, setAssetSelectedId])
+
   const tokenSnapshot = useResourceTokenSnapshot(selectedResource ? [selectedResource.rootNode] : [], `${props.workspaceId}:${selectedResource?.id ?? ''}`)
   const selectedNode = findContextAssetNode(workbenchNodes, selectedId)
   const detailNode = selectedNode
@@ -342,8 +400,10 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
 
 
   useEffect(() => {
-    setAssetPane('preset', props.workspaceId, props.routeResourceId || props.routeToolId ? 'detail' : 'explorer')
-  }, [props.routeResourceId, props.routeToolId, selectedResource?.id])
+    if (props.routeResourceId || props.routeToolId) {
+      setAssetPane('preset', props.workspaceId, 'detail')
+    }
+  }, [props.routeResourceId, props.routeToolId, props.workspaceId, setAssetPane])
 
 
 
@@ -456,10 +516,30 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     return <ResourceUnavailable message={props.t('promptResource.referenceUnavailable')} />
   }
 
-  const configurationAction = <button type="button" aria-label="配置预设" title="配置预设"
-    disabled={!selectedResource} onClick={() => { if (selectedResource) props.onConfigure(selectedResource.id) }}>
-    <SlidersHorizontal aria-hidden="true" />
-  </button>
+  const toolbarActions = (
+    <div className={styles.toolbarActionGroup}>
+      {selectedResource && (
+        <PresetModelQuickPicker
+          preset={selectedResource}
+          modelProfiles={props.modelProfiles}
+          providerAccounts={props.providerAccounts}
+          onListModels={props.onListModels}
+          onCreateModel={props.onCreateModel}
+          onSaveModel={props.onSaveModel}
+          t={props.t}
+        />
+      )}
+      <button
+        type="button"
+        aria-label="配置预设"
+        title="配置预设"
+        disabled={!selectedResource}
+        onClick={() => { if (selectedResource) props.onConfigure(selectedResource.id) }}
+      >
+        <SlidersHorizontal aria-hidden="true" />
+      </button>
+    </div>
+  )
 
   return (
     <AssetWorkbenchLayout
@@ -469,7 +549,7 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
       onMobilePaneChange={pane => setAssetPane('preset', props.workspaceId, pane)}
       toolbar={(
         <PromptResourceToolbar
-          trailingActions={configurationAction}
+          trailingActions={toolbarActions}
           tokenSnapshot={tokenSnapshot}
           resourceKind="preset"
           resources={presetResources}

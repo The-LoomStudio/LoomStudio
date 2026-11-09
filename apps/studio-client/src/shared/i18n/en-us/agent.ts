@@ -4,7 +4,7 @@ export const messages = {
   'agent.diffPreview': 'Changes',
   'agent.diffExpand': 'Expand all',
   'agent.diffCollapse': 'Collapse unchanged lines',
-  'agent.diffUnchanged': '{{count}} unchanged lines · click to expand',
+  'agent.diffUnchanged': '⋯ {{count}} unchanged lines · click to expand',
   'agent.titleNotSaved': 'Conversation name was not saved',
   'agent.sessionName': 'Conversation name',
   'agent.approvalPending': "Approval required",

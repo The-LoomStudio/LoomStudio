@@ -59,7 +59,7 @@ export function resolveProviderBrand(...hints: string[]): ModelBrand | null {
   if (/grok|xai/.test(normalized)) return 'grok'
   if (/meta|llama/.test(normalized)) return 'meta'
   if (/qwen|aliyun|dashscope/.test(normalized)) return 'qwen'
-  if (/\bofficial\.openai\b|api\.openai\.com/.test(normalized)) return 'openai'
-  if (/\bopenai\b/.test(normalized) && !/openai[-_ ]compatible/.test(normalized)) return 'openai'
+  // 若无特定专有品牌，按适配协议类型默认兜底（OpenAI API 兼容协议默认回退为 OpenAI 图标）
+  if (/openai/.test(normalized)) return 'openai'
   return null
 }

@@ -33,8 +33,8 @@ export const useConfirmStore = create<ConfirmState>(() => ({
 export function confirm(options: ConfirmOptions | string): Promise<boolean> {
   const opts: ConfirmOptions = typeof options === 'string' ? { message: options } : options
   const globalConfirm = typeof window !== 'undefined'
-    ? (window as unknown as { confirm?: unknown }).confirm
-    : (globalThis as unknown as { confirm?: unknown }).confirm
+    ? (window as unknown as { confirm?: (message?: string) => boolean }).confirm
+    : (globalThis as unknown as { confirm?: (message?: string) => boolean }).confirm
   if (typeof globalConfirm === 'function' && ('mock' in globalConfirm || '_isMockFunction' in globalConfirm)) {
     return Promise.resolve(Boolean(globalConfirm(opts.message)))
   }

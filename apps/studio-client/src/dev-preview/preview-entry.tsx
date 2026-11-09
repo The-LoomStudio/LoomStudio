@@ -5,6 +5,11 @@ const RegexLabPreview = lazy(async () => {
   return { default: (await import('./regex-lab-preview.js')).RegexLabPreview }
 })
 
+const CatalogPickerPreview = lazy(async () => {
+  isolatePreviewStorage()
+  return { default: (await import('./catalog-picker-preview.js')).CatalogPickerPreview }
+})
+
 // Shared widgets may import persisted preference stores. Isolate them before
 // importing preview; never hydrate or write the real browser preferences.
 function isolatePreviewStorage() {
@@ -22,5 +27,6 @@ function isolatePreviewStorage() {
 // Explicit registration only. No business API, authentication, or persistent layout bootstrap.
 export function DevPreview({ pathname }: { pathname: string }) {
   if (pathname === '/dev/preview/regex') return <Suspense fallback={null}><RegexLabPreview /></Suspense>
+  if (pathname === '/dev/preview/picker') return <Suspense fallback={null}><CatalogPickerPreview /></Suspense>
   return null
 }

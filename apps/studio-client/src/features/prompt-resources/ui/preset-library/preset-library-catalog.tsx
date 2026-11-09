@@ -13,6 +13,7 @@ export function PresetLibraryCatalog(props: {
   sources: PresetCatalogSource[]
   actions?: ReactNode
   itemActions?: (item: PresetCatalogItem) => ReactNode
+  renderModelAction?: (item: PresetCatalogItem) => ReactNode
   sourceContent?: (sourceId: string) => ReactNode
   onConfigure(id: string): void
   onOpen(id: string): void
@@ -70,7 +71,11 @@ export function PresetLibraryCatalog(props: {
                   badge={item.draft ? '未保存修改' : undefined}
                   openLabel={`打开${item.name}的编排目录`} onOpen={() => props.onOpen(item.id)}
                   metadata={<>
-                    <span><Cpu size={13} />{item.modelLabel}</span>
+                    {props.renderModelAction ? (
+                      props.renderModelAction(item)
+                    ) : (
+                      <span><Cpu size={13} />{item.modelLabel}</span>
+                    )}
                     {item.toolCount > 0 && <span><Wrench size={13} />{item.toolCount} 项工具</span>}
                     {item.resourceCount > 0 && <span><Layers size={13} />{item.resourceCount} 项资源</span>}
                   </>}

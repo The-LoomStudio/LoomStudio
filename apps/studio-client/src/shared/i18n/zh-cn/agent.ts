@@ -2,7 +2,7 @@ export const messages = {
   'agent.diffPreview': '变更预览',
   'agent.diffExpand': '展开全部',
   'agent.diffCollapse': '折叠未变更行',
-  'agent.diffUnchanged': '{{count}} 行未变更 · 点击展开',
+  'agent.diffUnchanged': '⋯ {{count}} 行未变更 · 点击展开',
   'agent.titleNotSaved': '会话名称未保存',
   'agent.sessionName': '会话名称',
   'agent.approvalPending': "等待审批",

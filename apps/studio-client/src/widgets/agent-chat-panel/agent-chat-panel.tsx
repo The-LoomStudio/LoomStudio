@@ -21,7 +21,7 @@ import { DisplayProjectionStatus } from '../../features/message-content/ui/displ
 import { messageCodeBlockLabels } from '../../features/message-content/ui/message-code-block-labels.js'
 import { useConversationViewport } from '../../shared/ui/conversation-viewport/use-conversation-viewport.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchField, SkeletonText } from '@loom-studio/ui'
+import { SkeletonText } from '@loom-studio/ui'
 import { confirm } from '../../shared/ui/confirm-dialog/index.js'
 import { ConversationMessageAction, ConversationMessageChrome } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import { ChatComposer } from '../chat-composer/chat-composer.js'
@@ -32,6 +32,7 @@ import { RendererNodeMountHost } from '../../features/extension-renderers/ui/ren
 import styles from './agent-chat-panel.module.scss'
 import { AgentSessionCreateDialog } from '../../features/sessions/ui/agent-session-create-dialog.js'
 import { AgentSessionPicker } from './agent-session-picker.js'
+import { AgentPresetPicker } from './agent-preset-picker.js'
 import { displayText, isTransientAgentEntryId, type DisplayProjection } from '../../features/message-content/model/use-display-projection.js'
 
 const ConversationMarkdown = lazy(async () => {
@@ -68,6 +69,8 @@ export type AgentChatPanelProps = RunRecoveryControlsProps & AttachmentComposerP
   onOpenMemory?(): void
   onChangeInput(value: string): void
   onSelectProfile(id: string): void
+  onSavePresetModel?(presetId: string, model: import('../../entities/index.js').ProviderModelSelection | null): Promise<void> | void
+  onOpenWorkbench?(presetId: string, nodeId?: string): void
   onSelectSession?(id: string): void
   onNewSession?(): void
   onCreateSession?(presetId: string): Promise<AgentSession | undefined>
@@ -345,6 +348,8 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
               selectedId={props.selectedProfileId}
               t={props.t}
               onSelect={props.onSelectProfile}
+              onSaveModel={props.onSavePresetModel}
+              onOpenWorkbench={props.onOpenWorkbench}
             />
           )}
           textareaDisabled={!props.selectedProfileId}
@@ -506,78 +511,4 @@ function AgentTranscriptEntry(props: {
   )
 }
 
-export function AgentPresetPicker(props: {
-  disabled: boolean
-  profiles: AgentPreset[]
-  providers: ProviderAccount[]
-  selectedId?: string
-  t: Translator
-  onSelect(id: string): void
-}) {
-  const [query, setQuery] = useState('')
-  const identities = useExtensionIdentities()
-  const sourceOf = (profile: AgentPreset) => {
-    const origin = profile.origin
-    if (origin?.kind === 'extension-package') {
-      const identity = identities.find(item => item.packageId === origin.packageId
-        && extensionInstallationId(item.packageId, item.target ?? { kind: 'global' }) === (origin.installationId ?? extensionInstallationId(origin.packageId, { kind: 'global' })))
-      const scope = identity?.target?.kind === 'card' ? '角色' : identity || !origin.installationId ? '全局' : '安装来源未解析'
-      return { id: `${origin.packageId}:${origin.installationId ?? ''}`, label: `${identity?.displayName ?? origin.packageId} · ${scope}` }
-    }
-    return origin?.kind === 'builtin' ? { id: 'builtin', label: '官方 · Loom Studio' } : { id: 'personal', label: '我的预设' }
-  }
-  const groups = new Map<string, { label: string; profiles: AgentPreset[] }>()
-  for (const profile of props.profiles) {
-    const source = sourceOf(profile)
-    if (![profile.rootNode.label, source.label, profile.model?.modelId].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) continue
-    const group = groups.get(source.id) ?? { label: source.label, profiles: [] }
-    group.profiles.push(profile)
-    groups.set(source.id, group)
-  }
-  const selected = props.profiles.find(profile => profile.id === props.selectedId)
-  const selectedProvider = selected && props.providers.find(provider => provider.id === selected.model?.providerProfileId)
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button className={styles.profilePicker} type="button" disabled={props.disabled}
-          title={props.t('agent.profile.choose')}>
-          <ExtensionIcon iconUrl={selected ? presetIconUrl(selected, identities) : undefined} size={18} />
-          <span>{selected?.rootNode.label ?? props.t('agent.profile.unselected')}</span>
-          <ChevronDown aria-hidden="true" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className={styles.profileMenu} align="end" side="top"
-        sideOffset={8} collisionPadding={12}>
-        {selected ? (
-          <div className={styles.profileCurrent}>
-            <strong>{selectedProvider?.displayName ?? selected.model?.providerProfileId}</strong>
-            <span>{selected.model?.modelId}</span>
-          </div>
-        ) : null}
-        <SearchField
-          containerClassName={styles.profileSearch}
-          aria-label="搜索预设或来源"
-          placeholder="搜索预设或来源…"
-          value={query}
-          clearLabel="清除搜索"
-          onClear={() => setQuery('')}
-          onChange={event => setQuery(event.target.value)}
-          onKeyDown={event => { if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation() }}
-        />
-        {groups.size === 0 ? <p>{props.profiles.length ? '没有匹配的预设' : props.t('agent.profile.configureFirst')}</p> : [...groups.entries()].map(([id, group]) => <div key={id} role="group" aria-label={group.label}>
-          <div className={styles.profileSource}>{group.label}</div>
-          {group.profiles.map(profile => {
-            const provider = props.providers.find(item => item.id === profile.model?.providerProfileId)
-            return <DropdownMenuItem className={styles.profileOption}
-              icon={<ExtensionIcon iconUrl={presetIconUrl(profile, identities)} size={24} />}
-              data-selected={profile.id === props.selectedId || undefined} disabled={props.disabled} key={profile.id} onSelect={() => props.onSelect(profile.id)}>
-              <span className={styles.profileName}><strong>{profile.rootNode.label}</strong>{profile.id === props.selectedId && <Check aria-label="已选中" />}</span>
-              <span>{profile.model?.modelId ? [provider?.displayName ?? profile.model.providerProfileId, profile.model.modelId].filter(Boolean).join(' · ') : '未绑定模型'}</span>
-            </DropdownMenuItem>
-          })}
-        </div>)}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
+export { AgentPresetPicker } from './agent-preset-picker.js'

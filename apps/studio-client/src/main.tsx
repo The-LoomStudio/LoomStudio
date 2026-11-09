@@ -66,9 +66,9 @@ if (!root) {
 
 async function startStudioClient(rootElement: HTMLElement): Promise<void> {
   const reactRoot = createRoot(rootElement)
-  if (import.meta.env.DEV && window.location.pathname === '/dev/preview/regex') {
+  if (import.meta.env.DEV && (window.location.pathname === '/dev/preview/regex' || window.location.pathname === '/dev/preview/picker')) {
     const { DevPreview } = await import('./dev-preview/preview-entry.js')
-    reactRoot.render(<DevPreview pathname={window.location.pathname} />)
+    reactRoot.render(<><DevPreview pathname={window.location.pathname} /><StartupReady /></>)
     return
   }
   if (!STUDIO_ENTRY_PATHS.some(path => matchPath(path, window.location.pathname))) {

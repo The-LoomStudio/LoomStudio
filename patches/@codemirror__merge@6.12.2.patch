@@ -1,0 +1,64 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index f3f9998639e0b29d8c6bfce1ff2f7914731b3b85..93339a5c5d23bff8e1f8d10bf0296ccc8ffa7090 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -668,12 +668,14 @@ class Chunk {
+ }
+ function fromLine(fromA, fromB, a, b) {
+     let lineA = a.lineAt(fromA), lineB = b.lineAt(fromB);
+-    return lineA.to == fromA && lineB.to == fromB && fromA < a.length && fromB < b.length
+-        ? [fromA + 1, fromB + 1] : [lineA.from, lineB.from];
++    return lineA.to == fromA && lineB.to == fromB
++        ? [fromA < a.length ? fromA + 1 : fromA, fromB < b.length ? fromB + 1 : fromB] : [lineA.from, lineB.from];
+ }
+ function toLine(toA, toB, a, b) {
+     let lineA = a.lineAt(toA), lineB = b.lineAt(toB);
+-    return lineA.from == toA && lineB.from == toB ? [toA, toB] : [lineA.to + 1, lineB.to + 1];
++    return lineA.from == toA && lineB.from == toB
++        ? [toA, toB]
++        : [toA == a.length && lineA.to == toA ? toA : lineA.to + 1, lineB.to + 1];
+ }
+ function toChunks(changes, a, b, offA, offB, precise) {
+     let chunks = [];
+@@ -1690,7 +1692,9 @@ function rejectChunk(view, pos) {
+ }
+ function buildDeletedChunks(state$1) {
+     let builder = new state.RangeSetBuilder();
++    let hasControls = state$1.facet(mergeConfig).mergeControls;
+     for (let ch of state$1.field(ChunkField)) {
++        if (ch.fromA >= ch.toA && !hasControls) continue;
+         let hide = state$1.facet(mergeConfig).overrideChunk && chunkCanDisplayInline(state$1, ch);
+         builder.add(ch.fromB, ch.fromB, deletionWidget(state$1, ch, !!hide));
+     }
+diff --git a/dist/index.js b/dist/index.js
+index 8322cf9b1d463a8e6b4b0ccb4e36069e2de53bda..f6068e34ee38edbfa9e9a12a4165567fcdab63a6 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -666,12 +666,14 @@ class Chunk {
+ }
+ function fromLine(fromA, fromB, a, b) {
+     let lineA = a.lineAt(fromA), lineB = b.lineAt(fromB);
+-    return lineA.to == fromA && lineB.to == fromB && fromA < a.length && fromB < b.length
+-        ? [fromA + 1, fromB + 1] : [lineA.from, lineB.from];
++    return lineA.to == fromA && lineB.to == fromB
++        ? [fromA < a.length ? fromA + 1 : fromA, fromB < b.length ? fromB + 1 : fromB] : [lineA.from, lineB.from];
+ }
+ function toLine(toA, toB, a, b) {
+     let lineA = a.lineAt(toA), lineB = b.lineAt(toB);
+-    return lineA.from == toA && lineB.from == toB ? [toA, toB] : [lineA.to + 1, lineB.to + 1];
++    return lineA.from == toA && lineB.from == toB
++        ? [toA, toB]
++        : [toA == a.length && lineA.to == toA ? toA : lineA.to + 1, lineB.to + 1];
+ }
+ function toChunks(changes, a, b, offA, offB, precise) {
+     let chunks = [];
+@@ -1688,7 +1690,9 @@ function rejectChunk(view, pos) {
+ }
+ function buildDeletedChunks(state) {
+     let builder = new RangeSetBuilder();
++    let hasControls = state.facet(mergeConfig).mergeControls;
+     for (let ch of state.field(ChunkField)) {
++        if (ch.fromA >= ch.toA && !hasControls) continue;
+         let hide = state.facet(mergeConfig).overrideChunk && chunkCanDisplayInline(state, ch);
+         builder.add(ch.fromB, ch.fromB, deletionWidget(state, ch, !!hide));
+     }

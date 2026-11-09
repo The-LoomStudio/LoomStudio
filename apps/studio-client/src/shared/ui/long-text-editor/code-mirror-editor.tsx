@@ -331,9 +331,11 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
   return <div hidden={props.hidden} className={styles.editorHost} data-loom-component="code-editor" ref={hostRef} />
 })
 
-function editorLanguage(language: CodeMirrorEditorProps['language']) {
+export function editorLanguage(language: CodeMirrorEditorProps['language']) {
   if (language === 'loom-rule') return [yamlFrontmatter({ content: markdown({ codeLanguages }) })]
   if (language === 'loom-script') return [javascript(), loomScriptMetadataHighlighting]
   if (language === 'javascript') return [javascript()]
   return [markdown({ codeLanguages })]
 }
+
+export { loomHighlightStyle }

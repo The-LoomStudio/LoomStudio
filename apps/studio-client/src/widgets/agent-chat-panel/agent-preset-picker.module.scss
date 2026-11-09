@@ -1,0 +1,460 @@
+@use '../../shared/styles/floating-material.scss' as *;
+
+/* ==========================================================================
+   Agent Preset Picker - 紧凑两列悬浮体系
+   规范：Dialog/Popover 紧凑两列、通体同底色、无 Footer、非贯穿分割线、高度锁死
+   ========================================================================== */
+
+.dialog {
+  width: min(430px, calc(100vw - 32px));
+  max-width: 440px;
+
+  /* 顶部 Header 非贯穿细线：左右各内缩 14px */
+  :global([data-loom-ui-dialog-header]) {
+    margin-inline: 14px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--loom-color-divider, rgba(235, 240, 243, 0.08));
+  }
+
+  /* 掐灭外层滚动槽，交由内部两栏各自滚动 */
+  :global([data-loom-ui-dialog-body]) {
+    padding: 0;
+    overflow: hidden;
+    min-height: 0;
+    height: 100%;
+  }
+}
+
+.popoverContent {
+  width: min(430px, calc(100vw - 32px));
+  max-width: 440px;
+  background: var(--loom-color-surface, #252b31);
+  border: 1px solid var(--loom-color-border, rgba(235, 240, 243, 0.12));
+  border-radius: var(--loom-radius-window, 8px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  color: var(--loom-color-text, #f2f4f5);
+  overflow: hidden;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+
+  @include glass;
+}
+
+.popoverHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  position: relative;
+  flex-shrink: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 14px;
+    right: 14px;
+    height: 1px;
+    background: var(--loom-color-divider, rgba(235, 240, 243, 0.08));
+  }
+}
+
+.popoverTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--loom-color-text, #fff);
+  line-height: 1.4;
+}
+
+.closeButton {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--loom-color-text-subtle, #9ea9b0);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--loom-color-text, #fff);
+    background: var(--loom-color-surface-raised, #394149);
+  }
+}
+
+.pickerContainer {
+  display: flex;
+  height: min(380px, calc(100dvh - 120px));
+  max-height: 390px;
+  min-height: 360px;
+  width: 100%;
+  background: transparent;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* ============================
+   1. Left Category Sidebar (来源/分类导航，带标题)
+   ============================ */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 145px;
+  flex-shrink: 0;
+  padding: 8px 6px;
+  background: transparent;
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  box-sizing: border-box;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 竖向非贯穿分割线：上下内缩 10px，不与 Header 和底部连通 */
+  &::after {
+    content: '';
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    right: 0;
+    width: 1px;
+    background: var(--loom-color-divider, rgba(235, 240, 243, 0.08));
+  }
+}
+
+.railDivider {
+  width: calc(100% - 12px);
+  height: 1px;
+  background: var(--loom-color-divider, rgba(235, 240, 243, 0.08));
+  margin: 4px auto;
+  flex-shrink: 0;
+}
+
+.railButton {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--loom-radius-control, 6px);
+  background: transparent;
+  color: var(--loom-color-text-subtle, #9ea9b0);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  box-sizing: border-box;
+  transition: background 120ms ease, color 120ms ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--loom-color-surface-raised, #46515b) 50%, transparent);
+    color: var(--loom-color-text, #fff);
+  }
+
+  &[data-active='true'] {
+    background: var(--loom-color-surface-raised, #394149);
+    color: var(--loom-color-accent-strong, #e6c188);
+    font-weight: 500;
+  }
+}
+
+.railIcon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  color: inherit;
+
+  svg, img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+  }
+
+  img {
+    border-radius: 4px;
+  }
+}
+
+.railText {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--loom-font-family-sans, sans-serif);
+  font-size: 12px;
+  line-height: 1.3;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================
+   2. Master Column (预设选择列表)
+   ============================ */
+.master {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.searchHeader {
+  padding: 8px 10px 6px;
+  flex-shrink: 0;
+  position: relative;
+
+  :global([data-loom-ui-search-field]) {
+    border-bottom: 1px solid var(--loom-color-divider, rgba(235, 240, 243, 0.08));
+  }
+}
+
+.itemList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 分组间非贯穿细线 */
+.sectionGroup + .sectionGroup {
+  margin-top: 4px;
+  padding-top: 8px;
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 8px;
+    right: 8px;
+    height: 1px;
+    background: var(--loom-color-divider, rgba(235, 240, 243, 0.08));
+  }
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  margin-bottom: 2px;
+}
+
+.groupIcon {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  color: var(--loom-color-text-subtle, #9ea9b0);
+
+  svg, img {
+    width: 13px;
+    height: 13px;
+    object-fit: contain;
+  }
+}
+
+.groupTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--loom-color-text-subtle, #9ea9b0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupItems {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.presetItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--loom-radius-control, 6px);
+  background: transparent;
+  color: var(--loom-color-text, #f2f4f5);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+  transition: background 100ms ease;
+
+  &:hover {
+    background: color-mix(in srgb, var(--loom-color-surface-raised, #46515b) 45%, transparent);
+  }
+
+  &[data-selected='true'] {
+    background: color-mix(in srgb, var(--loom-color-accent, #d8ad6e) 12%, transparent);
+    color: var(--loom-color-accent-strong, #e6c188);
+
+    .presetName {
+      font-weight: 500;
+      color: var(--loom-color-accent-strong, #e6c188);
+    }
+  }
+}
+
+.presetIcon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: inherit;
+
+  svg, img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+  }
+
+  img {
+    border-radius: 4px;
+  }
+}
+
+.presetInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.presetName {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--loom-color-text, #f2f4f5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.presetSubtitle {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--loom-color-text-subtle, #9ea9b0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modelIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.brandIconImage {
+  width: 13px !important;
+  height: 13px !important;
+  flex: 0 0 13px !important;
+  object-fit: contain !important;
+  display: block !important;
+}
+
+.modelNameText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.itemRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.editIconButton {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--loom-color-text-subtle, #9ea9b0);
+  cursor: pointer;
+  transition: color 120ms ease, opacity 120ms ease;
+  flex-shrink: 0;
+  opacity: 0.75;
+
+  &:hover {
+    color: var(--loom-color-accent-strong, #e6c188);
+    opacity: 1;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+}
+
+.checkSlot {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.selectedCheck {
+  color: var(--loom-color-accent, #d8ad6e);
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--loom-color-text-subtle, #9ea9b0);
+  font-size: 12px;
+}
+
+
