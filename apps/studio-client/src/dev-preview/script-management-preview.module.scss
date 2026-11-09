@@ -1,5 +1,0 @@
-.host { height: var(--loom-viewport-height, 100dvh); display: flex; flex-direction: column; overflow: hidden; }
-.toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--loom-page-header-padding); padding: var(--loom-divider-space); border-bottom: 1px solid var(--loom-color-divider); }
-.toolbar span { color: var(--loom-color-text-subtle); }
-.panel { min-height: 0; flex: 1; }
-.label { display: block; padding: var(--loom-divider-space); }

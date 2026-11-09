@@ -17,7 +17,6 @@
 
 验证入口：`tests/integration/application-runtime/regex-preview.test.ts` 使用独立临时目录，检查原生规则与 SQLite 关闭重开，测试结束清理目录。
 
+## 测试 Fixtures 说明
 
-### 资源下载与更新
-
-`/dev/preview/resource-updates`：雾港纪事的下载／依赖／Lore 与预设审阅理念原型。支持模拟失败、重试、取消、筛选、内容选择、手工合并及第二次作者更新。纯内存状态；Storage 在加载共享组件前隔离；不调用认证或业务 API。刷新恢复初始样例。共享视图位于 `features/resource-updates/ui/resource-update-review.tsx`。
+本目录下的 `script-management-fixtures.ts` 与 `observability-fixtures.ts` 供单元测试（如 `tests/unit/client/script-management-panel.test.ts`、`tests/unit/client/observation-reading-ui.test.ts`）复用，请勿直接移除。

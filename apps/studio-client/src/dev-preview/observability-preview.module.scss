@@ -1,5 +1,0 @@
-.host { height: var(--loom-viewport-height, 100dvh); width: 100%; overflow: hidden; }
-.toolbar { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: var(--loom-font-size-3); }
-.toolbar label { display: flex; gap: 8px; align-items: center; color: var(--loom-color-text-muted); }
-.toolbar select { color: var(--loom-color-text); background: var(--loom-color-surface-inset); border: 0; border-radius: var(--loom-radius-control); padding: 4px 8px; font: inherit; }
-.badge { color: var(--loom-color-warning); font-size: var(--loom-font-size-2); }
