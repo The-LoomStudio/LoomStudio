@@ -35,11 +35,22 @@
   padding: 0;
   background: transparent;
   color: var(--loom-color-text-subtle);
+  opacity: 0.38;
   cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    opacity: 0.85;
+  }
 }
 
 .treeToggle[aria-pressed='true'] {
   color: var(--loom-color-accent);
+  opacity: 1;
+
+  &:hover {
+    opacity: 0.9;
+  }
 }
 
 .treeToggle svg {

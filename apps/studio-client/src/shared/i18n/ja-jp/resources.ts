@@ -42,6 +42,8 @@ export const messages = {
   'official.installConfirm': 'この公式リソースパッケージをインストールしますか？既存のリソースは保持され、削除されたコンテンツの復元やコードの自動有効化は行われません。',
   'official.installed': '公式リソースをインストールしました',
   'official.unchanged': '新しいリソースはありません。既存または削除済みの内容は変更されません。',
+  'official.installTitle': '公式コンテンツのインストール',
+  'official.operationFailed': '公式リソース操作に失敗しました',
   'context.category.lore': '設定',
   'context.globalLore.title': 'グローバル設定',
   'context.globalLore.description': '選択された設定はすべての Agent PromptBuild で利用可能になります。Prompt への投入は Enabled と Activation によって制御されます。',

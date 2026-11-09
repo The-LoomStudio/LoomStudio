@@ -366,6 +366,7 @@ export function createClientExtensionHost(options: {
           // A failure from an old instance must not overwrite a replacement or explicit stop.
           if (active.get(key) !== record || record.abortController.signal.aborted) return
           await stop(record)
+          logger.error('Client worker extension failed', { extension, event: 'extension.worker.failed', data: readLogFailure(error) })
           diagnostics.push({ code: 'client-extension.execution_failed', target: extensionPackage.target,
             packageId: extensionPackage.packageId, moduleId: module.moduleId, message: error.message })
           summaries.set(key, { packageId: extensionPackage.packageId, moduleId: module.moduleId,
@@ -375,6 +376,7 @@ export function createClientExtensionHost(options: {
       }
       for (const declared of module.contributions.renderers ?? []) {
         if (record.registeredRendererIds.has(declared.id)) continue
+        logger.warn?.(`Renderer declared but not registered · ${declared.id}`, { extension, event: 'extension.renderer.missing', data: { rendererId: declared.id } })
         diagnostics.push({
           code: 'client-extension.renderer_not_registered',
           target: extensionPackage.target,
@@ -385,6 +387,7 @@ export function createClientExtensionHost(options: {
       }
       for (const declared of module.contributions.commands ?? []) {
         if (record.registeredCommandIds.has(declared.id)) continue
+        logger.warn?.(`Command declared but not registered · ${declared.id}`, { extension, event: 'extension.command.missing', data: { commandId: declared.id } })
         diagnostics.push({
           code: 'client-extension.command_not_registered',
           target: extensionPackage.target,

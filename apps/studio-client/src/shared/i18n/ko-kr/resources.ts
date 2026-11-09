@@ -42,6 +42,8 @@ export const messages = {
   'official.installConfirm': '이 공식 리소스 패키지를 설치하시겠습니까? 기존 리소스는 유지되며, 수정 사항 덮어쓰기나 삭제된 콘텐츠 복구, 코드 자동 활성화는 수행되지 않습니다.',
   'official.installed': '공식 리소스가 설치되었습니다',
   'official.unchanged': '추가된 리소스가 없습니다. 기존 또는 삭제된 콘텐츠는 유지됩니다.',
+  'official.installTitle': '공식 콘텐츠 설치',
+  'official.operationFailed': '공식 리소스 작업을 완료하지 못했습니다',
   'context.category.lore': '설정',
   'context.globalLore.title': '글로벌 설정',
   'context.globalLore.description': '선택한 설정은 모든 Agent PromptBuild에서 사용할 수 있습니다. 프롬프트 진입 여부는 Enabled 및 Activation에 의해 결정됩니다.',

@@ -1,5 +1,6 @@
 import type { ThemeTransitionOrigin } from './theme-transition.js'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { Logger } from '@loom-studio/logging'
 import type { ManagedExtensionPackage } from '../../../entities/extension.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { ThemeController } from './theme-controller.js'
@@ -16,6 +17,7 @@ export function useThemeRuntime(input: {
   packages: readonly ManagedExtensionPackage[]
   ready: boolean
   authorize: (packageId: string, moduleId: string, grants?: Parameters<StudioApi['extensions']['enable']>[2]) => Promise<unknown>
+  logger?: Logger
 }): ThemeController & { startupReady: boolean } {
   const entries = useMemo(() => readThemeCatalog(input.packages), [input.packages])
   const registryRevision = useSyncExternalStore(styleRegistry.subscribe, styleRegistry.revision, styleRegistry.revision)
@@ -36,11 +38,24 @@ export function useThemeRuntime(input: {
     setBusy(true); setError(undefined)
     try {
       const success = await runtime.current.apply(latest.current.entries, selection, overrides, origin)
-      if (sequence === request.current && success) useThemeStore.getState().commit(selection, overrides)
+      if (sequence === request.current && success) {
+        useThemeStore.getState().commit(selection, overrides)
+        input.logger?.info(`Theme applied · ${selection.theme ?? 'default'}`, {
+          event: 'theme.applied',
+          data: { theme: selection.theme ?? 'default', enhancementCount: selection.enhancements.length },
+        })
+      }
     } catch (reason) {
-      if (sequence === request.current) setError(reason instanceof Error ? reason.message : String(reason))
+      if (sequence === request.current) {
+        const errorMsg = reason instanceof Error ? reason.message : String(reason)
+        setError(errorMsg)
+        input.logger?.error('Theme application failed', {
+          event: 'theme.failed',
+          error: { message: errorMsg },
+        })
+      }
     } finally { if (sequence === request.current) { setBusy(false); setStartupReady(true) } }
-  }, [])
+  }, [input.logger])
 
   const reset = useCallback(() => {
     request.current++
@@ -49,7 +64,8 @@ export function useThemeRuntime(input: {
     store.commit(defaultThemeSelection, store.overrides)
     store.setCustomCss('')
     setError(undefined); setBusy(false); setStartupReady(true)
-  }, [])
+    input.logger?.info('Theme reset to default', { event: 'theme.reset' })
+  }, [input.logger])
 
   useEffect(() => {
     const instance = createThemeRuntime(setError)
@@ -110,8 +126,19 @@ export function useThemeRuntime(input: {
       try {
         // Explicit user action authorizes code execution only; existing capability grants are not expanded.
         await input.authorize(entry.packageId, entry.module.moduleId, entry.module.desired.grants)
-      } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
-      finally { setBusy(false) }
+        input.logger?.info(`Theme module authorized · ${entry.packageId}`, {
+          event: 'theme.authorized',
+          data: { packageId: entry.packageId, moduleId: entry.module.moduleId },
+        })
+      } catch (reason) {
+        const errorMsg = reason instanceof Error ? reason.message : String(reason)
+        setError(errorMsg)
+        input.logger?.error(`Theme authorization failed · ${entry.packageId}`, {
+          event: 'theme.authorize.failed',
+          data: { packageId: entry.packageId, moduleId: entry.module.moduleId },
+          error: { message: errorMsg },
+        })
+      } finally { setBusy(false) }
     },
     async setParameter(entry, id, value) {
       const parameter = entry.definition.parameters?.find(item => item.id === id)

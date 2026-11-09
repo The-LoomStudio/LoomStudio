@@ -107,11 +107,17 @@ export const loomEditorTheme = EditorView.theme({
     color: 'var(--loom-color-info)',
     fontWeight: 'var(--loom-font-weight-7)',
   },
-  '.cm-loom-gutter-active.cm-loom-gutter-added, .cm-loom-gutter-active.cm-loom-gutter-modified, .cm-loom-gutter-active.cm-loom-gutter-deleted': {
-    backgroundColor: 'transparent',
+  '.cm-loom-gutter-active.cm-loom-gutter-added, .cm-loom-gutter-active.cm-loom-gutter-modified': {
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-success-background) 72%, transparent)',
+  },
+  '.cm-loom-gutter-active.cm-loom-gutter-deleted': {
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-danger-background) 62%, transparent)',
   },
   '.cm-activeLine': { backgroundColor: 'transparent' },
-  '.cm-activeLine.cm-loom-line-added, .cm-activeLine.cm-loom-line-modified, .cm-activeLine.cm-loom-line-deleted': {
-    backgroundColor: 'transparent',
+  '.cm-activeLine.cm-loom-line-added, .cm-activeLine.cm-loom-line-modified': {
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-success-background) 72%, transparent)',
+  },
+  '.cm-activeLine.cm-loom-line-deleted': {
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-danger-background) 62%, transparent)',
   },
 }, { dark: true })

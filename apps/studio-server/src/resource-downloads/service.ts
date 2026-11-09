@@ -210,7 +210,12 @@ export function createResourceDownloadService(options: {
       entry.task.phase = controller.signal.aborted ? 'cancelled' : 'failed'
       entry.task.error = controller.signal.aborted ? 'Download cancelled' : safeDownloadError(error)
       entry.task.updatedAt = stamp()
-      await save(); log(id, entry.task.error)
+      await save()
+      if (controller.signal.aborted) {
+        options.logger?.info('Resource download cancelled', { event: 'resource.download.cancelled', data: { taskId: id } })
+      } else {
+        options.logger?.error('Resource download failed', { event: 'resource.download.failed', data: { taskId: id, message: entry.task.error } })
+      }
     } finally { controllers.delete(id); running.delete(id) }
   }
   function launch(id: string, candidate: PreparedResourceCandidate) {
@@ -409,8 +414,46 @@ export function createResourceDownloadService(options: {
     entry.record.notifiedCandidate = entry.record.candidate?.id
     await save(); return clone(entry.record)
   }
+  async function stageUpload(input: { fileName: string; bytes: Uint8Array; kind: ResourceCandidate['kind'] }): Promise<ResourceDownloadTask> {
+    assertReady()
+    const id = randomUUID()
+    const root = join(options.directory, id)
+    await rm(root, { recursive: true, force: true })
+    await mkdir(root, { recursive: true, mode: 0o700 })
+    const digest = createHash('sha256').update(input.bytes).digest('hex')
+    const inspected = await inspect(input.bytes, input.kind, root)
+    const isPngFile = isPng(input.bytes)
+    const artifactPath = join(root, isPngFile ? 'artifact.png' : 'artifact.zip')
+    await writeFile(artifactPath, input.bytes, { mode: 0o600 })
+    const taskValue: ResourceDownloadTask = {
+      id,
+      candidateId: id,
+      name: input.fileName.replace(/\.[^/.]+$/, ''),
+      kind: input.kind,
+      source: { adapterId: 'upload', url: 'upload://local', resourceId: id },
+      version: inspected.release?.version,
+      packageId: inspected.release?.id,
+      status: 'ready',
+      phase: 'staged',
+      createdAt: stamp(),
+      updatedAt: stamp(),
+      receivedBytes: input.bytes.length,
+      totalBytes: input.bytes.length,
+      sha256: digest,
+      dependencies: [],
+    }
+    const stored: StoredTask = {
+      task: taskValue,
+      artifact: { kind: input.kind, path: artifactPath, directory: inspected.directory, fileName: input.fileName },
+      verifiedVersion: inspected.release?.version,
+    }
+    tasks.set(id, stored)
+    await save()
+    log(id, 'Uploaded resource staged; no installation or activation performed')
+    return clone(taskValue)
+  }
   return {
-    initialize, resolve, start, cancel, retry, prepareDependencies, track, checkUpdates, updatePolicy, ignore, acknowledge,
+    initialize, resolve, start, cancel, retry, prepareDependencies, track, checkUpdates, updatePolicy, ignore, acknowledge, stageUpload,
     list: () => { assertReady(); return [...tasks.values()].map(entry => clone(entry.task)) },
     get: (id: string) => { assertReady(); return clone(task(id).task) },
     listUpdates: () => { assertReady(); return [...updates.values()].map(entry => clone(entry.record)) },

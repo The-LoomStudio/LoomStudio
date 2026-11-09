@@ -37,13 +37,13 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
   const queries = [usage, play, resources, ...(view === 'storage' ? [storage, database] : [])]
   const notices: string[] = []
   if (queries.some(query => query.isPending)) notices.push('正在读取统计…')
-  if (queries.some(query => query.isError)) notices.push('部分统计读取失败，请刷新重试；未读取的数据不代表零。')
+  if (queries.some(query => query.isError)) notices.push('部分统计读取失败，请刷新重试。')
   const showUsage = view === 'overview' || view === 'usage'
-  if (showUsage && usage.data?.collectionErrors) notices.push(`当前进程有 ${usage.data.collectionErrors} 次用量采集异常，累计数据可能不完整。`)
-  if (showUsage && usage.data?.totals.unreported) notices.push(`${usage.data.totals.unreported} 次调用未报告 Token，未按零消耗处理。`)
-  if (showUsage && usage.data && usage.data.totals.totalReported < usage.data.totals.reported) notices.push('部分调用只报告了输入或输出，无法确定其完整总量。')
-  if (view === 'storage' && database.data?.unavailable) notices.push('当前 SQLite 不支持表空间读取，文件大小仍可查看。')
-  if (view === 'storage' && storage.data && storage.data.volumes.length > 1) notices.push('数据、缓存或日志位于不同磁盘；下方磁盘剩余仅指数据目录。')
+  if (showUsage && usage.data?.collectionErrors) notices.push(`存在 ${usage.data.collectionErrors} 次用量采集异常。`)
+  if (showUsage && usage.data?.totals.unreported) notices.push(`${usage.data.totals.unreported} 次调用未返回 Token 数据。`)
+  if (showUsage && usage.data && usage.data.totals.totalReported < usage.data.totals.reported) notices.push('部分调用仅返回了单向 Token 数据。')
+  if (view === 'storage' && database.data?.unavailable) notices.push('当前环境不支持读取 SQLite 表空间明细。')
+  if (view === 'storage' && storage.data && storage.data.volumes.length > 1) notices.push('数据、缓存与日志位于不同磁盘，磁盘剩余仅显示数据目录。')
   if (view === 'storage') notices.push(...(storage.data?.errors ?? []))
   const data: DashboardSnapshot = {
     rangeLabel: `${range.from ? new Date(range.from).toLocaleDateString() : '采集开始'} — ${new Date(range.to).toLocaleDateString()}`,
@@ -65,10 +65,10 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
     diskFreeBytes: storage.data?.volumes.find(volume => volume.isDataVolume)?.freeBytes,
     storage: storage.data?.groups.map((group, index) => ({
       id: group.id, name: group.name, bytes: group.bytes, tone: tones[index % tones.length]!,
-      description: group.id === 'database' ? '文件大小包含 SQLite、WAL 与 SHM；下方内部页分配是独立口径。' : `${group.files} 个文件 · 逻辑大小，不代表文件系统物理分配量`,
+      description: group.id === 'database' ? '包含 SQLite 主库及 WAL/SHM 缓存文件' : `${group.files} 个文件`,
       action: group.id === 'cards' ? '管理角色' : group.id === 'extensions' ? '管理扩展' : group.id === 'logs' ? '打开日志' : '',
       items: group.id === 'database' && database.data && !database.data.unavailable
-        ? [...database.data.tables.map(table => ({ name: table.name, bytes: table.bytes })), { name: '空闲页', description: '已包含在数据库页中，不重复加入文件总量', bytes: database.data.freeBytes }]
+        ? [...database.data.tables.map(table => ({ name: table.name, bytes: table.bytes })), { name: '空闲页', description: '数据库内空闲页面', bytes: database.data.freeBytes }]
         : [{ name: group.name, description: `${group.files} 个文件`, bytes: group.bytes, count: group.files }],
     })) ?? [],
   }

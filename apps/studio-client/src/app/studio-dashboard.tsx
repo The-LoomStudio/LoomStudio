@@ -38,7 +38,6 @@ function DashboardCalls(props: {
   return <section className={styles.scroll} aria-label="调用记录">
     <Button size="small" variant="ghost" onClick={props.onBack}><ArrowLeft size={15} />返回用量明细</Button>
     <h2>调用记录</h2><p className={styles.note}>{props.rangeLabel} · {props.providerName}</p>
-    <p className={styles.note}>仅保存调用与用量事实，不包含消息正文。缺少的字段显示为 —。</p>
     {calls.isPending && <p role="status">正在读取调用记录…</p>}
     {calls.isError && <p role="alert">调用记录读取失败。<Button size="small" onClick={() => void calls.refetch()}>重试</Button></p>}
     {calls.data && <div className={styles.tableWrap}><table className={styles.table}>

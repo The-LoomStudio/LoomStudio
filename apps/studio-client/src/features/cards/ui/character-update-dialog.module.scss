@@ -1,0 +1,127 @@
+.updateDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 360px;
+  max-width: 520px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  h4 {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--loom-color-text-primary);
+  }
+
+  p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--loom-color-text-muted);
+    line-height: 1.4;
+  }
+}
+
+.dropArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  border: 1px dashed var(--loom-color-border);
+  border-radius: var(--loom-radius-surface);
+  background: var(--loom-color-surface-subtle);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+
+  &:hover {
+    border-color: var(--loom-color-accent);
+    background: var(--loom-color-surface-hover);
+  }
+
+  span {
+    font-size: 13px;
+    color: var(--loom-color-text-primary);
+  }
+
+  small {
+    font-size: 11px;
+    color: var(--loom-color-text-muted);
+  }
+}
+
+.fileInput {
+  display: none;
+}
+
+.remoteForm {
+  display: flex;
+  gap: 8px;
+
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--loom-color-border);
+    border-radius: var(--loom-radius-control);
+    background: var(--loom-color-surface-raised);
+    color: var(--loom-color-text-primary);
+    font-size: 12px;
+
+    &:focus {
+      outline: 2px solid var(--loom-color-accent);
+      outline-offset: -1px;
+    }
+  }
+}
+
+.existingTasks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.taskItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--loom-color-border-subtle);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: var(--loom-color-surface-hover);
+    border-color: var(--loom-color-border);
+  }
+
+  strong {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--loom-color-text-primary);
+  }
+
+  small {
+    font-size: 11px;
+    color: var(--loom-color-text-muted);
+  }
+}
+
+.errorNotice {
+  padding: 8px 12px;
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-danger-subtle, rgba(255, 77, 79, 0.1));
+  color: var(--loom-color-danger, #ff4d4f);
+  font-size: 12px;
+}

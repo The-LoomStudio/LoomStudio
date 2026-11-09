@@ -12,7 +12,8 @@ import { ExtensionCharacterCatalog } from './extension-character-catalog.js'
 import { ExtensionIcon } from '../../../shared/ui/extension-icon/extension-icon.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
 import type { ClientActionPlacement, ClientCommandDeclaration, ExtensionInstallationTarget, RendererContributionDefinition } from '@loom-studio/extension-sdk'
-import { ArrowDown, ArrowLeft, ArrowUp, Component, ExternalLink, Package, PackageMinus, PackageOpen, PackagePlus, Power, RefreshCw, TerminalSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, ArrowUpCircle, Component, ExternalLink, Loader2, Package, PackageMinus, PackageOpen, PackagePlus, Power, RefreshCw, TerminalSquare, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react'
+import type { ResourceUpdateRecord } from '../../../../../studio-server/src/resource-downloads/types.js'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { buildStudioLogPath } from '../../../shared/studio-shell/studio-route.js'
@@ -31,6 +32,8 @@ import { ExtensionSettingsForm } from './extension-settings-form.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { toggleExtensionPackage } from '../model/toggle-extension-package.js'
 import { ExtensionRemoteControls, RemoteExtensionInstall } from './remote-extension-install.js'
+import { ExtensionEnableDialog } from './extension-enable-dialog.js'
+import { confirm } from '../../../shared/ui/confirm-dialog/index.js'
 import { Button, Dialog } from '@loom-studio/ui'
 import { PanelTabs } from '../../../shared/ui/panel-tabs/index.js'
 import { TimelineExtensionPanel, type TimelineExtensionPanelProps } from './timeline-extension-panel.js'
@@ -61,6 +64,7 @@ export function ExtensionWorkspace(props: {
   extensionApi: StudioApi['extensions']
   renderScripts(header: ReactNode, category: 'rules' | 'runtime'): ReactNode
   headerActions?: ReactNode
+  resourceDownloadsApi?: StudioApi['resourceDownloads']
   onSaveResourceCopy?(input: ResourceCopyInput): Promise<ResourceCopyResult>
   onOpenResourceCopy?(result: ResourceCopyResult): void
   onRefreshExtensions(): Promise<unknown>
@@ -126,6 +130,132 @@ export function ExtensionWorkspace(props: {
     title={resourceUpdate.title} fromVersion={resourceUpdate.fromVersion} input={resourceUpdate.input}
     onApply={resourceUpdate.apply} onSaveCopy={props.onSaveResourceCopy} onOpenCopy={props.onOpenResourceCopy}
     onClose={() => setResourceUpdate(undefined)} /> : null
+
+  const [pendingEnable, setPendingEnable] = useState<{
+    extensionPackage: ManagedExtensionPackage
+    target: ExtensionInstallationTarget
+    key: string
+  } | null>(null)
+  const enableConfirmationDialog = pendingEnable ? (
+    <ExtensionEnableDialog
+      open
+      extensionPackage={pendingEnable.extensionPackage}
+      t={props.t}
+      busy={Boolean(busyKey)}
+      onClose={() => setPendingEnable(null)}
+      onConfirm={() => {
+        const { extensionPackage, target, key } = pendingEnable
+        setPendingEnable(null)
+        void executeToggle(extensionPackage, target, key, true)
+      }}
+    />
+  ) : null
+
+  const [updates, setUpdates] = useState<ResourceUpdateRecord[]>([])
+  const [updatingPackageId, setUpdatingPackageId] = useState<string>()
+  const [checkingUpdates, setCheckingUpdates] = useState(false)
+
+  useEffect(() => {
+    if (!props.resourceDownloadsApi) return
+    let active = true
+    void props.resourceDownloadsApi.listUpdates().then(records => {
+      if (active) setUpdates(records.filter(r => r.kind === 'extension'))
+    }).catch(() => undefined)
+    return () => { active = false }
+  }, [props.resourceDownloadsApi, props.configRevision])
+
+  async function handleCheckUpdates() {
+    if (!props.resourceDownloadsApi || checkingUpdates) return
+    setCheckingUpdates(true)
+    try {
+      const records = await props.resourceDownloadsApi.checkUpdates({ force: true })
+      setUpdates(records.filter(r => r.kind === 'extension'))
+      const available = records.filter(r => r.kind === 'extension' && r.status === 'available')
+      if (available.length > 0) {
+        notify.success(props.t('renderer.workspace.updatesFound', { count: available.length }))
+      } else {
+        notify.info(props.t('renderer.workspace.allLatest'))
+      }
+    } catch (cause) {
+      notify.failure(props.t('renderer.workspace.checkUpdateFailed'), cause)
+    } finally {
+      setCheckingUpdates(false)
+    }
+  }
+
+  async function handleInPlaceUpdate(extensionPackage: ManagedExtensionPackage, record: ResourceUpdateRecord) {
+    if (!props.resourceDownloadsApi || !record.candidate?.version) return
+    const candidateVersion = record.candidate.version
+    setUpdatingPackageId(extensionPackage.packageId)
+    try {
+      const task = await props.resourceDownloadsApi.start({ candidateId: record.candidate.id })
+      let currentTask = task
+      while (currentTask.status === 'downloading' || currentTask.status === 'queued') {
+        await new Promise(r => setTimeout(r, 800))
+        const list = await props.resourceDownloadsApi.list()
+        const match = list.find(t => t.id === task.id)
+        if (match) currentTask = match
+        if (match?.status === 'failed' || match?.status === 'cancelled') {
+          throw new Error(match.error || props.t('renderer.workspace.downloadUpdateFailed'))
+        }
+      }
+      if (currentTask.status === 'ready') {
+        const preview = await props.resourceDownloadsApi.previewUse(currentTask.id)
+        await props.resourceDownloadsApi.commitUse(currentTask.id, preview.token)
+        await props.onRefreshExtensions()
+
+        const currentInstallation = props.installations.find(item => item.packageId === extensionPackage.packageId && item.target.kind === 'global')
+        if (currentInstallation) {
+          try {
+            const resourcePreview = await props.extensionApi.previewPackageResources({
+              packageId: extensionPackage.packageId,
+              packageVersion: candidateVersion,
+              expectedInstallationVersion: currentInstallation.version,
+              target: { kind: 'global' },
+            })
+            const hasResourceDiff = resourcePreview.items.some(item => item.action !== 'unchanged' || item.localChanges === 'modified')
+            if (hasResourceDiff) {
+              setResourceUpdate({
+                title: extensionPackage.displayName || extensionPackage.packageId,
+                fromVersion: extensionPackage.version,
+                input: {
+                  packageId: extensionPackage.packageId,
+                  packageVersion: candidateVersion,
+                  expectedInstallationVersion: currentInstallation.version,
+                  target: { kind: 'global' },
+                },
+                apply: async (fingerprint: string, keepPromptResourceIds: string[]) => {
+                  await props.onUpdateResources({
+                    packageId: extensionPackage.packageId,
+                    packageVersion: candidateVersion,
+                    expectedInstallationVersion: currentInstallation.version,
+                    expectedPreviewFingerprint: fingerprint,
+                    keepPromptResourceIds,
+                  })
+                  notify.success(props.t('renderer.workspace.resourcesSynced', { name: extensionPackage.displayName }))
+                  await props.onRefreshExtensions()
+                },
+              })
+              notify.success(props.t('renderer.workspace.codeUpdatedReview', { version: candidateVersion }))
+              const fresh = await props.resourceDownloadsApi.listUpdates()
+              setUpdates(fresh.filter(r => r.kind === 'extension'))
+              return
+            }
+          } catch {
+            // 无资源冲突或无需审阅时平滑继续
+          }
+        }
+
+        notify.success(props.t('renderer.workspace.updatedInPlace', { name: extensionPackage.displayName, version: candidateVersion }))
+        const fresh = await props.resourceDownloadsApi.listUpdates()
+        setUpdates(fresh.filter(r => r.kind === 'extension'))
+      }
+    } catch (cause) {
+      notify.failure(props.t('renderer.workspace.updateFailed'), cause)
+    } finally {
+      setUpdatingPackageId(undefined)
+    }
+  }
   const registrations = props.host.list('shell.workspace-panel')
   const activeKey = props.host.activeContributionKey('shell.workspace-panel', WORKSPACE_SCOPE_KEY)
   const active = registrations.find(registration => rendererContributionKey(registration) === activeKey)
@@ -172,6 +302,7 @@ export function ExtensionWorkspace(props: {
       <ExtensionModuleBatches api={props.extensionApi} t={props.t} revision={batchRevision} />
       </div>
       {resourceUpdateDialog}
+      {enableConfirmationDialog}
         <RendererSurfaceHost activeContributionKey={activeKey} className={styles.renderer} host={props.host} scope={{ kind: 'workspace', key: WORKSPACE_SCOPE_KEY }} surface="shell.workspace-panel" />
       </section>
     )
@@ -238,19 +369,37 @@ export function ExtensionWorkspace(props: {
     const target = extensionPackage.target ?? { kind: 'global' as const }
     const key = `${target.kind === 'card' ? target.cardId : 'global'}/${extensionPackage.packageId}`
     const enabled = !extensionPackage.modules.every(module => module.desired.enabled)
-    if (enabled && !window.confirm(props.t('renderer.enablePackageConfirm', {
-      name: extensionPackage.displayName,
-      capabilities: extensionPackage.modules.filter(module => !module.desired.enabled)
-        .map(module => `${module.moduleId} (${module.runtimeKind}): ${JSON.stringify(module.requestedCapabilities ?? {})}`).join('\n'),
-    }))) return
+    if (enabled) {
+      setPendingEnable({ extensionPackage, target, key })
+      return
+    }
+    await executeToggle(extensionPackage, target, key, false)
+  }
+
+  async function executeToggle(
+    extensionPackage: ManagedExtensionPackage,
+    target: ExtensionInstallationTarget,
+    key: string,
+    enabled: boolean
+  ) {
     setActionError(undefined)
     setBusyKey(key)
     try {
-      await toggleExtensionPackage({
+      const { batchId } = await toggleExtensionPackage({
         packageId: extensionPackage.packageId, target, modules: extensionPackage.modules, enabled,
         start: props.extensionApi.startModuleBatch,
       })
       setBatchRevision(value => value + 1)
+      // ponytail: [SSE 断连时 toggle 状态丢失] 主动轮询 batch 完成后刷新列表，不完全依赖 SSE 推送
+      void (async () => {
+        for (let attempt = 0; attempt < 30; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          try {
+            const batch = await props.extensionApi.getModuleBatch(batchId)
+            if (batch.state === 'completed') { void props.onRefreshExtensions(); return }
+          } catch { return }
+        }
+      })()
     } catch (error) {
       setActionError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -269,7 +418,7 @@ export function ExtensionWorkspace(props: {
   }
 
   async function removeResources(packageId: string) {
-    if (!window.confirm(props.t('renderer.removeResourcesConfirm'))) return
+    if (!await confirm({ title: props.t('renderer.removeResources'), message: props.t('renderer.removeResourcesConfirm'), danger: true })) return
     setActionError(undefined)
     try {
       await props.onRemoveResources(packageId)
@@ -316,8 +465,8 @@ export function ExtensionWorkspace(props: {
   const mobileTabs = <div data-loom-primary-tabs="" className={styles.packageTreeHeader}>
     <PanelTabs activeId={view} onChange={setView} ariaLabel={props.t('renderer.workspaceTitle')} items={[
       { id: 'packages', label: props.t('renderer.packages') },
-      { id: 'scripts', label: '脚本' },
-      { id: 'rules', label: '正则' },
+      { id: 'scripts', label: props.t('renderer.workspace.tabScripts') },
+      { id: 'rules', label: props.t('renderer.workspace.tabRules') },
     ]} />
     {view === 'packages' ? props.headerActions : null}
     {view === 'packages' ? <button type="button" className={styles.installPackageBtn}
@@ -330,8 +479,8 @@ export function ExtensionWorkspace(props: {
     {runtimeAlert}
     {props.renderScripts(<div data-mobile-tab-inline-header="" data-loom-primary-tabs="" className={styles.packageTreeHeader}><PanelTabs activeId={view} onChange={setView} ariaLabel={props.t('renderer.workspaceTitle')} items={[
       { id: 'packages', label: props.t('renderer.packages') },
-      { id: 'scripts', label: '脚本' },
-      { id: 'rules', label: '正则' },
+      { id: 'scripts', label: props.t('renderer.workspace.tabScripts') },
+      { id: 'rules', label: props.t('renderer.workspace.tabRules') },
     ]} /></div>, category)}
   </section>
 
@@ -339,7 +488,8 @@ export function ExtensionWorkspace(props: {
     <section className={`${styles.panel} ${styles.management}`} data-runtime-error={Boolean(props.runtimeError || actionError)} data-loom-component="renderer-workspace-panel" data-loom-mobile-page="">
       {runtimeAlert}
       {resourceUpdateDialog}
-      {view === 'packages' && installOpen ? <RemoteExtensionInstall api={props.extensionApi} t={props.t}
+      {enableConfirmationDialog}
+      {view === 'packages' && installOpen ? <RemoteExtensionInstall api={props.extensionApi} downloadsApi={props.resourceDownloadsApi} t={props.t}
         onClose={() => setInstallOpen(false)} onInstalled={props.onRefreshExtensions} /> : null}
       {view === 'packages' && removal ? <Dialog open title={props.t('renderer.uninstall')} dismissible={!busyKey} onClose={() => setRemoval(undefined)}
         actions={<>
@@ -364,37 +514,55 @@ export function ExtensionWorkspace(props: {
                 ariaLabel={props.t('renderer.workspaceTitle')}
                 items={[
                   { id: 'packages', label: props.t('renderer.packages') },
-                  { id: 'scripts', label: '脚本' },
-                  { id: 'rules', label: '正则' },
+                  { id: 'scripts', label: props.t('renderer.workspace.tabScripts') },
+                  { id: 'rules', label: props.t('renderer.workspace.tabRules') },
                 ]}
               />
-              {view === 'packages' ? props.headerActions : null}
-                        {view === 'packages' ? (
-                <button
-                  type="button"
-                  className={styles.installPackageBtn}
-                  onClick={() => setInstallOpen(true)}
-                  title={props.t('renderer.install')}
-                  aria-label={props.t('renderer.install')}
-                >
-                  <PackagePlus size={14} aria-hidden="true" />
-                </button>
+              {view === 'packages' ? (
+                <div className={styles.headerActionGroup}>
+                  {props.headerActions}
+                  <button
+                    type="button"
+                    className={styles.headerActionBtn}
+                    onClick={() => setInstallOpen(true)}
+                    title={props.t('renderer.install')}
+                    aria-label={props.t('renderer.install')}
+                  >
+                    <PackagePlus size={14} aria-hidden="true" />
+                  </button>
+                </div>
               ) : null}
             </div>
             <div className={styles.packageTreeBody}>
               {props.packages.length === 0 ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : props.packages.map(extensionPackage => {
               const isEnabled = extensionPackage.modules.length > 0 && extensionPackage.modules.every(module => module.desired.enabled)
+              const isSelected = !storyDetails && !cardTargetSelection && extensionPackage.packageId === selected?.packageId
+              const updateRecord = updates.find(u => u.packageId === extensionPackage.packageId && u.status === 'available')
               return (
-              <section className={styles.treePackage} key={extensionPackage.packageId}>
-                <div className={styles.packageItemRow}>
+                <section className={styles.treePackage} key={extensionPackage.packageId}>
+                <div
+                  className={styles.packageItemRow}
+                  data-selected={isSelected ? 'true' : undefined}
+                  data-muted={extensionPackage.modules.length > 0 && !isEnabled ? 'true' : undefined}
+                >
                   <button
-                    aria-current={!storyDetails && !cardTargetSelection && extensionPackage.packageId === selected?.packageId ? 'page' : undefined}
+                    aria-current={isSelected ? 'page' : undefined}
                     className={styles.packageItem}
                     type="button"
                     onClick={() => select({ kind: 'package', packageId: extensionPackage.packageId })}
                   >
                     <ExtensionIcon iconUrl={extensionPackage.iconUrl} size={30} />
-                    <span><strong>{extensionPackage.displayName}</strong><small>{extensionPackage.packageId} · {extensionPackage.version}</small></span>
+                    <span>
+                      <strong>{extensionPackage.displayName}</strong>
+                      <small>
+                        {extensionPackage.packageId} · {extensionPackage.version}
+                        {updateRecord?.candidate?.version ? (
+                          <span className={styles.updateBadge} title={props.t('renderer.workspace.canUpdateTo', { version: updateRecord.candidate.version })}>
+                            ↑ v{updateRecord.candidate.version}
+                          </span>
+                        ) : null}
+                      </small>
+                    </span>
                   </button>
                   {extensionPackage.modules.length > 0 ? (
                     <button
@@ -420,10 +588,10 @@ export function ExtensionWorkspace(props: {
               <section className={styles.characterSummary} key={props.embeddedPackageCard.id}>
                 <h3 className={styles.cardHeading}><UserIdentity name={props.embeddedPackageCard.name} avatarUrl={cardMediaUrl(props.embeddedPackageCard.id, 'avatar', props.embeddedPackageCard.media?.avatarAssetId, props.embeddedPackageCard.version)} /></h3>
                 <div className={styles.characterStory}>
-                  <p className={styles.storySummary}>{storyId ? props.timelineParticipation.timeline?.title || props.t('participation.timeline') : '尚未开始故事'}</p>
+                  <p className={styles.storySummary}>{storyId ? props.timelineParticipation.timeline?.title || props.t('participation.timeline') : props.t('timelineQuick.opening')}</p>
                   {storyId && <button type="button" className={styles.storyEntry} aria-current={storyDetails ? 'page' : undefined} onClick={() => { setStoryDetails(true); setMobilePane('detail') }}>
-                    <span>当前故事扩展</span>
-                    <small>{storyCount !== undefined ? `已启用 ${storyCount}` : storyCountError ? '状态读取失败' : '读取中…'}</small>
+                    <span>{props.t('renderer.workspace.storyExtensions')}</span>
+                    <small>{storyCount !== undefined ? props.t('renderer.workspace.storyEnabledCount', { count: storyCount }) : storyCountError ? props.t('renderer.workspace.storyReadFailed') : props.t('renderer.workspace.storyReading')}</small>
                   </button>}
                 </div>
                 {(props.embeddedPackageCard.extensionPackages ?? []).map(archive => {
@@ -461,13 +629,15 @@ export function ExtensionWorkspace(props: {
                         type="button" disabled={Boolean(busyKey)}
                         title={props.t('renderer.removeCardResources')} aria-label={props.t('renderer.removeCardResources')}
                         onClick={() => {
-                          if (!window.confirm(props.t('renderer.removeCardResourcesConfirm', { name: archive.packageId }))) return
-                          void run(`${card.id}/${archive.packageId}/remove`, async () => {
-                            await props.onRemoveCardResources({
-                              cardId: card.id, packageId: archive.packageId, expectedInstallationVersion: installed.version,
+                          void (async () => {
+                            if (!await confirm({ title: props.t('renderer.removeCardResources'), message: props.t('renderer.removeCardResourcesConfirm', { name: archive.packageId }), danger: true })) return
+                            void run(`${card.id}/${archive.packageId}/remove`, async () => {
+                              await props.onRemoveCardResources({
+                                cardId: card.id, packageId: archive.packageId, expectedInstallationVersion: installed.version,
+                              })
+                              notify.success(props.t('renderer.resourcesRemoved'))
                             })
-                            notify.success(props.t('renderer.resourcesRemoved'))
-                          })
+                          })()
                         }}
                       ><PackageMinus aria-hidden="true" size={16} /></button>
                     </> : null}
@@ -477,12 +647,14 @@ export function ExtensionWorkspace(props: {
                       aria-label={props.t('renderer.detachPackage')}
                       disabled={Boolean(busyKey)}
                       onClick={() => {
-                        const card = props.embeddedPackageCard!
-                        if (!window.confirm(props.t('renderer.detachPackageConfirm', { name: archive.packageId }))) return
-                        void run(`${card.id}/${archive.packageId}/detach`, async () => {
-                          await props.onDetachPackage(card.id, card.version, archive.packageId)
-                          notify.success(props.t('notify.success.deleted'))
-                        })
+                        void (async () => {
+                          const card = props.embeddedPackageCard!
+                          if (!await confirm({ title: props.t('renderer.detachPackage'), message: props.t('renderer.detachPackageConfirm', { name: archive.packageId }), danger: true })) return
+                          void run(`${card.id}/${archive.packageId}/detach`, async () => {
+                            await props.onDetachPackage(card.id, card.version, archive.packageId)
+                            notify.success(props.t('notify.success.deleted'))
+                          })
+                        })()
                       }}
                     ><Trash2 aria-hidden="true" size={16} /></button>
                   </div>
@@ -504,13 +676,15 @@ export function ExtensionWorkspace(props: {
                         <span>{extensionPackage.displayName}<small>{extensionPackage.version}</small></span>
                         <button type="button" disabled={Boolean(busyKey) || !installed} title={props.t('renderer.uninstall')} aria-label={props.t('renderer.uninstall')}
                           onClick={() => {
-                            if (!installed || !window.confirm(props.t('renderer.uninstallCardConfirm', { name: extensionPackage.displayName }))) return
-                            void run(`${target.cardId}/${extensionPackage.packageId}/uninstall`, async () => {
-                              await props.onUninstallCardPackage({
-                                cardId: target.cardId, packageId: extensionPackage.packageId, expectedInstallationVersion: installed.version,
+                            void (async () => {
+                              if (!installed || !await confirm({ title: props.t('renderer.uninstall'), message: props.t('renderer.uninstallCardConfirm', { name: extensionPackage.displayName }), danger: true })) return
+                              void run(`${target.cardId}/${extensionPackage.packageId}/uninstall`, async () => {
+                                await props.onUninstallCardPackage({
+                                  cardId: target.cardId, packageId: extensionPackage.packageId, expectedInstallationVersion: installed.version,
+                                })
+                                notify.success(props.t('renderer.uninstalled'))
                               })
-                              notify.success(props.t('renderer.uninstalled'))
-                            })
+                            })()
                           }}><Trash2 aria-hidden="true" size={16} /></button>
                       </div>
                       <button className={styles.packageItem} type="button" onClick={() => select({ kind: 'card-package', packageId: extensionPackage.packageId, cardId: target.cardId })}>
@@ -595,38 +769,36 @@ export function ExtensionWorkspace(props: {
                       <button type="button" className={styles.actionBtn} onClick={() => navigate(buildStudioLogPath({ packageId: selected.packageId }))} title={props.t('logs.viewExtension')} aria-label={props.t('logs.viewExtension')}>
                         <TerminalSquare aria-hidden="true" />
                       </button>
+                      {props.resourceDownloadsApi ? (
+                        <button
+                          type="button"
+                          className={styles.actionBtn}
+                          disabled={checkingUpdates}
+                          onClick={() => void handleCheckUpdates()}
+                          title={props.t('renderer.remote.check')}
+                          aria-label={props.t('renderer.remote.check')}
+                        >
+                          <RefreshCw size={15} className={checkingUpdates ? 'animate-spin' : undefined} aria-hidden="true" />
+                        </button>
+                      ) : null}
                       {props.settingScopeContext.cardId ? (
                         <button
                           className={styles.actionBtn}
                           disabled={Boolean(busyKey) || !selected.available}
                           type="button"
                           onClick={() => {
-                            const cardId = props.settingScopeContext.cardId
-                            if (!cardId || !window.confirm(props.t('renderer.attachPackageConfirm', { name: selected.displayName }))) return
-                            void run(`${selected.packageId}/attach`, async () => {
-                              await props.onAttachPackage(cardId, selected.packageId, selected.version)
-                              notify.success(props.t('renderer.packageAttached'))
-                            })
+                            void (async () => {
+                              const cardId = props.settingScopeContext.cardId
+                              if (!cardId || !await confirm({ title: props.t('renderer.attachPackage'), message: props.t('renderer.attachPackageConfirm', { name: selected.displayName }) })) return
+                              void run(`${selected.packageId}/attach`, async () => {
+                                await props.onAttachPackage(cardId, selected.packageId, selected.version)
+                                notify.success(props.t('renderer.packageAttached'))
+                              })
+                            })()
                           }}
                           title={props.t('renderer.attachPackage')} aria-label={props.t('renderer.attachPackage')}
                         >
                           <PackagePlus aria-hidden="true" />
-                        </button>
-                      ) : null}
-                      {installation ? (
-                        <button
-                          className={styles.actionBtn}
-                          disabled={Boolean(busyKey) || !selected.available}
-                          type="button"
-                          onClick={() => {
-                            const input = { packageId: selected.packageId, packageVersion: selected.version,
-                              expectedInstallationVersion: installation.version }
-                            setResourceUpdate({ title: selected.displayName, fromVersion: installation.packageVersion, input,
-                              apply: (fingerprint: string, keepPromptResourceIds: string[]) => props.onUpdateResources({ ...input, expectedPreviewFingerprint: fingerprint, keepPromptResourceIds }) })
-                          }}
-                          title={props.t('renderer.updateResources')} aria-label={props.t('renderer.updateResources')}
-                        >
-                          <RefreshCw aria-hidden="true" />
                         </button>
                       ) : null}
                       {packageResourceCount(selected) > 0 ? (
@@ -647,6 +819,38 @@ export function ExtensionWorkspace(props: {
                     </div>
                   </header>
                 )
+              })()}
+              {(() => {
+                const selectedUpdate = updates.find(u => u.packageId === selected.packageId && u.status === 'available')
+                return selectedUpdate && selectedUpdate.candidate ? (
+                  <div className={styles.inPlaceUpdateBanner}>
+                    <div className={styles.updateBannerContent}>
+                      <ArrowUpCircle size={18} className={styles.updateBannerIcon} aria-hidden="true" />
+                      <div>
+                        <strong>{props.t('renderer.workspace.bannerTitle', { version: selectedUpdate.candidate.version ?? '' })}</strong>
+                        <small>{props.t('renderer.workspace.bannerDesc', { version: selected.version })}{selectedUpdate.candidate.description ? ` · ${selectedUpdate.candidate.description}` : ''}</small>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.inPlaceUpdateBtn}
+                      disabled={Boolean(updatingPackageId)}
+                      onClick={() => void handleInPlaceUpdate(selected, selectedUpdate)}
+                    >
+                      {updatingPackageId === selected.packageId ? (
+                        <>
+                          <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                          <span>{props.t('renderer.workspace.updating')}</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowUpCircle size={13} aria-hidden="true" />
+                          <span>{props.t('renderer.workspace.updateNow')}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : null
               })()}
               <ExtensionPackageTabs key={selected.packageId} t={props.t} resources={resourcePanel(selected)} settings={settingsPanel(selected)} overview={<>
               {selected.description ? <p>{selected.description}</p> : null}
@@ -794,7 +998,7 @@ function PackageControls(props: {
           return (
             <div key={module.moduleId} className={styles.runtimeModuleRow}>
               <strong>{module.moduleId}</strong>
-              {module.runtimeKind === 'client-worker' ? <small>Worker · 线程隔离，可访问浏览器网络与存储</small> : null}
+              {module.runtimeKind === 'client-worker' ? <small>{props.t('extension.runtime.workerNote')}</small> : null}
               <span className={module.desired.enabled ? styles.runtimeEnabledText : styles.runtimeDisabledText}>
                 {props.t(module.desired.enabled ? 'renderer.enabled' : 'renderer.disabled')}
               </span>

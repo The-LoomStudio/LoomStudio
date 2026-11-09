@@ -7,7 +7,7 @@ import {
   reduceLongTextEditorState,
   type LongTextEditorMode,
 } from './long-text-editor-model.js'
-import { Button, Dialog, IconButton, SkeletonText } from '@loom-studio/ui'
+import { Dialog, IconButton, SkeletonText } from '@loom-studio/ui'
 import { createTranslator, type Translator } from '../../i18n/index.js'
 import { useCopyFeedback } from '../../hooks/use-copy-feedback.js'
 import styles from './long-text-editor.module.scss'
@@ -299,11 +299,6 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
           dismissible
           onClose={() => setDiffOpen(false)}
           title={props.diffTitle ?? (props.label ? `${props.label} · ${diffLabel}` : diffLabel)}
-          actions={(
-            <Button onClick={() => setDiffOpen(false)}>
-              {translator('common.close')}
-            </Button>
-          )}
         >
           <div className={styles.diffDialogContent}>
             <Suspense fallback={<SkeletonText lines={6} />}>

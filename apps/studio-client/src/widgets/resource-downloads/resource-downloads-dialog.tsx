@@ -145,9 +145,15 @@ export function ResourceDownloadsPanel(props: {
     setMessage('更新选项已保存；可以手动检查更新')
   }
   const available = updates.filter(item => item.kind === props.kind && item.status === 'available' && item.candidate?.id !== item.ignoredCandidate)
+  const showUpdatesTab = props.kind !== 'extension'
   return <div className={styles.panel}>
-    <MasterDetailWorkbench navigationScope="local" defaultMasterWidth={300} hasSelection={tab === 'updates' || !!task} mobilePane={pane} onMobilePaneChange={setPane} backLabel="下载列表" master={<div className={styles.master}>
-      <div className={styles.tabs}><Button variant={tab === 'tasks' ? 'default' : 'ghost'} onClick={() => setTab('tasks')}>下载任务</Button><Button variant={tab === 'updates' ? 'default' : 'ghost'} onClick={() => { setTab('updates'); setPane('detail') }}>更新 {available.length || ''}</Button></div>
+    <MasterDetailWorkbench navigationScope="local" defaultMasterWidth={300} hasSelection={(showUpdatesTab && tab === 'updates') || !!task} mobilePane={pane} onMobilePaneChange={setPane} backLabel="下载列表" master={<div className={styles.master}>
+      {showUpdatesTab ? (
+        <div className={styles.tabs}>
+          <Button variant={tab === 'tasks' ? 'default' : 'ghost'} onClick={() => setTab('tasks')}>下载任务</Button>
+          <Button variant={tab === 'updates' ? 'default' : 'ghost'} onClick={() => { setTab('updates'); setPane('detail') }}>更新 {available.length || ''}</Button>
+        </div>
+      ) : null}
       <form className={styles.source} onSubmit={event => { event.preventDefault(); void run(() => resolve()) }}>
         <label>资源链接<input type="url" required value={url} disabled={busy} placeholder="HTTPS 文件或仓库链接" onChange={event => { resolveGeneration.current++; setUrl(event.target.value); setCandidates([]); setAdapters([]) }} /></label>
         <details><summary>指定 Git 版本（可选）</summary><input aria-label="Git 分支、Tag 或 commit" value={ref} disabled={busy} placeholder="分支、Tag 或 commit" onChange={event => { resolveGeneration.current++; setRef(event.target.value); setCandidates([]) }} /></details>

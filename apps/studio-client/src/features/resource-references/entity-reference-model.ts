@@ -20,7 +20,7 @@ export async function loadEntityReference(api: StudioApi, reference: EntityRefer
     const { session } = await api.agentSessions.get(id)
     return { title: session.title ?? 'Agent 会话', uri: formatEntityReference(reference) }
   }
-  if (type === 'run') return { title: '本次运行日志', uri: formatEntityReference(reference), note: '仅查询当前可用日志，不代表完整运行快照。' }
+  if (type === 'run') return { title: '本次运行日志', uri: formatEntityReference(reference), note: '当前可用运行日志' }
   if (type === 'resource') {
     const { resource } = await api.promptResources.get(id)
     const target = { kind: 'entity' as const, type, id: resource.id, nodeId: resource.rootNode.id }

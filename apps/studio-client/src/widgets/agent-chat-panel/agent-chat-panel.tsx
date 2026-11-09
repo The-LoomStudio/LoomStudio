@@ -21,7 +21,8 @@ import { DisplayProjectionStatus } from '../../features/message-content/ui/displ
 import { messageCodeBlockLabels } from '../../features/message-content/ui/message-code-block-labels.js'
 import { useConversationViewport } from '../../shared/ui/conversation-viewport/use-conversation-viewport.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SkeletonText } from '@loom-studio/ui'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, SearchField, SkeletonText } from '@loom-studio/ui'
+import { confirm } from '../../shared/ui/confirm-dialog/index.js'
 import { ConversationMessageAction, ConversationMessageChrome } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import { ChatComposer } from '../chat-composer/chat-composer.js'
 import { AgentMutationApprovalDialog } from './agent-mutation-approval-dialog.js'
@@ -187,11 +188,17 @@ export const AgentChatPanel = memo(function AgentChatPanel(props: AgentChatPanel
               || props.activeRun?.status === 'running' || props.activeRun?.status === 'suspended'}
             title={props.t('sessions.delete')} aria-label={props.t('sessions.delete')}
             onClick={() => {
-              if (props.session && window.confirm(props.t('sessions.confirmDeleteSession', {
-                title: props.session.title ?? props.t('sessions.untitledAgentSession'),
-              }))) {
-                props.onDeleteSession?.(props.session.id)
-              }
+              void (async () => {
+                if (props.session && await confirm({
+                  title: '删除会话',
+                  message: props.t('sessions.confirmDeleteSession', {
+                    title: props.session.title ?? props.t('sessions.untitledAgentSession'),
+                  }),
+                  danger: true,
+                })) {
+                  props.onDeleteSession?.(props.session.id)
+                }
+              })()
             }}>
             <Trash2 aria-hidden="true" />
           </button>
@@ -548,8 +555,16 @@ export function AgentPresetPicker(props: {
             <span>{selected.model?.modelId}</span>
           </div>
         ) : null}
-        <input className={styles.profileSearch} type="search" aria-label="搜索预设或来源" placeholder="搜索预设或来源…" value={query}
-          onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation() }} />
+        <SearchField
+          containerClassName={styles.profileSearch}
+          aria-label="搜索预设或来源"
+          placeholder="搜索预设或来源…"
+          value={query}
+          clearLabel="清除搜索"
+          onClear={() => setQuery('')}
+          onChange={event => setQuery(event.target.value)}
+          onKeyDown={event => { if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation() }}
+        />
         {groups.size === 0 ? <p>{props.profiles.length ? '没有匹配的预设' : props.t('agent.profile.configureFirst')}</p> : [...groups.entries()].map(([id, group]) => <div key={id} role="group" aria-label={group.label}>
           <div className={styles.profileSource}>{group.label}</div>
           {group.profiles.map(profile => {

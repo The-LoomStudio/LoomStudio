@@ -154,6 +154,119 @@
 .storySummary { color: var(--loom-color-text-muted); }
 .summaryEmpty { color: var(--loom-color-text-subtle); font-size: 12px; }
 
+.headerActionGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+
+  button,
+  .headerActionBtn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: var(--loom-radius-control) !important;
+    background: transparent !important;
+    color: var(--loom-color-text-muted) !important;
+    cursor: pointer;
+    transition: color 120ms ease, background-color 120ms ease;
+
+    &:hover {
+      color: var(--loom-color-accent) !important;
+      background: var(--loom-color-surface-hover) !important;
+    }
+
+    svg {
+      width: 14px !important;
+      height: 14px !important;
+    }
+  }
+}
+
+.updateBadge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--loom-color-accent-soft, rgba(216, 173, 110, 0.16));
+  color: var(--loom-color-accent, #d8ad6e);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
+.inPlaceUpdateBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 16px 4px;
+  padding: 10px 14px;
+  border-radius: var(--loom-radius-surface);
+  background: var(--loom-color-accent-soft, rgba(216, 173, 110, 0.1));
+  border: 1px solid var(--loom-color-accent-border, rgba(216, 173, 110, 0.28));
+}
+
+.updateBannerContent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+
+  strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--loom-color-text-primary);
+  }
+
+  small {
+    display: block;
+    font-size: 11px;
+    color: var(--loom-color-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.updateBannerIcon {
+  flex-shrink: 0;
+  color: var(--loom-color-accent, #d8ad6e);
+}
+
+.inPlaceUpdateBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-accent, #d8ad6e);
+  color: #191c1f;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 120ms ease, transform 120ms ease;
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 .installPackageBtn {
   display: inline-flex !important;
   align-items: center;
@@ -189,10 +302,15 @@
   justify-content: space-between;
   gap: 4px;
   width: 100%;
+  padding-right: 6px;
   border-radius: var(--loom-radius-control);
   transition: background-color 120ms ease;
 
   &:hover {
+    background: var(--loom-color-surface-subtle);
+  }
+
+  &[data-selected='true'] {
     background: var(--loom-color-surface-subtle);
   }
 }
@@ -210,10 +328,7 @@
   min-width: 0;
   padding: 8px 10px;
   cursor: pointer;
-
-  &[aria-current='page'] {
-    background: var(--loom-color-surface-subtle);
-  }
+  background: transparent;
 }
 
 .packageToggle {
@@ -226,27 +341,49 @@
   padding: 0 !important;
   border: 0;
   background: transparent !important;
-  color: var(--loom-color-accent) !important;
+  color: var(--loom-color-text-subtle) !important;
+  opacity: 0.38;
   cursor: pointer;
   flex-shrink: 0;
-  transition: color 120ms ease, transform 120ms ease;
+  transition: color 120ms ease, opacity 150ms ease, transform 120ms ease;
 
   svg {
     width: 18px !important;
     height: 18px !important;
   }
 
-  &[aria-pressed='false'] {
-    color: var(--loom-color-text-subtle) !important;
+  &:hover:not(:disabled) {
+    opacity: 0.85;
   }
 
-  &:hover:not(:disabled) {
-    transform: scale(1.08);
+  &[aria-pressed='true'] {
+    color: var(--loom-color-accent) !important;
+    opacity: 1;
+
+    &:hover:not(:disabled) {
+      opacity: 0.9;
+    }
   }
 
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.25;
     cursor: not-allowed;
+  }
+}
+
+.packageItemRow[data-muted='true'] .packageItem {
+  opacity: 0.56;
+
+  strong,
+  small {
+    color: var(--loom-color-text-subtle);
+  }
+
+  img,
+  svg,
+  :global(.loom-extension-icon) {
+    filter: grayscale(1);
+    opacity: 0.6;
   }
 }
 

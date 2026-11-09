@@ -71,7 +71,6 @@ function ExtensionSettingsFields(props: ExtensionSettingsFormProps) {
     <article className={styles.settings} data-loom-component="extension-settings-form">
       <header>
         <h3>{props.t('renderer.settings')}</h3>
-        <p>{props.t('renderer.settingsDescription')}</p>
       </header>
       {loadError ? <div role="alert">
         <p className={styles.loadError}>{loadError}</p>

@@ -56,10 +56,8 @@ export function LoomScriptSourceFields(props: {
 
   return <section className={styles.inspectionSection}>
     <h4>{props.t('textTransform.source')}</h4>
-    <p className={styles.metaLine}>保存只更新源码；已启动的实例需单独刷新。</p>
     <input aria-label={props.t('textTransform.scriptFileName')} className={styles.inlineInput}
       disabled={props.disabled} value={props.fileName} onChange={event => props.onFileNameChange(event.target.value)} />
-    <p className={styles.metaLine}>顶部声明描述脚本能力；日常参数请在“运行与授权”的配置区域修改。</p>
     {parsed.error ? <p role="status" className={styles.error}>{parsed.error}</p> : null}
     {rules.length > 0 && <div className={styles.summary} aria-label="规则摘要">
       <h4>规则摘要 · {rules.length}</h4>

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
-import { Check, MessagesSquare, Pencil, Star, X } from 'lucide-react'
-import { Button, Dialog, IconButton, SearchField, TextInput } from '@loom-studio/ui'
+import { Check, MessagesSquare, Pencil, Star } from 'lucide-react'
+import { Dialog, IconButton, SearchField, TextInput } from '@loom-studio/ui'
 import type { AgentPreset, AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
 import { formatDateTime, type Translator } from '../../shared/i18n/index.js'
 import { sessionPresetName, sessionSourceLabel } from '../../entities/session-identification.js'
@@ -118,10 +118,7 @@ export function AgentSessionPicker(props: {
       </IconButton>}
     </div>
     {open ? <Dialog open title={props.t('agent.sessionsTitle')} className={styles.dialog} dismissible={!locked}
-      onClose={() => setOpen(false)}
-      showCloseButton={false} headerActions={<IconButton aria-label={props.t('agent.closeSessionPicker')} title={props.t('agent.close')} disabled={locked}
-        onClick={() => setOpen(false)}><X size={16} aria-hidden="true" /></IconButton>}
-      actions={<Button disabled={locked} onClick={() => setOpen(false)}>{props.t('agent.close')}</Button>}>
+      onClose={() => setOpen(false)}>
       <div className={styles.pickerBody}>
         <SearchField aria-label={props.t('agent.searchSessions')} placeholder={props.t('agent.searchSessionPlaceholder')} value={query}
           onChange={event => setQuery(event.target.value)} clearLabel={props.t('agent.clearSearch')} onClear={() => setQuery('')} />

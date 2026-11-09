@@ -57,7 +57,7 @@ export function ExtensionPackageResources(props: {
         </select>
       </label>
       <section className={styles.resources} aria-label={props.t(category.key)}>
-        <header className={styles.categoryHeader}><h3>{props.t(category.key)}</h3><p>{props.t('renderer.packageContentHint')}</p></header>
+        <header className={styles.categoryHeader}><h3>{props.t(category.key)}</h3></header>
         {entries.filter(entry => entry.kind === category.kind).map(entry => <ResourceCard key={`${entry.kind}:${entry.id}`} entry={entry} {...props} />)}
       </section>
   </div>

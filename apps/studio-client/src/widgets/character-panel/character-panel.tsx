@@ -1,7 +1,8 @@
 import { ResourceDownloadsLauncher } from '../resource-downloads/resource-downloads-launcher.js'
-import { StoryHero } from '../../shared/ui/story-hero/story-hero.js'
 import { CardDeleteConfirmation } from '../../features/cards/ui/card-delete-confirmation.js'
-import { ArrowDownUp, ArrowLeft, BookOpen, Check, ChevronLeft, ChevronRight, Circle, Combine, Download, FileArchive, Folder, GitFork, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
+import { CharacterUpdateDialog } from '../../features/cards/ui/character-update-dialog.js'
+import { CardPackageUpdateDialog } from '../../features/resource-updates/ui/card-package-update-dialog.js'
+import { ArrowDownUp, ArrowLeft, ArrowUpCircle, BookOpen, Check, ChevronLeft, ChevronRight, Circle, Combine, Download, FileArchive, Folder, GitFork, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, SquareArrowRightEnter, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, Dialog, SearchField, Toggle, type MenuAction } from '@loom-studio/ui'
 import { formatDateTime, type Translator } from '../../shared/i18n/index.js'
@@ -141,6 +142,8 @@ export function CharacterPanel(props: CharacterPanelProps) {
   } = useCharacterProfileEditor({ selected, onUpdateCardProfile: props.onUpdateCardProfile, refreshDetail: detail.refetch, onRefreshCards: props.onRefreshCards })
 
   const [timelineSortOrder, setTimelineSortOrder] = useState<'desc' | 'asc'>('desc')
+  const [updateCardDialogOpen, setUpdateCardDialogOpen] = useState(false)
+  const [activeUpdateTaskId, setActiveUpdateTaskId] = useState<string>()
 
   const sortedTimelines = useMemo(() => {
     return [...(detail.data?.timelines ?? [])].sort((left, right) => {
@@ -329,6 +332,37 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const overlays = (
     <>
       {discovered && props.directoryApi ? <DirectoryDiscoveryNotice catalog={discovered} api={props.directoryApi} onRefresh={props.onRefreshCards} t={props.t} onClose={closeDiscovery} /> : null}
+      {updateCardDialogOpen && selected ? (
+        <CharacterUpdateDialog
+          open
+          card={selected}
+          downloadsApi={props.resourceApi.resourceDownloads}
+          t={props.t}
+          onClose={() => setUpdateCardDialogOpen(false)}
+          onSelectTask={taskId => {
+            setUpdateCardDialogOpen(false)
+            setActiveUpdateTaskId(taskId)
+          }}
+        />
+      ) : null}
+      {activeUpdateTaskId && selected ? (
+        <CardPackageUpdateDialog
+          api={props.resourceApi.resourceDownloads}
+          taskId={activeUpdateTaskId}
+          cardId={selected.id}
+          t={props.t}
+          onClose={() => setActiveUpdateTaskId(undefined)}
+          onApplied={async () => {
+            setActiveUpdateTaskId(undefined)
+            await props.onRefreshCards?.()
+            await detail.refetch()
+          }}
+          onSaveCopy={props.resourceApi.promptResources ? async input => {
+            const result = await props.resourceApi.promptResources.duplicate(input)
+            return { id: result.resource.id, label: result.resource.rootNode.label }
+          } : undefined}
+        />
+      ) : null}
       {organization.groupsOpen ? (
         <CharacterGroupDialog
           activeGroupId={organization.activeGroupId}
@@ -406,7 +440,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                 const files = Array.from(event.target.files ?? [])
                 event.target.value = ''
                 if (files.length > 0) void props.onImportCards(files).catch(err => {
-                  notify.failure('角色操作未完成', err)
+                  notify.failure(props.t('character.operationFailed'), err)
                 })
               }}
             />
@@ -425,10 +459,10 @@ export function CharacterPanel(props: CharacterPanelProps) {
                   <div className={styles.galleryToolbarMain}>
                     <div className={styles.galleryActions}>
                       {props.directoryApi ? <button aria-label={props.t('directory.refresh')} className={styles.toolbarButton} disabled={refreshing || props.busy} title={props.t('directory.refresh')} type="button" onClick={() => void refreshGallery()}><RefreshCw aria-hidden="true" /></button> : null}
-                      <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.import')} type="button" onClick={() => cardImportInputRef.current?.click()}><Upload aria-hidden="true" /></button>
+                      <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.import')} type="button" onClick={() => cardImportInputRef.current?.click()}><SquareArrowRightEnter aria-hidden="true" /></button>
                       <ResourceDownloadsLauncher compact kind="card" api={props.resourceApi.resourceDownloads} cardId={targetCardId} promptResourceApi={props.resourceApi.promptResources} onChanged={props.onRefreshCards} />
                       <button aria-label={props.t('character.create')} className={styles.createButton} disabled={props.busy} title={props.t('character.create')} type="button" onClick={() => void props.onCreateCard().catch(err => {
-                        notify.failure('角色操作未完成', err)
+                        notify.failure(props.t('character.operationFailed'), err)
                       })}><Plus aria-hidden="true" /></button>
                     </div>
                     <div className={styles.viewSwitcher} role="group" aria-label={props.t('character.gallery')}>
@@ -577,6 +611,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
               <span>{props.t('character.title')}</span>
               <div>
                 {selectionMode && !selectedCardIds.has(selected.id) ? <button aria-label={props.t('character.select')} className={styles.toolbarButton} title={props.t('character.select')} type="button" onClick={() => enterSelectionMode(selected.id)}><Circle aria-hidden="true" /></button> : null}
+                <button aria-label={props.t('character.updateCard')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.updateCard')} type="button" onClick={() => setUpdateCardDialogOpen(true)}><ArrowUpCircle aria-hidden="true" /></button>
                 <button aria-label={props.t('character.export')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.export')} type="button" onClick={() => setExportCard(selected)}><Download aria-hidden="true" /></button>
                 <button aria-label={props.t('character.forkWork')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.forkWork')} type="button" onClick={() => void props.onForkCard(selected.id, selected.version).catch(() => undefined)}><GitFork aria-hidden="true" /></button>
                 <button aria-label={props.t('character.delete')} className={`${styles.toolbarButton} ${styles.deleteButton}`} disabled={props.busy} title={props.t('character.delete')} type="button" onClick={() => setPendingDeleteIds([selected.id])}><Trash2 aria-hidden="true" /></button>
@@ -944,40 +979,42 @@ function pageTransitionDelay(): number {
 }
 
 function TimelineCard(props: { character: CharacterCardSummary; timeline: NarrativeTimelineView; busy: boolean; current: boolean; onOpen(): void; t: Translator }) {
+  const enterLabel = props.current ? props.t('character.enterCurrentSession') : props.t('character.enterSession')
+
   return (
-    <details className={`${styles.sessionCard} ${props.current ? styles.sessionCardCurrent : ''}`} open={props.current}>
-      <summary>
-        <ChevronRight aria-hidden="true" />
-        <StoryHero compact character={props.character} title={props.timeline.title ?? props.t('branch.default')}
-          label={props.current ? <span className={styles.currentBadge}>{props.t('character.activeBadge')}</span> : undefined}
-          metadata={formatTimelineDate(props.timeline.updatedAt)} />
-        <button
-          className={styles.cardPlayButton}
-          disabled={props.busy}
-          type="button"
-          title={props.current ? props.t('character.enterCurrentSession') : props.t('character.enterSession')}
-          aria-label={props.current ? props.t('character.enterCurrentSession') : props.t('character.enterSession')}
-          onClick={event => {
-            event.stopPropagation()
-            props.onOpen()
-          }}
-        >
-          <Play aria-hidden="true" />
-        </button>
-      </summary>
-      <div className={styles.sessionCardBody}>
-        <dl>
-          <div>
-            <dt>{props.t('character.sessionCreated')}</dt>
-            <dd>{formatTimelineDate(props.timeline.createdAt)}</dd>
-          </div>
-          <div>
-            <dt>{props.t('character.sessionId')}</dt>
-            <dd>{shortId(props.timeline.id)}</dd>
-          </div>
-        </dl>
-      </div>
-    </details>
+    <button
+      className={`${styles.sessionCard} ${props.current ? styles.sessionCardCurrent : ''}`}
+      disabled={props.busy}
+      type="button"
+      title={enterLabel}
+      aria-label={enterLabel}
+      onClick={props.onOpen}
+    >
+      <span className={styles.sessionCardIcon}>
+        <Play aria-hidden="true" />
+      </span>
+
+      <span className={styles.sessionCardContent}>
+        <span className={styles.sessionCardHeader}>
+          {props.current ? <span className={styles.currentBadge}>{props.t('character.activeBadge')}</span> : null}
+          <strong className={styles.sessionCardTitle}>
+            {props.timeline.title ?? props.t('branch.default')}
+          </strong>
+        </span>
+        <span className={styles.sessionCardMeta}>
+          <span>{formatTimelineDate(props.timeline.updatedAt)}</span>
+          <span className={styles.sessionCardDivider}>·</span>
+          <span>{props.t('character.sessionCreated')}: {formatTimelineDate(props.timeline.createdAt)}</span>
+        </span>
+      </span>
+
+      <span
+        className={styles.sessionCardId}
+        title={`${props.t('character.sessionId')}: ${props.timeline.id}`}
+      >
+        #{shortId(props.timeline.id)}
+      </span>
+    </button>
   )
 }
 

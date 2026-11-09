@@ -170,4 +170,12 @@ export const messages = {
   'agent.tool.preparing': '正在准备参数，尚未执行',
   'agent.tool.running': '执行中',
   'agent.tool.success': '成功',
+  'composer.contextInfo.aria': '上下文信息，0%，暂无统计数据',
+  'composer.contextInfo.title': '上下文信息',
+  'composer.contextInfo.window': '上下文窗口',
+  'composer.contextInfo.currentUsage': '当前占用',
+  'composer.contextInfo.noData': '暂无数据',
+  'composer.contextInfo.modelLimit': '模型上限',
+  'composer.contextInfo.unknown': '未知',
+  'composer.contextInfo.sessionTotal': '会话累计消耗',
 } as const

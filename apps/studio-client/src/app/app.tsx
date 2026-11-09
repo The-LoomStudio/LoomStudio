@@ -44,6 +44,7 @@ import { useScriptRuntime } from '../features/loom-scripts/model/use-script-runt
 import type { ClientRendererScope } from '../shared/extension-renderer-runtime/client-renderer-host.js'
 
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
+import { ConfirmDialogHost } from '../shared/ui/confirm-dialog/index.js'
 import type { StudioApi } from '../shared/api/studio-api.js'
 import { notify } from '../shared/notifications/index.js'
 import { useQueryClient } from '@tanstack/react-query'
@@ -82,13 +83,19 @@ function initializeAppearancePreview() {
   }
 }
 
-export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger; extensionLogger: Logger }) {
+export function App(props: {
+  clientLogs: MemoryLogSink
+  transportLogger: Logger
+  extensionLogger: Logger
+  themeLogger?: Logger
+  runtimeLogger?: Logger
+}) {
   initializeAppearancePreview()
   initializeMotionPreference()
   const narrativeSelectionRef = useRef<HTMLDivElement>(null)
   const narrativeInputRef = useRef<HTMLTextAreaElement>(null)
   const appearance = useAppearanceStore()
-  const state = useStudioState(props.transportLogger)
+  const state = useStudioState(props.transportLogger, props.runtimeLogger)
   const latestState = useRef(state)
   latestState.current = state
   const userBackgrounds = useUserBackgrounds(state.api.userBackgrounds, state.endpoint, state.t)
@@ -111,7 +118,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   }), [])
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs, notify: notifications.show })
   const extensionCardContext = useExtensionCardContext(state.api, appearanceCardId, state.selectedCardDetails, `${clientExtensions.refreshSequence}:${state.cards.find(card => card.id === appearanceCardId)?.version ?? ''}`, state.readCardDetails)
-  const themeController = useThemeRuntime({ packages: clientExtensions.packages, ready: clientExtensions.refreshSequence > 0 || !!clientExtensions.error, authorize: clientExtensions.enable })
+  const themeController = useThemeRuntime({
+    packages: clientExtensions.packages,
+    ready: clientExtensions.refreshSequence > 0 || !!clientExtensions.error,
+    authorize: clientExtensions.enable,
+    logger: props.themeLogger,
+  })
   const reportedExtensionError = useRef<string | undefined>(undefined)
   const extensionConnectionError = clientExtensions.connectionError?.message
   useEffect(() => {
@@ -864,7 +876,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         setAssistantGuide(true)
         uiState.setAgentPanelOpen(true)
       }
-    }} /><NotificationToaster label={state.t('notification.label')} /></>
+    }} /><NotificationToaster label={state.t('notification.label')} /><ConfirmDialogHost /></>
 
   return (
     <ExtensionIdentityContext.Provider value={[...clientExtensions.packages, ...clientExtensions.cardPackages]}>
@@ -920,6 +932,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       <RendererFocusSurface host={rendererHost} scope={{ kind: 'workspace', key: 'workspace' }} />
       </>}
       <NotificationToaster label={state.t('notification.label')} />
+      <ConfirmDialogHost />
     </ExtensionIdentityContext.Provider>
   )
 }

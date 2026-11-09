@@ -99,13 +99,16 @@
   align-items: center;
   width: 100%;
   gap: 8px;
-  padding: 12px 14px 4px;
-  margin-top: 8px;
+  padding: 8px 14px 4px;
+  margin-top: 6px;
   user-select: none;
+  pointer-events: none;
 }
 
-.sectionRow:first-child {
+.sectionRow:first-child,
+.sectionRow:first-of-type {
   margin-top: 0;
+  padding-top: 4px;
 }
 
 .sectionLabel {

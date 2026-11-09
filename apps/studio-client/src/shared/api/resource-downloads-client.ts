@@ -5,6 +5,7 @@ export type ResourceDownloadsClient = {
 
   previewCardUpdate(input: StudioRpcInputs['resourceDownloads']['previewCardUpdate']): Promise<StudioRpcOutputs['resourceDownloads']['previewCardUpdate']>
   applyCardUpdate(input: StudioRpcInputs['resourceDownloads']['applyCardUpdate']): Promise<StudioRpcOutputs['resourceDownloads']['applyCardUpdate']>
+  stageUpload: (input: StudioRpcInputs['resourceDownloads']['stageUpload']) => Promise<StudioRpcOutputs['resourceDownloads']['stageUpload']>
 
   resolve: (input: StudioRpcInputs['resourceDownloads']['resolve']) => Promise<StudioRpcOutputs['resourceDownloads']['resolve']>
   start: (input: StudioRpcInputs['resourceDownloads']['start']) => Promise<StudioRpcOutputs['resourceDownloads']['start']>
@@ -26,7 +27,8 @@ export function createResourceDownloadsClient(trpc: StudioTrpcClient): ResourceD
     applyPromptUpdate: input => trpc.resourceDownloads.applyPromptUpdate.mutate(input),
     previewCardUpdate: input => trpc.resourceDownloads.previewCardUpdate.mutate(input),
     applyCardUpdate: input => trpc.resourceDownloads.applyCardUpdate.mutate(input),
-      resolve: (input: StudioRpcInputs['resourceDownloads']['resolve']) => trpc.resourceDownloads.resolve.mutate(input),
+    stageUpload: input => trpc.resourceDownloads.stageUpload.mutate(input),
+    resolve: (input: StudioRpcInputs['resourceDownloads']['resolve']) => trpc.resourceDownloads.resolve.mutate(input),
       start: (input: StudioRpcInputs['resourceDownloads']['start']) => trpc.resourceDownloads.start.mutate(input),
       list: () => trpc.resourceDownloads.list.query(),
       cancel: (id: string) => trpc.resourceDownloads.cancel.mutate({ id }),

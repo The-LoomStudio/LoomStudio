@@ -758,6 +758,16 @@
     box-shadow: none !important;
     color: var(--loom-color-text);
   }
+
+  &:read-only {
+    cursor: default;
+
+    &:hover,
+    &:focus {
+      border-bottom-color: transparent !important;
+      color: var(--loom-color-text-muted);
+    }
+  }
 }
 
 .inlineDescriptionInput {
@@ -1202,127 +1212,36 @@
 }
 
 .sessionCard {
-  overflow: hidden;
-  border: 0;
-  border-radius: var(--loom-radius-card);
-  background: transparent;
-  transition: background-color 0.15s ease;
-}
-
-.sessionCard summary {
-  min-height: 42px;
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--loom-radius-card);
+  border: 0;
+  box-shadow: none;
+  background: var(--loom-color-surface-subtle);
+  color: var(--loom-color-text);
   cursor: pointer;
-  list-style: none;
+  text-align: left;
   transition: background-color 0.15s ease;
 
-  &:hover {
-    background: var(--loom-color-surface-raised);
-  }
-}
-
-.sessionCard summary::-webkit-details-marker {
-  display: none;
-}
-
-.sessionCard summary > svg {
-  width: var(--loom-icon-size-2);
-  height: var(--loom-icon-size-2);
-  flex: 0 0 auto;
-  color: var(--loom-color-text-muted);
-  stroke-width: 1.25;
-  transition: transform var(--loom-motion-duration-fast) ease;
-}
-
-.sessionCard[open] summary > svg {
-  transform: rotate(90deg);
-}
-
-.currentBadge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: var(--loom-font-weight-6);
-  background: color-mix(in srgb, var(--loom-color-accent) 20%, transparent);
-  color: var(--loom-color-accent);
-  line-height: 1.3;
-}
-
-.sessionCardBody {
-  display: grid;
-  gap: 10px;
-  padding: 4px 10px 12px 29px;
-}
-
-.sessionCardBody dl {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-}
-
-.sessionCardBody dl > div {
-  display: grid;
-  gap: 2px;
-}
-
-.sessionCardBody dt,
-.sessionCardBody dd {
-  margin: 0;
-  font-size: var(--loom-font-size-1);
-}
-
-.sessionCardBody dt {
-  color: var(--loom-color-text-subtle);
-}
-
-.sessionCardBody dd {
-  color: var(--loom-color-text-muted);
-  line-height: var(--loom-line-height-code);
-}
-
-.sessionCardCurrent {
-  border-color: color-mix(in srgb, var(--loom-color-accent) 35%, transparent);
-
-  summary > svg {
-    color: var(--loom-color-accent) !important;
-  }
-
-}
-
-.cardPlayButton {
-  margin-left: auto;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: var(--loom-radius-control, 6px);
-  border: 0;
-  background: var(--loom-color-accent);
-  color: #fff;
-  cursor: pointer;
-  transition: opacity 0.15s ease, transform 0.1s ease;
-
-  svg {
-    width: 13px;
-    height: 13px;
-    fill: currentColor;
-  }
-
   &:hover:not(:disabled) {
-    opacity: 0.9;
-    transform: scale(1.04);
+    background: var(--loom-color-surface-raised);
+
+    .sessionCardIcon {
+      color: var(--loom-color-accent);
+      opacity: 1;
+    }
   }
 
   &:active:not(:disabled) {
-    transform: scale(0.96);
+    transform: scale(0.995);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--loom-color-accent);
+    outline-offset: 1px;
   }
 
   &:disabled {
@@ -1331,10 +1250,104 @@
   }
 }
 
+.sessionCardCurrent {
+  background: color-mix(in srgb, var(--loom-color-accent) 12%, var(--loom-color-surface-subtle));
+  border: 0;
+  box-shadow: none;
+
+  .sessionCardIcon {
+    color: var(--loom-color-accent);
+    opacity: 1;
+  }
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--loom-color-accent) 18%, var(--loom-color-surface-subtle));
+  }
+}
+
+.sessionCardIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--loom-color-text-subtle);
+  opacity: 0.55;
+  transition: color 0.15s ease, opacity 0.15s ease;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    fill: currentColor;
+  }
+}
+
+.sessionCardContent {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sessionCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sessionCardTitle {
+  font-size: var(--loom-font-size-2, 13.5px);
+  font-weight: var(--loom-font-weight-5, 500);
+  color: var(--loom-color-text);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.currentBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: var(--loom-font-weight-6);
+  background: color-mix(in srgb, var(--loom-color-accent) 20%, transparent);
+  color: var(--loom-color-accent);
+  line-height: 1.25;
+  flex-shrink: 0;
+}
+
+.sessionCardMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--loom-color-text-subtle);
+  line-height: 1.3;
+}
+
+.sessionCardDivider {
+  opacity: 0.45;
+}
+
+.sessionCardId {
+  flex-shrink: 0;
+  font-family: var(--loom-font-family-mono, monospace);
+  font-size: 11px;
+  color: var(--loom-color-text-subtle);
+  opacity: 0.4;
+  user-select: all;
+  letter-spacing: -0.2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gridCard img,
-  .mediaLabel,
-  .sessionCard summary > svg { transition: none; }
+  .mediaLabel { transition: none; }
 }
 
 @container studio-panel (max-width: 360px) {

@@ -34,7 +34,7 @@ import {
   RefreshCw,
   Star,
   Trash2,
-  Upload,
+  SquareArrowRightEnter,
   X,
 } from 'lucide-react'
 import type {
@@ -1275,7 +1275,7 @@ function TimelineDetail(props: {
           {props.api ? <>
             <button aria-label={props.t('sessions.exportTimeline')} className={styles.detailIconButton} disabled={archiveBusy} title={props.t('sessions.exportTimeline')} type="button" onClick={() => void exportArchive()}><Download aria-hidden="true" size={14} /></button>
             <button aria-label={props.t('sessions.importTimeline')} className={styles.detailIconButton} title={props.t('sessions.importTimeline')}
-              disabled={archiveBusy} type="button" onClick={() => archiveInputRef.current?.click()}><Upload aria-hidden="true" size={14} /></button>
+              disabled={archiveBusy} type="button" onClick={() => archiveInputRef.current?.click()}><SquareArrowRightEnter aria-hidden="true" size={14} /></button>
             <input ref={archiveInputRef} hidden type="file" accept="application/json,.json" disabled={archiveBusy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importArchive(file) }} />
             {props.card ? (
               <><button aria-label={props.t('sessions.importChat')} className={styles.detailIconButton} title={props.t('sessions.importChat')}

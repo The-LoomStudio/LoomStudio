@@ -2,9 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Suspense, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Dialog } from '@loom-studio/ui'
 import styles from './rule-inspector-dialog.module.scss'
-import { ResourceDownloadsLauncher } from '../resource-downloads/resource-downloads-launcher.js'
 import { notify } from '../../shared/notifications/index.js'
-import { buildStudioLogPath } from '../../shared/studio-shell/studio-route.js'
 import { ExtensionWorkspace } from '../../features/extension-renderers/ui/extension-workspace.js'
 import { ScriptManagementPanel } from '../../features/loom-scripts/ui/script-management-panel.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
@@ -40,9 +38,8 @@ export function RendererWorkspacePanel(props: Props) {
   const requestedFilter = props.searchParams.get('scriptFilter')
   const initialFilter = requestedFilter === 'rules' || requestedFilter === 'runtime' ? requestedFilter : undefined
   return <><ExtensionWorkspace {...props}
-    headerActions={<>{props.headerActions}{props.resourceDownloadsApi && <ResourceDownloadsLauncher compact initiallyOpen={props.searchParams.get('downloads') === '1'} api={props.resourceDownloadsApi} kind="extension"
-      onChanged={async () => { await props.onRefreshExtensions(); await props.onRelatedResourceChanged?.() }}
-      onOpenLogs={() => props.onNavigate(buildStudioLogPath({ source: 'server' }))} />}</>}
+    resourceDownloadsApi={props.resourceDownloadsApi}
+    headerActions={props.headerActions}
     onSaveResourceCopy={props.promptResourceApi ? async input => {
       const result = await props.promptResourceApi!.duplicate(input)
       copiedResources.current.set(result.resource.id, { rootNodeId: result.resource.rootNode.id, kind: result.resource.resourceKind })

@@ -1,0 +1,117 @@
+.dialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(520px, 100%);
+  min-width: 0;
+}
+
+.warningBox {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--loom-radius-control, 8px);
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  font-size: 13px;
+  line-height: 1.5;
+
+  p {
+    margin: 0;
+    color: var(--loom-color-text-secondary, #cbd5e1);
+
+    strong {
+      color: var(--loom-color-text, #f8fafc);
+    }
+  }
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  color: #eab308;
+  margin-top: 2px;
+}
+
+.moduleSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--loom-color-text-subtle, #94a3b8);
+  margin: 0;
+}
+
+.moduleList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.moduleCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--loom-radius-control, 6px);
+  background: var(--loom-color-surface-subtle, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--loom-color-border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.moduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.moduleName {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--loom-color-text, #f1f5f9);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.runtimeBadge {
+  font-size: 11px;
+  font-family: monospace;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--loom-color-surface-hover, rgba(255, 255, 255, 0.08));
+  color: var(--loom-color-text-secondary, #cbd5e1);
+  border: 1px solid var(--loom-color-border-subtle, rgba(255, 255, 255, 0.1));
+}
+
+.capabilitiesList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.capabilityBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(99, 102, 241, 0.12);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  font-family: monospace;
+}
+
+.noCapabilities {
+  font-size: 12px;
+  color: var(--loom-color-text-subtle, #94a3b8);
+  font-style: italic;
+  margin: 0;
+}

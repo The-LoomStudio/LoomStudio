@@ -20,6 +20,7 @@ import type {
   RemovedExtensionPackageResources,
 } from '@loom-studio/kernel'
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
+import type { Logger } from '@loom-studio/logging'
 import { promptResourceDisplayMetadataSchema, type JsonValue } from '@loom-studio/shared'
 import { extensionInstallationId, type ExtensionInstallationTarget, type ListExtensionInstallationsResult } from '@loom-studio/application-runtime'
 import { parseExtensionManifest } from '@loom-studio/extension-host'
@@ -82,6 +83,7 @@ export type ServerExtensionManager = ExtensionManagementService & {
 
 export function createServerExtensionManager(options: {
   host: ExtensionHost
+  logger?: Logger
   onModuleBatchCompleted?(result: import('@loom-studio/kernel').ExtensionModuleBatchResult): void
   diagnostics: DiagnosticsRegistry
   stateStore: ExtensionStateStore
@@ -551,6 +553,10 @@ export function createServerExtensionManager(options: {
       }
       try {
         const imported = await options.importPackageResources(payload)
+        options.logger?.info(`Extension resources imported · ${packageId}@${record.manifest.version}`, {
+          event: 'extension.resources.imported',
+          data: { packageId, version: record.manifest.version, target: target.kind },
+        })
         return { packageId, version: record.manifest.version, ...imported }
       } catch (error) {
         if (!mode) throw error
@@ -695,6 +701,10 @@ export function createServerExtensionManager(options: {
         batchId: randomUUID(), packageId: input.packageId, target: input.target ?? { kind: 'global' }, enabled: input.enabled, state: 'queued', results: [],
       }
       moduleBatches.set(batch.batchId, batch)
+      options.logger?.info(`Extension module batch started · ${batch.batchId}`, {
+        event: 'extension.module.batch_started',
+        data: { batchId: batch.batchId, packageId: input.packageId, target: input.target?.kind ?? 'global', enabled: input.enabled, moduleCount: ids.length },
+      })
       void serialize(async () => {
         batch.state = 'running'
         for (const item of request.modules) {
@@ -722,6 +732,17 @@ export function createServerExtensionManager(options: {
           }
         }
         batch.state = 'completed'
+        options.logger?.info(`Extension module batch completed · ${batch.batchId}`, {
+          event: 'extension.module.batch_completed',
+          data: {
+            batchId: batch.batchId,
+            packageId: batch.packageId,
+            target: batch.target.kind,
+            enabled: batch.enabled,
+            resultCount: batch.results.length,
+            failedCount: batch.results.filter(item => item.status === 'failed').length,
+          },
+        })
         const completed = [...moduleBatches.values()].filter(item => item.state === 'completed')
         for (const old of completed.slice(0, Math.max(0, completed.length - 100))) moduleBatches.delete(old.batchId)
         try { options.onModuleBatchCompleted?.(structuredClone(batch)) }
@@ -827,7 +848,19 @@ export function createServerExtensionManager(options: {
             await commitCandidate(candidate, candidate.manifest.id === batch.replacement)
             installed.push({ packageId: candidate.manifest.id, version: candidate.manifest.version })
             await importNewGlobalResources(candidate.manifest.id)
+            options.logger?.info(`Extension installed · ${candidate.manifest.id}@${candidate.manifest.version}`, {
+              event: 'extension.install.completed',
+              data: { packageId: candidate.manifest.id, version: candidate.manifest.version },
+            })
           } catch (error) {
+            options.logger?.error(`Extension install failed · ${candidate.manifest.id}`, {
+              event: 'extension.install.failed',
+              data: {
+                packageId: candidate.manifest.id,
+                version: candidate.manifest.version,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            })
             if (error instanceof ExtensionInstallFailure && error.codeCommitted && !installed.some(item => item.packageId === candidate.manifest.id)) {
               installed.push({ packageId: candidate.manifest.id, version: candidate.manifest.version })
             }
@@ -1049,6 +1082,10 @@ export function createServerExtensionManager(options: {
       await options.uninstallInstallation({ packageId: input.packageId, target, expectedInstallationVersion: input.expectedInstallationVersion })
       await forgetCardPackage(record, target)
       // ponytail: Shared archives survive uninstall; reclaim only after an installation-aware cache collector exists.
+      options.logger?.info(`Card extension package uninstalled · ${input.packageId}`, {
+        event: 'extension.card_package.uninstalled',
+        data: { packageId: input.packageId, cardId: input.cardId, version: record.manifest.version },
+      })
       return { packageId: input.packageId, version: record.manifest.version, target, removed: true, resourcesRetained: true }
     }),
 
@@ -1123,6 +1160,10 @@ export function createServerExtensionManager(options: {
       }
       catalog.delete(packageId)
       await rm(join(options.installedDirectory, '.history', packageId), { recursive: true, force: true })
+      options.logger?.info(`Extension package uninstalled · ${packageId}@${record.manifest.version}`, {
+        event: 'extension.uninstall.completed',
+        data: { packageId, version: record.manifest.version, deleteData: Boolean(deleteData) },
+      })
       return {
         packageId,
         version: record.manifest.version,

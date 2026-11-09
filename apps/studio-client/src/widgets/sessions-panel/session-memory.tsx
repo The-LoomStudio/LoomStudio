@@ -169,7 +169,7 @@ function SessionMemoryContent({ api, sessionId, branchId, onSaved, navigation }:
       </div>)}
       </div>
     </div>
-    <Dialog open={!!edit} title="编辑会话摘要" description="修改仅保存在草稿中，点击保存后才用于后续请求。保存会改变上下文，可能降低提示词缓存命中率，建议集中修改后保存。"
+    <Dialog open={!!edit} title="编辑会话摘要" description="编辑当前会话的历史摘要。"
       onClose={() => { if (!savingSummary && edit?.content === edit?.original) setEdit(undefined) }}
       dismissible={!savingSummary && edit?.content === edit?.original}
       actions={<><Button variant="secondary" disabled={savingSummary} onClick={() => setEdit(undefined)}>{edit?.content !== edit?.original ? '放弃修改' : '取消'}</Button>
@@ -178,23 +178,23 @@ function SessionMemoryContent({ api, sessionId, branchId, onSaved, navigation }:
         onChange={content => setEdit(value => value && { ...value, content })} onCommit={content => setEdit(value => value && { ...value, content })}
         clearLabel="清空" clearedLabel="已清空" copiedLabel="已复制" copyFailedLabel="复制失败" copyLabel="复制全文"
         restoreInitialLabel="恢复初始内容" undoEditLabel="撤销编辑" undoLabel="撤销" minHeight={360} />}
-      <p className={styles.hint}>摘要上限：{memory?.policy.maxTokens} Token。修订保留原有总结范围，不会压缩新的会话记录。</p>
+      <p className={styles.hint}>摘要上限：{memory?.policy.maxTokens} Token</p>
       {editError && <p className={styles.error} role="alert">{editError}</p>}
     </Dialog>
     <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} dismissible={busy !== 'save'} closeOnBackdrop title="总结设置"
-      description="仅应用于当前会话。关闭自动总结不会清除已有摘要。"
+      description="配置当前会话的自动总结策略。"
       actions={<><Button variant="secondary" disabled={busy === 'save'} onClick={() => setSettingsOpen(false)}>关闭</Button><Button type="submit" form={formId} disabled={!dirty || !!busy}>{busy === 'save' ? '正在保存…' : dirty ? '保存设置' : '已保存'}</Button></>}>
       {draft && <form id={formId} onSubmit={save} className={styles.settings}>
         <fieldset disabled={busy === 'save'}>
-          <div className={styles.option}><Checkbox label="自动总结" checked={draft.enabled} onChange={event => changePolicy({ ...draft, enabled: event.target.checked })} /><p>在下一次输入时检查已完成的工作；正式剧情输入按 Narrative 正文楼层触发；Session 上下文达到 Token 阈值也会触发，不要求正文达到指定楼层。</p></div>
+          <div className={styles.option}><Checkbox label="自动总结" checked={draft.enabled} onChange={event => changePolicy({ ...draft, enabled: event.target.checked })} /><p>达到设定的楼层或 Token 阈值时自动生成历史摘要。</p></div>
           <div className={styles.fields}>{fields.map(field => <label key={field.key}>
             <span>{field.label}</span>
             <input data-loom-ui-text-input="" type="number" min={field.key === 'triggerTokens' ? draft.maxTokens + 1 : field.min} max={field.key === 'bufferFloors' ? draft.triggerFloors - 1 : undefined} step={1} required value={Number.isNaN(draft[field.key]) ? '' : draft[field.key]}
               disabled={!memory?.session.timelineId && (field.key === 'bufferFloors' || field.key === 'triggerFloors')}
               onChange={event => changePolicy({ ...draft, [field.key]: event.target.valueAsNumber })} />
           </label>)}</div>
-          <p className={styles.hint}>{memory?.session.timelineId ? '楼层仅指 Narrative 正文。缓冲 8 楼会从这 8 楼对应的最早 Session Run 开始，完整保留此后的消息与工具记录。缓冲为 0 时不保留额外工作段；缓冲须少于触发楼层。' : '独立会话使用 Token 阈值，楼层选项不参与触发。'} 触发 Token 数须大于摘要上限。</p>
-          <div className={styles.option}><Checkbox label="异步整理，不阻塞下一次写作" checked={draft.asynchronous} onChange={event => changePolicy({ ...draft, asynchronous: event.target.checked })} /><p>后台整理完毕后，在安全时机采用；期间新增的工作保留完整上下文。手动“立即总结”直接整理并尝试采用。</p></div>
+          <p className={styles.hint}>触发 Token 数须大于摘要上限；缓冲楼层须小于触发楼层。</p>
+          <div className={styles.option}><Checkbox label="异步总结" checked={draft.asynchronous} onChange={event => changePolicy({ ...draft, asynchronous: event.target.checked })} /><p>在后台生成摘要，不阻塞主会话交互。</p></div>
         </fieldset>
         {(error || saved) && <p role={error ? 'alert' : 'status'} className={error ? styles.error : styles.hint}>{error || '设置已保存。'}</p>}
       </form>}

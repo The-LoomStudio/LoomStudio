@@ -31,7 +31,7 @@ export type HistoryAssetTarget = {
   layoutId: 'preset' | 'resources'
 }
 
-export function useStudioState(transportLogger: Logger) {
+export function useStudioState(transportLogger: Logger, runtimeLogger?: Logger) {
   const [locale, updateLocale] = useState<Locale>(readStudioLocale)
   function setLocale(next: Locale) {
     void operations.runLatest('settings', async ({ isCurrent }) => {
@@ -142,7 +142,7 @@ export function useStudioState(transportLogger: Logger) {
     },
     runLatestAction: action => operations.runLatest('session', action).then(() => undefined),
     t,
-    logger: transportLogger,
+    logger: runtimeLogger ?? transportLogger,
   })
 
   const playerProfileQuery = usePlayerProfileQuery(api.states, endpoint,

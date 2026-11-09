@@ -5,10 +5,9 @@ import { javascript } from '@codemirror/lang-javascript'
 import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, LanguageDescription, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { getSearchQuery, search, searchKeymap, searchPanelOpen, SearchQuery, setSearchQuery } from '@codemirror/search'
-import { Annotation, Compartment, EditorState, RangeSet, RangeSetBuilder, StateField, Text, Transaction } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, RangeSet, RangeSetBuilder, Transaction } from '@codemirror/state'
 import {
   Decoration,
-  type DecorationSet,
   drawSelection,
   EditorView,
   GutterMarker,

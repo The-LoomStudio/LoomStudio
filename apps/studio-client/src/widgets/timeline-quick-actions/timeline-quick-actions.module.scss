@@ -37,11 +37,26 @@
   box-sizing: border-box;
   width: min(400px, calc(100vw - 32px));
   text-align: left;
-  padding: 12px 24px 20px;
+  padding: 16px 24px 20px;
   max-height: calc(100dvh - 160px);
   overflow-y: auto;
 }
-.island[data-expanded='true'] .header { height: 64px; padding: 12px 24px 8px; box-sizing: border-box; }
+.island[data-expanded='true'] .header {
+  position: relative;
+  height: 64px;
+  padding: 12px 24px;
+  box-sizing: border-box;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 24px;
+    right: 24px;
+    height: 1px;
+    background: var(--loom-color-divider);
+  }
+}
 .island[data-expanded='true'] .character { padding: 0; gap: 10px; }
 .island[data-expanded='true'] .character > span { display: inline; }
 .island[data-expanded='true'] .expand { padding-right: 0; }

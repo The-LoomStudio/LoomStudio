@@ -88,6 +88,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     const pending = previous?.api === input.api && previous.signature === signature ? previous
       : { api: input.api, signature, requestId: createId() }
     pendingSends.current.set(request.agentSessionId, pending)
+    input.logger?.info('Agent run started', { event: 'agent.run.started', data: { runId: pending.requestId, sessionId: request.agentSessionId } })
     const started = await input.api.agentSessions.createRun({ ...request, requestId: pending.requestId })
     if (pendingSends.current.get(request.agentSessionId) === pending) pendingSends.current.delete(request.agentSessionId)
     return started
@@ -1295,6 +1296,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     const run = activeAgentRun
     if (!run || run.status !== 'running') return
     const result = await input.api.agentSessions.cancelRun(run.runId, 'user-stop')
+    input.logger?.info('Agent run cancelled by user', { event: 'agent.run.cancelled', data: { runId: run.runId } })
     setActiveAgentRun(current => current?.runId === run.runId ? { ...current, status: result.state } : current)
   }
 
@@ -1400,6 +1402,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     let previewCardId = input.selectedCardId
     await input.runAction(async () => {
       await input.api.narratives.delete(timelineId)
+      input.logger?.info(`Narrative timeline deleted · ${timelineId}`, { event: 'narrative.timeline.deleted', data: { timelineId } })
       if (!ownsCollectionSource()) return
       deleted = true
       setAllTimelines(current => current.filter(item => item.id !== timelineId))
@@ -1445,6 +1448,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     let deleted = false
     await input.runAgentAction(async () => {
       await input.api.agentSessions.delete(agentSessionId)
+      input.logger?.info(`Agent session deleted · ${agentSessionId}`, { event: 'agent.session.deleted', data: { sessionId: agentSessionId } })
       if (!ownsCollectionSource()) return
       setAgentSessions(current => current.filter(item => item.id !== agentSessionId))
       setAllAgentSessions(current => current.filter(item => item.id !== agentSessionId))

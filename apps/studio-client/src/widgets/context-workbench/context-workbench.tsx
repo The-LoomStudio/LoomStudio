@@ -247,11 +247,34 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   function handleSelectNode(id: string) {
     setAssetPane('resources', props.workspaceId, 'detail')
-    if (target.temporary) setTemporarySelection({
-      resourceId: props.routeResourceId!, nodeId: id,
-      routeAssetId: props.routeAssetId, requestId: props.searchMatch?.requestId,
-    })
-    else openAssetDetail('resources', props.workspaceId, id)
+    if (target.temporary) {
+      setTemporarySelection({
+        resourceId: props.routeResourceId!, nodeId: id,
+        routeAssetId: props.routeAssetId, requestId: props.searchMatch?.requestId,
+      })
+      const pathNodes = findContextAssetPath(target.target ? [target.target.rootNode] : workbenchNodes, id)
+      if (pathNodes.length > 1) {
+        const expanded = new Set(temporaryExpandedIds)
+        for (const p of pathNodes.slice(0, -1)) expanded.add(p.id)
+        setTemporaryExpansion({ key: revealKey, ids: [...expanded] })
+      }
+    } else {
+      openAssetDetail('resources', props.workspaceId, id)
+      const pathNodes = findContextAssetPath(workbenchNodes, id)
+      if (pathNodes.length > 1) {
+        const expanded = new Set(explorerView.expandedIds ?? [])
+        let changed = false
+        for (const pathNode of pathNodes.slice(0, -1)) {
+          if (!expanded.has(pathNode.id)) {
+            expanded.add(pathNode.id)
+            changed = true
+          }
+        }
+        if (changed) {
+          setExpandedIds('resources', props.workspaceId, [...expanded])
+        }
+      }
+    }
   }
 
   async function handleDeleteResource(resourceId: string) {

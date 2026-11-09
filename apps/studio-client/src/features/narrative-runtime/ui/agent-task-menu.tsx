@@ -82,9 +82,12 @@ export function AgentTaskMenu(props: {
     .filter(item => item.count > 0)
   const summary = tasks.error ? tasks.error.message : tasks.isPending && props.timelineId ? t('agentTasks.loading')
     : counts.length ? counts.map(item => `${t(`agentTasks.${item.state}`)} · ${item.count}`).join(' / ')
-      : currentTasks.length ? t(`agentTasks.${currentTasks[0].state}`) : t('agentTasks.empty')
+      : undefined
   const phase = resolveAgentRuntimePhase(props.activeRun, props.messages, t)
   const matchingRun = currentTasks.find(task => task.runId === props.activeRun?.runId)
+  const summaryText = summary
+    ? `${summary}${matchingRun && counts.length === 1 && counts[0].count === 1 && phase.kind !== 'idle' ? ` · ${phase.text}` : ''}`
+    : undefined
   const hasRunningTask = props.activeRun?.status === 'running' && !props.activeRun.approval
     || currentTasks.some(task => task.runId !== props.activeRun?.runId && task.state === 'running')
   const hasFailedTask = Boolean(props.activeRun?.error) || currentTasks.some(task => task.state === 'failed' || task.state === 'interrupted')
@@ -156,7 +159,7 @@ export function AgentTaskMenu(props: {
           {StatusIcon && <StatusIcon aria-hidden="true" className={hasRunningTask ? styles.runningIcon : undefined} />}<span>{t('agentTasks.current')}</span>
           <ChevronUp className={styles.chevron} aria-hidden="true" />
         </button>
-        <span className={styles.summary} title={summary}>{summary}{matchingRun && counts.length === 1 && counts[0].count === 1 && phase.kind !== 'idle' ? ` · ${phase.text}` : ''}</span>
+        {summaryText ? <span className={styles.summary} title={summaryText}>{summaryText}</span> : null}
       </div>
       <div className={styles.expansion} data-open={open} inert={!open} aria-hidden={!open}>
         <div className={styles.clip}>
@@ -168,7 +171,6 @@ export function AgentTaskMenu(props: {
       </div>
     </section>
     <Dialog open={allOpen} title={t('agentTasks.all')} onClose={() => setAllOpen(false)}
-      actions={<Button onClick={() => setAllOpen(false)}>{t('agentTasks.close')}</Button>}
       headerActions={<IconButton aria-label={t('agentTasks.refresh')} disabled={allTasks.isFetching} onClick={() => void allTasks.refetch()}><RefreshCw aria-hidden="true" /></IconButton>}>
       {renderTasks(allTasks)}
     </Dialog>

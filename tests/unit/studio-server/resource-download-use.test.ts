@@ -41,7 +41,7 @@ async function setup() {
   for (let attempt = 0; attempt < 100 && downloads.get(task.id).status !== 'ready'; attempt++) await new Promise(resolve => setTimeout(resolve, 5))
   expect(downloads.get(task.id).status).toBe('ready')
   const use = createResourceDownloadUse({ downloads, runtime, cards, extensions: {} as never })
-  return { directory, engine, assets, runtime, downloads, use, task, card: imported.card, next, avatar, setPayload: (value: Uint8Array) => { payload = value } }
+  return { directory, engine, assets, runtime, downloads, cards, use, task, card: imported.card, next, avatar, setPayload: (value: Uint8Array) => { payload = value } }
 }
 
 describe('downloaded Card adoption', () => {
@@ -84,5 +84,25 @@ describe('downloaded Card adoption', () => {
     await writeFile(f.downloads.readArtifact(f.task.id).path, encodeCardBundleZip({ artifact: f.next, avatar: f.avatar, background: f.avatar }))
     await expect(f.use.applyCardUpdate({ id: f.task.id, cardId: f.card.id, expectedVersion: preview.expectedVersion, expectedFingerprint: preview.fingerprint }, 'test')).rejects.toThrow('下载包已变化')
     expect((await f.runtime.getCard({ cardId: f.card.id })).card).toEqual(f.card)
+  }))
+
+  it('emits structured operational log events for adoption and update', async () => fixture(async f => {
+    const records: Array<{ event?: string; data?: Record<string, unknown> }> = []
+    const logger = {
+      info: (_msg: string, meta?: any) => { if (meta) records.push(meta) },
+      error: (_msg: string, meta?: any) => { if (meta) records.push(meta) },
+      warn: () => {},
+      debug: () => {},
+      child: () => logger,
+    } as any
+    const use = createResourceDownloadUse({ downloads: f.downloads, runtime: f.runtime, cards: f.cards, extensions: {} as never, logger })
+    const preview = await use.previewCardUpdate({ id: f.task.id, cardId: f.card.id })
+    await use.applyCardUpdate({ id: f.task.id, cardId: f.card.id, expectedVersion: preview.expectedVersion, expectedFingerprint: preview.fingerprint }, 'test')
+    expect(records.map(r => r.event)).toContain('resource.card.updated')
+    expect(records.find(r => r.event === 'resource.card.updated')?.data).toMatchObject({
+      cardId: f.card.id,
+      taskId: f.task.id,
+      durationMs: expect.any(Number),
+    })
   }))
 })

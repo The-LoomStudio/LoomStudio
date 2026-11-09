@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { AgentTranscriptEntry, InvokeAgentTurnResult } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { notifyAiRunFinished } from '../../../shared/browser/tab-attention.js'
 import { runAgentTurn, type ActiveAgentRun, type ObservedRun, type RunRecovery } from './agent-run-observer.js'
 
 type Input = {
@@ -73,13 +74,19 @@ export function useSessionRun(input: Input) {
       } catch (error) {
         if (!owns(run)) return
         if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'suspended') {
+          if (run.status !== 'cancelled') {
+            notifyAiRunFinished('failed')
+          }
           if (input.kind === 'sidebar' && run.status !== 'cancelled') input.reportFailure(error)
           await settle(run, error)
         } else setRecovery({ target: run.target, status: 'disconnected', error: message(error) })
         throw error
       }
       if (!owns(run)) return
-      if (result) input.completed(run, result)
+      if (result) {
+        notifyAiRunFinished('completed')
+        input.completed(run, result)
+      }
       const acknowledge = () => { void run.api.agentSessions.acknowledgeRunCompletion(run.runId).catch(input.reportAcknowledgement) }
       if (result && input.kind === 'sidebar') acknowledge()
       if (input.kind === 'timeline' || run.status === 'cancelled') await settle(run)

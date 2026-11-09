@@ -1,9 +1,10 @@
-import { Copy, Link2, Plus, RotateCcw, Save, Trash2, Upload } from 'lucide-react'
+import { Copy, Link2, Plus, RotateCcw, Save, SquareArrowRightEnter, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { Dialog } from '@loom-studio/ui'
 import { notify } from '../../../../shared/notifications/index.js'
+import { confirm } from '../../../../shared/ui/confirm-dialog/index.js'
 import styles from './prompt-resource-toolbar.module.scss'
 import { TokenSnapshotControl, TokenSnapshotSummary } from '../resource-token-summary.js'
 import type { ResourceTokenSnapshot } from '../../model/use-resource-token-snapshot.js'
@@ -90,7 +91,11 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
             type="button"
             disabled={savingDraft}
             onClick={() => {
-              if (window.confirm(props.t('context.discardDraftConfirm'))) props.onDiscardDraft(selected.id)
+              void (async () => {
+                if (await confirm({ title: props.t('context.discardDraft'), message: props.t('context.discardDraftConfirm'), danger: true })) {
+                  props.onDiscardDraft(selected.id)
+                }
+              })()
             }}
           >
             <RotateCcw aria-hidden="true" />
@@ -120,7 +125,7 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
           type="button"
           onClick={() => importInputRef.current?.click()}
         >
-          <Upload aria-hidden="true" />
+          <SquareArrowRightEnter aria-hidden="true" />
         </button>
         {props.onBindResources ? (
           <button

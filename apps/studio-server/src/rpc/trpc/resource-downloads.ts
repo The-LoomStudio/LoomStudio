@@ -7,6 +7,10 @@ const procedure = serviceProcedure.use(({ ctx, next }) => {
 const id = z.object({ id: z.string().min(1) })
 export const resourceDownloadsRouter = t.router({
   resolve: procedure.input(z.object({ url: z.string().min(1), kind: z.enum(['extension', 'card', 'preset']), ref: z.string().optional(), adapterId: z.string().optional() })).mutation(({ ctx, input }) => ctx.downloads.resolve(input)),
+  stageUpload: procedure.input(z.object({ fileName: z.string().min(1), base64: z.string().min(1), kind: z.enum(['extension', 'card', 'preset']) })).mutation(({ ctx, input }) => {
+    const bytes = Buffer.from(input.base64, 'base64')
+    return ctx.downloads.stageUpload({ fileName: input.fileName, bytes, kind: input.kind })
+  }),
   start: procedure.input(z.object({ candidateId: z.string().min(1) })).mutation(({ ctx, input }) => ctx.downloads.start(input)),
   list: procedure.query(({ ctx }) => ctx.downloads.list()),
   get: procedure.input(id).query(({ ctx, input }) => ctx.downloads.get(input.id)),

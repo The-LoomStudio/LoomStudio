@@ -82,3 +82,124 @@
     font: inherit;
   }
 }
+
+.urlRow {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+
+  label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  button {
+    height: 38px;
+    white-space: nowrap;
+    padding: 0 12px;
+  }
+}
+
+.candidatesList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.candidateCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--loom-radius-control, 6px);
+  border: 1px solid var(--loom-color-border-subtle, rgba(255, 255, 255, 0.1));
+  background: var(--loom-color-surface-subtle, rgba(255, 255, 255, 0.03));
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover {
+    background: var(--loom-color-surface-hover, rgba(255, 255, 255, 0.06));
+    border-color: var(--loom-color-border, rgba(255, 255, 255, 0.2));
+  }
+
+  &[data-selected='true'] {
+    border-color: var(--loom-color-primary, #6366f1);
+    background: var(--loom-color-primary-subtle, rgba(99, 102, 241, 0.1));
+  }
+
+  input[type='radio'] {
+    margin-top: 3px;
+    accent-color: var(--loom-color-primary, #6366f1);
+  }
+}
+
+.candidateContent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.candidateHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.candidateTitle {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.candidateVersion {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--loom-color-text-secondary, #94a3b8);
+}
+
+.candidateBadge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+
+  &.recommended {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+
+  &.prerelease {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+}
+
+.candidateDesc {
+  font-size: 12px;
+  color: var(--loom-color-text-secondary, #94a3b8);
+  margin: 0;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.downloadStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--loom-color-surface-subtle, rgba(255, 255, 255, 0.03));
+  border-radius: var(--loom-radius-control, 6px);
+  font-size: 13px;
+  color: var(--loom-color-text-secondary, #94a3b8);
+}

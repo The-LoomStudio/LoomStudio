@@ -58,9 +58,33 @@
 .heading { padding: 16px 24px; gap: 12px; }
 .tabs { padding-inline: 24px; }
 .content { padding: 16px 24px 24px; scrollbar-gutter: stable; }
-.treeToggle { display: grid; place-items: center; width: 24px; height: 24px; flex-shrink: 0; border: 0; padding: 0; background: transparent; color: var(--loom-color-text-subtle); cursor: pointer; }
-.treeToggle[aria-pressed='true'] { color: var(--loom-color-accent); }
-.treeToggle:disabled { opacity: 0.45; cursor: default; }
+.treeToggle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
+  opacity: 0.38;
+  cursor: pointer;
+  transition: opacity 0.15s ease, color 0.15s ease;
+
+  &:hover {
+    opacity: 0.85;
+  }
+}
+.treeToggle[aria-pressed='true'] {
+  color: var(--loom-color-accent);
+  opacity: 1;
+
+  &:hover {
+    opacity: 0.9;
+  }
+}
+.treeToggle:disabled { opacity: 0.25; cursor: default; }
 .treeToggle svg { width: 18px; height: 18px; }
 @media (max-width: 760px) { .heading, .content { padding-inline: 16px; } .tabs { padding-inline: 16px; } }
 

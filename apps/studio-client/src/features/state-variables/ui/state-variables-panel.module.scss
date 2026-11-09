@@ -627,6 +627,7 @@
     code {
       grid-column: 2 / -1;
       overflow-wrap: anywhere;
+      white-space: pre-wrap;
       color: var(--loom-color-text-muted);
       font: 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }

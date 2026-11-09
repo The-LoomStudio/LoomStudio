@@ -104,4 +104,19 @@ describe('LongTextEditor document session', () => {
     hooks.values = []
     expect(render('preview', 'Other document').editor).toBeUndefined()
   })
+
+  it('enables the diff action only when changes exist', () => {
+    const collect = (value: unknown): Element[] => {
+      if (Array.isArray(value)) return value.flatMap(collect)
+      if (!isValidElement<Record<string, unknown>>(value)) return []
+      return [value, ...Object.values(value.props).flatMap(collect)]
+    }
+    const initialTree = collect(render('source', 'Original').tree)
+    const diffInitial = initialTree.find(item => item.props['aria-label'] === '查看差异')
+    expect(diffInitial?.props.disabled).toBe(true)
+
+    const editedTree = collect(render('source', 'Modified').tree)
+    const diffEdited = editedTree.find(item => item.props['aria-label'] === '查看差异')
+    expect(diffEdited?.props.disabled).toBe(false)
+  })
 })

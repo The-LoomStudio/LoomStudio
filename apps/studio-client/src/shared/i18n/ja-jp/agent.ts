@@ -172,4 +172,12 @@ export const messages = {
   'agent.tool.preparing': '引数を準備中・未実行',
   'agent.tool.running': '実行中',
   'agent.tool.success': '成功',
+  'composer.contextInfo.aria': 'コンテキスト情報、0%、統計データなし',
+  'composer.contextInfo.title': 'コンテキスト情報',
+  'composer.contextInfo.window': 'コンテキストウィンドウ',
+  'composer.contextInfo.currentUsage': '現在の使用量',
+  'composer.contextInfo.noData': 'データなし',
+  'composer.contextInfo.modelLimit': 'モデル上限',
+  'composer.contextInfo.unknown': '不明',
+  'composer.contextInfo.sessionTotal': 'セッション累積消費',
 } satisfies Record<keyof typeof zhCN, string>

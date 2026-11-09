@@ -172,4 +172,12 @@ export const messages = {
   'agent.tool.preparing': '인수 준비 중 · 아직 실행되지 않음',
   'agent.tool.running': '실행 중',
   'agent.tool.success': '성공',
+  'composer.contextInfo.aria': '컨텍스트 정보, 0%, 통계 데이터 없음',
+  'composer.contextInfo.title': '컨텍스트 정보',
+  'composer.contextInfo.window': '컨텍스트 윈도우',
+  'composer.contextInfo.currentUsage': '현재 사용량',
+  'composer.contextInfo.noData': '데이터 없음',
+  'composer.contextInfo.modelLimit': '모델 한도',
+  'composer.contextInfo.unknown': '알 수 없음',
+  'composer.contextInfo.sessionTotal': '세션 누적 소비',
 } satisfies Record<keyof typeof zhCN, string>

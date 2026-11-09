@@ -3,6 +3,7 @@ import { isPng, readCardPngArchive, readPolyglotArchive } from '../codecs/card-p
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
+import type { Logger } from '@loom-studio/logging'
 import type { ResourceDownloadService } from '../resource-downloads/service.js'
 import type { createServerExtensionManager } from '../extensions/extension-manager.js'
 import type { createCardTransferService } from '../codecs/card-transfer-service.js'
@@ -13,6 +14,7 @@ export function createResourceDownloadUse(options: {
   extensions: ReturnType<typeof createServerExtensionManager>
   runtime: ApplicationRuntime
   cards: ReturnType<typeof createCardTransferService>
+  logger?: Logger
 }) {
   const prepared = new Map<string, { taskId: string; expires: number; digest: string; extensionToken?: string; cardTarget?: { id: string; version: number } }>()
   const completed = new Map<string, { kind: string; id?: string; message: string; warning?: string }>()
@@ -43,8 +45,22 @@ export function createResourceDownloadUse(options: {
       return options.runtime.previewPromptPackageUpdate({ resourceId: input.resourceId, artifact: await promptArtifact(input.id) })
     },
     async applyPromptUpdate(input: { id: string; resourceId: string; expectedVersion: number; fingerprint: string; keepLocal?: boolean }, clientId: string) {
-      const result = await options.runtime.applyPromptPackageUpdate({ ...input, artifact: await promptArtifact(input.id) }, { clientId })
-      return { ...result, warning: await trackAdopted(input.id, input.resourceId) }
+      const startedAt = Date.now()
+      try {
+        const result = await options.runtime.applyPromptPackageUpdate({ ...input, artifact: await promptArtifact(input.id) }, { clientId })
+        const warning = await trackAdopted(input.id, input.resourceId)
+        options.logger?.info(`Prompt package updated · ${input.resourceId}`, {
+          event: 'resource.prompt.updated',
+          data: { resourceId: input.resourceId, taskId: input.id, durationMs: Date.now() - startedAt },
+        })
+        return { ...result, warning }
+      } catch (error) {
+        options.logger?.error(`Prompt package update failed · ${input.resourceId}`, {
+          event: 'resource.prompt.failed',
+          data: { resourceId: input.resourceId, taskId: input.id, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) },
+        })
+        throw error
+      }
     },
     async previewCardUpdate(input: { id: string; cardId: string }) {
       const { card } = await options.runtime.getCard({ cardId: input.cardId })
@@ -53,14 +69,28 @@ export function createResourceDownloadUse(options: {
       return { ...preview, fingerprint: cardFingerprint(preview.fingerprint, digest) }
     },
     async applyCardUpdate(input: { id: string; cardId: string; expectedVersion: number; expectedFingerprint: string; keepPromptResourceIds?: string[]; keepCardFields?: string[]; keepMedia?: boolean }, clientId: string) {
-      const { bundle, digest } = await cardArchive(input.id)
-      const preview = await options.runtime.previewCardPackageUpdate({ cardId: input.cardId, expectedVersion: input.expectedVersion, artifact: bundle.artifact })
-      if (cardFingerprint(preview.fingerprint, digest) !== input.expectedFingerprint) throw new Error('角色或下载包已变化，请重新读取差异')
-      if (preview.blockingChanges.length) throw new Error(preview.blockingChanges.join('\n'))
-      const hostPreparedMedia = input.keepMedia ? undefined : await options.cards.prepareUpdateMedia(bundle, clientId)
-      const keepCardFields = input.keepCardFields as Parameters<ApplicationRuntime['applyCardPackageUpdate']>[0]['keepCardFields']
-      const result = await options.runtime.applyCardPackageUpdate({ ...input, expectedFingerprint: preview.fingerprint, keepCardFields, artifact: bundle.artifact, hostPreparedMedia }, { clientId })
-      return { ...result, warning: await trackAdopted(input.id, input.cardId) }
+      const startedAt = Date.now()
+      try {
+        const { bundle, digest } = await cardArchive(input.id)
+        const preview = await options.runtime.previewCardPackageUpdate({ cardId: input.cardId, expectedVersion: input.expectedVersion, artifact: bundle.artifact })
+        if (cardFingerprint(preview.fingerprint, digest) !== input.expectedFingerprint) throw new Error('角色或下载包已变化，请重新读取差异')
+        if (preview.blockingChanges.length) throw new Error(preview.blockingChanges.join('\n'))
+        const hostPreparedMedia = input.keepMedia ? undefined : await options.cards.prepareUpdateMedia(bundle, clientId)
+        const keepCardFields = input.keepCardFields as Parameters<ApplicationRuntime['applyCardPackageUpdate']>[0]['keepCardFields']
+        const result = await options.runtime.applyCardPackageUpdate({ ...input, expectedFingerprint: preview.fingerprint, keepCardFields, artifact: bundle.artifact, hostPreparedMedia }, { clientId })
+        const warning = await trackAdopted(input.id, input.cardId)
+        options.logger?.info(`Card package updated · ${input.cardId}`, {
+          event: 'resource.card.updated',
+          data: { cardId: input.cardId, taskId: input.id, durationMs: Date.now() - startedAt },
+        })
+        return { ...result, warning }
+      } catch (error) {
+        options.logger?.error(`Card package update failed · ${input.cardId}`, {
+          event: 'resource.card.failed',
+          data: { cardId: input.cardId, taskId: input.id, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) },
+        })
+        throw error
+      }
     },
     async preview(taskId: string, cardId?: string) {
       const artifact = options.downloads.readArtifact(taskId)
@@ -86,6 +116,11 @@ export function createResourceDownloadUse(options: {
       inFlight.add(taskId)
       // Consume before side effects. A failed import may have committed: do not replay automatically.
       prepared.delete(token)
+      const startedAt = Date.now()
+      options.logger?.info('Resource adoption started', {
+        event: 'resource.adopt.started',
+        data: { taskId },
+      })
       try {
         const artifact = options.downloads.readArtifact(taskId)
         const bytes = await readFile(artifact.path)
@@ -114,7 +149,17 @@ export function createResourceDownloadUse(options: {
         completed.set(token, result)
         result.warning = await trackAdopted(taskId, result.id)
         if (result.warning) result.message += `；${result.warning}`
+        options.logger?.info(`Resource adopted · ${result.kind}${result.id ? ` · ${result.id}` : ''}`, {
+          event: 'resource.adopt.completed',
+          data: { taskId, kind: result.kind, ...(result.id ? { id: result.id } : {}), durationMs: Date.now() - startedAt },
+        })
         return result
+      } catch (error) {
+        options.logger?.error('Resource adoption failed', {
+          event: 'resource.adopt.failed',
+          data: { taskId, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) },
+        })
+        throw error
       } finally { inFlight.delete(taskId) }
     },
   }

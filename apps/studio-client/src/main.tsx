@@ -86,7 +86,13 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
     systemLogger.info('Studio client started', { event: 'client.started' })
     const studio = (
       <QueryClientProvider client={queryClient}>
-        <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} extensionLogger={rootLogger.child('extension.loader')} />
+        <App
+          clientLogs={clientLogs}
+          transportLogger={rootLogger.child('transport.rpc')}
+          extensionLogger={rootLogger.child('extension.loader')}
+          themeLogger={rootLogger.child('theme')}
+          runtimeLogger={rootLogger.child('runtime.client')}
+        />
       </QueryClientProvider>
     )
     reactRoot.render(

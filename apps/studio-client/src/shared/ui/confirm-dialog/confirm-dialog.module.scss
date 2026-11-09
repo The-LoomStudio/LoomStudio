@@ -1,0 +1,29 @@
+.dialogBody {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(440px, 100%);
+  min-width: 280px;
+  padding: 4px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--loom-color-text-secondary, #cbd5e1);
+
+  p {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.dangerIcon {
+  flex-shrink: 0;
+  color: var(--loom-color-danger, #ef4444);
+  margin-top: 1px;
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  color: var(--loom-color-warning, #eab308);
+  margin-top: 1px;
+}

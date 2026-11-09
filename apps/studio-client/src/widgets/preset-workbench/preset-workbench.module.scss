@@ -198,6 +198,27 @@
   gap: 16px;
 }
 
+.toolDetailIdLink {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-accent);
+  cursor: pointer;
+  text-align: right;
+
+  code {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+
+  &:hover code {
+    opacity: 0.8;
+  }
+}
+
 .toolDetailHeader h1,
 .toolDetailHeader p,
 .toolSection h2,
@@ -499,6 +520,17 @@
     color: var(--loom-color-accent);
     text-align: left;
     cursor: pointer;
+  }
+
+  .toolReferenceStatus {
+    display: inline-flex;
+    align-items: center;
+    color: var(--loom-color-accent);
+
+    &[data-state='off'] {
+      color: var(--loom-color-text-muted, #7c7c82);
+      opacity: 0.6;
+    }
   }
 }
 

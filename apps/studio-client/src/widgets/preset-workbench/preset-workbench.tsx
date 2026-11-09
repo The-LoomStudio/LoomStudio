@@ -11,13 +11,14 @@ import { isPromptMessageSequence } from '@loom-studio/shared'
 import { ResourceUnavailable } from '../../shared/ui/resource-unavailable/resource-unavailable.js'
 import type { ResourceSearchReveal } from '../../shared/lib/search-match.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
-import { AlertTriangle, ArrowLeft, ArrowUpRight, Link2, Plus, Upload, SlidersHorizontal, BookOpen, Braces, Copy, Download, Folder, FolderOpen, Package, Regex, Star, ToggleLeft, ToggleRight, Trash2, Wrench } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowUpRight, Link2, Plus, SquareArrowRightEnter, SlidersHorizontal, BookOpen, Braces, Copy, Download, Folder, FolderOpen, Package, Regex, Star, ToggleLeft, ToggleRight, Trash2, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, Dialog, IconButton, SearchField, Textarea } from '@loom-studio/ui'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
+import { confirm } from '../../shared/ui/confirm-dialog/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/prompt-resources/model/prompt-resource-view.js'
@@ -189,7 +190,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const projection = buildPresetToolProjection({ mounts: props.toolMounts, presetId: configured?.id, tools: props.tools })
   const toolbar = <>
     <IconButton size="small" title="新建预设" aria-label="新建预设" onClick={() => { void configureOperation(() => props.onCreateResource('preset')).catch(() => undefined) }}><Plus size={16} /></IconButton>
-    <IconButton size="small" title="导入预设" aria-label="导入预设" onClick={() => importPresetInput.current?.click()}><Upload size={16} /></IconButton>
+    <IconButton size="small" title="导入预设" aria-label="导入预设" onClick={() => importPresetInput.current?.click()}><SquareArrowRightEnter size={16} /></IconButton>
     <input ref={importPresetInput} hidden type="file" accept=".json,.zip" onChange={event => {
       const file = event.target.files?.[0]; event.target.value = ''
       if (file) void configureOperation(() => file.name.endsWith('.zip') && props.onImportResourceZip ? props.onImportResourceZip(file) : props.onImportResource(file)).catch(() => undefined)
@@ -217,7 +218,11 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       }))} actions={toolbar} itemActions={item => <>
         <IconButton size="small" title="复制预设" aria-label={`复制${item.name}`} onClick={() => { void configureOperation(() => props.onDuplicateResource(item.id)).catch(() => undefined) }}><Copy size={16} /></IconButton>
         <IconButton size="small" title="删除预设" aria-label={`删除${item.name}`} onClick={() => {
-          if (window.confirm(`删除预设“${item.name}”？`)) void configureOperation(() => props.onDeleteResource(item.id)).catch(() => undefined)
+          void (async () => {
+            if (await confirm({ title: '删除预设', message: `删除预设“${item.name}”？`, danger: true })) {
+              void configureOperation(() => props.onDeleteResource(item.id)).catch(() => undefined)
+            }
+          })()
         }}><Trash2 size={16} /></IconButton>
       </>} onConfigure={configure} onOpen={open} />
     </div>
@@ -230,8 +235,10 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         <IconButton aria-label="复制预设" size="small" onClick={() => { void configureOperation(() => props.onDuplicateResource(configured.id)).catch(() => undefined) }}><Copy size={16} /></IconButton>
         <IconButton aria-label="导出预设" size="small" onClick={() => { void configureOperation(() => props.onExportResource(configured.id)).catch(() => undefined) }}><Download size={16} /></IconButton>
         <IconButton aria-label="删除预设" size="small" variant="danger" onClick={() => {
-          if (!window.confirm(`删除预设“${configured.rootNode.label}”？`)) return
-          void configureOperation(() => props.onDeleteResource(configured.id)).then(() => setConfigurationId(undefined)).catch(() => undefined)
+          void (async () => {
+            if (!await confirm({ title: '删除预设', message: `删除预设“${configured.rootNode.label}”？`, danger: true })) return
+            void configureOperation(() => props.onDeleteResource(configured.id)).then(() => setConfigurationId(undefined)).catch(() => undefined)
+          })()
         }}><Trash2 size={16} /></IconButton>
       </>}>
       {configured && <div className={styles.configurationBody}>
@@ -418,6 +425,20 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
     }
 
     openAssetDetail('preset', props.workspaceId, id)
+    const pathNodes = findContextAssetPath(workbenchNodes, id)
+    if (pathNodes.length > 1) {
+      const expanded = new Set(explorerView.expandedIds ?? [])
+      let changed = false
+      for (const pathNode of pathNodes.slice(0, -1)) {
+        if (!expanded.has(pathNode.id)) {
+          expanded.add(pathNode.id)
+          changed = true
+        }
+      }
+      if (changed) {
+        setAssetExpandedIds('preset', props.workspaceId, [...expanded])
+      }
+    }
   }
 
   async function handleDeleteResource(resourceId: string) {
@@ -543,8 +564,6 @@ export function PresetArrangementWorkbench(props: PresetWorkbenchProps & { onCon
             />
             {declarations ? <section className={styles.declarations}>
               <h3>声明注入此处的资源</h3>
-              <p>静态候选；本轮是否触发由运行时决定。</p>
-              {detailNode?.kind === 'virtual' && (detailNode.capabilities?.targetAnchorId === '@chat.tools' || detailNode.label === '@chat.tools') ? <p>工具内容由运行时及当前工具挂载决定；这里不展示实际激活结果。</p> : null}
               <FileTree ariaLabel="声明注入此处的资源" nodes={declarationNodes}
                 expandedIds={declarationExpandedIds} onExpandedIdsChange={setDeclarationExpandedIds}
                 getDisclosureLabel={item => item.label} getDragLabel={item => item.label}
@@ -1328,13 +1347,31 @@ function PresetToolExplorer(props: {
             const enabled = props.toolMounts.some(mount => mount.toolId === referencesToolId && mount.presetResourceId === preset.id && mount.defaultEnabled !== false)
             return <div key={preset.id} className={styles.toolReferenceRow}>
               <button type="button" onClick={() => { setReferencesToolId(undefined); props.onOpenPreset(preset.id) }}>{preset.rootNode.label}</button>
-              <span>{enabled ? '已启用' : '已停用'}</span>
+              <span
+                className={styles.toolReferenceStatus}
+                title={enabled ? '已启用' : '已停用'}
+                aria-label={enabled ? '已启用' : '已停用'}
+                data-state={enabled ? 'on' : 'off'}
+              >
+                {enabled ? <ToggleRight size={20} aria-hidden="true" /> : <ToggleLeft size={20} aria-hidden="true" />}
+              </span>
             </div>
           })}
         </div>
       </Dialog>}
     </div>
   )
+}
+
+function resolveToolExtensionPackageId(tool: AgentToolDefinition): string | undefined {
+  if (tool.owner.namespace && tool.owner.namespace !== 'official' && tool.owner.namespace !== 'default') {
+    return tool.owner.namespace
+  }
+  if (tool.id.includes('/')) {
+    const prefix = tool.id.slice(0, tool.id.indexOf('/'))
+    if (prefix && prefix !== 'official') return prefix
+  }
+  return undefined
 }
 
 function PresetToolDetail(props: {
@@ -1349,6 +1386,7 @@ function PresetToolDetail(props: {
   if (!props.tool) {
     return <div className={styles.toolEmpty}>{props.t('preset.tools.selectEmpty')}</div>
   }
+  const extensionPackageId = resolveToolExtensionPackageId(props.tool)
   return (
     <div className={styles.toolDetail} inert={props.toolsReady === false}>
       <header className={styles.toolDetailHeader}>
@@ -1357,7 +1395,18 @@ function PresetToolDetail(props: {
           <h1>{props.tool.name}</h1>
           <p>{props.tool.description}</p>
         </div>
-        <code>{props.tool.id}</code>
+        {extensionPackageId && props.onNavigateResource ? (
+          <button
+            type="button"
+            className={styles.toolDetailIdLink}
+            title={`查看扩展：${extensionPackageId}`}
+            onClick={() => props.onNavigateResource?.(`/studio/extensions?packageId=${encodeURIComponent(extensionPackageId)}`)}
+          >
+            <code>{props.tool.id}</code>
+          </button>
+        ) : (
+          <code>{props.tool.id}</code>
+        )}
       </header>
       {props.tool.prompt?.loreRefs?.length && props.promptResourceApi && props.onNavigateResource && <RelatedLore references={props.tool.prompt.loreRefs}
         api={props.promptResourceApi} onNavigate={props.onNavigateResource} onChanged={() => props.onRelatedResourceChanged?.()} />}
@@ -1531,7 +1580,6 @@ function ToolEntryEditor(props: {
       <header>
         <div>
           <h2>{props.t('preset.tools.entryTitle')}</h2>
-          <p>{props.t('preset.tools.entryDescription')}</p>
         </div>
       </header>
       <form className={`${styles.toolForm} loom-underlined-fields`} onSubmit={submit}>

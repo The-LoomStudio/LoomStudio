@@ -160,7 +160,12 @@ function scriptContext(context: ClientExtensionActivationContext, mount: Resolve
       },
       list: scope => configs.listConfigs({ mountId: mount.mountId, runtimeRevision: mount.mountVersion ?? 0, scope }),
       upsert: query => configs.upsertConfig({ ...query, mountId: mount.mountId, runtimeRevision: mount.mountVersion ?? 0 }),
-      onError: error => { console.error('Script Config subscription stopped', error) },
+      onError: error => {
+        context.logger.error('Script Config subscription stopped', {
+          event: 'script.config.subscription_failed',
+          error: error instanceof Error ? error.message : String(error),
+        })
+      },
     }) : { list: unavailable, get: unavailable, upsert: unavailable, subscribe: unavailable },
     records: { list: unavailable, get: unavailable },
     imports: { commit: unavailable },

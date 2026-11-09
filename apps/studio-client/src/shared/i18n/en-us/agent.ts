@@ -172,4 +172,12 @@ export const messages = {
   'agent.tool.preparing': 'Preparing arguments, not yet executed',
   'agent.tool.running': 'Running',
   'agent.tool.success': 'Success',
+  'composer.contextInfo.aria': 'Context information, 0%, no stats',
+  'composer.contextInfo.title': 'Context Information',
+  'composer.contextInfo.window': 'Context Window',
+  'composer.contextInfo.currentUsage': 'Current Usage',
+  'composer.contextInfo.noData': 'No data',
+  'composer.contextInfo.modelLimit': 'Model Limit',
+  'composer.contextInfo.unknown': 'Unknown',
+  'composer.contextInfo.sessionTotal': 'Session Total',
 } satisfies Record<keyof typeof zhCN, string>

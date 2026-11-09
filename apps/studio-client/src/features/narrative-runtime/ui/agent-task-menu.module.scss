@@ -12,6 +12,8 @@
   justify-content: space-between;
   gap: 12px;
   min-height: 32px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .toggle {
@@ -80,6 +82,7 @@
 @media (max-width: 480px) {
   .row { align-items: flex-start; }
   .actions { max-width: 72px; }
+  .summary { display: none; }
 }
 
 .summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-2); }

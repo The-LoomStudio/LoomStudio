@@ -94,7 +94,7 @@
 }
 @media (max-width: 768px) {
   .taskCard { grid-template-columns: minmax(0, 1fr) auto; }
-  .taskCapsule { height: auto; min-height: 38px; border-radius: 20px; padding-block: 4px; }
+  .taskCapsule { height: 38px; border-radius: 999px; }
   .timelineActions:not(:empty) { width: 38px; padding: 0; }
   .timelineActions button { width: 38px; height: 38px; padding: 0; justify-content: center; }
 }

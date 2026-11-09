@@ -281,6 +281,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     ?? (useOfficialExtensions ? join(installationRoot, 'official/extensions') : undefined)
   const extensionStateDirectory = resolve(options.extensionStateDirectory ?? localPaths.extensionRoot)
   const extensionManager = createServerExtensionManager({
+    logger: options.extensionLogger ?? options.logger?.child('extension.manager'),
     exportExtensionArchive,
     host: extensionHost,
     diagnostics,
@@ -432,7 +433,13 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
   }
   const cardTransfer = createCardTransferService({ applicationRuntime, assets, directoryMedia, importConversions, saveImportedCard })
-  rpcServices.resourceDownloadUse = createResourceDownloadUse({ downloads: resourceDownloads, extensions: extensionManager, runtime: applicationRuntime, cards: cardTransfer })
+  rpcServices.resourceDownloadUse = createResourceDownloadUse({
+    downloads: resourceDownloads,
+    extensions: extensionManager,
+    runtime: applicationRuntime,
+    cards: cardTransfer,
+    logger: options.logger?.child('resource.adopt'),
+  })
   const characterCatalog = createExtensionCharacterCatalog({ runtime: applicationRuntime, readPackage: packageId => extensionManager.readCharacterPackage(packageId), importArchive: cardTransfer.importArchiveAndSave })
   const server = createStudioHttpServer({
     trpcServices: rpcServices,

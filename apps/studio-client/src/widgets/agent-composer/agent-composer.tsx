@@ -88,7 +88,7 @@ export function AgentComposer(props: AgentComposerProps) {
         inputRef={props.inputRef}
         inputMode={props.inputMode}
         onInputModeChange={props.onInputModeChange}
-        sendLeadingAction={<><ContextWindowInfo />{props.sendLeadingAction}</>}
+        sendLeadingAction={<><ContextWindowInfo t={props.t} />{props.sendLeadingAction}</>}
         runStatus={props.runStatus}
         resumeWithInput={false}
         onPause={props.onPause}

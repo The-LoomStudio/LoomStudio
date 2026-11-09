@@ -5,6 +5,7 @@ import { notify } from '../../../shared/notifications/index.js'
 import type { OfficialContentPackage } from '../../../entities/official-content.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { downloadBase64 } from '../../../shared/browser/download.js'
+import { confirm } from '../../../shared/ui/confirm-dialog/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import styles from './official-content-dialog.module.scss'
 
@@ -43,7 +44,7 @@ export function OfficialContentDialog(props: {
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught)
       if (active.current) setError(message)
-      notify.failure('官方资源操作未完成', message)
+      notify.failure(props.t('official.operationFailed'), message)
     } finally {
       pending.current = false
       if (active.current) setBusy(false)
@@ -55,8 +56,8 @@ export function OfficialContentDialog(props: {
     if (active.current) setPackages(result.packages)
   }
 
-  function install(content: OfficialContentPackage) {
-    if (pending.current || !window.confirm(props.t('official.installConfirm'))) return
+  async function install(content: OfficialContentPackage) {
+    if (pending.current || !await confirm({ title: props.t('official.installTitle'), message: props.t('official.installConfirm') })) return
     void run(async () => {
       const result = await props.api.install({ packageId: content.id, digest: content.digest })
       if (!active.current) return

@@ -240,6 +240,19 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
       getDisclosureLabel={(node, expanded) => `${expanded ? t('textTransform.collapse') : t('textTransform.expand')} ${node.label}`}
       getDragLabel={node => node.label}
       moreActionsLabel={t('textTransform.moreActions')}
+      isMuted={node => {
+        if (node.id.startsWith('rule:')) {
+          const ruleId = node.id.slice(5)
+          const rule = controller.finalOrder.find(item => item.id === ruleId)
+          return rule ? !rule.enabled : false
+        }
+        if (node.id.startsWith('extractor:')) {
+          const extId = node.id.slice(10)
+          const ext = controller.visibleExtractors.find(item => item.id === extId)
+          return ext ? !ext.enabled : false
+        }
+        return false
+      }}
       variant="flat"
     />
     {controller.authoring && controller.finalOrder.length === 0 && !controller.unsavedNewRule ? (
@@ -414,7 +427,7 @@ function ScriptDetail({ controller }: { controller: TextTransformController }) {
   const { script, mount } = selected
   return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{script.name}</h3><small>{script.metadataId} · v{script.version}</small></div><div className={styles.headerActions}><label><input checked={mount.enabled} disabled={controller.busy || (!mount.enabled && script.requestedCapabilities.some(capability => !mount.grantedCapabilities.includes(capability)))} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { enabled: event.target.checked })} /> {mount.target.kind === 'user' ? '在全局启用' : mount.target.kind === 'card' ? '在当前角色启用' : t('textTransform.enabled')}</label><input aria-label={t('textTransform.order')} className={styles.inlineInput} type="number" value={mount.orderIndex} onChange={event => void controller.updateScriptMount(mount, { orderIndex: Number(event.target.value) })} /><Button size="small" variant="ghost" disabled={controller.busy || !mount.enabled} onClick={() => void controller.refreshScriptMount(mount)}><RefreshCw aria-hidden="true" size={14} />刷新此实例</Button><Button size="small" variant="ghost" disabled={controller.busy} onClick={() => void controller.saveScript()}>{t('textTransform.save')}</Button></div></header><div className={styles.inspectionContainer}>
     <section className={styles.inspectionSection}><h4>{t('textTransform.metadata')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ owner: script.owner, scriptVersion: script.scriptVersion, runtime: script.runtime, requestedCapabilities: script.requestedCapabilities, contributions: script.contributions }, null, 2)}</pre></section>
-    <section className={styles.inspectionSection}><h4>{t('textTransform.grants')}</h4><p className={styles.metaLine}>逐项确认后启用；修改授权前请先停用此实例。</p>{script.requestedCapabilities.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noGrants')}</p> : script.requestedCapabilities.map(capability => <label key={capability}><input checked={mount.grantedCapabilities.includes(capability)} disabled={controller.busy || mount.enabled} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { grantedCapabilities: event.target.checked ? [...mount.grantedCapabilities, capability] : mount.grantedCapabilities.filter(value => value !== capability) })} /> {scriptCapabilityLabel(capability)}</label>)}</section>
+    <section className={styles.inspectionSection}><h4>{t('textTransform.grants')}</h4>{script.requestedCapabilities.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noGrants')}</p> : script.requestedCapabilities.map(capability => <label key={capability}><input checked={mount.grantedCapabilities.includes(capability)} disabled={controller.busy || mount.enabled} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { grantedCapabilities: event.target.checked ? [...mount.grantedCapabilities, capability] : mount.grantedCapabilities.filter(value => value !== capability) })} /> {scriptCapabilityLabel(capability)}</label>)}</section>
     <LoomScriptSourceFields fileName={controller.scriptFileName} source={controller.scriptSource} disabled={controller.busy}
       onFileNameChange={controller.setScriptFileName} onSourceChange={controller.setScriptSource} t={t} />
   </div></>

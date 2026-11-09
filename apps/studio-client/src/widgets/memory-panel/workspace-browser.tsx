@@ -6,6 +6,7 @@ import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/ass
 import { FileTree, type FileTreeNode } from '../../shared/ui/file-tree/file-tree.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-editor.js'
+import { confirm } from '../../shared/ui/confirm-dialog/index.js'
 import styles from './workspace-browser.module.scss'
 
 type Revision = Awaited<ReturnType<StudioApi['workspace']['get']>>
@@ -315,15 +316,16 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
           {error && <p role="alert" className={styles.error}>{error}</p>}
           {busy && <p role="status" className={styles.hint}>正在处理…</p>}
           {orphanDrafts.map(([key, cached]) => <details key={key} className={styles.recovered}><summary>原文件已移除 · 有一份未保存草稿</summary><textarea aria-label="已移除文件的草稿" readOnly value={cached.text} rows={6} /><Button size="small" onClick={() => {
-            if (!window.confirm('永久丢弃这份未保存草稿？')) return
-            drafts.delete(key); syncUnloadGuard(drafts); setRevision(value => value ? { ...value } : value)
+            void (async () => {
+              if (!await confirm({ title: '丢弃草稿', message: '永久丢弃这份未保存草稿？', danger: true })) return
+              drafts.delete(key); syncUnloadGuard(drafts); setRevision(value => value ? { ...value } : value)
+            })()
           }}>丢弃草稿</Button></details>)}
           {selected && text !== undefined ? <>
             {dirty && baseline.revisionId !== revision?.id && <p role="status" className={styles.hint}>工作区已有新版本。草稿仍基于原版本；请复制草稿，刷新后合并。</p>}
             <LongTextEditor key={selected.id} {...(/\.md$/i.test(selected.name) ? { mode: editorMode, onModeChange: setEditorMode, disableCodeWrapLabel: '关闭换行', enableCodeWrapLabel: '自动换行', previewEmptyLabel: '文件为空', previewModeLabel: '预览', sourceModeLabel: '源码' } : { sourceOnly: true as const, mode: 'source' as const })} label="文件内容" value={draft} disabled={busy}
               onChange={editDraft} onCommit={editDraft} clearLabel="清空" clearedLabel="已清空" copiedLabel="已复制" copyFailedLabel="复制失败"
               copyLabel="复制全文" restoreInitialLabel="恢复初始内容" undoEditLabel="撤销编辑" undoLabel="撤销" minHeight={360} />
-            <p className={styles.hint}>保存后写入当前 Timeline，随剧情恢复。{selected.name === 'MEMORY.md' ? ' MEMORY.md 用于共同工作记忆。' : ''}</p>
           </> : selected?.kind === 'file' ? <div className={styles.binary}>
             {previewLoading ? <p role="status">正在读取预览…</p> : preview ? <img src={preview} alt={selected.name} /> : <><File size={32} /><p>此文件不支持预览</p><Button size="small" onClick={() => void download()}>下载文件</Button></>}
           </div> : <div className={styles.directory}>
