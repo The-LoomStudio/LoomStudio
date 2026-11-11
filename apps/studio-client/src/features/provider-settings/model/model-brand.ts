@@ -17,6 +17,13 @@ export type ModelBrand =
   | 'minimax'
   | 'doubao'
   | 'stepfun'
+  | 'nvidia'
+  | 'cohere'
+  | 'perplexity'
+  | 'yi'
+  | 'hunyuan'
+  | 'baichuan'
+  | 'groq'
 
 const modelBrands: Array<[ModelBrand, RegExp]> = [
   ['deepseek', /deepseek/],
@@ -25,9 +32,16 @@ const modelBrands: Array<[ModelBrand, RegExp]> = [
   ['anthropic', /claude|anthropic/],
   ['gemini', /gemini|gemma/],
   ['qwen', /qwen|qwq/],
+  ['nvidia', /nvidia|nemotron/],
   ['moonshot', /moonshot|kimi/],
   ['doubao', /doubao/],
   ['minimax', /minimax|abab/],
+  ['cohere', /cohere|command[-_]?r?/],
+  ['perplexity', /perplexity|sonar/],
+  ['yi', /01-ai|(^|[^a-z0-9])yi[-_.:/0-9]/],
+  ['hunyuan', /hunyuan/],
+  ['baichuan', /baichuan/],
+  ['groq', /groq/],
   ['grok', /grok/],
   ['meta', /llama/],
   ['mistral', /mistral|mixtral/],
@@ -48,6 +62,7 @@ export function resolveProviderBrand(...hints: string[]): ModelBrand | null {
   if (/anthropic|claude/.test(normalized)) return 'anthropic'
   if (/deepseek/.test(normalized)) return 'deepseek'
   if (/google|gemini/.test(normalized)) return 'gemini'
+  if (/nvidia/.test(normalized)) return 'nvidia'
   if (/ollama/.test(normalized)) return 'ollama'
   if (/siliconcloud|siliconflow/.test(normalized)) return 'siliconcloud'
   if (/moonshot|kimi/.test(normalized)) return 'moonshot'
@@ -56,6 +71,12 @@ export function resolveProviderBrand(...hints: string[]): ModelBrand | null {
   if (/minimax/.test(normalized)) return 'minimax'
   if (/doubao|volcengine/.test(normalized)) return 'doubao'
   if (/mistral/.test(normalized)) return 'mistral'
+  if (/cohere/.test(normalized)) return 'cohere'
+  if (/perplexity/.test(normalized)) return 'perplexity'
+  if (/groq/.test(normalized)) return 'groq'
+  if (/yi|zeroone|01-ai/.test(normalized)) return 'yi'
+  if (/hunyuan|tencent/.test(normalized)) return 'hunyuan'
+  if (/baichuan/.test(normalized)) return 'baichuan'
   if (/grok|xai/.test(normalized)) return 'grok'
   if (/meta|llama/.test(normalized)) return 'meta'
   if (/qwen|aliyun|dashscope/.test(normalized)) return 'qwen'

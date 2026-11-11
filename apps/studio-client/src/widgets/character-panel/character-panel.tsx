@@ -693,16 +693,6 @@ export function CharacterPanel(props: CharacterPanelProps) {
                     }}
                   />
                 </div>
-                <div className={styles.characterResourcesSection}>
-                  <header className={styles.sectionHeader}>
-                    <h3>{props.t('character.resources')}</h3>
-                  </header>
-                  <button className={styles.resourceCard} type="button" onClick={() => setProfileTab('attachments')}>
-                    <span className={styles.resourceCardIcon}><BookOpen aria-hidden="true" /></span>
-                    <span className={styles.resourceCardInfo}><span className={styles.resourceCardName}>{props.t('directory.attachments')}</span></span>
-                    <ChevronRight aria-hidden="true" className={styles.resourceCardArrow} />
-                  </button>
-                </div>
 
                 <div className={styles.openingSection}>
                   <header className={styles.openingHeader}>

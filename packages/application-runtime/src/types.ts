@@ -386,6 +386,7 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
   selectNarrativeSwipe(input: { timelineId: string; branchId: string; groupId: string; candidateId: string; expectedRevision: number; expectedHeadNodeId: string | null }, context?: RuntimeRequestContext): Promise<{ page: NarrativePage; swipe: NarrativeSwipeView }>
   appendNarrativeInput(input: AppendNarrativeInput, context?: RuntimeRequestContext): Promise<AppendNarrativeInputResult>
   editNarrativeNode(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }, context?: RuntimeRequestContext): Promise<{ timeline: NarrativeTimeline; branch: NarrativeBranch; replacements: Array<{ previousNodeId: string; node: NarrativeNode }>; mutation: MutationReceipt }>
+  deleteNarrativeNode(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string }, context?: RuntimeRequestContext): Promise<{ timeline: NarrativeTimeline; branch: NarrativeBranch; deletedNodeId: string; mutation: MutationReceipt }>
   forkNarrativeBranch(input: ForkNarrativeBranchInput, context?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult>
   switchNarrativeBranch(input: SwitchNarrativeBranchInput, context?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult>
   deleteNarrativeTimeline(input: DeleteNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<DeleteNarrativeTimelineResult>

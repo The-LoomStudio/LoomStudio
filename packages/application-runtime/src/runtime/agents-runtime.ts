@@ -716,6 +716,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           ctx.observations.capture(() => ctx.observations.patch(runId, {
             agentPresetId: preset.id, title: preset.rootNode.label || 'Agent Run', timelineId: narrativePage?.timeline.id ?? session.timelineId,
             branchId: narrativePage?.branch.id, buildId: prompt.promptBuildTrace.buildId,
+            modelId: model.modelId,
           }))
           const savedInput = session.kind === 'timeline' && input.narrativeTarget?.inputNodeId
             ? await ctx.narratives!.getNode(input.narrativeTarget.inputNodeId) : undefined

@@ -184,6 +184,7 @@ export function App(props: {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchMatch, setSearchMatch] = useState<ResourceSearchReveal>()
   const [recentSearch, setRecentSearch] = useState<{ endpoint: string; items: GlobalSearchHit[] }>({ endpoint: state.endpoint, items: [] })
+  const [sideDraftPresetId, setSideDraftPresetId] = useState<string>()
   useEffect(() => {
     function onSearchShortcut(event: KeyboardEvent) {
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.code !== 'KeyK' || event.isComposing) return
@@ -267,7 +268,7 @@ export function App(props: {
       : undefined,
     refreshToken: uiState.loomScriptRefreshToken,
   })
-  const narrativePresetName = state.agentPresets.find(preset => preset.id === state.narrativeAgentSession?.agentPresetId)?.rootNode.label ?? '尚未选择预设'
+  const narrativePresetName = state.agentPresets.find(preset => preset.id === (state.selectedAgentPresetId ?? state.narrativeAgentSession?.agentPresetId))?.rootNode.label ?? '尚未选择预设'
   const narrativeRounds = useMemo(() => projectTimelineRounds(state.narrativeWorkEntries,
     state.narrativeNodes, narrativePresetName, state.narrativeActiveRun),
   [state.narrativeWorkEntries, state.narrativeNodes, narrativePresetName, state.narrativeActiveRun])
@@ -631,7 +632,14 @@ export function App(props: {
         /></>
       ) : undefined}
       onChangeInput={state.setAgentChatInput}
-      onSelectProfile={state.selectAgentPreset}
+      onSelectProfile={async presetId => {
+        if (state.agentChatSession) {
+          await state.api.agentSessions.update({ agentSessionId: state.agentChatSession.id, agentPresetId: presetId })
+          await state.refreshAgentSessions()
+        } else {
+          setSideDraftPresetId(presetId)
+        }
+      }}
       onSavePresetModel={async (presetId, model) => {
         const preset = state.agentPresets.find(p => p.id === presetId)
         if (preset) {
@@ -666,7 +674,7 @@ export function App(props: {
       onApproveMutation={state.approveAgentMutation}
       providerAccounts={state.providerAccounts}
       rendererHost={rendererHost}
-      selectedProfileId={state.selectedAgentPresetId}
+      selectedProfileId={state.agentChatSession?.agentPresetId ?? sideDraftPresetId ?? state.agentPresets[0]?.id}
       t={state.t}
       /></ContentErrorBoundary>}
       agentPanelOpen={uiState.agentPanelOpen}
@@ -792,6 +800,10 @@ export function App(props: {
             getNodeLink={navigation.getNodeLink}
             hasOlder={state.hasOlderNarrativeNodes}
             onEditNode={state.editNarrativeNode}
+            onDeleteNode={node => {
+              if (!state.input.trim() && node.kind === 'user-input') state.setInput(node.body.raw)
+              void state.deleteNarrativeNode(node.id)
+            }}
             onLoadOlder={state.loadOlderNodes}
             onNodeAnchorChange={navigation.setNodeAnchor}
             onForkNode={node => {
@@ -823,9 +835,12 @@ export function App(props: {
               disabled={!state.narrativeAgentSession || sessionBusy || state.narrativeActiveRun?.status === 'running' || state.narrativeActiveRun?.status === 'suspended'}
               profiles={state.agentPresets}
               providers={state.providerAccounts}
-              selectedId={state.narrativeAgentSession?.agentPresetId}
+              selectedId={state.selectedAgentPresetId ?? state.narrativeAgentSession?.agentPresetId}
               t={state.t}
-              onSelect={agentPresetId => { void state.configureNarrativeSession({ agentPresetId }) }}
+              onSelect={agentPresetId => {
+                state.selectAgentPreset(agentPresetId)
+                void state.configureNarrativeSession({ agentPresetId })
+              }}
               onOpenWorkbench={(presetId, nodeId) => {
                 const preset = state.agentPresets.find(p => p.id === presetId)
                 if (preset) {
@@ -833,7 +848,7 @@ export function App(props: {
                 }
               }}
             />}
-            runStatus={state.narrativeActiveRun?.status === 'running' ? 'running' : state.narrativeActiveRun?.status === 'suspended' ? 'suspended' : 'idle'}
+            runStatus={state.narrativeActiveRun?.status === 'running' ? 'running' : (state.narrativeActiveRun?.status === 'suspended' || state.narrativeActiveRun?.status === 'failed' || state.narrativeRecovery?.status === 'failed') ? 'suspended' : 'idle'}
             onPause={() => { void state.pauseNarrativeRun() }}
             onResume={() => { void state.resumeNarrativeRun() }}
             inputRef={narrativeInputRef}
@@ -842,7 +857,7 @@ export function App(props: {
             runRecovery={state.narrativeRecovery}
             runRecoveryBusy={state.runRecoveryBusy}
             abandonAgentRun={state.abandonNarrativeRun}
-            canRestoreRunInput={false}
+            canRestoreRunInput={state.canRestoreRunInput}
             reconnectAgentRun={state.reconnectNarrativeRun}
             restoreRunInput={state.restoreRunInput}
             canPreviewPrompt={state.canPreviewPrompt}
@@ -851,6 +866,7 @@ export function App(props: {
             taskCard={(
               <AgentTaskMenu key={JSON.stringify([state.endpoint, state.narrativeTimeline?.id])}
                 activeRun={state.narrativeActiveRun} messages={state.narrativeWorkEntries}
+                runRecovery={state.narrativeRecovery}
                 api={state.api} endpoint={state.endpoint} timelineId={state.narrativeTimeline?.id} t={state.t}
                 onOpen={async (sessionId, runId) => { await openAgentSession(sessionId); if (runId) state.observeTaskRun(sessionId, runId) }}
                 onResumed={state.observeTaskRun} onAbandoned={state.refreshTaskSession} />

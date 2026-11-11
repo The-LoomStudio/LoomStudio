@@ -3,7 +3,7 @@ import { useWorkbenchView } from '../../shared/studio-shell/use-workbench-view.j
 import { LogOrigin } from './log-origin.js'
 import { ObservationSourceIcon } from './observation-source-icon.js'
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Info, Check, Copy, ChevronLeft, ChevronRight, ArrowLeft, ArrowUpRight, CheckCircle2, CircleDashed, Search, TriangleAlert, Wrench } from 'lucide-react'
+import { Info, Check, Copy, ChevronLeft, ChevronRight, ArrowLeft, ArrowUpRight, CheckCircle2, CircleDashed, Search, TriangleAlert, Wrench, Bot } from 'lucide-react'
 import { Button, Dialog, IconButton, SearchField, Tabs } from '@loom-studio/ui'
 import { WindowColumnLayout } from '../../shared/ui/window-column-layout/window-column-layout.js'
 import type { ObservationRecord, ObservationStep, ObservationReference } from '../../features/observability/model/observation-view.js'
@@ -16,6 +16,8 @@ import { ObservationMessages, ObservationMessageCard } from '../../features/obse
 import { useTokenCounts } from '../../shared/tokenizer/use-token-counts.js'
 import { messageTokenParts, sumTokenParts } from '../../features/observability/model/observation-token-view.js'
 import { groupMacroReads } from '../../features/observability/model/observation-variables.js'
+import { resolveModelBrand } from '../../features/provider-settings/model/model-brand.js'
+import { ModelBrandIcon } from '../../features/provider-settings/ui/model-brand-icon.js'
 
 import { ObservationSources } from '../../features/observability/ui/observation-sources.js'
 import { ToolArguments, ToolResult } from '../../features/observability/ui/observation-content.js'
@@ -61,8 +63,11 @@ function WorkbenchContent({ records, directoryHeader, toolbar, selectedRecordId,
   useEffect(() => {
     const node = container.current
     if (!node) return
-    const observer = new ResizeObserver(() => setNarrow(node.clientWidth < 760))
-    setNarrow(node.clientWidth < 760)
+    const update = () => {
+      if (node.clientWidth > 0) setNarrow(node.clientWidth < 760)
+    }
+    const observer = new ResizeObserver(update)
+    update()
     observer.observe(node)
     return () => observer.disconnect()
   }, [])
@@ -77,11 +82,29 @@ function WorkbenchContent({ records, directoryHeader, toolbar, selectedRecordId,
     ]} />
     {listNotice}
     <div className={styles.records}>
-      {visible.map(record => <button type="button" key={record.id} className={styles.record} aria-current={selected?.id === record.id ? 'true' : undefined} onClick={() => { setSelectedId(record.id); onSelectRecord?.(record.id); setDetailOpen(true) }}>
-        <span className={styles.recordMeta}><span>{kindNames[record.kind]}</span><time>{record.time}</time></span>
-        <LogOrigin source={record.source} title={record.title} />
-        <span className={styles.recordMeta}><span>{record.stepCount === undefined ? (onSelectRecord ? '' : t('observation.stepCount', { count: record.steps.length })) : t('observation.stepCount', { count: record.stepCount })}</span><Status status={record.status} /></span>
-      </button>)}
+      {visible.map(record => {
+        const effectiveModel = record.modelId || (record.kind === 'api' ? record.title : record.steps.find(s => s.model)?.model)
+        const stepCountText = record.stepCount === undefined ? (onSelectRecord ? '' : t('observation.stepCount', { count: record.steps.length })) : t('observation.stepCount', { count: record.stepCount })
+        const modelBrand = effectiveModel ? resolveModelBrand(effectiveModel) : null
+        return (
+          <button type="button" key={record.id} className={styles.record} aria-current={selected?.id === record.id ? 'true' : undefined} onClick={() => { setSelectedId(record.id); onSelectRecord?.(record.id); setDetailOpen(true) }}>
+            <span className={styles.recordMeta}><span>{kindNames[record.kind]}</span><time>{record.time}</time></span>
+            <LogOrigin source={record.source} title={record.title} modelId={effectiveModel} />
+            <span className={styles.recordMeta}>
+              <span className={styles.recordModelInfo}>
+                {effectiveModel && (
+                  <span className={styles.recordModelTag} title={effectiveModel}>
+                    <ModelBrandIcon brand={modelBrand} className={styles.recordModelBrandIcon} fallback={<Bot size={11} />} />
+                    <span className={styles.recordModelName}>{effectiveModel}</span>
+                  </span>
+                )}
+                {stepCountText && <span className={styles.recordStepCount}>{stepCountText}</span>}
+              </span>
+              <Status status={record.status} />
+            </span>
+          </button>
+        )
+      })}
       {!visible.length && !listNotice && <Empty title={records.length ? t('observation.noMatches') : t('observation.empty')} description={records.length ? t('observation.trySearch') : t('observation.emptyHint')} />}
     </div>
     {listFooter}
@@ -120,7 +143,7 @@ function RecordView({ record, onSelectStep, stepNotice }: { record: ObservationR
   useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0 }, [step?.id, view])
   return <section data-loom-mobile-tab-scope="" ref={scroller} className={styles.detail} aria-label={record.title}>
     <div className={styles.recordHeading}>
-      <h2><LogOrigin source={record.source} title={record.title} metadata={<span className={styles.eyebrow}>{kindNames[record.kind]} · <time>{record.time}</time></span>} /><Status status={record.status} /><IconButton aria-label={t('observation.identifiers')} onClick={() => setInfoOpen(true)}><Info size={16} /></IconButton></h2>
+      <h2><LogOrigin source={record.source} title={record.title} modelId={record.modelId ?? step?.model} metadata={<span className={styles.eyebrow}>{kindNames[record.kind]} · <time>{record.time}</time></span>} /><Status status={record.status} /><IconButton aria-label={t('observation.identifiers')} onClick={() => setInfoOpen(true)}><Info size={16} /></IconButton></h2>
       <Dialog className={styles.identityDialog} open={infoOpen} title={t('observation.identifiers')} onClose={() => setInfoOpen(false)} closeOnBackdrop>
         <div className={styles.identitySections}>
           <section className={styles.identitySection}><h3>{t('observation.runInfo')}</h3><p>{kindNames[record.kind]} · {record.time} · {record.origin}</p></section>
@@ -138,7 +161,10 @@ function RecordView({ record, onSelectStep, stepNotice }: { record: ObservationR
       <div className={styles.detailNavigation}>
         <nav className={styles.stepContext} aria-label={t('observation.currentStep')}>
           <Button size="small" aria-label={t('observation.previousStep')} title={t('observation.previousStep')} disabled={stepIndex <= 0} onClick={() => selectStep(record.steps[stepIndex - 1]!.id)}><ChevronLeft size={16} /></Button>
-          <span className={styles.stepContextModel} title={step.model}>{step.model}</span>
+          <span className={styles.stepContextModel} title={step.model}>
+            {step.model && <ModelBrandIcon brand={resolveModelBrand(step.model)} className={styles.stepModelBrandIcon} fallback={<Bot size={13} />} />}
+            <span className={styles.stepContextModelText}>{step.model}</span>
+          </span>
           <ObservationRawData icon key={step.id} title={t('observation.raw')} value={step.raw ?? step} t={t}><Identity inline values={step.identity ?? { ID: step.id }} /></ObservationRawData>
           <Button size="small" aria-label={t('observation.nextStep')} title={t('observation.nextStep')} disabled={stepIndex >= record.steps.length - 1} onClick={() => selectStep(record.steps[stepIndex + 1]!.id)}><ChevronRight size={16} /></Button>
         </nav>

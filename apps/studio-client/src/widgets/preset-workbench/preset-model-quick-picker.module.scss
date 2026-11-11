@@ -288,10 +288,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 6px 10px 6px;
+  padding: 6px 10px 4px;
   font-size: 11px;
   color: var(--loom-color-text-subtle, #9ea9b0);
-  border-bottom: 1px solid var(--loom-color-divider, rgba(235, 240, 243, 0.06));
+  border-bottom: none;
   flex-shrink: 0;
 }
 

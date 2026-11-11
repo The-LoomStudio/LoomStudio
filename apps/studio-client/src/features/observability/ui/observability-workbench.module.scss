@@ -32,6 +32,11 @@
 .record[aria-current='true'] { background: color-mix(in srgb, var(--loom-color-accent) 10%, transparent); }
 .record[aria-current='true'] strong { color: var(--loom-color-accent-strong); }
 .recordMeta { width: 100%; font-size: var(--loom-font-size-2); color: var(--loom-color-text-muted); }
+.recordModelInfo { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 1; overflow: hidden; }
+.recordModelTag { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 170px; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-1); }
+.recordModelBrandIcon { width: 12px; height: 12px; flex: 0 0 12px; object-fit: contain; }
+.recordModelName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recordStepCount { white-space: nowrap; font-size: var(--loom-font-size-1); color: var(--loom-color-text-subtle); }
 .status { display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; font-size: var(--loom-font-size-2); font-weight: 400; }
 .status[data-status='completed'] { color: var(--loom-color-success); }
 .status[data-status='running'] { color: var(--loom-color-info); }
@@ -52,7 +57,9 @@
 .stepContextTitle { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .stepContextTitle strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stepContextTitle small { white-space: nowrap; }
-.stepContextModel { flex: 1; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-2); }
+.stepContextModel { flex: 1; max-width: none; min-width: 0; display: inline-flex; align-items: center; gap: 6px; overflow: hidden; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-2); }
+.stepModelBrandIcon { width: 14px; height: 14px; flex: 0 0 14px; object-fit: contain; }
+.stepContextModelText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @container (max-width: 480px) { .stepContextModel { display: none; } }
 .content { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 28px; }
 .content > * { flex-shrink: 0; }
@@ -274,8 +281,8 @@
 .recordHeading .eyebrow { font-weight: var(--loom-font-weight-4); }
 @media (max-width: 600px) { .toolParameters > div { grid-template-columns: 1fr; gap: 4px; } }
 
-.directoryHeading { display:flex; align-items:center; gap:4px; min-width:0; }
-.directoryHeading > :first-child { flex:1; min-width:0; }
+.directoryHeading { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.directoryHeading > :first-child { flex: 1; min-width: 0; padding: 0 !important; }
 .directoryNotices:empty { display:none; }
 .logSettings { display:flex; flex-direction:column; gap:12px; max-width:420px; }
 .logSettings > small { color:var(--loom-color-text-muted); line-height:1.6; }

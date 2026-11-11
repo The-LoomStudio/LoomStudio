@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bot, Check, ChevronDown, ExternalLink, Layers, PenTool, Sparkles, X } from 'lucide-react'
+import { Bot, Check, ChevronDown, ExternalLink, Layers, Sparkles, UserRound, X } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -115,7 +115,11 @@ export function AgentPresetPicker(props: {
           aria-haspopup="dialog"
           title={props.t('agent.profile.choose')}
         >
-          <ExtensionIcon iconUrl={selected ? presetIconUrl(selected, identities) : undefined} size={18} />
+          <ExtensionIcon
+            iconUrl={selected ? presetIconUrl(selected, identities) : undefined}
+            size={18}
+            fallback={<Bot size={16} />}
+          />
           <span>{selected?.rootNode.label ?? props.t('agent.profile.unselected')}</span>
           <ChevronDown aria-hidden="true" />
         </button>
@@ -174,7 +178,7 @@ export function AgentPresetPicker(props: {
                     {source.iconUrl ? (
                       <ExtensionIcon iconUrl={source.iconUrl} size={18} />
                     ) : source.kind === 'personal' ? (
-                      <PenTool size={15} />
+                      <UserRound size={16} />
                     ) : source.kind === 'builtin' ? (
                       <Sparkles size={15} />
                     ) : (
@@ -249,7 +253,11 @@ export function AgentPresetPicker(props: {
                             onClick={() => handleSelectPreset(profile.id)}
                           >
                             <span className={styles.presetIcon}>
-                              <ExtensionIcon iconUrl={presetIconUrl(profile, identities)} size={22} />
+                              <ExtensionIcon
+                                iconUrl={presetIconUrl(profile, identities)}
+                                size={22}
+                                fallback={<Bot size={20} />}
+                              />
                             </span>
                             <div className={styles.presetInfo}>
                               <div className={styles.presetName}>{profile.rootNode.label}</div>

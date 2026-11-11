@@ -108,6 +108,18 @@ export function createObservationStore(options: {
       })
     })
   }
+  function findChildModelId(entry: ObservationEntry): string | undefined {
+    if (entry.kind === 'run') {
+      for (const item of entries.values()) {
+        if (item.value.parentId === entry.id && item.value.request?.model?.modelId) {
+          return item.value.request.model.modelId
+        }
+      }
+    }
+    return undefined
+  }
+  const summaryEntry = (entry: ObservationEntry) => summary(entry, findChildModelId)
+
   return {
     capture, write, patch,
     get(id) { if (disposed) return null; prune(); const value = entries.get(id)?.value; return value ? structuredClone(value) : null },
@@ -125,14 +137,14 @@ export function createObservationStore(options: {
       const limit = Math.max(1, Math.min(100, input.limit ?? 50))
       const page = records.slice(0, limit)
       const last = page.at(-1)
-      return { records: page.map(summary), dropped,
+      return { records: page.map(summaryEntry), dropped,
         ...(records.length > limit && last ? { nextCursor: `${last.capturedAt}|${last.id}` } : {}) }
     },
     children(parentId) {
       if (disposed) return []
       prune()
       return [...entries.values()].map(entry => entry.value).filter(entry => entry.parentId === parentId)
-        .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt) || a.id.localeCompare(b.id)).map(summary)
+        .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt) || a.id.localeCompare(b.id)).map(summaryEntry)
     },
     ready: () => persistence?.ready() ?? Promise.resolve(),
     persistence: () => persistence?.state() ?? Promise.resolve({ enabled: false, available: false }),
@@ -158,7 +170,7 @@ function restoreObservation(value: unknown, entryBytes: number, ttl: number): Ob
   if (!['run', 'build', 'api', 'request'].includes(entry.kind as string)
     || !['running', 'completed', 'failed', 'aborted', 'suspended'].includes(entry.status as string)
     || !['recorded', 'partial'].includes(entry.availability as string)) throw new Error('Invalid observation snapshot identity/status')
-  for (const key of ['parentId', 'agentPresetId', 'agentSessionId', 'timelineId', 'branchId', 'buildId', 'diagnostic']) {
+  for (const key of ['parentId', 'agentPresetId', 'agentSessionId', 'timelineId', 'branchId', 'buildId', 'diagnostic', 'modelId']) {
     if (entry[key] !== undefined && typeof entry[key] !== 'string') throw new Error(`Invalid observation snapshot ${key}`)
   }
   for (const key of ['build', 'request', 'origin', 'output']) {
@@ -175,10 +187,13 @@ function restoreObservation(value: unknown, entryBytes: number, ttl: number): Ob
   return { ...value, expiresAt: new Date(Math.min(expiresAt, capturedAt + ttl)).toISOString() } as ObservationEntry
 }
 
-export function observationSummary(entry: ObservationEntry): ObservationSummary { return summary(entry) }
-function summary({ build: _build, request, ...rest }: ObservationEntry): ObservationSummary {
+export function observationSummary(entry: ObservationEntry, findModelId?: (entry: ObservationEntry) => string | undefined): ObservationSummary {
+  return summary(entry, findModelId)
+}
+function summary({ build: _build, request, ...rest }: ObservationEntry, findModelId?: (entry: ObservationEntry) => string | undefined): ObservationSummary {
   const output = summarizeOutput(request)
-  return structuredClone({ ...rest, ...(output ? { output } : {}) })
+  const modelId = rest.modelId ?? request?.model?.modelId ?? findModelId?.({ build: _build, request, ...rest })
+  return structuredClone({ ...rest, ...(output ? { output } : {}), ...(modelId ? { modelId } : {}) })
 }
 
 function summarizeOutput(request: ObservationEntry['request']): ObservationSummary['output'] {

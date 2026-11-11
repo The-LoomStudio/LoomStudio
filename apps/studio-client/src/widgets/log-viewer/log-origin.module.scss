@@ -1,6 +1,7 @@
 .origin { display: inline-flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
 .avatar { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border-radius: var(--loom-radius-control); color: var(--loom-color-text-subtle); }
 .avatar img { width: 100%; height: 100%; object-fit: contain; }
+.avatar img.modelBrandIcon { width: 20px; height: 20px; object-fit: contain; }
 .avatar svg { width: 20px; height: 20px; }
 .labels { display: grid; gap: 3px; min-width: 0; }
 .labels strong { font: inherit; font-weight: var(--loom-font-weight-5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -13,6 +14,7 @@
 .origin[data-compact] { gap: 7px; }
 .origin[data-compact] .avatar { width: 24px; height: 24px; flex-basis: 24px; }
 .origin[data-compact] .avatar svg { width: 16px; height: 16px; }
+.origin[data-compact] .avatar img.modelBrandIcon { width: 16px; height: 16px; }
 .origin[data-compact] .labels { display: flex; align-items: center; gap: 10px; }
 .origin[data-compact] .labels strong { min-width: 0; max-width: 18em; }
 .origin[data-compact] .labels small { max-width: 10em; }

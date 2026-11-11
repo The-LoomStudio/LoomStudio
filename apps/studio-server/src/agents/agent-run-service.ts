@@ -98,9 +98,9 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
           state, updatedAt: current ? entry?.failedContinuation?.updatedAt ?? current.updatedAt : saved!.updatedAt,
           ...(reason === undefined ? {} : { reason }),
           canPause: Boolean(current?.controller && state === 'running'),
-          canResume: state !== 'running' && state !== 'completed' && state !== 'cancelled' && canResume,
-          canAbandon: current ? state === 'suspended' && !current.continuationRunId
-            : state === 'suspended' || state === 'interrupted',
+          canResume: state !== 'running' && state !== 'completed' && state !== 'cancelled' && (canResume || state === 'failed'),
+          canAbandon: current ? (state === 'suspended' || state === 'failed') && !current.continuationRunId
+            : state === 'suspended' || state === 'interrupted' || state === 'failed',
         })
       }
       tasks.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.runId.localeCompare(right.runId))
@@ -260,7 +260,7 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
       if (!run) {
         if (!agentSessionId) throw new Error(`Agent run not found: ${runId}`)
         const state = await runtime.inspectAgentRunState({ agentSessionId, runId })
-        if (state.state !== 'suspended') return { runId, accepted: false, state: state.state }
+        if (state.state !== 'suspended' && state.state !== 'failed') return { runId, accepted: false, state: state.state }
         const pending = readPendingInterjections(await readSessionEntries(runtime, agentSessionId))
         await runtime.appendAgentTranscriptEntries({
           agentSessionId,
@@ -270,7 +270,7 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         return { runId, accepted: true, state: 'suspended' as const }
       }
       if (run.state === 'running') throw new Error('Cannot change the main receiver while an Agent run is generating')
-      if (run.state !== 'suspended' || run.abandoned || run.continuationRunId) {
+      if ((run.state !== 'suspended' && run.state !== 'failed') || run.abandoned || run.continuationRunId) {
         return { runId: run.id, accepted: false, state: run.state }
       }
       const pending = readPendingInterjections(await readSessionEntries(runtime, run.sessionId))
@@ -305,6 +305,10 @@ export function getAgentRunService(runtime: ApplicationRuntime) {
         if (source.continuationRunId) return { runId: source.continuationRunId, sourceRunId: source.id, accepted: true }
         if (source.checkpoint && source.request) {
           const run = startAgentRun(runtime, context, source.request, source.id, source.checkpoint, source)
+          return { runId: run.id, sourceRunId: source.id, accepted: true, state: run.state }
+        }
+        if (source.state === 'failed' && source.request) {
+          const run = startAgentRun(runtime, context, source.request, source.id, undefined, source)
           return { runId: run.id, sourceRunId: source.id, accepted: true, state: run.state }
         }
       }

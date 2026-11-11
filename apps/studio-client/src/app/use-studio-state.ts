@@ -386,6 +386,7 @@ export function useStudioState(transportLogger: Logger, runtimeLogger?: Logger) 
     selectNarrativeSwipe: narrativeRuntime.selectSwipe,
     generateNarrativeSwipe: narrativeRuntime.generateSwipe,
     editNarrativeNode: narrativeRuntime.editNarrativeNode,
+    deleteNarrativeNode: narrativeRuntime.deleteNarrativeNode,
     hasOlderNarrativeNodes: Boolean(narrativeRuntime.olderCursor),
     // agent
     agentMessages: narrativeRuntime.agentMessages,
@@ -457,7 +458,7 @@ export function useStudioState(transportLogger: Logger, runtimeLogger?: Logger) 
     aiProviders: providerSettings.aiProviders,
     aiCapabilityProfiles: providerSettings.aiCapabilityProfiles,
     setProviderAccountDraft: providerSettings.setProviderAccountDraft,
-    selectedAgentPresetId: narrativeRuntime.agentSession?.agentPresetId ?? (promptResourceState.resourcesReady ? agentPresets.selectedAgentPresetId : undefined),
+    selectedAgentPresetId: (promptResourceState.resourcesReady ? agentPresets.selectedAgentPresetId : undefined) ?? narrativeRuntime.agentSession?.agentPresetId,
     selectAgentPreset: narrativeRuntime.selectAgentPreset,
     // input
     input: narrativeRuntime.input, setInput: narrativeRuntime.setInput,

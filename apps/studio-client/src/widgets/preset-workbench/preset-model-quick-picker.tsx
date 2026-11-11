@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Bot, Check, ChevronDown, Layers, RefreshCw, Server, X } from 'lucide-react'
+import { Bot, Check, ChevronDown, Layers, Server, X } from 'lucide-react'
 import {
   Button,
   DropdownMenu,
@@ -289,34 +289,31 @@ export function PresetModelQuickPicker(props: PresetModelQuickPickerProps) {
                 ) : null}
 
                 {displayedSections.map(section => {
-                  const showGroupHeader = activeAccountId === 'all' || Boolean(query)
                   return (
                     <div key={section.account.id} className={styles.sectionGroup}>
-                      {showGroupHeader && (
-                        <div className={styles.groupHeader}>
-                          <div className={styles.groupHeaderLeft}>
-                            {section.brand ? (
-                              <span className={styles.groupIcon}>
-                                <ModelBrandIcon
-                                  brand={section.brand}
-                                  fallback={<Server size={13} />}
-                                />
-                              </span>
-                            ) : null}
-                            <span className={styles.groupTitle}>{section.account.displayName}</span>
-                          </div>
-                          <div className={styles.groupHeaderRight}>
-                            <Button
-                              size="small"
-                              variant="ghost"
-                              disabled={pending || section.catalog?.loading}
-                              onClick={() => void loadModels(section.account.id)}
-                            >
-                              <RefreshCw size={11} aria-hidden="true" />
-                            </Button>
-                          </div>
+                      <div className={styles.groupHeader}>
+                        <div className={styles.groupHeaderLeft}>
+                          {section.brand ? (
+                            <span className={styles.groupIcon}>
+                              <ModelBrandIcon
+                                brand={section.brand}
+                                fallback={<Server size={13} />}
+                              />
+                            </span>
+                          ) : null}
+                          <span className={styles.groupTitle}>{section.account.displayName}</span>
                         </div>
-                      )}
+                        <div className={styles.groupHeaderRight}>
+                          <Button
+                            size="small"
+                            variant="ghost"
+                            disabled={pending || section.catalog?.loading}
+                            onClick={() => void loadModels(section.account.id)}
+                          >
+                            {section.catalog?.loading ? '正在获取…' : '获取模型'}
+                          </Button>
+                        </div>
+                      </div>
 
                       <div className={styles.groupItems}>
                         {section.visible.map(modelId => {

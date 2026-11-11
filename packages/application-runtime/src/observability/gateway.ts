@@ -44,6 +44,7 @@ export function createObservedAiGateway(gateway: AiGateway, observations: Observ
       observations.capture(() => {
         if (typeof existingId !== 'string') observations.write({
           id, kind: 'api', title: input.model?.modelId ?? 'Model API', status: 'running',
+          modelId: input.model?.modelId,
           timelineId: input.context?.observationOrigin?.timelineId,
           ...(input.context ? { origin: {
             ...input.context.observationOrigin, actor: input.context.actor?.id, correlationId: input.context.correlationId,

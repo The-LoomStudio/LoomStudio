@@ -94,6 +94,8 @@ export type ObservationSummary = {
   durationMs?: number
   availability: 'recorded' | 'partial'
   diagnostic?: string
+  /** Model identity for requests, apis, or agent runs using a model. */
+  modelId?: string
   /** Returned model output only; hasText does not imply a committed message. */
   output?: { toolNames: string[]; hasText: boolean }
 }

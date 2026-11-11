@@ -16,6 +16,13 @@ import siliconcloud from '@lobehub/icons-static-svg/icons/siliconcloud-color.svg
 import minimax from '@lobehub/icons-static-svg/icons/minimax-color.svg'
 import doubao from '@lobehub/icons-static-svg/icons/doubao-color.svg'
 import stepfun from '@lobehub/icons-static-svg/icons/stepfun-color.svg'
+import nvidia from '@lobehub/icons-static-svg/icons/nvidia-color.svg'
+import cohere from '@lobehub/icons-static-svg/icons/cohere-color.svg'
+import perplexity from '@lobehub/icons-static-svg/icons/perplexity-color.svg'
+import yi from '@lobehub/icons-static-svg/icons/yi-color.svg'
+import hunyuan from '@lobehub/icons-static-svg/icons/hunyuan-color.svg'
+import baichuan from '@lobehub/icons-static-svg/icons/baichuan-color.svg'
+import groq from '@lobehub/icons-static-svg/icons/groq.svg'
 import type { ModelBrand } from '../model/model-brand.js'
 import styles from './model-brand-icon.module.scss'
 
@@ -36,6 +43,13 @@ const icons: Record<ModelBrand, string> = {
   minimax,
   doubao,
   stepfun,
+  nvidia,
+  cohere,
+  perplexity,
+  yi,
+  hunyuan,
+  baichuan,
+  groq,
 }
 
 export function ModelBrandIcon({

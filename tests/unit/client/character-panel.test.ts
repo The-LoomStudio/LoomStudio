@@ -41,7 +41,6 @@ describe('CharacterPanel MasterDetail', () => {
 
     // 编辑草稿由 effect 填充；静态渲染仅检查编辑入口。
     expect(html).toContain('character.opening')
-    expect(html).toContain('character.resources')
     expect(html).toContain('character.continueNarrative')
     expect(html).toContain('character.newNarrative')
     expect(html).toContain('character.preview')

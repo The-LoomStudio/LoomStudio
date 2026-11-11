@@ -381,6 +381,7 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       getEffectivePreview: (input: { timelineId: string; branchId: string }) => trpc.application['getEffectiveNarrativePreview'].query(input),
       appendInput: (input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string | null; content: string; attachments?: import('@loom-studio/shared').ChatAttachment[] }) => trpc.application['appendNarrativeInput'].mutate(input),
       editNode: (input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }) => trpc.application['editNarrativeNode'].mutate(input),
+      deleteNode: (input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string }) => trpc.application['deleteNarrativeNode'].mutate(input),
       create: (input: CreateNarrativeTimelineInput) => trpc.application['createNarrativeTimeline'].mutate({
         ...input, title: input.title ?? createDefaultTitle('timeline'),
       }),

@@ -3,7 +3,46 @@ import { DialogPortalContext } from './dialog-portal-context.js'
 import { Check } from 'lucide-react'
 import * as React from 'react'
 
-export const DropdownMenu = DropdownMenuPrimitive.Root
+let lastWindowBlurTime = 0
+let lastTabSwitchTime = 0
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('blur', () => {
+    lastWindowBlurTime = Date.now()
+  }, true)
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      lastTabSwitchTime = Date.now()
+    } else {
+      lastWindowBlurTime = Date.now()
+    }
+  })
+}
+
+export const DropdownMenu: React.FC<React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>> = ({
+  open,
+  onOpenChange,
+  ...props
+}) => {
+  const handleOpenChange = React.useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      // 拦截由浏览器切标签页、窗口失焦触发的意外关闭
+      const isDueToWindowBlur =
+        Date.now() - lastWindowBlurTime < 150 ||
+        (typeof document !== 'undefined' && document.visibilityState === 'hidden')
+      if (isDueToWindowBlur) {
+        return
+      }
+    }
+    onOpenChange?.(nextOpen)
+  }, [onOpenChange])
+
+  return <DropdownMenuPrimitive.Root {...props} open={open} onOpenChange={handleOpenChange} />
+}
+DropdownMenu.displayName = DropdownMenuPrimitive.Root.displayName
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub
 
@@ -52,8 +91,31 @@ DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayNam
 export const DropdownMenuContent = React.forwardRef<
   React.ElementRef<typeof DropdownMenuPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content>
->(({ className, sideOffset = 4, children, ...props }, forwardedRef) => {
+>(({ className, sideOffset = 4, children, onFocusOutside, onPointerDownOutside, onInteractOutside, ...props }, forwardedRef) => {
   const portalContainer = React.useContext(DialogPortalContext)
+
+  const isBrowserChromeInteraction = (event: { detail: { originalEvent: unknown } }) => {
+    // 1. 如果页面处于非活动标签页或后台
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      return true
+    }
+
+    // 2. 如果标签页刚切回前台 350ms 内，忽略伴随切换产生的任何外部指针事件
+    if (Date.now() - lastTabSwitchTime < 350) {
+      return true
+    }
+
+    const original = event.detail.originalEvent
+    // 3. 如果点击发生在浏览器视口之外（如顶部标签栏、地址栏、书签栏）
+    if (original && typeof original === 'object' && 'clientY' in original && typeof window !== 'undefined') {
+      const { clientX, clientY } = original as { clientX: number; clientY: number }
+      if (clientY <= 0 || clientY >= window.innerHeight || clientX <= 0 || clientX >= window.innerWidth) {
+        return true
+      }
+    }
+
+    return false
+  }
 
   return (
     <DropdownMenuPrimitive.Portal container={portalContainer}>
@@ -64,6 +126,25 @@ export const DropdownMenuContent = React.forwardRef<
         className={menuClass('loom-ui-menu', className)}
         data-menu-kind="dropdown"
         sideOffset={sideOffset}
+        onFocusOutside={event => {
+          // 阻止因浏览器切标签页、窗口失焦或系统桌面切换导致的误关闭
+          event.preventDefault()
+          onFocusOutside?.(event)
+        }}
+        onPointerDownOutside={event => {
+          if (isBrowserChromeInteraction(event)) {
+            event.preventDefault()
+            return
+          }
+          onPointerDownOutside?.(event)
+        }}
+        onInteractOutside={event => {
+          if (isBrowserChromeInteraction(event)) {
+            event.preventDefault()
+            return
+          }
+          onInteractOutside?.(event)
+        }}
       >
         {children}
       </DropdownMenuPrimitive.Content>

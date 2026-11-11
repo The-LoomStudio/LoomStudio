@@ -93,4 +93,5 @@ export type ObservationRecord = {
   steps: ObservationStep[]
   stepCount?: number
   diagnostic?: string
+  modelId?: string
 }

@@ -132,6 +132,7 @@ export function createStatisticsStore(engine: SqliteDataEngine, now: () => strin
           totals: db.prepare(`SELECT ${totalsSql} FROM usage_requests WHERE ${conditions}`).get(...values) as unknown as UsageTotals,
           providers: db.prepare(`SELECT provider_profile_id AS id, provider_name AS name, provider_id AS providerId, model_id AS modelId, capability_id AS capabilityId, ${totalsSql} FROM usage_requests WHERE ${conditions} GROUP BY provider_profile_id, model_id, capability_id ORDER BY total DESC`).all(...values) as unknown as Array<UsageTotals & { id: string; name: string; providerId: string; modelId: string | null; capabilityId: string | null }>,
           days: db.prepare(`SELECT ${bucket} AS date, ${totalsSql} FROM usage_requests WHERE ${conditions} GROUP BY date ORDER BY date`).all(input.timeZone, ...values) as unknown as Array<UsageTotals & { date: string }>,
+          breakdown: db.prepare(`SELECT ${bucket} AS date, provider_profile_id AS providerId, provider_name AS providerName, model_id AS modelId, ${totalsSql} FROM usage_requests WHERE ${conditions} GROUP BY date, provider_profile_id, model_id ORDER BY date`).all(input.timeZone, ...values) as unknown as Array<UsageTotals & { date: string; providerId: string; providerName: string; modelId: string | null }>,
         }
       })
     },

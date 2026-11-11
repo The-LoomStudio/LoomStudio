@@ -620,8 +620,9 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       await input.runAction(async () => {
         const selectedOpening = choice ?? (cardId === input.selectedCardId ? openingChoice
           : input.selectedCard && input.selectedCard.id === cardId ? { kind: 'card' as const, id: input.selectedCard.opening.id } : undefined)
+        const effectivePresetId = input.selectedAgentPresetId ?? safeLocalStorage.getItem('loom.studio.selectedAgentPresetId') ?? undefined
         const result = await input.api.narratives.create({
-          cardId, agentPresetId: input.selectedAgentPresetId, ...(selectedOpening ? openingChoiceRequest(selectedOpening) : {}),
+          cardId, agentPresetId: effectivePresetId, ...(selectedOpening ? openingChoiceRequest(selectedOpening) : {}),
           ...(setup ? { extensionAdoptions: setup.extensionAdoptions, playerProfile: setup.playerProfile } : {}),
           expectedCardVersion: cardVersion ?? (input.selectedCard?.id === cardId ? input.selectedCard.version : undefined),
         })
@@ -788,8 +789,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function sendDiscussionInput(content: string, onAccepted?: () => void): Promise<boolean> {
-    if (!timeline || !branch || !content.trim() || !root.session?.agentPresetId || root.activeRun?.status === 'running') return false
+    const effectivePresetId = input.selectedAgentPresetId ?? safeLocalStorage.getItem('loom.studio.selectedAgentPresetId') ?? root.session?.agentPresetId
+    if (!timeline || !branch || !content.trim() || !effectivePresetId || root.activeRun?.status === 'running') return false
     return input.runAction(async () => {
+      if (effectivePresetId && root.session && root.session.agentPresetId !== effectivePresetId) {
+        await root.configure({ agentPresetId: effectivePresetId }).catch(() => undefined)
+      }
       await root.execute({ agentSessionId: timeline.id, input: content,
         macroSelections: input.getMacroSelections?.(timeline.id, branch.id), activationFacts: input.activationFacts,
         narrativeTarget: { timelineId: timeline.id, branchId: branch.id } }, createConfirmedRun, onAccepted)
@@ -797,7 +802,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function retryNarrativeInput() {
-    if (root.activeRun?.status === 'suspended') return input.runAction(root.resume)
+    if (root.activeRun?.status === 'suspended' || root.activeRun?.status === 'failed' || root.recovery?.status === 'failed') return input.runAction(root.resume)
     const latestInput = root.entries.findLast(item => item.entry.kind === 'message' && item.entry.role === 'user')
     if (canRetryDiscussion && latestInput && latestInput.entry.kind === 'message' && latestInput.entry.purpose !== 'narrative') {
       return retryDiscussionInput(latestInput.id, latestInput.entry.content)
@@ -873,7 +878,11 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     startingNarrativeRef.current = true
     try {
       await input.runAction(async () => {
-        if (!primarySessionRef.current?.agentPresetId) throw new Error('请先选择故事使用的 Agent 预设')
+        const effectivePresetId = input.selectedAgentPresetId ?? safeLocalStorage.getItem('loom.studio.selectedAgentPresetId') ?? primarySessionRef.current?.agentPresetId
+        if (!effectivePresetId) throw new Error('请先选择故事使用的 Agent 预设')
+        if (effectivePresetId && primarySessionRef.current && primarySessionRef.current.agentPresetId !== effectivePresetId) {
+          await root.configure({ agentPresetId: effectivePresetId }).catch(() => undefined)
+        }
         if (root.activeRun?.status === 'suspended') await root.abandon()
         let currentTimeline = timeline
         let currentBranch = branch
@@ -1205,6 +1214,26 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setPromptPreview(undefined)
   }
 
+  async function deleteNarrativeNode(nodeId: string): Promise<void> {
+    if (!timeline || !branch?.headNodeId || branch.headNodeId !== nodeId) throw new Error('只能删除最新的一条消息')
+    if (root.activeRun) {
+      await root.abandon().catch(() => undefined)
+    }
+    const result = await input.api.narratives.deleteNode({
+      timelineId: timeline.id, branchId: branch.id, nodeId,
+      expectedHeadNodeId: branch.headNodeId,
+    })
+    const displayed = displayedNarrativeRef.current
+    if (displayed.api !== input.api || displayed.timelineId !== timeline.id || displayed.branchId !== branch.id) return
+    narrativeWriteRevisionRef.current++
+    setTimeline(current => current?.id === result.timeline.id ? result.timeline : current)
+    setBranch(current => current?.id === result.branch.id ? result.branch : current)
+    setBranches(current => current.map(item => item.id === result.branch.id ? result.branch : item))
+    setNodes(current => current.filter(node => node.id !== result.deletedNodeId))
+    setPromptPreview(undefined)
+    await refreshRootNarrative().catch(() => undefined)
+  }
+
   async function ensureAgentSession(targetTimeline = timeline): Promise<AgentSession> {
     if (!agentSessionReadyRef.current) throw new Error('Agent Session is not ready')
     const current = agentSessionRef.current
@@ -1534,7 +1563,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     retryNarrativeInput,
     retryDiscussionInput,
     reviseUserInput,
-    canRetryNarrativeInput: root.activeRun?.status === 'suspended' || (canRetryDiscussion && root.activeRun?.status !== 'running') || (swipe ? Boolean(swipe.canGenerate && !swipe.active && !swipe.suspended && !swipeBusy
+    canRetryNarrativeInput: root.activeRun?.status === 'suspended' || root.activeRun?.status === 'failed' || root.recovery?.status === 'failed' || (canRetryDiscussion && root.activeRun?.status !== 'running') || (swipe ? Boolean(swipe.canGenerate && !swipe.active && !swipe.suspended && !swipeBusy
       && primarySessionRef.current && !runRecoveryBusy) : Boolean(narrativeSubmission && ownsNarrativeSubmission(narrativeSubmission)
       && agentSessionReady && !startingRunRef.current && !runRecoveryBusy
       && !(observedRunRef.current && ownsRun(observedRunRef.current)
@@ -1552,6 +1581,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     cardTimelines,
     composerInput,
     editNarrativeNode,
+    deleteNarrativeNode,
     hasOlderNarrativeNodes: Boolean(olderCursor),
     input: composerInput,
     lastRun,

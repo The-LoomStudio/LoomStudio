@@ -151,6 +151,14 @@ export const timelineProcedures = {
       raw: readString(params, 'raw'),
     }
   })).mutation(({ ctx, input }) => ctx.runtime.editNarrativeNode(input, ctx.request)),
+  'deleteNarrativeNode': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['deleteNarrativeNode']>[0] => {
+    return {
+      timelineId: readString(params, 'timelineId'),
+      branchId: readString(params, 'branchId'),
+      nodeId: readString(params, 'nodeId'),
+      expectedHeadNodeId: readString(params, 'expectedHeadNodeId'),
+    }
+  })).mutation(({ ctx, input }) => ctx.runtime.deleteNarrativeNode(input, ctx.request)),
   'createNarrativeTimeline': procedure.input(z.strictObject({
     cardId: z.string(),
     agentPresetId: z.string().optional(),

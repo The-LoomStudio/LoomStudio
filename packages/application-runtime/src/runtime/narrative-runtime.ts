@@ -423,6 +423,37 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
       return { timeline: result.timeline, branch: result.branch, replacements: result.replacements, mutation: { changesetId: result.commit.changesetId } }
     },
 
+    deleteNarrativeNode: async (input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string }, requestContext?: RuntimeRequestContext) => {
+      const narratives = requireNarratives(ctx)
+      const branch = await narratives.getBranch(input.branchId)
+      if (!branch || branch.timelineId !== input.timelineId) throw new Error('Branch not found')
+      if (branch.headNodeId !== input.nodeId || branch.headNodeId !== input.expectedHeadNodeId) {
+        throw new Error('Only the latest node can be deleted')
+      }
+      const node = await narratives.getNode(input.nodeId)
+      if (!node) throw new Error('Node not found')
+      const parentNodeId = node.parentNodeId
+      const parentNode = parentNodeId ? await narratives.getNode(parentNodeId) : undefined
+      const stateRevisionId = parentNode?.stateRevisionId ?? branch.stateHeadRevisionId
+      const workspaceRevisionId = parentNode?.workspaceRevisionId ?? branch.workspaceHeadRevisionId
+      const result = await ctx.dataEngine.transact(
+        narrativeWriteContext(requestContext, 'application.deleteNarrativeNode'),
+        async dataTx => {
+          const restored = narratives.transaction(dataTx).restoreBranch({
+            timelineId: input.timelineId,
+            branchId: input.branchId,
+            expectedHeadNodeId: branch.headNodeId ?? null,
+            expectedStateHeadRevisionId: branch.stateHeadRevisionId,
+            headNodeId: parentNodeId ?? null,
+            stateRevisionId,
+            workspaceRevisionId,
+          })
+          return { branch: restored, timeline: narratives.transaction(dataTx).getTimeline(input.timelineId)! }
+        }
+      )
+      return { timeline: result.value.timeline, branch: result.value.branch, deletedNodeId: input.nodeId, mutation: { changesetId: result.commit.changesetId } }
+    },
+
     forkNarrativeBranch: async (input: ForkNarrativeBranchInput, requestContext?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult> => {
       const result = await requireNarratives(ctx).forkBranch({
         ...narrativeWriteContext(requestContext, 'application.forkNarrativeBranch'),

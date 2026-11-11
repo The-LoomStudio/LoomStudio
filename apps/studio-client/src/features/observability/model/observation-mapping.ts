@@ -17,6 +17,7 @@ export function mapObservationSummary(record: ObservationSummary, t: Translator 
     identity: { [record.kind === 'run' ? 'Run' : record.kind === 'build' ? 'Build' : 'Request record']: record.id, Timeline: record.timelineId, Session: record.agentSessionId, Branch: record.branchId, ...record.origin },
     diagnostic: [record.availability === 'partial' && t('observation.partial'), record.diagnostic].filter(Boolean).join(' · ') || undefined,
     steps: [],
+    modelId: record.modelId,
   }
 }
 

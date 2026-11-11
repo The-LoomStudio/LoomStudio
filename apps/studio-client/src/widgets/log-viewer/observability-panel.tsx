@@ -41,8 +41,13 @@ export function ObservabilityPanel({ directoryHeader, active, api, endpoint, t, 
   function notice(text: string, retry?: () => unknown): ReactNode {
     return <div className={styles.readNotice} role="status"><p>{text}</p>{retry && <Button size="small" onClick={() => { void retry() }}>{t('observation.retry')}</Button>}</div>
   }
+  const mappedSteps = state.steps.map(step => ({ ...mapObservationStep(step, state.entry.data, state.build.data, step.id === state.step?.id && state.previousEntry.data?.id === state.previous?.id ? state.previousEntry.data : undefined, t), references: step.id === state.step?.id ? [
+    ...entityRefs.filter(ref => ref.type === 'provider').map(entityLink),
+    ...(step.buildId ? [{ label: t('observation.buildStage'), note: state.build.data === null ? t('observation.recordUnavailable') : undefined, open: state.build.data ? () => selectRecord(step.buildId!) : undefined }] : []),
+  ] : [] }))
   const selectedRecord = state.selected ? {
     ...mapObservationSummary(state.selected.record, t),
+    modelId: state.selected.record.modelId ?? mappedSteps.find(s => s.model)?.model,
     source: names.labels.get(`run:${state.selected.record.id}`)?.source,
     references: [...entityRefs.filter(ref => ref.type !== 'provider').map(entityLink),
       ...(summary?.kind === 'run' ? [{ label: t('observation.applicationLogs'), open: () => {
@@ -52,18 +57,15 @@ export function ObservabilityPanel({ directoryHeader, active, api, endpoint, t, 
       } }] : []),
     ],
     stepCount: state.steps.length,
-    steps: state.steps.map(step => ({ ...mapObservationStep(step, state.entry.data, state.build.data, step.id === state.step?.id && state.previousEntry.data?.id === state.previous?.id ? state.previousEntry.data : undefined, t), references: step.id === state.step?.id ? [
-      ...entityRefs.filter(ref => ref.type === 'provider').map(entityLink),
-      ...(step.buildId ? [{ label: t('observation.buildStage'), note: state.build.data === null ? t('observation.recordUnavailable') : undefined, open: state.build.data ? () => selectRecord(step.buildId!) : undefined }] : []),
-    ] : [] })),
+    steps: mappedSteps,
   } : undefined
   const detailNotice = !state.recordId ? undefined
     : state.detail.isError ? notice(t('observation.readError'), state.detail.refetch)
-      : state.detail.isPending ? notice(t('observation.loading'))
+      : (state.detail.isPending && !selectedRecord) ? notice(t('observation.loading'))
         : state.detail.data === null ? notice(t('observation.unavailable'), state.detail.refetch) : undefined
   const stepNotice = !state.step ? undefined
     : state.entry.isError ? notice(t('observation.readError'), state.entry.refetch)
-      : state.entry.isPending ? notice(t('observation.loading'))
+      : (state.entry.isPending && !state.entry.data) ? notice(t('observation.loading'))
         : state.entry.data === null ? notice(t('observation.unavailable'), state.entry.refetch) : undefined
   return <><ObservabilityWorkbench
     directoryHeader={<div className={styles.directoryHeading}>{directoryHeader}<IconButton aria-label={t('observation.settings')} title={t('observation.settings')} onClick={() => setSettingsOpen(true)}><Settings size={16} /></IconButton></div>}
@@ -72,13 +74,13 @@ export function ObservabilityPanel({ directoryHeader, active, api, endpoint, t, 
     selectedRecordId={state.recordId}
     selectedRecord={selectedRecord}
     onSelectRecord={selectRecord} onSelectStep={state.setStepId} onKindChange={state.setKind}
-    listNotice={state.list.isError ? notice(t('observation.readError'), state.list.refetch) : state.list.isPending ? notice(t('observation.loading')) : undefined}
+    listNotice={state.list.isError ? notice(t('observation.readError'), state.list.refetch) : (state.list.isPending && !state.records.length) ? notice(t('observation.loading')) : undefined}
     listFooter={<>{!!state.list.data?.pages[0]?.dropped && notice(t('observation.dropped', { count: state.list.data.pages[0].dropped }))}{state.list.hasNextPage && <Button disabled={state.list.isFetchingNextPage} onClick={() => { void state.list.fetchNextPage() }}>{t('observation.loadMore')}</Button>}</>}
     detailNotice={detailNotice}
     stepNotice={stepNotice}
     toolbar={<>
       {state.buildId && state.build.isError ? notice(t('observation.buildError'), state.build.refetch) : null}
-      {state.buildId && state.build.isPending ? notice(t('observation.buildLoading')) : null}
+      {state.buildId && state.build.isPending && state.build.data === undefined ? notice(t('observation.buildLoading')) : null}
       {state.previousEntry.isError ? notice(t('observation.comparisonError'), state.previousEntry.refetch) : null}
     </>}
   /><Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} title={t('observation.settings')} closeLabel={t('observation.close')} closeOnBackdrop>

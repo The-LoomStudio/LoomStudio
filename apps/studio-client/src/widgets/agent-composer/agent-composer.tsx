@@ -4,7 +4,7 @@ import { useRef, useState, type FormEvent, type ReactNode, type Ref } from 'reac
 import type { Translator } from '../../shared/i18n/index.js'
 import { ChatComposer, type ChatComposerQuickAction } from '../chat-composer/chat-composer.js'
 import styles from './agent-composer.module.scss'
-import { RunRecoveryControls, type RunRecoveryControlsProps } from '../../features/narrative-runtime/ui/run-recovery-controls.js'
+import type { RunRecoveryControlsProps } from '../../features/narrative-runtime/ui/run-recovery-controls.js'
 
 export type AgentComposerProps = RunRecoveryControlsProps & AttachmentComposerProps & {
   inputMode?: 'roleplay' | 'discussion'
@@ -77,7 +77,6 @@ export function AgentComposer(props: AgentComposerProps) {
         onMouseLeave={handleMouseLeave}
       >
       <div className={styles.taskCard}>
-        {recovery ? <div className={styles.floatingRecovery}><RunRecoveryControls {...props} runRecovery={recovery} /></div> : null}
         <div className={styles.taskCapsule}>{props.taskCard}</div>
         <div ref={props.actionsHostRef} className={styles.timelineActions} />
       </div>

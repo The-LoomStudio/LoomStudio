@@ -1,6 +1,6 @@
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { PromptResourceDisplayMetadata } from '@loom-studio/shared'
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Package } from 'lucide-react'
 
 type ExtensionIdentity = {
@@ -39,7 +39,13 @@ export function useExtensionIdentities() {
   return useContext(ExtensionIdentityContext)
 }
 
-export function ExtensionIcon(props: { packageId?: string; iconUrl?: string; size?: number; className?: string }) {
+export function ExtensionIcon(props: {
+  packageId?: string
+  iconUrl?: string
+  size?: number
+  className?: string
+  fallback?: ReactNode
+}) {
   const packages = useExtensionIdentities()
   const url = props.iconUrl ?? packages.find(item => item.packageId === props.packageId)?.iconUrl
   const [failedUrl, setFailedUrl] = useState<string>()
@@ -47,5 +53,5 @@ export function ExtensionIcon(props: { packageId?: string; iconUrl?: string; siz
   const style = { width: size, height: size, flex: `0 0 ${size}px`, objectFit: 'contain' as const }
   return url && url !== failedUrl
     ? <img src={url} alt="" aria-hidden="true" className={props.className} style={style} onError={() => setFailedUrl(url)} />
-    : <Package aria-hidden="true" className={props.className} style={style} />
+    : (props.fallback ?? <Package aria-hidden="true" className={props.className} style={style} />)
 }

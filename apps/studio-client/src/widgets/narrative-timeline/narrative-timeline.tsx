@@ -80,6 +80,7 @@ type NarrativeTimelineProps = {
   hasOlder: boolean
   macroContext?: MacroRenderContext
   onEditNode: (nodeId: string, content: string) => Promise<void>
+  onDeleteNode?: (node: NarrativeNodeView) => void
   onForkNode: (node: NarrativeNodeView) => void
   onLoadOlder(): Promise<void>
   onNodeAnchorChange: (nodeId: string) => void
@@ -298,7 +299,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
         setExpandedCommunication(value => ({ ...value, [key]: !expanded }))
       }}>
         <span>Agent 对话</span>
-        {activity && <span className={styles.communicationActivity} role="status">{activity}</span>}
+        {!expanded && activity && <span className={styles.communicationActivity} role="status">{activity}</span>}
         <ChevronDown className={styles.communicationChevron} data-expanded={expanded} aria-hidden="true" />
       </button>
       <ToolCollapse open={expanded} id={`communication-${key}`}>
@@ -436,7 +437,19 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
             </ConversationMessageAction>
             <ConversationMessageAction label={props.t('timeline.editLocal')} onClick={() => beginEdit(entry)}><Pencil aria-hidden="true" /></ConversationMessageAction>
             <ConversationMessageAction disabled={props.busy} label={props.t('timeline.fork')} onClick={() => props.onForkNode(entry)}><GitBranch aria-hidden="true" /></ConversationMessageAction>
-            <ConversationMessageAction disabled label={props.t('timeline.deleteUnavailable')}><Trash2 aria-hidden="true" /></ConversationMessageAction>
+            {(() => {
+              const isLatest = index === props.timeline.length - 1
+              const canDelete = Boolean(isLatest && props.onDeleteNode && !props.busy)
+              return (
+                <ConversationMessageAction
+                  disabled={!canDelete}
+                  label={props.t(canDelete ? 'timeline.delete' : 'timeline.deleteUnavailable')}
+                  onClick={canDelete ? () => void props.onDeleteNode?.(entry) : undefined}
+                >
+                  <Trash2 aria-hidden="true" />
+                </ConversationMessageAction>
+              )
+            })()}
           </>
         )}
       />

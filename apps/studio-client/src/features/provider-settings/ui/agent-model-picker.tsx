@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Bot, Check, Layers, RefreshCw, Server, X } from 'lucide-react'
+import { Bot, Check, Layers, Server, X } from 'lucide-react'
 import { Button, Dialog, SearchField } from '@loom-studio/ui'
 import type { ModelProfile, ProviderAccount, ProviderModelSelection } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -201,38 +201,30 @@ export function AgentModelPicker(props: {
           ) : null}
 
           {displayedSections.map(section => {
-            const showGroupHeader = activeAccountId === 'all' || Boolean(query)
             return (
               <div key={section.account.id} className={styles.sectionGroup}>
-                {showGroupHeader && (
-                  <div className={styles.groupHeader}>
-                    <div className={styles.groupHeaderLeft}>
-                      {section.brand ? (
-                        <span className={styles.groupIcon}>
-                          <ModelBrandIcon brand={section.brand} fallback={<Server size={13} />} />
-                        </span>
-                      ) : null}
-                      <span className={styles.groupTitle}>{section.account.displayName}</span>
-                    </div>
-                    <div className={styles.groupHeaderRight}>
-                      <Button
-                        size="small"
-                        variant="ghost"
-                        disabled={props.pending || section.catalog?.loading}
-                        onClick={() => void load(section.account.id)}
-                      >
-                        <RefreshCw size={12} aria-hidden="true" />
-                        {props.t(
-                          section.catalog?.loading
-                            ? 'provider.modelsLoading'
-                            : section.catalog?.models
-                              ? 'agent.model.refresh'
-                              : 'agent.model.fetch',
-                        )}
-                      </Button>
-                    </div>
+                <div className={styles.groupHeader}>
+                  <div className={styles.groupHeaderLeft}>
+                    {section.brand ? (
+                      <span className={styles.groupIcon}>
+                        <ModelBrandIcon brand={section.brand} fallback={<Server size={13} />} />
+                      </span>
+                    ) : null}
+                    <span className={styles.groupTitle}>{section.account.displayName}</span>
                   </div>
-                )}
+                  <div className={styles.groupHeaderRight}>
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      disabled={props.pending || section.catalog?.loading}
+                      onClick={() => void load(section.account.id)}
+                    >
+                      {section.catalog?.loading
+                        ? '正在获取…'
+                        : '获取模型'}
+                    </Button>
+                  </div>
+                </div>
 
                 {section.catalog?.error ? (
                   <p role="alert" className={styles.error}>

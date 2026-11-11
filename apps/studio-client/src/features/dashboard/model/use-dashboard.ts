@@ -45,6 +45,83 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
   if (view === 'storage' && database.data?.unavailable) notices.push('当前环境不支持读取 SQLite 表空间明细。')
   if (view === 'storage' && storage.data && storage.data.volumes.length > 1) notices.push('数据、缓存与日志位于不同磁盘，磁盘剩余仅显示数据目录。')
   if (view === 'storage') notices.push(...(storage.data?.errors ?? []))
+
+  // OpenRouter 鲜明分色系（用于每日模型/提供商堆叠图）
+  const slicePalette = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#eab308', '#06b6d4']
+  const othersColor = '#64748b'
+
+  // 模型 Top 6
+  const topModelKeys = (usage.data?.providers ?? []).slice(0, 6).map(p => `${p.id}::${p.modelId ?? ''}`)
+  const modelColorMap = new Map<string, string>()
+  topModelKeys.forEach((key, idx) => {
+    modelColorMap.set(key, slicePalette[idx % slicePalette.length]!)
+  })
+
+  // 提供商 Top 6
+  const providerTotals = new Map<string, { total: number; name: string }>()
+  for (const p of usage.data?.providers ?? []) {
+    const existing = providerTotals.get(p.id)
+    const pTotal = p.total ?? (p.input + p.output)
+    if (existing) existing.total += pTotal
+    else providerTotals.set(p.id, { total: pTotal, name: p.name })
+  }
+  const topProviderIds = Array.from(providerTotals.entries())
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 6)
+    .map(e => e[0])
+  const providerColorMap = new Map<string, string>()
+  topProviderIds.forEach((id, idx) => {
+    providerColorMap.set(id, slicePalette[idx % slicePalette.length]!)
+  })
+
+  type RawBreakdown = { date: string; providerId: string; providerName: string; modelId: string | null; total: number }
+  const rawBreakdowns = (usage.data as { breakdown?: RawBreakdown[] } | undefined)?.breakdown ?? []
+  const modelBreakdownByDate = new Map<string, Array<{ id: string; name: string; provider: string; total: number; color: string }>>()
+  const providerBreakdownByDate = new Map<string, Array<{ id: string; name: string; provider: string; total: number; color: string }>>()
+
+  for (const item of rawBreakdowns) {
+    // 1. 按模型聚合
+    const modelKey = `${item.providerId}::${item.modelId ?? ''}`
+    const isTopModel = modelColorMap.has(modelKey)
+    const mColor = isTopModel ? modelColorMap.get(modelKey)! : othersColor
+    const mName = isTopModel ? (item.modelId ?? item.providerName) : 'Others'
+    const mId = isTopModel ? modelKey : 'others'
+    const mExisting = modelBreakdownByDate.get(item.date) ?? []
+    const mFound = mExisting.find(s => s.id === mId)
+    if (mFound) {
+      mFound.total += item.total
+    } else {
+      mExisting.push({
+        id: mId,
+        name: mName,
+        provider: item.providerName,
+        total: item.total,
+        color: mColor,
+      })
+    }
+    modelBreakdownByDate.set(item.date, mExisting)
+
+    // 2. 按提供商聚合
+    const isTopProvider = providerColorMap.has(item.providerId)
+    const pColor = isTopProvider ? providerColorMap.get(item.providerId)! : othersColor
+    const pName = isTopProvider ? item.providerName : 'Others'
+    const pId = isTopProvider ? item.providerId : 'others'
+    const pExisting = providerBreakdownByDate.get(item.date) ?? []
+    const pFound = pExisting.find(s => s.id === pId)
+    if (pFound) {
+      pFound.total += item.total
+    } else {
+      pExisting.push({
+        id: pId,
+        name: pName,
+        provider: item.providerName,
+        total: item.total,
+        color: pColor,
+      })
+    }
+    providerBreakdownByDate.set(item.date, pExisting)
+  }
+
   const data: DashboardSnapshot = {
     rangeLabel: `${range.from ? new Date(range.from).toLocaleDateString() : '采集开始'} — ${new Date(range.to).toLocaleDateString()}`,
     collectionStartedAt: usage.data?.collectionStartedAt,
@@ -56,7 +133,28 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
       totalReported: row.totalReported, inputReported: row.inputReported, outputReported: row.outputReported,
       requests: row.requests, unreported: row.unreported, tone: tones[index % tones.length]!,
     })) ?? [],
-    days: usage.data?.days.map(day => ({ date: day.date, input: day.input, output: day.output, requests: day.requests, total: day.total })) ?? [],
+    days: usage.data?.days.map(day => {
+      const modelSlices = modelBreakdownByDate.get(day.date)
+      const providerSlices = providerBreakdownByDate.get(day.date)
+      const dayTotal = day.total ?? (day.input + day.output)
+      const fallbackSlice = [{
+        id: 'default',
+        name: '总用量',
+        provider: '',
+        total: dayTotal,
+        color: slicePalette[0]!,
+      }]
+      return {
+        date: day.date,
+        input: day.input,
+        output: day.output,
+        requests: day.requests,
+        total: dayTotal,
+        slices: modelSlices && modelSlices.length > 0 ? modelSlices : fallbackSlice,
+        modelSlices: modelSlices && modelSlices.length > 0 ? modelSlices : fallbackSlice,
+        providerSlices: providerSlices && providerSlices.length > 0 ? providerSlices : fallbackSlice,
+      }
+    }) ?? [],
     play: play.data?.rows.map((row, index) => ({ id: row.id ?? 'unassociated', name: row.name,
       subtitle: `最近发送 ${new Date(row.lastSent).toLocaleString()}`, tone: tones[index % tones.length]!, sends: row.sends, activeDays: row.days, canOpen: Boolean(row.available), stories: row.stories.map(story => ({ ...story, name: story.name ?? '未命名故事', updated: new Date(story.updated).toLocaleDateString() })),
     })) ?? [],

@@ -1,4 +1,4 @@
-import type { ActiveAgentRun } from '../model/use-narrative-runtime.js'
+import type { ActiveAgentRun, RunRecovery } from '../model/use-narrative-runtime.js'
 import type { AgentTranscriptEntry } from '../../../entities/index.js'
 import { resolveAgentRuntimePhase } from '../model/agent-runtime-phase.js'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -15,6 +15,7 @@ type Task = Awaited<ReturnType<StudioApi['agentSessions']['listRuns']>>['tasks']
 export function AgentTaskMenu(props: {
   activeRun?: ActiveAgentRun
   messages?: AgentTranscriptEntry[]
+  runRecovery?: RunRecovery
   api: StudioApi
   endpoint: string
   timelineId?: string
@@ -77,8 +78,27 @@ export function AgentTaskMenu(props: {
     })
   }, [endpoint, queryClient])
   const currentTasks = tasks.data?.tasks ?? []
-  const counts = (['running', 'suspended', 'interrupted', 'failed'] as const)
-    .map(state => ({ state, count: currentTasks.filter(task => task.state === state).length }))
+  const hasRunningTask = props.activeRun?.status === 'running' && !props.activeRun.approval
+    || currentTasks.some(task => task.runId !== props.activeRun?.runId && task.state === 'running')
+  const hasFailedTask = Boolean(props.activeRun?.error) || props.runRecovery?.status === 'failed'
+    || currentTasks.some(task => task.state === 'failed' || task.state === 'interrupted' || Boolean(task.reason && task.reason !== 'user-pause'))
+  const hasPausedTask = props.activeRun?.status === 'suspended' || currentTasks.some(task => task.state === 'suspended' && (!task.reason || task.reason === 'user-pause'))
+  const StatusIcon = hasRunningTask ? LoaderCircle : props.activeRun?.approval || hasFailedTask ? AlertCircle
+    : hasPausedTask ? Pause : currentTasks.length ? Check : undefined
+
+  const counts = (['running', 'failed', 'suspended', 'interrupted'] as const)
+    .map(state => {
+      if (state === 'failed') {
+        const failedCount = currentTasks.filter(task => task.state === 'failed' || (task.state === 'suspended' && Boolean(task.reason && task.reason !== 'user-pause'))).length
+          + (props.runRecovery?.status === 'failed' && !currentTasks.length ? 1 : 0)
+        return { state, count: failedCount }
+      }
+      if (state === 'suspended') {
+        const suspendedCount = currentTasks.filter(task => task.state === 'suspended' && (!task.reason || task.reason === 'user-pause')).length
+        return { state, count: suspendedCount }
+      }
+      return { state, count: currentTasks.filter(task => task.state === state).length }
+    })
     .filter(item => item.count > 0)
   const summary = tasks.error ? tasks.error.message : tasks.isPending && props.timelineId ? t('agentTasks.loading')
     : counts.length ? counts.map(item => `${t(`agentTasks.${item.state}`)} · ${item.count}`).join(' / ')
@@ -88,12 +108,6 @@ export function AgentTaskMenu(props: {
   const summaryText = summary
     ? `${summary}${matchingRun && counts.length === 1 && counts[0].count === 1 && phase.kind !== 'idle' ? ` · ${phase.text}` : ''}`
     : undefined
-  const hasRunningTask = props.activeRun?.status === 'running' && !props.activeRun.approval
-    || currentTasks.some(task => task.runId !== props.activeRun?.runId && task.state === 'running')
-  const hasFailedTask = Boolean(props.activeRun?.error) || currentTasks.some(task => task.state === 'failed' || task.state === 'interrupted')
-  const hasPausedTask = props.activeRun?.status === 'suspended' || currentTasks.some(task => task.state === 'suspended')
-  const StatusIcon = hasRunningTask ? LoaderCircle : props.activeRun?.approval || hasFailedTask ? AlertCircle
-    : hasPausedTask ? Pause : currentTasks.length ? Check : undefined
 
 
 
@@ -139,13 +153,13 @@ export function AgentTaskMenu(props: {
         <ul className={styles.list}>{query.data?.tasks.map(task => <li className={styles.row} key={task.runId} aria-busy={busy === task.runId}>
           <div className={styles.identity}>
             <strong>{task.title || task.agentSessionId}</strong>
-            <span>{task.runId === props.activeRun?.runId && phase.kind !== 'idle' ? phase.text : t(`agentTasks.${task.state}`)} · {new Date(task.updatedAt).toLocaleString()}</span>
-            {task.reason ? <p>{task.reason}</p> : null}
+            <span>{task.runId === props.activeRun?.runId && phase.kind !== 'idle' ? phase.text : (task.state === 'suspended' && task.reason && task.reason !== 'user-pause') ? t('agentTasks.failed') : t(`agentTasks.${task.state}`)} · {new Date(task.updatedAt).toLocaleString()}</span>
+            {task.reason ? <p className={styles.error}>{task.reason}</p> : (task.runId === props.activeRun?.runId && props.activeRun?.error) ? <p className={styles.error}>{props.activeRun.error}</p> : null}
           </div>
           <div className={styles.actions}>
             {task.canPause ? <IconButton aria-label={t('agentTasks.pause')} disabled={Boolean(busy)} onClick={() => void act(task, 'pause')}><Pause aria-hidden="true" /></IconButton> : null}
-            {task.canResume ? <IconButton aria-label={t('agentTasks.resume')} disabled={Boolean(busy)} onClick={() => void act(task, 'resume')}><Play aria-hidden="true" /></IconButton> : null}
-            {task.canAbandon ? <IconButton aria-label={t('agentTasks.abandon')} disabled={Boolean(busy)} onClick={() => { setError(undefined); setAbandon(task) }}><CircleX aria-hidden="true" /></IconButton> : null}
+            {(task.canResume || task.state === 'failed' || task.state === 'suspended') ? <IconButton aria-label={t('agentTasks.resume')} disabled={Boolean(busy)} onClick={() => void act(task, 'resume')}><Play aria-hidden="true" /></IconButton> : null}
+            {(task.canAbandon || task.state === 'failed' || task.state === 'suspended') ? <IconButton aria-label={t('agentTasks.abandon')} disabled={Boolean(busy)} onClick={() => { setError(undefined); setAbandon(task) }}><CircleX aria-hidden="true" /></IconButton> : null}
             <IconButton aria-label={t('agentTasks.open')} disabled={Boolean(busy)} onClick={() => void act(task, 'open')}><ExternalLink aria-hidden="true" /></IconButton>
           </div>
         </li>)}</ul>

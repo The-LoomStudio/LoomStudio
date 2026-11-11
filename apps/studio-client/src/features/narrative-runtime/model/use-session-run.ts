@@ -129,7 +129,7 @@ export function useSessionRun(input: Input) {
   }
 
   async function resume() {
-    if (starting.current || activeRun?.status !== 'suspended'
+    if (starting.current || (!activeRun || (activeRun.status !== 'suspended' && activeRun.status !== 'failed'))
       || input.kind === 'sidebar' && (observed.current?.observing || recovery?.status === 'disconnected')) return
     const previous = observed.current && owns(observed.current) && observed.current.runId === activeRun.runId ? observed.current : undefined
     const run = input.makeRun(activeRun.runId, previous, 'resume')
@@ -146,7 +146,7 @@ export function useSessionRun(input: Input) {
   }
 
   async function abandon() {
-    if (starting.current || activeRun?.status !== 'suspended'
+    if (starting.current || (!activeRun || (activeRun.status !== 'suspended' && activeRun.status !== 'failed'))
       || input.kind === 'sidebar' && (busy || observed.current && (!owns(observed.current) || observed.current.observing))) return
     const run = observed.current ?? input.makeRun(activeRun.runId, undefined, 'abandon')
     if (run && !observed.current) run.status = 'suspended'
@@ -160,7 +160,7 @@ export function useSessionRun(input: Input) {
       if (input.kind === 'sidebar') {
         const state = await run.api.agentSessions.runState(run.runId, run.sessionId)
         if (!owns(run)) return
-        if (state.state !== 'suspended') {
+        if (state.state !== 'suspended' && state.state !== 'failed') {
           run.status = state.state
           setActiveRun({ runId: state.runId, status: state.state })
           if (state.state === 'running') {

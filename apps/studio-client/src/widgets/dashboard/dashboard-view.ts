@@ -18,7 +18,23 @@ export type UsageRow = {
   unreported: number
   tone: DashboardTone
 }
-export type UsageDay = { total?: number; date: string; input: number; output: number; requests: number }
+export type UsageSlice = {
+  id: string
+  name: string
+  provider: string
+  total: number
+  color: string
+}
+export type UsageDay = {
+  total?: number
+  date: string
+  input: number
+  output: number
+  requests: number
+  slices?: UsageSlice[]
+  modelSlices?: UsageSlice[]
+  providerSlices?: UsageSlice[]
+}
 export type PlayRow = {
   canOpen?: boolean
   id: string

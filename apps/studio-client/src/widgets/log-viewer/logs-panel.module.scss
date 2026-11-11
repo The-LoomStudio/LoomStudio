@@ -2,4 +2,4 @@
 .content { flex: 1; min-height: 0; overflow: hidden; }
 .content[hidden] { display: none; }
 
-.tabs { padding-inline: 12px; }
+.tabs { padding-inline: 12px; padding-top: 12px; padding-bottom: 4px; }

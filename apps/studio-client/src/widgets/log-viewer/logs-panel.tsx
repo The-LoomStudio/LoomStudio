@@ -24,7 +24,7 @@ export function LogsPanel(props: ComponentProps<typeof LogViewer> & { observatio
       <LogViewer {...props} directoryHeader={directoryHeader} referenceApi={props.observationApi} referenceEndpoint={props.endpoint} active={props.active && view === 'application'} />
     </div>
     ) }, { id: 'model', content: (<div className={styles.content}>
-      <ObservabilityPanel directoryHeader={directoryHeader} key={props.endpoint} active={props.active && view === 'model'} api={props.observationApi} endpoint={props.endpoint} t={props.t} searchParams={props.searchParams} onSearchParamsChange={props.onSearchParamsChange} />
+      <ObservabilityPanel directoryHeader={directoryHeader} key={props.endpoint} active={props.active} api={props.observationApi} endpoint={props.endpoint} t={props.t} searchParams={props.searchParams} onSearchParamsChange={props.onSearchParamsChange} />
     </div>) }]} />
   </section>
 }
