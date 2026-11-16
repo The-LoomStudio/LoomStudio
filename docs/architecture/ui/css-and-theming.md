@@ -82,6 +82,7 @@ Motion foundation:
   --loom-motion-duration-standard
   --loom-motion-duration-loading
   --loom-motion-easing-standard
+  --loom-mobile-chrome-progress (运行时滚动跟手进度 0~1)
 
 Markdown content:
   --loom-markdown-code-block-border
@@ -135,7 +136,7 @@ data-loom-component="long-text-editor"
 - 状态优先使用原生属性、ARIA 或单独的 `data-*`，不要要求匹配生成类名；
 - 新 hook 只有在存在明确覆盖需求时才添加。
 
-`data-loom-component` 是 CSS hook，不自动成为 JavaScript、插件 SDK 或 DOM 结构兼容承诺。
+`data-loom-component` 是 CSS hook，不自动成为 JavaScript、插件 SDK 或 DOM 结构兼容承诺。当前已提供稳定边界 hook 的共享组件包括 `long-text-editor`、`read-only-diff`、`catalog-picker`、`catalog-model-picker`、`preset-model-quick-popover`、`observability-workbench` 等。
 
 当前命名迁移采用增量兼容：旧精确选择器继续保留在原 DOM，新对象使用独立的
 `data-loom-object`。例如 Narrative Timeline 仍保留

@@ -4,7 +4,7 @@
 
 App 将 [`StudioApi`](../../shared/api/studio-api.ts)、endpoint 存储范围、当前 Card/预设、操作回调、宏选择与翻译器注入主 hook。Widget 消费其结果并呈现 Timeline、Composer 与 Session 面板；具体领域行为留在本 Feature，不由 Widget 或 App 重复实现。
 
-正文事实以 Server Transcript 为准。Timeline 的根 Session 与 Timeline 同 ID；Narrative Node/Branch 是正文与分支的索引/投影，不能当作独立正文副本。Provider Replay、Client 消息数组和 Run 展示状态也不是持久正文权威。追加正文输入会先原子提交 canonical user message 与正文索引，再启动 Run；调整读取、分页或恢复时，应保留这条边界。详见[数据所有权](../../../../../docs/architecture/data/README.md)和[Session Runtime 合同](../../../../../docs/architecture/application/agent/runtime-and-session.md)。
+正文事实以 Server Transcript 为准。Timeline 的根 Session 与 Timeline 同 ID；Narrative Node/Branch 是正文与分支的索引/投影，不能当作独立正文副本。Provider Replay、Client 消息数组和 Run 展示状态也不是持久正文权威。追加正文输入会先原子提交 canonical user message 与正文索引，再启动 Run；调整读取、分页或恢复时，应保留这条边界。末尾节点删除（`deleteNarrativeNode`）仅允许作用于当前分支最新节点（`branch.headNodeId === nodeId`），存在活动 Run 时先自动 `abandon()`，再通过 `narratives.deleteNode` 将分支 Head 回退到父节点并同步刷新分支与根叙事投影。详见[数据所有权](../../../../../docs/architecture/data/README.md)和[Session Runtime 合同](../../../../../docs/architecture/application/agent/runtime-and-session.md)。
 
 目录缓存由本 Feature 按 API 身份隔离并自行刷新；主写作 Session 与侧栏 Session 使用独立的 Run lifecycle 观察，避免切换侧栏替换根 Session 的运行上下文。恢复是否可继续受服务端 Run 状态和检查点约束；Client 观察状态不能单独授权重放。
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { chatAttachmentSchema, type ChatAttachment } from '@loom-studio/shared'
+import { chatAttachmentSchema, createId, type ChatAttachment } from '@loom-studio/shared'
 import { safeLocalStorage } from '../../shared/browser/safe-local-storage.js'
 
 export type AttachmentDraft = { id: string; name: string; attachment?: ChatAttachment; error?: string; previewUrl?: string; retryable?: boolean }
@@ -100,7 +100,7 @@ export function useAttachmentDrafts(scope: string, initial: ChatAttachment[] = [
       try {
         fileInfo(file)
         if (read(key).length >= 20) throw new Error('每条消息最多 20 个附件')
-        const id = crypto.randomUUID()
+        const id = createId('attachment', candidate => read(key).some(item => item.id === candidate))
         update(key, list => [...list, { id, name: file.name }])
         tasks.push(upload(key, id, file))
       } catch (error) { rejected.push(`${file.name}：${error instanceof Error ? error.message : String(error)}`) }

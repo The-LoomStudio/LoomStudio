@@ -10,6 +10,7 @@ import {
   ContextMenuTrigger,
   Dialog,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  TextInput,
   Toggle,
 } from '@loom-studio/ui'
 import {
@@ -132,9 +133,19 @@ export function SessionsPanel(props: SessionsPanelProps) {
     batch: boolean
   }>()
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [pendingRename, setPendingRename] = useState<{
+    kind: 'timeline' | 'session'
+    id: string
+    initialTitle: string
+    draft: string
+  }>()
+  const [renameBusy, setRenameBusy] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
 
-  useEffect(() => { setPendingDelete(undefined) }, [props.api])
+  useEffect(() => {
+    setPendingDelete(undefined)
+    setPendingRename(undefined)
+  }, [props.api])
 
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
@@ -385,17 +396,14 @@ export function SessionsPanel(props: SessionsPanelProps) {
     })
   }
 
-  const handleRenameTimeline = async (timeline: NarrativeTimeline) => {
+  const handleRenameTimeline = (timeline: NarrativeTimeline) => {
     const currentTitle = timeline.title || props.t('sessions.untitledTimeline')
-    const next = window.prompt(props.t('sessions.renamePrompt'), currentTitle)
-    if (next !== null && next.trim() && next.trim() !== timeline.title) {
-      try {
-        await props.onRenameTimeline?.(timeline.id, next.trim())
-        notify.success(props.t('notify.success.updated'))
-      } catch (error) {
-        notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
-      }
-    }
+    setPendingRename({
+      kind: 'timeline',
+      id: timeline.id,
+      initialTitle: timeline.title ?? '',
+      draft: currentTitle,
+    })
   }
 
   const handleDeleteTimeline = (timeline: NarrativeTimeline) => {
@@ -406,16 +414,36 @@ export function SessionsPanel(props: SessionsPanelProps) {
     })
   }
 
-  const handleRenameSession = async (session: AgentSession) => {
+  const handleRenameSession = (session: AgentSession) => {
     const currentTitle = session.title || props.t('sessions.untitledAgentSession')
-    const next = window.prompt(props.t('sessions.renamePrompt'), currentTitle)
-    if (next !== null && next.trim() && next.trim() !== session.title) {
-      try {
-        await props.onRenameAgentSession?.(session.id, next.trim())
-        notify.success(props.t('notify.success.updated'))
-      } catch (error) {
-        notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
+    setPendingRename({
+      kind: 'session',
+      id: session.id,
+      initialTitle: session.title ?? '',
+      draft: currentTitle,
+    })
+  }
+
+  const confirmRename = async () => {
+    if (!pendingRename || renameBusy) return
+    const next = pendingRename.draft.trim()
+    if (!next || next === pendingRename.initialTitle) {
+      setPendingRename(undefined)
+      return
+    }
+    setRenameBusy(true)
+    try {
+      if (pendingRename.kind === 'timeline') {
+        await props.onRenameTimeline?.(pendingRename.id, next)
+      } else {
+        await props.onRenameAgentSession?.(pendingRename.id, next)
       }
+      setPendingRename(undefined)
+      notify.success(props.t('notify.success.updated'))
+    } catch (error) {
+      notify.error(props.t('notify.error.general'), { details: error instanceof Error ? error.message : String(error) })
+    } finally {
+      setRenameBusy(false)
     }
   }
 
@@ -1109,6 +1137,39 @@ export function SessionsPanel(props: SessionsPanelProps) {
           </>
         )}
       />
+      <Dialog
+        open={Boolean(pendingRename)}
+        title={props.t('sessions.rename')}
+        description={props.t('sessions.renamePrompt')}
+        closeOnBackdrop
+        dismissible={!renameBusy}
+        onClose={() => { if (!renameBusy) setPendingRename(undefined) }}
+        actions={(
+          <>
+            <Button disabled={renameBusy} onClick={() => setPendingRename(undefined)}>
+              {props.t('common.cancel')}
+            </Button>
+            <Button
+              disabled={renameBusy || !pendingRename?.draft.trim()}
+              onClick={() => void confirmRename()}
+            >
+              {props.t('common.confirm')}
+            </Button>
+          </>
+        )}
+      >
+        {pendingRename ? (
+          <form onSubmit={event => { event.preventDefault(); void confirmRename() }}>
+            <TextInput
+              autoFocus
+              aria-label={props.t('sessions.renamePrompt')}
+              disabled={renameBusy}
+              value={pendingRename.draft}
+              onChange={event => setPendingRename(current => current ? { ...current, draft: event.target.value } : undefined)}
+            />
+          </form>
+        ) : null}
+      </Dialog>
     </div>
   )
 }

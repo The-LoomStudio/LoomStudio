@@ -41,7 +41,7 @@ iframe 仅授予 `allow-scripts`，不授予 `allow-same-origin`。消息和 Loo
 
 ## 通知授权
 
-扩展 Client Module 在 Manifest 的 `capabilities` 中声明 `"ui.notify": true`，用户在扩展工作台授予通知权限。现有 `extensions.enableModule` 接受 `grants.ui: ["ui.notify"]`；空数组撤销，省略保留已有授权，旧数据缺失时默认无授权。Catalog 同时返回 `requestedUiCapabilities` 与 `desired.grants.ui`。
+扩展 Client Module 在 Manifest 的 `capabilities` 中声明 `"ui.notify": true`，用户在扩展工作台授予通知权限（前端启用与授权变更时由 [`ExtensionEnableDialog`](../../../apps/studio-client/src/features/extension-renderers/ui/extension-enable-dialog.tsx) 统一展示能力声明、脚本权限及全局/角色作用域风险提示）。现有 `extensions.enableModule` 接受 `grants.ui: ["ui.notify"]`；空数组撤销，省略保留已有授权，旧数据缺失时默认无授权。Catalog 同时返回 `requestedUiCapabilities` 与 `desired.grants.ui`。
 
 Loom Script 使用 Metadata 的 `@capability ui.notify` 和已有 Mount Grant。导入内容不会自动授予权限；有效能力是声明与授权的交集。
 

@@ -44,10 +44,39 @@ export function DashboardDialog(props: Props & { open: boolean; onClose(): void;
   const snapshot = view === 'resources' || view === 'storage'
   const rangeHelp = props.data.collectionStartedAt ? `用量与发送记录始于 ${new Date(props.data.collectionStartedAt).toLocaleDateString()}，此前的数据未补录。` : undefined
   const changeView = (next: DashboardView) => { setView(next); props.onViewChange?.(next) }
+  const hasLoaded = useRef(false)
+  if (props.data.ready) hasLoaded.current = true
+  const initialLoading = !hasLoaded.current && props.data.ready === false
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const wasOpenRef = useRef(false)
+  const actionTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (props.open && !wasOpenRef.current) {
+      actionTriggeredRef.current = false
+      const active = document.activeElement
+      returnFocusRef.current = active instanceof HTMLElement && active !== document.body && !active.closest('dialog') ? active : null
+    } else if (!props.open && wasOpenRef.current && !actionTriggeredRef.current) {
+      const target = returnFocusRef.current
+      returnFocusRef.current = null
+      const frame = requestAnimationFrame(() => {
+        const current = document.activeElement
+        if (current && current !== document.body && current !== document.documentElement) return
+        const fallback = target?.isConnected ? target : document.querySelector<HTMLElement>('[data-loom-component="utility-rail"] button[aria-haspopup="dialog"]')
+        fallback?.focus()
+      })
+      wasOpenRef.current = props.open
+      return () => cancelAnimationFrame(frame)
+    }
+    wasOpenRef.current = props.open
+  }, [props.open])
+  const handleAction = (action: DashboardAction) => {
+    if (action.kind !== 'calls') actionTriggeredRef.current = true
+    props.onAction(action)
+  }
   return <Dialog open={props.open} onClose={props.onClose} title={<span className={styles.dialogTitle}><span>统计</span><span className={styles.headerMeta} title={snapshot ? undefined : rangeHelp}>{snapshot ? '当前快照' : props.data.rangeLabel}</span></span>} titleIcon={<ChartNoAxesCombined size={19} />} layout="workbench" className={styles.dialog} headerActions={props.headerActions}>
-    {props.data.ready === false && <div className={styles.empty} role="status">{props.data.notices?.map(notice => <p key={notice}>{notice}</p>)}</div>}
+    {initialLoading && <div className={styles.empty} role="status">{props.data.notices?.map(notice => <p key={notice}>{notice}</p>)}</div>}
     {props.detailContent}
-    <div style={props.data.ready === false || props.detailContent ? { display: 'none' } : { height: '100%', minHeight: 0 }}><DashboardPanel view={view} data={props.data} period={props.period} onPeriodChange={props.onPeriodChange} onAction={props.onAction} onViewChange={changeView} /></div>
+    <div style={initialLoading || props.detailContent ? { display: 'none' } : { height: '100%', minHeight: 0 }}><DashboardPanel view={view} data={props.data} period={props.period} onPeriodChange={props.onPeriodChange} onAction={handleAction} onViewChange={changeView} /></div>
   </Dialog>
 }
 
@@ -161,7 +190,7 @@ export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewC
 
   return <section className={styles.panel} aria-label="统计">
     <div className={styles.navigation}><Tabs items={views} activeId={view} onChange={navigate} ariaLabel="Dashboard 视图" /><div className={styles.period}>{view === 'usage' && data.collectionStartedAt && <InfoDialog title="统计口径"><p>从 {new Date(data.collectionStartedAt).toLocaleDateString()} 开始记录，不补录此前用量。只统计提供商报告的 Token，包含重试和未采用的生成。</p></InfoDialog>}
-      {view === 'storage' || view === 'resources' ? null : <><span className={styles.periodLabel}>统计范围</span><select aria-label="统计时间范围" value={period} onChange={event => onPeriodChange(event.target.value as DashboardPeriod)}><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select></>}
+      {view === 'storage' || view === 'resources' ? null : <><span className={styles.periodLabel}>统计范围</span><select aria-label="统计时间范围" value={period} onChange={event => onPeriodChange(event.target.value as DashboardPeriod)}><option value="7">本周 (周一至周日)</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select></>}
     </div></div>
     <div className={styles.scroll}>
       {detailTitle ? <div className={styles.detail}>
@@ -205,7 +234,7 @@ export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewC
               <button type="button" className={styles.viewToggleBtn} data-active={usageGrouping === 'provider'} onClick={() => setUsageGrouping('provider')}>按提供商</button>
             </div>
           </div>}>
-            <UsageChart key={`${period}-${usageGrouping}`} days={data.days} grouping={usageGrouping} />
+            <UsageChart days={data.days} grouping={usageGrouping} />
             {data.usage.length ? <div className={styles.tableWrap} style={{ marginTop: 18 }}><table className={styles.table}>
               <thead><tr><th>{usageGrouping === 'model' ? '模型 / 提供商' : '提供商'}</th><th>输入 Token</th><th>输出 Token</th><th>请求</th><th>未报告</th><th><span className={styles.srOnly}>操作</span></th></tr></thead>
               <tbody>
@@ -277,7 +306,18 @@ function Empty({ title, description }: { title: string; description: string }) {
 
 function UsageChart({ days, grouping = 'model' }: { days: UsageDay[]; grouping?: 'model' | 'provider' }) {
   const [selection, setSelection] = useState<string>()
-  const selectedDay = days.find(day => day.date === selection) ?? days.at(-1)
+  const selectedDay = useMemo(() => {
+    if (selection) {
+      const found = days.find(day => day.date === selection)
+      if (found) return found
+    }
+    for (let i = days.length - 1; i >= 0; i--) {
+      if ((days[i]!.total ?? 0) > 0 || days[i]!.requests > 0) {
+        return days[i]
+      }
+    }
+    return days.at(-1)
+  }, [days, selection])
   const max = Math.max(...days.map(day => day.total ?? day.input + day.output), 1)
 
   if (!days.length) return <Empty title="还没有用量趋势" description="模型调用后的已报告用量会按日期汇总。" />
@@ -329,8 +369,8 @@ function UsageChart({ days, grouping = 'model' }: { days: UsageDay[]; grouping?:
       </div>
       <div className={styles.axis}>
         <span>{days[0]!.date.slice(5).replace('-', '/')}</span>
-        <span>{days[Math.floor(days.length / 2)]!.date.slice(5).replace('-', '/')}</span>
-        <span>{days.at(-1)!.date.slice(5).replace('-', '/')}</span>
+        {days.length > 2 && <span>{days[Math.floor(days.length / 2)]!.date.slice(5).replace('-', '/')}</span>}
+        {days.length > 1 && <span>{days.at(-1)!.date.slice(5).replace('-', '/')}</span>}
       </div>
     </div>
     <div className={styles.chartSidePanel}>

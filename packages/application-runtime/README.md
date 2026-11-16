@@ -36,10 +36,11 @@ Package 根入口通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构
 | `providers/`                                  | Provider Profile、Gateway、wire payload adapter 与软引用容错 |
 | [`observability/`](./src/observability/README.md) | Provider 请求与 Runtime / PromptBuild 观测；内存 Store 与可选快照持久化 |
 | [`archive/`](./src/archive/README.md)          | Timeline Archive 编解码与扩展参与者注册；导入恢复由 Narrative Runtime 组装 |
-| [`profiles/`](./src/profiles/)                 | 用户资料与全局背景集合；背景增删要求当前文档版本并引用已存在的受支持栅格媒体；[用户资料生命周期架构](../../docs/architecture/application/user-profiles.md) |
-| `state/`                                      | State Mutation、Revision、Definition 与 Binding        |
-| `transforms/`                                 | History Transform、Extractor 与 Renderer Projection    |
-| `scripts/`                                    | Loom Script Metadata、编解码与挂载解析                 |
+| [`src/profiles/`](./src/profiles/)             | 用户资料与全局背景集合；背景增删要求当前文档版本并引用已存在的受支持栅格媒体；[用户资料生命周期架构](../../docs/architecture/application/user-profiles.md) |
+| [`src/extensions/`](./src/extensions/)         | Extension/Script 存储作用域校验与便携载荷类型合同      |
+| `src/state/`                                   | State Mutation、Revision、Definition 与 Binding        |
+| `src/transforms/`                              | History Transform、Extractor 与 Renderer Projection    |
+| `src/scripts/`                                 | Loom Script Metadata、文本规则读写编解码与挂载解析     |
 
 `ApplicationRuntimeContext` 只保存稳定的基础设施组件（Stores、Gateway、Registry、Logger、Clock 等），**严禁保存 `sessionId`、`branchId`、`userInput` 等具体请求的业务事实**。调用相关身份、请求载荷与关联信息必须通过具体操作参数或 `RuntimeRequestContext` 显式传递。
 
@@ -98,13 +99,13 @@ pnpm exec vitest run tests/unit/application-runtime tests/integration/applicatio
 
 ## 领域规则与合同归属
 
-- `agents/session-execution.ts`：同一 AgentStore 的执行登记与切换保护；调用方仍负责登记和 finally 释放。
-- `agents/tool-catalog.ts`：Tool Document 转换、目录读取和 Registry 同步；不编排 Agent 回合。
-- `prompt/agent-turn-variables.ts`：用户/角色/Global State 的变量材料构造，Agent、Narrative、Macro 共用。
-- `extensions/storage-scope.ts`：Extension/Script 存储目标与范围校验，保留同事务 Store 访问。
-- `narrative/sampling-contracts.ts`：SampleNarrativeInput 请求合同；公开名称继续由包入口导出。
-- `scripts/script-text-resources.ts`：当前 Script 文本规则的读写、导入和引用映射，不是启动迁移。
-- `cards/card-bundle.ts`、`card-bundle-codec.ts`、`card-bundle-types.ts`：Card Bundle 交换流程与格式；不等于 Timeline Workspace。
-- `prompt/prompt-resource-types.ts` 和 `extensions/portable-payload-types.ts`：各自领域合同，Card Bundle 组合使用。Card 来源引用仍为类型级关联，不更改资源归属或公开格式。
+- `src/agents/session-execution.ts`：同一 AgentStore 的执行登记与切换保护；调用方仍负责登记和 finally 释放。
+- `src/agents/tool-catalog.ts`：Tool Document 转换、目录读取和 Registry 同步；不编排 Agent 回合。
+- `src/prompt/agent-turn-variables.ts`：用户/角色/Global State 的变量材料构造，Agent、Narrative、Macro 共用。
+- `src/extensions/storage-scope.ts`：Extension/Script 存储目标与范围校验，保留同事务 Store 访问。
+- `src/narrative/sampling-contracts.ts`：SampleNarrativeInput 请求合同；公开名称继续由包入口导出。
+- `src/scripts/script-text-resources.ts`：当前 Script 文本规则的读写、导入和引用映射，不是启动迁移。
+- `src/cards/card-bundle.ts`、`src/cards/card-bundle-codec.ts`、`src/cards/card-bundle-types.ts`：Card Bundle 交换流程与格式；不等于 Timeline Workspace。
+- `src/prompt/prompt-resource-types.ts` 和 `src/extensions/portable-payload-types.ts`：各自领域合同，Card Bundle 组合使用。Card 来源引用仍为类型级关联，不更改资源归属或公开格式。
 
 本轮保留完整事务编排、composition root 和公共聚合出口；命名与归属移动不新增运行行为。

@@ -7,7 +7,8 @@
 .fileHeader { min-height: 64px; flex: none; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--loom-color-border-subtle, var(--loom-color-divider)); }
 .fileIdentity { min-width: 0; display: flex; align-items: center; gap: 10px; flex: 1; > svg { flex-shrink: 0; color: var(--loom-color-text-muted); } > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; } strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--loom-font-size-3); font-weight: 600; } span { font-size: var(--loom-font-size-1); color: var(--loom-color-text-muted); overflow-wrap: anywhere; } }
 .saveState { display: flex; align-items: center; gap: 4px; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-1); margin-right: 8px; white-space: nowrap; }
-.content { min-height: 0; flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.content { min-height: 0; flex: 1; overflow: auto; padding: 0 20px 20px; display: flex; flex-direction: column; gap: 14px; }
+.content > :first-child { margin-top: 20px; }
 .hint { margin: 0; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-1); line-height: 1.7; }
 .error { margin: 0; padding: 10px 12px; border-radius: var(--loom-radius-control); color: var(--loom-color-danger); background: var(--loom-color-surface-subtle); overflow-wrap: anywhere; font-size: var(--loom-font-size-2); line-height: 1.6; }
 .binary, .empty { min-height: 220px; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; color: var(--loom-color-text-muted); p { margin: 0; color: var(--loom-color-text); font-size: var(--loom-font-size-3); } span { font-size: var(--loom-font-size-2); } img { max-width: 100%; max-height: 65vh; object-fit: contain; border-radius: var(--loom-radius-control); } }
@@ -17,4 +18,4 @@
 .dialogFields { display: flex; flex-direction: column; gap: 16px; label { display: flex; flex-direction: column; gap: 8px; font-size: var(--loom-font-size-2); } select { padding: 8px; width: 100%; font: inherit; color: var(--loom-color-text); background: var(--loom-color-surface); border: 1px solid var(--loom-color-border-subtle, var(--loom-color-divider)); border-radius: var(--loom-radius-control); } }
 .recovered { font-size: var(--loom-font-size-2); summary { cursor: pointer; } textarea { display: block; width: 100%; margin: 12px 0; } }
 .back { display: none; }
-@container (max-width: 639px) { .back { display: inline-flex; } .fileHeader { padding: 12px; } .content { padding: 12px; } .saveState { display: none; } }
+@container (max-width: 639px) { .back { display: inline-flex; } .fileHeader { padding: 12px; } .content { padding: 0 12px 12px; } .content > :first-child { margin-top: 12px; } .saveState { display: none; } }

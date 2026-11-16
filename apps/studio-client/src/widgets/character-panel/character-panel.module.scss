@@ -23,6 +23,8 @@
 }
 
 .profilePane {
+  --character-profile-toolbar-height: calc(var(--loom-page-header-control-size, 32px) + 14px);
+  --loom-sticky-top: var(--character-profile-toolbar-height);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -83,10 +85,10 @@
 .galleryToolbar,
 .profileToolbar {
   position: sticky;
-  z-index: 1;
+  z-index: 5;
   top: 0;
   justify-content: space-between;
-  min-height: 42px;
+  min-height: var(--character-profile-toolbar-height, 46px);
   padding: 7px 16px;
   background: var(--loom-color-surface);
 }

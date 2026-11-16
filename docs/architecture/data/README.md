@@ -114,8 +114,9 @@ Application Store 与 Document Store 共用 Engine，但各自拥有领域表。
 | Agent / `application.agent` | 9 | `agent_sessions`、`agent_transcript_entries`、`agent_tool_invocations`、`agent_summary_tasks`：Session 身份、Transcript、轻量工具配对索引与摘要任务 |
 | State / `application.state` | 2 | `state_scopes`、`state_revisions`：State 当前 Head 与历史修订 |
 | Prompt Resource / `application.prompt-resource` | 9 | Resource Header / Node、修订、Lore Mount 与 Preset Tool Mount |
+| Statistics / `application.statistics` | 1 | `statistics_metadata`、`usage_requests`、`play_interactions`：Dashboard 模型用量与已接受交互统计 |
 
-精确 namespace 与当前 schema 版本以 [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Workspace Store](../../../packages/application-data/src/workspace/store.ts)、[Agent Store](../../../packages/application-data/src/agent/store.ts)、[State Store](../../../packages/application-data/src/state/store.ts)和 [Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)的声明为准。
+精确 namespace 与当前 schema 版本以 [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Workspace Store](../../../packages/application-data/src/workspace/store.ts)、[Agent Store](../../../packages/application-data/src/agent/store.ts)、[State Store](../../../packages/application-data/src/state/store.ts)、[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)和 [Statistics Store](../../../packages/application-data/src/statistics/store.ts)的声明为准。
 
 Narrative v9 将正文权威放在 `agent_transcript_entries`，`narrative_nodes.entry_id` 引用正文 Entry；`narrative_node_projection` 将其投影为 Node body 读取形状。Branch 与恢复点分别保存 `head_entry_id`。Agent v9 增加 Session `kind`、可空预设绑定、Narrative mode，以及 Entry 的 round / candidate 引用；Timeline 主 Session 与普通 Agent Session 的行为由 Runtime 约束。Store 不提供从其他 namespace 版本升级到这些 schema 的路径。
 

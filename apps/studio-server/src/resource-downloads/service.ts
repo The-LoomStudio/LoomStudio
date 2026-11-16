@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
+import { createId } from '@loom-studio/shared'
 import type { Logger } from '@loom-studio/logging'
 import type { ExtensionManifest } from '@loom-studio/extension-sdk'
 import { acquireExtension, parseDownloadSource, satisfiesExtensionVersion, type ExtensionCandidate } from '../extensions/extension-download.js'
@@ -33,6 +34,7 @@ export function createResourceDownloadService(options: {
   const updates = new Map<string, StoredUpdate>()
   const controllers = new Map<string, AbortController>()
   const running = new Map<string, Promise<void>>()
+  const retrying = new Set<string>()
   let initialized = false
   let closed = false
   let timer: ReturnType<typeof setInterval> | undefined
@@ -56,7 +58,7 @@ export function createResourceDownloadService(options: {
   function log(id: string, message: string) {
     options.logger?.info(message, { event: 'resource.download.stage', data: { taskId: id, phase: tasks.get(id)?.task.phase ?? 'waiting' } })
   }
-  function publish(candidate: PreparedResourceCandidate, id: string = randomUUID()): ResourceCandidate {
+  function publish(candidate: PreparedResourceCandidate, id: string = createId('candidate', key => candidates.has(key))): ResourceCandidate {
     if (!adapters.has(candidate.source.adapterId)) throw new Error('Source adapter is unavailable')
     publicUrl(candidate.source.url)
     publicUrl(candidate.target.url)
@@ -89,7 +91,7 @@ export function createResourceDownloadService(options: {
     if (stored) {
       if (stored.version !== 1 || !Array.isArray(stored.tasks) || !Array.isArray(stored.updates)) throw new Error('Unsupported download task store')
       for (const entry of stored.tasks) {
-        if (!/^[a-f0-9-]{36}$/.test(entry.task.id)) throw new Error('Invalid persisted download task ID')
+        if (!/^(?:[A-Za-z0-9]{11}|[a-f0-9-]{36})$/.test(entry.task.id)) throw new Error('Invalid persisted download task ID')
         if (entry.task.status === 'queued' || entry.task.status === 'downloading') {
           entry.task.status = 'interrupted'; entry.task.phase = 'failed'; entry.task.error = 'Download was interrupted by service shutdown; retry to start again'
         }
@@ -229,7 +231,7 @@ export function createResourceDownloadService(options: {
     const candidate = candidates.get(candidateId) ?? await restoreCandidate(candidateId)
     if (!candidate) throw new Error('Source candidate expired; resolve the link again')
     if (controllers.size >= 3) throw new Error('Three downloads are already running; wait or cancel a task')
-    const id = randomUUID()
+    const id = createId('download', key => tasks.has(key))
     const { target: _target, manifestUrl, sha256: _sha256, expectedVersionRange: _range, ...display } = candidate
     const value: ResourceDownloadTask = { ...display, source: { ...display.source, url: displayUrl(display.source.url) }, id, candidateId, status: 'queued', phase: 'waiting', createdAt: stamp(), updatedAt: stamp(), receivedBytes: 0, dependencies: [] }
     tasks.set(id, { task: value, ...(manifestUrl && !publicUrl(manifestUrl).search ? { manifestUrl } : {}), needsResolve: !!publicUrl(candidate.target.url).search })
@@ -244,21 +246,28 @@ export function createResourceDownloadService(options: {
   }
   async function retry(id: string) {
     assertReady()
-    const entry = task(id)
-    if (!['failed', 'cancelled', 'interrupted'].includes(entry.task.status)) throw new Error('Only a stopped download can be retried')
-    let candidate = candidates.get(entry.task.candidateId)
-    if (!candidate) {
-      if (entry.needsResolve) throw new Error('Temporary download link expired; resolve the original platform link again')
-      const result = await resolve({ url: entry.task.source.url, kind: entry.task.kind, adapterId: entry.task.source.adapterId })
-      const match = result.candidates.find(item => item.source.resourceId === entry.task.source.resourceId && item.revision === entry.task.revision && (!entry.task.version || item.version === entry.task.version))
-      if (!match) throw new Error('The original selected version is unavailable; choose a version again')
-      candidate = candidates.get(match.id)!
-      entry.task.candidateId = match.id
+    if (retrying.has(id)) throw new Error('Download retry is already in progress')
+    retrying.add(id)
+    try {
+      const entry = task(id)
+      if (!['failed', 'cancelled', 'interrupted'].includes(entry.task.status)) throw new Error('Only a stopped download can be retried')
+      let candidate = candidates.get(entry.task.candidateId)
+      if (!candidate) {
+        if (entry.needsResolve) throw new Error('Temporary download link expired; resolve the original platform link again')
+        const result = await resolve({ url: entry.task.source.url, kind: entry.task.kind, adapterId: entry.task.source.adapterId })
+        if (closed) throw new Error('Resource download service is unavailable')
+        const match = result.candidates.find(item => item.source.resourceId === entry.task.source.resourceId && item.revision === entry.task.revision && (!entry.task.version || item.version === entry.task.version))
+        if (!match) throw new Error('The original selected version is unavailable; choose a version again')
+        candidate = candidates.get(match.id)!
+        entry.task.candidateId = match.id
+      }
+      entry.task.receivedBytes = 0; entry.task.totalBytes = undefined; entry.task.error = undefined
+      if (controllers.size >= 3) throw new Error('Three downloads are already running')
+      launch(id, candidate)
+      return clone(entry.task)
+    } finally {
+      retrying.delete(id)
     }
-    entry.task.receivedBytes = 0; entry.task.totalBytes = undefined; entry.task.error = undefined
-    if (controllers.size >= 3) throw new Error('Three downloads are already running')
-    launch(id, candidate)
-    return clone(entry.task)
   }
   async function prepareDependencies(id: string) {
     assertReady()
@@ -315,7 +324,7 @@ export function createResourceDownloadService(options: {
     if (installedVersion !== entry.verifiedVersion) throw new Error('Adopted version must match the staged Manifest version')
     if (!installedVersion || !semver.valid(installedVersion)) throw new Error('Adopted resource requires a SemVer Manifest version')
     const existing = [...updates.values()].find(value => value.record.source.adapterId === entry.task.source.adapterId && value.record.source.resourceId === entry.task.source.resourceId && publicUrl(value.record.source.url).origin === publicUrl(entry.task.source.url).origin && value.record.kind === entry.task.kind && value.record.targetId === input.targetId && value.record.dependencyTarget === entry.task.dependencyTarget)
-    const id = existing?.record.id ?? randomUUID()
+    const id = existing?.record.id ?? createId('update', key => updates.has(key))
     const record: ResourceUpdateRecord = { id, source: entry.task.source, name: entry.task.name, kind: entry.task.kind, targetId: input.targetId, dependencyTarget: entry.task.dependencyTarget, installedVersion, packageId: entry.task.packageId, prerelease: input.prerelease ?? existing?.record.prerelease ?? false, fixed: entry.fixed || (input.fixed ?? existing?.record.fixed ?? false), sourcePinned: entry.fixed === true, status: 'unchecked' }
     updates.set(id, { record, manifestUrl: entry.manifestUrl })
     await save(); return clone(record)
@@ -416,7 +425,7 @@ export function createResourceDownloadService(options: {
   }
   async function stageUpload(input: { fileName: string; bytes: Uint8Array; kind: ResourceCandidate['kind'] }): Promise<ResourceDownloadTask> {
     assertReady()
-    const id = randomUUID()
+    const id = createId('download', key => tasks.has(key) || candidates.has(key))
     const root = join(options.directory, id)
     await rm(root, { recursive: true, force: true })
     await mkdir(root, { recursive: true, mode: 0o700 })

@@ -1,8 +1,10 @@
+import { createId } from '@loom-studio/shared'
+
 export function createScriptTemplate(): string {
   return [
     '// ==LoomScript==',
     '// @format 1',
-    `// @id script.${crypto.randomUUID()}`,
+    `// @id script.${createId('script')}`,
     '// @name 新脚本',
     '// @version 1.0.0',
     '// @runtime client',
@@ -19,7 +21,7 @@ export function createScriptTemplate(): string {
 
 export function createTextRuleScriptTemplate(): string {
   return [
-    '---', `id: rule.${crypto.randomUUID()}`, 'name: 新文本规则', 'version: 1.0.0', 'tags: [text]',
+    '---', `id: rule.${createId('rule')}`, 'name: 新文本规则', 'version: 1.0.0', 'tags: [text]',
     "regex: '待替换文字'", 'regex_flags: g', 'phases: [display]', 'order: 0', 'streaming: false', '---',
     '替换后文字',
   ].join('\n')

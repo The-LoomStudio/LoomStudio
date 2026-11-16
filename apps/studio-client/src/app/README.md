@@ -11,7 +11,9 @@ Client 的跨 Feature 入口。先看 [Workspace README 的 FSD 与状态归属]
 
 `useStudioState` 用 `/trpc` 作为实际 RPC transport；派生的 `/rpc` endpoint 只作为 workspace/draft 本机键的兼容 scope，不代表网络路由。调整二者时要分别核对调用地址与既有本地状态键。
 
-`useStudioState` 持有 App 级组合职责，`App` 负责跨领域的展示接线。具体领域查询、命令、运行生命周期仍由对应 Feature 所有；不要把它们移入 App，也不要让 Widget 直接调用 RPC。状态分类与 FSD 规则沿用 Workspace README，不在此重复定义。
+`useStudioState` 持有 App 级组合职责，`App` 负责跨领域的展示接线。顶层宿主在 `app.tsx` 统一挂载全局交互浮层：Promise 驱动的确认弹窗 [`ConfirmDialogHost`](../shared/ui/confirm-dialog/index.ts)、工作台用量与资源库存浮层 [`StudioDashboard`](./studio-dashboard.tsx)、资源下载与更新提示 [`ResourceUpdateNotifications`](../features/resource-updates/ui/resource-update-notifications.tsx) 以及官方扩展首次安装引导 [`OfficialExtensionSetup`](../features/extension-renderers/ui/remote-extension-install.tsx)。具体领域查询、命令、运行生命周期仍由对应 Feature 所有；不要把它们移入 App，也不要让 Widget 直接调用 RPC。状态分类与 FSD 规则沿用 Workspace README，不在此重复定义。
+
+后台运行提醒与移动端阅读视口同样在壳层收敛：[`tab-attention.ts`](../shared/browser/tab-attention.ts) 在标签页失焦且后台运行完成时绘制动态红点 Favicon、更新标题前缀并触发移动端触觉反馈；[`use-mobile-reading-chrome.ts`](../pages/studio/use-mobile-reading-chrome.ts) 按滚动增量平滑计算 `--loom-mobile-chrome-progress`，驱动移动端顶栏与输入栏跟手收放。
 
 改动入口：启动、Provider 或路由前置条件改 `main.tsx`；跨 Feature 组合、导航和面板接线改 `app.tsx` / `use-studio-state.ts`；领域行为回到对应 Feature；展示布局留在 Page/Widget。跨层合同见[系统总览](../../../../docs/architecture/system-overview.md)。
 

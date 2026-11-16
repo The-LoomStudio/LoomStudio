@@ -1,4 +1,4 @@
-import { canPlacePromptNode, isPromptMessageSequence } from '@loom-studio/shared'
+import { canPlacePromptNode, createId, isPromptMessageSequence } from '@loom-studio/shared'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import { createDefaultProjection } from './context-asset-default-projection.js'
 import { normalizeContextAssets, writeProjectionCapability } from './context-asset-normalization.js'
@@ -10,11 +10,8 @@ type ContextAssetCreation = {
   position: 'inside' | 'after'
 }
 
-let contextAssetIdSequence = 0
-
 function createContextAssetId(): string {
-  contextAssetIdSequence += 1
-  return `context-node-${Date.now().toString(36)}-${contextAssetIdSequence}`
+  return createId('context-node')
 }
 
 export function updateContextAssetNode(nodes: ContextAssetNode[], id: string, partial: Partial<ContextAssetNode>): ContextAssetNode[] {

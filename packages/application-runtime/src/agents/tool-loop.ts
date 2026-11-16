@@ -1230,10 +1230,23 @@ async function runToolLoop(
                 const target = input.recoveryRequest.narrativeTarget!
                 const narratives = input.ctx.narratives!.transaction(dataTx)
                 const branch = narratives.getBranch(target.branchId!)!
-                narratives.appendNode({ timelineId: target.timelineId, branchId: branch.id,
+                const appendedNode = narratives.appendNode({ timelineId: target.timelineId, branchId: branch.id,
                   nodeId: entry.entry.narrativeId, kind: 'user-input', expectedHeadNodeId: branch.headNodeId ?? null,
                   stateRevisionId: branch.stateHeadRevisionId, attachments: entry.entry.attachments, body: { format: 'loom-markdown.v1', raw: entry.entry.content },
                   source: { agentSessionId: session.id, agentMessageId: entry.id, runId: input.runId } })
+                if (input.transcriptIdentity?.roundId) {
+                  const swipes = input.ctx.swipes.transaction(dataTx)
+                  const swipeGroup = swipes.get(input.transcriptIdentity.roundId)
+                  if (swipeGroup && swipeGroup.activeRunId === input.runId && !swipeGroup.inputKind) {
+                    swipeGroup.inputNodeId = appendedNode.node.id
+                    swipeGroup.baseEntryId = entry.id
+                    swipeGroup.baselineStateRevisionId = appendedNode.branch.stateHeadRevisionId
+                    swipeGroup.baselineWorkspaceRevisionId = appendedNode.branch.workspaceHeadRevisionId
+                    const activeCandidate = swipeGroup.candidates.find(c => c.id === swipeGroup.activeCandidateId)
+                    if (activeCandidate) activeCandidate.inputNodeId = appendedNode.node.id
+                    swipes.save(swipeGroup, { expectedRevision: swipeGroup.revision })
+                  }
+                }
               }
               if (entry.entry.kind !== 'message' || entry.entry.role !== 'assistant'
                 || entry.entry.purpose !== 'narrative' || entry.entry.state === 'partial') continue

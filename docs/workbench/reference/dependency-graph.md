@@ -8,18 +8,20 @@
 
 ```mermaid
 flowchart TD
-    Client["Studio Client"] --> Bridge["Client 内部 API / Session Fetch"]
+    Client["Studio Client"] --> Bridge["Studio API / tRPC Client"]
+    Client --> UI["@loom-studio/ui"]
     Client --> Shared["Shared"]
     Server["Studio Server"] --> Runtime["Application Runtime"]
     Server --> Kernel["Kernel"]
-    Server --> Stores["领域 Stores / Data Engine"]
-    Runtime --> Stores
+    Server --> AppData["Application Data / Data Engine"]
+    Runtime --> AppData
     Runtime --> SDK["Extension SDK"]
     Runtime --> Gateway["AI Gateway"]
     Kernel --> Host["Extension Host"]
-    Kernel --> Documents["Document Store / Data Commit" ]
+    Kernel --> Documents["Document Store / Data Commit"]
     Host --> SDK
-    Official["extensions/st-data-compat"] --> SDK
+    StandaloneExt["extensions/*（独立扩展）"] --> SDK
+    OfficialExt["official/extensions/*"] --> SDK
     Fixtures["tests/fixtures/extensions"] --> SDK
 ```
 

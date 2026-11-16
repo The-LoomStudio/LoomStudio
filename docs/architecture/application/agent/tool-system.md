@@ -25,6 +25,13 @@ Tool Definition 使用稳定 `id`，保存 Owner namespace、模型暴露名称�
 
 Tool Prompt 中允许宏展开的字段只有 description、parameter description 和 guidance。Tool ID、暴露名称、参数键、Schema type、required、enum、grammar 和 Handler identity 保持结构稳定。
 
+宿主内置官方工具（位于 [`packages/application-runtime/src/agents/official-tools/`](../../../../packages/application-runtime/src/agents/official-tools/)）统一区分**持久化 / 挂载 Tool ID**（`official/<name>`）与**模型侧暴露名称**（`<name>`）：
+
+- 剧情写入与声明：`official/append_narrative`（`append_narrative`）、`official/edit_narrative`（`edit_narrative`）、`official/declare_narrative`（`declare_narrative`）；
+- 上下文与设定检索读写：`official/read_context`（`read_context`）、`official/search_context`（`search_context`）、`official/read_prompt_resource`（`read_prompt_resource`）、`official/search_prompt_resources`（`search_prompt_resources`）、`official/update_prompt_resource`（`update_prompt_resource`）；
+- 状态读写：`official/read_state`（`read_state`）、`official/update_state`（`update_state`）；
+- CodeAct 执行：`official/codeact`（`codeact`）、`official/codeact_json`（`codeact_json`）。
+
 ## 3. Preset Mount 与有效开关
 
 `preset_tool_mounts` 是 Preset 到 Tool Definition 的权威关系，保存 `defaultEnabled`、Activation、Provider Tool order、Content zone / slot / rank / order hint、origin 和 Mount order。

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { safeLocalStorage } from '../../shared/browser/safe-local-storage.js'
-import { isRecord } from '@loom-studio/shared'
+import { createId, isRecord } from '@loom-studio/shared'
 
 type CharacterGroup = {
   id: string
@@ -75,7 +75,7 @@ export const useCharacterGalleryStore = create<CharacterGalleryState>()(
       createGroup: name => {
         const normalizedName = name.trim().slice(0, 40)
         if (!normalizedName) return undefined
-        const id = createGroupId()
+        const id = createId('group', candidate => candidate === 'ungrouped' || get().groups.some(group => group.id === candidate))
         set(state => ({ groups: [...state.groups, { id, name: normalizedName, order: state.groups.length }] }))
         return id
       },
@@ -109,7 +109,3 @@ export const useCharacterGalleryStore = create<CharacterGalleryState>()(
     },
   ),
 )
-
-function createGroupId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}

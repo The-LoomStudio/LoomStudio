@@ -86,16 +86,16 @@ Overlay 不直接压缩 Column。需要避免末尾内容、焦点目标或滚�
 
 Studio Shell 从 Chat Composer 外框读取 Narrative 左右两个实时锚点，供默认 Reference Window 计算水平范围。Composer Base 顶边没有布局消费者，已停止测量和发布；窗口高度由 Shell 现有可用高度规则管理。
 
-默认 Placement 分为：
+默认 Placement（见 `studio-page.tsx` 的 `readPanelPlacement`）分为：
 
-| Placement | 水平范围 | 默认 Panel |
+| Placement | 水平范围 | 默认 Panel ID |
 | --- | --- | --- |
-| `beside-narrative` | 屏幕左边缘到 Narrative 左边缘 | Model、Character、Lore |
-| `cover-narrative` | 屏幕左边缘到 Narrative 右边缘 | Preset、Resource、Inspector、Logs |
+| `beside-narrative` | 屏幕左边缘到 Narrative 左边缘 | `model`、`agent`、`play`、`recent`、`sessions`、`character` |
+| `cover-narrative` | 屏幕左边缘到 Narrative 右边缘 | 其余工作面板（`user`、`preset`、`resource`、`state`、`memory`、`macro`、`text-transform`、`inspector`、`logs`、`extensions`、`settings`） |
 
 两者默认高度沿用 Shell 的 `calc(100% - 50px)` 规则，不依赖 Composer Base 顶边。用户显式 Resize 后保存的 Window Size 优先于默认 Placement；Immersive Mode 继续覆盖 Reference Placement。
 
-Placement 只定义默认展开几何，不定义用户缩放下限。所有 Reference Window 共用 `--loom-window-min-width`，当前默认值为 `240px`；Model、Character、Lore、Preset、Resource、Inspector 和 Logs 都可以被用户缩到 Narrative 左边缘以内。内容是否仍适合窄宽度，由 Window 内的 Column 组合和业务 Panel 自己处理，不允许用 Placement 类型阻止缩放。
+Placement 只定义默认展开几何，不定义用户缩放下限。Reference Window 的缩放约束由 `--loom-window-min-width` 与 `window-resize.ts` 的最小宽高共同控制；无论是 `beside-narrative` 还是 `cover-narrative` 面板，都允许用户按统一窗口约束自由缩放。内容是否仍适合窄宽度，由 Window 内的 Column 组合和业务 Panel 自己处理，不允许用 Placement 类型阻止缩放。`CatalogPicker`、模型与预设快捷选择器属于临时 Popover / Overlay 层，不参与 Window Column 轨道计算。
 
 ## 6. 资源工作台映射
 

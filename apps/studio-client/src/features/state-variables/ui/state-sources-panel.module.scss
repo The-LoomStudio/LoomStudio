@@ -174,7 +174,7 @@
 
   code { min-width: 0; }
   span { color: var(--loom-color-text-subtle); }
-  [data-state-presence='missing'] span { color: var(--loom-danger, #ef4444); }
+  [data-state-presence='missing'] span { color: var(--loom-color-danger); }
 }
 
 .code {
@@ -196,7 +196,7 @@
   overflow-wrap: anywhere;
 }
 
-.error { color: var(--loom-danger, #ef4444); }
+.error { color: var(--loom-color-danger); }
 
 :global(html[data-loom-glass-panels='true']) {
   .panel {

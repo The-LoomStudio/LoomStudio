@@ -5,13 +5,13 @@
 ## 阅读顺序
 
 1. [`http-server.ts`](./http-server.ts)：`createStudioHttpServer(options)` 的依赖、路由顺序与 `shutdown()`。
-2. [`application-session-auth.ts`](./application-session-auth.ts)：启动时生成的会话、Cookie 与 loopback Origin 检查。
+2. [`application-session-auth.ts`](./application-session-auth.ts)：启动时生成的会话、Cookie 与 loopback（及开发态 `--lan` 私网）Origin 检查。
 3. [`trpc-request.ts`](./trpc-request.ts) → [`RPC 边界`](../rpc/README.md)：可信身份、取消与调用链如何进入 procedure。
 4. 按需读 [`rpc-request-body.ts`](./rpc-request-body.ts) 或 [`client-files.ts`](./client-files.ts)，定位请求预算或发行前端文件问题。
 
 ## 输入、认证与注入
 
-`GET /health` 与 `POST /auth/session` 在普通 API 认证前处理；配置 `clientDirectory` 时，前端静态文件也在业务认证前由 `client-files.ts` 投递。其余路由先验证应用会话 Cookie，显式 Origin 还必须通过允许来源检查。会话 bootstrap 要求精确的 loopback HTTP(S) Origin；这不是多用户登录或公网认证系统。生产与开发允许来源由 [`server.ts`](../server.ts)注入，不在 procedure 中重新推断。
+`GET /health` 与 `POST /auth/session` 在普通 API 认证前处理；配置 `clientDirectory` 时，前端静态文件也在业务认证前由 `client-files.ts` 投递。其余路由先验证应用会话 Cookie，显式 Origin 还必须通过允许来源检查。会话 bootstrap 默认要求精确的 loopback HTTP(S) Origin；仅在开发模式显式启用 `--lan`（`LOOM_DEV_LAN=1`）时，才由 `allowPrivateNetworkOrigins` 额外允许 RFC 1918 私网、链路本地与 `.local` Origin 供局域网设备调试，这不是多用户登录或公网认证系统。生产与开发允许来源由 [`server.ts`](../server.ts) 注入，不在 procedure 中重新推断。
 
 认证服务在当前进程绑定 token、sessionId 与 clientId；RPC 使用认证结果中的 clientId，不接受 JSON 参数冒充调用身份。浏览器 Cookie 为 HttpOnly / SameSite=Strict，HTTPS bootstrap 追加 Secure。资源本身的 owner、安装范围和 grant 仍由下游服务校验；有应用会话不等于获得任意扩展数据能力。
 

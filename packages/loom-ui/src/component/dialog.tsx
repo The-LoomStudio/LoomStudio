@@ -18,6 +18,7 @@ export type DialogProps = {
   onClose(): void | Promise<void>
   open: boolean
   mobileOpenHandle?: boolean
+  mobileOpenHandleLabel?: string
   onOpen?(): void
   role?: 'alertdialog' | 'dialog'
   showCloseButton?: boolean
@@ -157,7 +158,7 @@ export function Dialog(props: DialogProps) {
 
   return (
     <>
-      {props.mobileOpenHandle && !props.open ? <button type="button" data-loom-ui-sheet-open-handle="" data-mobile-swipe="ignore" aria-label="打开 Agent Session" aria-haspopup="dialog"
+      {props.mobileOpenHandle && !props.open ? <button type="button" data-loom-ui-sheet-open-handle="" data-mobile-swipe="ignore" aria-label={props.mobileOpenHandleLabel ?? (typeof props.title === 'string' ? props.title : 'Open')} aria-haspopup="dialog"
         onClick={() => { if (!sheetDrag.current && Date.now() >= suppressOpenClickUntil.current) props.onOpen?.() }}
         onPointerDown={event => beginSheet(event, true)} onPointerMove={moveSheet} onPointerUp={endSheet}
         onPointerCancel={resetSheet} onLostPointerCapture={() => { if (sheetDrag.current) resetSheet() }} /> : null}

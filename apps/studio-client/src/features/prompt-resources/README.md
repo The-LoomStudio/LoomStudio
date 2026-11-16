@@ -6,7 +6,7 @@ App 通过 `usePromptResourceWorkspace` 注入 `StudioApi`、endpoint、编辑�
 
 配置表单的草稿必须保留创建它的版本基线：干净表单接纳新版，保留修改时不能只换 `expectedVersion`。显式重新应用只合并实际改动字段。工具保存回包保留提交后继续输入；关键词等编辑字符串在本地输入提交后应响应同 ID 的丢弃/上游替换，组合输入确认键不作为普通 Enter 提交。
 
-Lore 树、详情和工具栏共用当前范围或显式临时目标的选择，空范围不从全库补选可操作资源。异步节点写入的数据提交与选择定位分开：结果可以更新数据，但选择、范围或活动工作台已经改变时，不抢回选择或打开重命名。
+Lore 树、详情和工具栏共用当前范围或显式临时目标的选择，空范围不从全库补选可操作资源。异步节点写入的数据提交与选择定位分开：结果可以更新数据，但选择、范围或活动工作台已经改变时，不抢回选择或打开重命名。预设库目录与配置浮层位于 `ui/preset-library/`（[`preset-library-catalog.tsx`](./ui/preset-library/preset-library-catalog.tsx) 按个人/官方/扩展分组展示，[`preset-configuration-dialog.tsx`](./ui/preset-library/preset-configuration-dialog.tsx) 承载模型、审批、Lore、正则与工具配置）；工作台与会话侧的轻量双栏模型/预设悬浮选择分别由 `PresetModelQuickPicker` 与 `AgentPresetPicker` 组合。
 
 依赖前提：`usePromptResourceState` 需要应用树提供 `QueryClientProvider`；持久化操作经过注入的 `StudioApi`/`runAction`，本 Feature 不直接访问文件系统或 Server 存储。改查询与 invalidation 改 `use-prompt-resource-state.ts`；草稿和版本提交改 `use-context-assets.ts`；预设选择偏好改 `use-agent-presets.ts`；领域命令改 commands；纯树变换改 `tree-ops.ts`；UI 改 `ui/`。跨 Feature 组合回到 App facade，不从兄弟 Feature deep import。
 

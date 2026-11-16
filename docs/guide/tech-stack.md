@@ -15,10 +15,10 @@
 | Context Menu / Dropdown | Radix primitives | 重写键盘焦点、Dismiss 和 Overlay 基础行为 |
 | 命令菜单 / 全局搜索键盘列表 | `@loom-studio/ui` 的 cmdk `CommandMenu` | 手写另一套选项键盘导航或绕过 feature 的搜索排序 |
 | 瞬时通知 | Sonner | 用 toast 代替可恢复错误状态 |
-| 长文本和代码编辑 | CodeMirror | 为语法、历史、搜索和 diff 自建编辑器 |
+| 长文本和代码编辑 | CodeMirror（含 `@codemirror/merge` 只读差异对比） | 为语法、历史、搜索和 diff 自建编辑器 |
 | Markdown / YAML | react-markdown、remark-gfm、`yaml` | 使用正则实现简化 parser |
 | 消息切块、HTML 解析与安全展示 | `unified` / `remark-parse` / `parse5`，展示经 `rehype-raw` / `rehype-sanitize` | 把解析器当成消毒器，或绕过 `features/message-content` 重写切块 |
-| 图标 | Lucide 与既有品牌资产 | 为通用操作重复维护手绘 SVG |
+| 图标 | Lucide 与 `@lobehub/icons-static-svg` 模型/供应商标识 | 为通用操作或常见模型品牌重复维护手绘 SVG |
 | 样式 | SCSS Modules + `--loom-*` | 为局部功能引入第二套主题或全局 CSS 框架 |
 
 React 负责局部组件状态。TanStack Query 负责缓存型远端状态，Zustand 负责本地应用状态，

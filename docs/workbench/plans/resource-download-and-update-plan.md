@@ -180,9 +180,9 @@ GitHub 是内置来源适配的一个案例；Odysseia 等平台可开发扩展�
 
 ## 9. 原型状态与待同步项
 
-预览：`/dev/preview/resource-updates`。纯内存模拟主包下载、失败重试、取消、暂存后依赖、Lore／预设／宏比较。The World 与 NOM 仅为旁侧案例说明。没有真实来源请求、下载、安装、State 或运行切换。
+旧的 `/dev/preview/resource-updates` 纯内存预览已删除，不能作为当前入口或验收证据。现在从正式“下载与更新”界面进入；The World 与 NOM 仅为本计划的旁侧案例说明。
 
-共享视图：[resource-update-review.tsx](../../../apps/studio-client/src/features/resource-updates/ui/resource-update-review.tsx)；样例及流程：[resource-update-preview.tsx](../../../apps/studio-client/src/dev-preview/resource-update-preview.tsx)。
+当前共享比较视图为 [resource-update-review.tsx](../../../apps/studio-client/src/features/resource-updates/ui/resource-update-review.tsx)；正式下载界面位于 [resource-downloads-dialog.tsx](../../../apps/studio-client/src/widgets/resource-downloads/resource-downloads-dialog.tsx)。
 
 **2026-11-07 已同步最终方案**：包与 SQL 一次性比较，支持整份 Lore／预设另存副本，取消后副本仍保留；不保留长期审阅标签。原型仍是内存示例，真实下载与采用已另接正式界面。
 
@@ -235,7 +235,7 @@ GitHub 是内置来源适配的一个案例；Odysseia 等平台可开发扩展�
 - 扩展资源采用接入一次性 Lore／预设比较、保留本地和独立副本；独立预设包与原生 Card 的文字资源新增原位比较／采用。复制清除来源关联，CAS／fingerprint 防止覆盖审阅期间的并发编辑。
 - 原生 Card／预设发布元数据经 ZIP 往返保留，导入保存作者节点到 SQL 节点映射。无法证明旧映射时明确拒绝原位更新；仍允许导入新副本。
 - 作者 State API 提供有效 Timeline lease 内的自身绑定定义读取及定义＋当前分支值原子迁移。校验结果、定义版本／State head 和幂等键；其他分支与历史修订不改写。未知 Schema 约束报错，`x-*` 注解允许。
-- Dev preview 已删除持久逐项审阅基线语义，展示一次性比较与取消后保留副本。正式界面与原型的行为验收仍分开。
+- 原型阶段曾移除持久逐项审阅基线语义以验证一次性比较与取消后保留副本；对应 `/dev/preview/resource-updates` 现已下线移除，统一收拢至正式下载对话框与 `ResourceUpdateReview`。
 
 ### 本轮明确限制与接续工作
 

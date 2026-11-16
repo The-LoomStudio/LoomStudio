@@ -77,7 +77,17 @@ function WorkbenchContent({ records, directoryHeader, toolbar, selectedRecordId,
     <div className={styles.directoryNotices}>{toolbar}</div>
     <div className={styles.listHeader}><span>{t('observation.recentRecords')}</span><small>{visible.length}</small></div>
     <SearchField aria-label={t('observation.search')} placeholder={t('observation.searchLoaded')} value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel={t('observation.clearSearch')} />
-    <Tabs ariaLabel={t('observation.recordKind')} size="compact" activeId={filter} onChange={value => { setFilter(value); onKindChange?.(value === 'all' ? undefined : value) }} items={[
+    <Tabs ariaLabel={t('observation.recordKind')} size="compact" activeId={filter} onChange={value => {
+      setFilter(value)
+      onKindChange?.(value === 'all' ? undefined : value)
+      const nextVisible = records.filter(record => (value === 'all' || record.kind === value) && `${record.title} ${record.id} ${record.origin}`.toLowerCase().includes(query.toLowerCase()))
+      const currentId = selectedRecordId ?? selectedId
+      const isExternalSelected = Boolean(selectedRecordId && !records.some(record => record.id === selectedRecordId))
+      if (!isExternalSelected && nextVisible.length > 0 && !nextVisible.some(record => record.id === currentId)) {
+        setSelectedId(nextVisible[0]!.id)
+        onSelectRecord?.(nextVisible[0]!.id)
+      }
+    }} items={[
       { id: 'all', label: t('observation.all') }, { id: 'run', label: kindNames.run }, { id: 'build', label: kindNames.build }, { id: 'api', label: kindNames.api },
     ]} />
     {listNotice}

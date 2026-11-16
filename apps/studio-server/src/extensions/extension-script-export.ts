@@ -127,12 +127,16 @@ export function createExtensionScriptArchiveExporter(options: {
         replaceEntry(path, new TextEncoder().encode(JSON.stringify(artifact, null, 2)))
       }
     }
+    const usedScriptIds = new Set(native.map(item => item.id))
     for (const document of scripts) {
       if (document.meta.tombstone || represented.has(document.id)) continue
-      const id = `local-${createHash('sha256').update(document.id).digest('hex').slice(0, 20)}`
-      const source = `scripts/${id}/${document.content.source.fileName}`
+      const candidate = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(document.id) && !usedScriptIds.has(document.id)
+        ? document.id
+        : `local-${createHash('sha256').update(document.id).digest('hex').slice(0, 11)}`
+      usedScriptIds.add(candidate)
+      const source = `scripts/${candidate}/${document.content.source.fileName}`
       replaceEntry(posix.join(root, source), await options.blobs.read(document.content.source.blobId, { maxBytes: maxPackageBytes }))
-      native.push({ id, source, ...orderFor(document.id) })
+      native.push({ id: candidate, source, ...orderFor(document.id) })
     }
     if (native.length || manifest.contributes?.loomScripts?.length || removedRules.size) {
       manifest.contributes ??= {}

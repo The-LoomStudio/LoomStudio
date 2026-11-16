@@ -313,9 +313,11 @@ body {
   background: var(--loom-color-background);
 }
 
-* {
-  scrollbar-color: color-mix(in srgb, var(--loom-color-border-strong) 58%, transparent) transparent;
-  scrollbar-width: thin;
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-color: color-mix(in srgb, var(--loom-color-text-subtle) 36%, transparent) transparent;
+    scrollbar-width: thin;
+  }
 }
 
 *::-webkit-scrollbar {
@@ -323,19 +325,51 @@ body {
   height: 12px;
 }
 
-*::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
   background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
-  border-radius: var(--loom-radius-full);
-  background: color-mix(in srgb, var(--loom-color-border-strong) 58%, transparent);
+  border-style: solid;
+  border-color: transparent;
+  border-width: 2px;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--loom-color-text-subtle) 32%, transparent);
   background-clip: padding-box;
 }
 
+*::-webkit-scrollbar-thumb:vertical {
+  min-height: 40px;
+  border-width: 2px 2px 2px 4px;
+  border-radius: 7px 5px 5px 7px / 5px;
+}
+
+*::-webkit-scrollbar-thumb:horizontal {
+  min-width: 40px;
+  border-width: 4px 2px 2px 2px;
+  border-radius: 5px / 7px 7px 5px 5px;
+}
+
 *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--loom-color-border-strong) 76%, transparent);
+  background-color: color-mix(in srgb, var(--loom-color-text-muted) 58%, transparent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:vertical:hover,
+*::-webkit-scrollbar-thumb:vertical:active {
+  border-left-width: 1px;
+  border-radius: 5.5px 6.5px 6.5px 5.5px / 6.5px;
+}
+
+*::-webkit-scrollbar-thumb:horizontal:hover,
+*::-webkit-scrollbar-thumb:horizontal:active {
+  border-top-width: 1px;
+  border-radius: 6.5px / 5.5px 5.5px 6.5px 6.5px;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--loom-color-text) 72%, transparent);
   background-clip: padding-box;
 }
 

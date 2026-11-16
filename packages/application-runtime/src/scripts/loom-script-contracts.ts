@@ -53,6 +53,7 @@ export type LoomScriptRuntimeMountSnapshot = {
 
 export type ResolvedLoomScriptRendererMount = {
   installationId?: string
+  ownerCardId?: string
   mountId: string
   mountVersion?: number
   settings?: LoomScriptSettings

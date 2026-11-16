@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { ObservationListInput } from '../../../entities/observation.js'
@@ -18,19 +18,20 @@ export function useObservations(api: StudioApi, endpoint: string, initialRecordI
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => api.observations.list({ kind, cursor: pageParam, limit: 30 }),
     getNextPageParam: page => page.nextCursor,
+    placeholderData: keepPreviousData,
     refetchInterval: 5000,
     refetchIntervalInBackground: false,
   })
   const records = list.data?.pages.flatMap(page => page.records).filter((record, index, items) => items.findIndex(item => item.id === record.id) === index) ?? []
-  const detail = useQuery({ queryKey: [...baseKey, 'detail', recordId], queryFn: () => api.observations.get(recordId!), enabled: active && !!recordId, refetchInterval: 5000, refetchIntervalInBackground: false })
+  const detail = useQuery({ queryKey: [...baseKey, 'detail', recordId], queryFn: () => api.observations.get(recordId!), enabled: active && !!recordId, placeholderData: keepPreviousData, refetchInterval: 5000, refetchIntervalInBackground: false })
   const selected = detail.data?.record.id === recordId ? detail.data : undefined
   const steps = selected ? selected.record.kind === 'run' ? selected.children : [selected.record] : []
   const step = steps.find(item => item.id === stepId)
   const requestSteps = steps.filter(item => item.kind === 'request' || item.kind === 'api')
   const previous = step ? requestSteps[requestSteps.findIndex(item => item.id === step.id) - 1] : undefined
-  const entry = useQuery({ queryKey: [...baseKey, 'entry', step?.kind, step?.id], queryFn: () => step!.kind === 'build' ? api.observations.getBuild(step!.id) : api.observations.getRequest(step!.id), enabled: active && !!step, refetchInterval: step?.status === 'running' ? 2000 : 5000, refetchIntervalInBackground: false })
+  const entry = useQuery({ queryKey: [...baseKey, 'entry', step?.kind, step?.id], queryFn: () => step!.kind === 'build' ? api.observations.getBuild(step!.id) : api.observations.getRequest(step!.id), enabled: active && !!step, placeholderData: keepPreviousData, refetchInterval: step?.status === 'running' ? 2000 : 5000, refetchIntervalInBackground: false })
   const buildId = entry.data?.id === step?.id ? entry.data?.buildId : undefined
-  const build = useQuery({ queryKey: [...baseKey, 'build', buildId], queryFn: () => api.observations.getBuild(buildId!), enabled: active && !!buildId && step?.kind !== 'build', refetchInterval: 5000, refetchIntervalInBackground: false })
-  const previousEntry = useQuery({ queryKey: [...baseKey, 'entry', previous?.kind, previous?.id], queryFn: () => api.observations.getRequest(previous!.id), enabled: active && !!previous, refetchInterval: 5000, refetchIntervalInBackground: false })
+  const build = useQuery({ queryKey: [...baseKey, 'build', buildId], queryFn: () => api.observations.getBuild(buildId!), enabled: active && !!buildId && step?.kind !== 'build', placeholderData: keepPreviousData, refetchInterval: 5000, refetchIntervalInBackground: false })
+  const previousEntry = useQuery({ queryKey: [...baseKey, 'entry', previous?.kind, previous?.id], queryFn: () => api.observations.getRequest(previous!.id), enabled: active && !!previous, placeholderData: keepPreviousData, refetchInterval: 5000, refetchIntervalInBackground: false })
   return { persistence, setPersistence, list, records, detail, selected, steps, step, entry, build, buildId, previousEntry, previous, recordId, setRecordId, setStepId, setKind }
 }

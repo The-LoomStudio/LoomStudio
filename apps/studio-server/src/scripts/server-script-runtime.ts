@@ -156,7 +156,7 @@ export function createServerScriptRuntime(options: { hostOptions: ExtensionHostO
               upsert: () => { throw new Error('Scripts use ctx.configs for owner-isolated configuration') },
               delete: () => { throw new Error('Scripts use ctx.configs for owner-isolated configuration') },
             } },
-            ...(options.configs ? { configs: createScriptConfigClient({ signal: controller.signal,
+            ...(options.configs ? { configs: createScriptConfigClient({ signal: AbortSignal.any([controller.signal, context.lifecycle.signal]),
               defaultScope: () => options.configScope?.() ?? (run.target?.kind === 'card' ? { kind: 'card', cardId: run.target.cardId } : { kind: 'global' }),
               assertScope: (_scope, write) => {
                 assertCurrent()

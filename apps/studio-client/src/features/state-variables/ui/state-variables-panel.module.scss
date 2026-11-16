@@ -1009,7 +1009,7 @@
 }
 
 .fieldError {
-  color: var(--loom-danger, #ef4444);
+  color: var(--loom-color-danger);
   font-size: 11px;
 }
 
@@ -1044,9 +1044,9 @@
   margin: 10px 18px 0;
   padding: 8px 12px;
   border-radius: var(--loom-radius-control);
-  background: color-mix(in srgb, var(--loom-danger, #ef4444) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--loom-danger, #ef4444) 25%, transparent);
-  color: var(--loom-danger, #ef4444);
+  background: color-mix(in srgb, var(--loom-color-danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--loom-color-danger) 25%, transparent);
+  color: var(--loom-color-danger);
   font-size: 12px;
 }
 

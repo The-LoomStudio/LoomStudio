@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createId } from '@loom-studio/shared'
 import type {
   HistorySource,
   RendererDefinition,
@@ -233,7 +234,7 @@ export function useTextTransformController(props: TextTransformProps) {
 
   function startNewRule() {
     ruleDraftRef.current = {}
-    const id = `rule-${Date.now().toString(36)}`
+    const id = createId('rule', candidate => rules.some(rule => rule.id === candidate))
     setSelectedRuleId(id)
     setSelectedTarget({ kind: 'rule', id })
     setMobilePane('detail')
@@ -251,7 +252,7 @@ export function useTextTransformController(props: TextTransformProps) {
 
   function startNewExtractor() {
     extractorDraftRef.current = {}
-    const id = `extractor-${Date.now().toString(36)}`
+    const id = createId('extractor', candidate => extractors.some(item => item.id === candidate))
     setSelectedExtractorId(id)
     setSelectedTarget({ kind: 'extractor', id })
     setMobilePane('detail')

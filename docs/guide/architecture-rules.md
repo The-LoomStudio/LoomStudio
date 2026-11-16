@@ -32,9 +32,9 @@ Kernel 与 Extension RPC 必须注册到同一个 Runtime Registry，并通过 `
 
 ## 5. Application Runtime 的领域切片
 
-如果 `packages/application-runtime/src/runtime.ts` 超过了 300 行并包含多领域的流程处理，这就是架构异味。
-- `runtime.ts` 应当只负责模块组装。
-- 新增领域概念时，必须按业务切分到具体的领域目录（如 `cards/`, `sessions/`, `providers/`）。
+如果 `packages/application-runtime/src/runtime/runtime.ts` 超过了 300 行并塞满多领域的具体流程处理，这就是架构异味。
+- `src/runtime/runtime.ts` 应当只负责 facade 组装，各领域 Runtime 切片按职责归入 `src/runtime/*-runtime.ts`。
+- 新增领域概念时，必须按业务切分到具体的领域目录（如 `cards/`, `agents/`, `providers/`, `state/`）。
 - 切分出的每个领域都应维护自己的命令、查询和相关的 Schema，模块间必须通过暴露的接口交互，不互相读内部状态。
 
 ## 6. 第三方依赖与技术栈底线 (Dependency Strategy)

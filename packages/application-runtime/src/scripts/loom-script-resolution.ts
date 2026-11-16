@@ -77,6 +77,7 @@ export async function resolveLoomScriptRendererMounts(
       })
       return undefined
     }
+    let ownerCardId = script.content.owner.kind === 'card' ? script.content.owner.cardId : undefined
     if (script.content.owner.kind === 'extension') {
       const target = await readOptionalLoomScriptInstallation(ctx.documents, script.content.owner)
       if (!target) {
@@ -87,7 +88,10 @@ export async function resolveLoomScriptRendererMounts(
         })
         return undefined
       }
-      if (target.kind === 'card' && target.cardId !== input.cardId) return undefined
+      if (target.kind === 'card') {
+        if (target.cardId !== input.cardId) return undefined
+        ownerCardId = target.cardId
+      }
     }
     assertSnapshotMatchesScript(snapshot, script)
     const contributions = structuredClone(script.content.contributions)
@@ -108,6 +112,7 @@ export async function resolveLoomScriptRendererMounts(
     return {
       mountId: snapshot.mountId,
       ...(owner.kind === 'extension' ? { installationId: owner.installationId } : {}),
+      ...(ownerCardId ? { ownerCardId } : {}),
       enabled: snapshot.enabled,
       mountVersion: snapshot.mountVersion,
       target: snapshot.target,

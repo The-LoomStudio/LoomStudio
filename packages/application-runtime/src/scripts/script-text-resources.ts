@@ -81,7 +81,7 @@ export function remapImportedTextUses(uses: PromptResourceContent['textUses'], r
 }
 
 /** Rule definitions use Markdown Script source while keeping their resource addresses. */
-export function textTransformScriptSource(rule: TextTransformRuleContent): string {
+function textTransformScriptSource(rule: TextTransformRuleContent): string {
   const { owner: _owner, origin: _origin, createdAt: _created, updatedAt: _updated, ...definition } = rule
   return serializeMarkdownTextRule(definition)
 }

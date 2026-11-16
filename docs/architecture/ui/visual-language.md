@@ -83,7 +83,7 @@ Dialog 不等于删除按钮的默认包装。是否确认由可恢复性和影�
 - 特别危险且不可恢复的工作区级清空未来可以增加名称输入确认，但当前不提前实现；
 - Bottom Sheet、Popover、Context Menu 和 Toast 不迁入 Dialog。
 
-当前通用 Dialog 支持受控开关、标题与描述语义、可选 backdrop 关闭、不可中断状态和焦点恢复。Feature 只提供领域文案与操作按钮，不复制 backdrop、动画和布局 CSS。
+当前通用 Dialog 支持受控开关、标题与描述语义、可选 backdrop 关闭、不可中断状态和焦点恢复。对于跨模块的阻断性删除或重置确认，统一复用顶层挂载的 Promise 确认宿主 [`ConfirmDialogHost`](../../../apps/studio-client/src/shared/ui/confirm-dialog/index.ts)（取代 `window.confirm` 与分散的局部确认布尔状态）；Feature 只提供领域文案与操作语义，不复制 backdrop、动画和布局 CSS。
 
 ## 7. 通知反馈
 

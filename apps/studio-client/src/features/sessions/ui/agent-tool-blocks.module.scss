@@ -69,7 +69,6 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -204,7 +203,6 @@
   color: var(--loom-color-text);
   max-height: 220px;
   overflow-y: auto;
-  scrollbar-width: thin;
   white-space: pre-wrap;
   word-break: break-all;
 }

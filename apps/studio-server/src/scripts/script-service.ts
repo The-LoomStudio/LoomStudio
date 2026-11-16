@@ -47,10 +47,13 @@ export function createScriptService(options: { runtime: ApplicationRuntime; host
       context = structuredClone(input)
       const result = await options.runtime.resolveLoomScriptRendererMounts(input)
       if (closed || request !== sequence) return { ...result, serverInstances: runtime.list().map(instanceResponse) }
-      const resolvedRuns: ServerScriptRun[] = result.mounts.filter(mount => mount.enabled && mount.script.runtime === 'server').map(mount => ({
-        ...mount,
-        target: mount.target?.kind === 'card' ? { kind: 'card', cardId: mount.target.cardId } : { kind: 'global' },
-      }))
+      const resolvedRuns: ServerScriptRun[] = result.mounts.filter(mount => mount.enabled && mount.script.runtime === 'server').map(mount => {
+        const cardId = mount.target?.kind === 'card' ? mount.target.cardId : mount.ownerCardId
+        return {
+          ...mount,
+          target: cardId ? { kind: 'card', cardId } : { kind: 'global' },
+        }
+      })
       runs = resolvedRuns
       // Keep unchanged instances ready while reconciling. A new revision cannot borrow the old instance's readiness.
       publish(runs.flatMap(run => published.get(run.mountId) === (run.mountVersion ?? 0) && run.grantedCapabilities.includes('runtime.server')

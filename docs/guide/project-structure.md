@@ -74,7 +74,7 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
 - 📦 [`packages/application-runtime/`](../../packages/application-runtime/README.md) (AIRP Layer)
   - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent / State / PromptResource 持久化由 `@loom-studio/application-data` 承担。
 - 📦 [`packages/application-data/`](../../packages/application-data/README.md)
-  - 核心领域持久化中枢，在共享 SQLite 中内聚管理 Agent 会话与权威内容历史、Narrative 分支与正文索引、State 状态修订、Timeline Workspace 不可变版本、Prompt Resource 树与 LoreMount 挂载关系。
+  - 核心领域持久化中枢，在共享 SQLite 中内聚管理 Agent 会话与权威内容历史、Narrative 分支与正文索引、State 状态修订、Timeline Workspace 不可变版本、Prompt Resource 树与 LoreMount 挂载关系，以及 Dashboard 持久化统计（`application.statistics`）。（注：历史拆分的 `agent-store`、`narrative-store`、`prompt-resource-store`、`state-store` 与 `loom-icons` 均已收拢退役。）
 - 📦 [`packages/kernel/`](../../packages/kernel/README.md)
   - Studio 的底层发动机，管理内部的核心服务（RPC 注册、事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
   - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
@@ -134,8 +134,8 @@ STBridge 与 The World 的开发基准分别为各自的独立仓库；用户确
    - `pnpm data:reset` (`scripts/data/reset-dev-data.ts`): 在本地开发沙箱被脏数据污染时，自动备份现有数据后安全重置 `data/`。
 
 3. **官方内容与范例打包**
-   - `pnpm official:pack` (`scripts/pack/pack-official-content.ts`): 编译并打包官方 Starter 资源与内置卡片包。
-   - `pnpm example:character-status` (`scripts/pack/pack-character-status-example.ts`): 打包 Alice 角色状态与 Presentation 脚本卡片范例。
+   - `pnpm official:pack` (`scripts/pack/pack-official-content.ts`): 旧 catalog 格式打包工具（需显式指定目录，默认无内置 starter 内容，详见 [`official/README.md`](../../official/README.md)）。
+   - `pnpm example:character-status` (`scripts/pack/pack-character-status-example.ts`): 角色状态与 Presentation 脚本卡片范例打包脚本（样例定义已收拢至 `official/cards/character-status/`）。
 
 4. **架构合规与健康检查**
    - `pnpm check:workspace` (`scripts/checks/check-workspace.mjs`): 校验跨包依赖确定性、lockfile 与产物导出。

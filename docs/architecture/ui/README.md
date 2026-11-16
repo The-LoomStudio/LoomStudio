@@ -36,10 +36,10 @@ Architecture / Application / UI:
 - 插件 locale resources；
 - 完整复数与相对时间格式化（日期、时间和数字已有统一 Intl 封装）；
 - 跨窗口焦点模型；
-- 提示词资源 Diff 与 Tokenizer 协议。
+- 跨模型精确 Tokenizer 协商协议（长文本与审阅只读 Diff 已基于 `@codemirror/merge` 在 `shared/ui/read-only-diff` 落地）。
 
-当前路线从 [UI Plan 索引](../../workbench/plans/ui/README.md) 进入。以下材料分别保留历史依据和当前计划，归档候选不自动成为待办：
+当前路线从 [UI Plan 索引](../../workbench/plans/ui/README.md) 进入。以下材料分别保留历史依据和当前草稿，归档候选不自动成为待办：
 
 - [Workspace 与 Motion 历史设计](../../archive/discussion/ui/widget-workspace-and-motion-v0.md)
-- [提示词资源 Diff 历史草稿](../../workbench/drafts/prompt-resource-diff-mode-v0.md)
+- [提示词资源 Diff 早期草稿](../../workbench/drafts/prompt-resource-diff-mode-v0.md)
 - [第一方 UI 历史设计](../../archive/discussion/application/ui/README.md)

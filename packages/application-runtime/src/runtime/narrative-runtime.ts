@@ -444,6 +444,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
             branchId: input.branchId,
             expectedHeadNodeId: branch.headNodeId ?? null,
             expectedStateHeadRevisionId: branch.stateHeadRevisionId,
+            expectedWorkspaceHeadRevisionId: branch.workspaceHeadRevisionId,
             headNodeId: parentNodeId ?? null,
             stateRevisionId,
             workspaceRevisionId,

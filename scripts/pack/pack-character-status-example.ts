@@ -4,9 +4,9 @@ import { encodeCardBundleZip } from '../../apps/studio-server/src/codecs/card-bu
 import { defaultCardPng } from '../../apps/studio-server/src/codecs/card-png.js'
 import type { CardBundleArtifact } from '../../packages/application-runtime/src/index.js'
 
-export async function buildCharacterStatusCardBundle(root = resolve('examples/character-status')) {
+export async function buildCharacterStatusCardBundle(root = resolve('official/cards/character-status')) {
   const artifact = JSON.parse(await readFile(join(root, 'card.json'), 'utf8')) as CardBundleArtifact
-  const source = await readFile(join(resolve('examples/loom-scripts'), 'alice-presentation.loom.js'), 'utf8')
+  const source = await readFile(join(root, 'character-status.loom.js'), 'utf8')
   artifact.scriptAttachments = [{
     orderIndex: 120,
     script: {

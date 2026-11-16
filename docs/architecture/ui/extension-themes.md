@@ -8,7 +8,7 @@
 
 同时采用一个主题，可以叠加多个增强。安装、采用样式与授权运行 Client Module 是三个独立动作。纯 CSS 贡献不需要模块。若声明 `moduleId`，它必须引用本包的 Client Module；默认需要先授权代码。仅声明 `supportsCssOnly: true` 的贡献允许在模块未启用时使用 CSS 部分，此字段不能单独用于无模块贡献。
 
-完整样例见 [官方主题包](../../../official/extensions/themes/manifest.json)（`official.themes`）：`paper`、`tide` 是纯 CSS 主题；`smooth-motion`、`mint`、`amber` 是三个独立增强，其中 `smooth-motion` 支持纯 CSS 模式，并在授权 `motion` 模块后提供 JS 面板动效。默认开发入口直接从 `official/extensions/` 发现此包，无需复制到用户安装目录；JS 是无需额外构建的 ES Module。官方包不能删除式卸载，可以取消采用外观或停用模块。源码修改需要服务重新发现或重启，没有文件级 HMR。
+完整样例见 [官方主题包](../../../official/extensions/themes/manifest.json)（`official.themes`）：当前内置 `catppuccin`、`indigo-dark`、`indigo-light`、`warm-orange`、`nord`、`everforest`、`yozakura-night` 以及经典界面与极简黑白等纯色板主题（早期 `paper` 与 `tide` 主题已于 1.2.0 移除）；`smooth-motion`、`mint`、`amber` 是三个独立增强，其中 `smooth-motion` 支持纯 CSS 模式，并在授权 `motion` 模块后提供 JS 面板动效。默认开发入口直接从 `official/extensions/` 发现此包，无需复制到用户安装目录；JS 是无需额外构建的 ES Module。官方包不能删除式卸载，可以取消采用外观或停用模块。源码修改需要服务重新发现或重启，没有文件级 HMR。
 
 ## CSS、素材与优先级
 
@@ -77,7 +77,7 @@ export function activate(ctx) {
 
 设置中的主题、增强开关与顺序即时采用，成功后提交偏好；失败保留此前的实际采用状态。代码授权独立进行。启动遮罩等待首次外观应用完成或失败后退出；主题可通过 `#loom-startup` 覆盖图标、文字和背景，撤除时机由宿主控制。宿主等待有限动画完成，每阶段最多等待 1.2 秒，避免扩展阻塞进入工作台。HTML 第一帧仍使用原生兜底。
 
-纸页样例使用包内生成的 PNG 纹理覆盖整个 Timeline 画布，消息表面透明，虚拟列表定位保持宿主所有。同一 [官方主题包](../../../official/extensions/themes/manifest.json) 内的潮汐主题和两个独立强调色增强，展示覆盖顺序与专属参数。
+早期纸页（`paper`）与潮汐（`tide`）验证样例曾使用包内纹理覆盖 Timeline 画布并配合独立强调色增强验证层序与参数；自官方主题包 1.2.0 起，正式发行色板已收敛为纯颜色与 `color-scheme` 覆盖，虚拟列表定位与材质控制保持宿主所有。
 
 ## 静态背景资源
 

@@ -218,16 +218,21 @@ export async function beginNarrativeSwipeRun(
   const command = !continuation ? target?.swipe : undefined
   if (command && (!existing || existing.id !== command.groupId || existing.closed))
     throw swipeError('target_missing', 'Latest Swipe group not found')
+  const interjectionEntry = !target?.inputNodeId && !command && !continuation && input.interjectionRequestId
+    ? (await requireAgents(ctx).listEntries(session.id)).find(item =>
+        item.entry.kind === 'user-interjection' && item.entry.requestId === input.interjectionRequestId)?.entry
+    : undefined
+  const narrativeInterjection = interjectionEntry?.kind === 'user-interjection' && interjectionEntry.mode === 'narrative'
   if (session.kind !== 'timeline' && !command && !continuation && target?.inputNodeId === existing?.inputNodeId
     && existing?.agentSessionId !== session.id) return undefined
   const resumedCandidate = continuation && existing?.candidates.find(candidate => candidate.runIds.includes(continuation.sourceRunId))
-  const editCandidate = !target?.inputNodeId && !command && !continuation && existing && !existing.closed
+  const editCandidate = !target?.inputNodeId && !narrativeInterjection && !command && !continuation && existing && !existing.closed
     && existing.candidates.find(candidate => candidate.id === existing!.selectedCandidateId && candidate.agentSessionId === session.id
       && (candidate.status === 'completed' || input.retry && candidate.status === 'failed'))
   const retryEntry = input.retry ? await requireAgents(ctx).getEntry(input.retry.entryId) : undefined
   const retryFailed = Boolean(input.retry && existing?.inputKind === 'communication' && editCandidate && editCandidate.status === 'failed')
-  const communication = session.kind === 'timeline' && !target?.inputNodeId
-  if (!command && !resumedCandidate && !editCandidate && !target?.inputNodeId && !communication) return undefined
+  const communication = session.kind === 'timeline' && !target?.inputNodeId && !narrativeInterjection
+  if (!command && !resumedCandidate && !editCandidate && !target?.inputNodeId && !narrativeInterjection && !communication) return undefined
   if (continuation && !resumedCandidate) return undefined
   // A stopped executor can leave its durable candidate marked running after a crash.
   const coldRecovery = continuation && resumedCandidate?.status === 'running'
@@ -294,17 +299,17 @@ export async function beginNarrativeSwipeRun(
       }
     }
     if (!command && !retryFailed) {
-      if (!communication && (!target?.inputNodeId || node?.id !== target.inputNodeId))
+      if (!communication && !narrativeInterjection && (!target?.inputNodeId || node?.id !== target.inputNodeId))
         throw swipeError('input_not_latest', 'The writing input must be the latest Narrative node')
-      if (!communication && group && !group.closed && group.inputNodeId === target?.inputNodeId)
+      if (!communication && !narrativeInterjection && group && !group.closed && group.inputNodeId === target?.inputNodeId)
         throw swipeError('retry_required', 'This input already has an attempt; use retry or continue')
       if (group && !group.closed) store.closeLatest(branch.id)
       group = {
-        id: discussionRetry?.user.roundId ?? (!communication && session.kind === 'timeline' && node?.entryId
+        id: discussionRetry?.user.roundId ?? (!communication && !narrativeInterjection && session.kind === 'timeline' && node?.entryId
           ? requireAgents(ctx).transaction(tx).getEntry(node.entryId)?.roundId ?? ctx.createId('swipe') : ctx.createId('swipe')),
         timelineId, branchId: branch.id,
         inputNodeId: discussionRetry ? discussionRetry.baseline.headNodeId ?? undefined : node?.id,
-        input: communication ? input.input : node!.body.raw,
+        input: communication || narrativeInterjection ? input.input : node!.body.raw,
         ...(communication ? { inputKind: 'communication' as const } : {}),
         baselineStateRevisionId: discussionRetry?.baseline.stateRevisionId ?? branch.stateHeadRevisionId,
         baselineWorkspaceRevisionId: discussionRetry?.baseline.workspaceRevisionId ?? branch.workspaceHeadRevisionId, agentSessionId: session.id,

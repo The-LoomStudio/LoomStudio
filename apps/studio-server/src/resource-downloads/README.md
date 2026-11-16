@@ -1,6 +1,6 @@
 # Resource downloads
 
-`createResourceDownloadService` owns backend-only acquisition, staging, task receipts and update discovery. It does not install, import, authorize or activate resources. Register platform adapters through the host's authorized adapter bridge, initialize at server start and close at shutdown.
+`createResourceDownloadService` owns backend-only acquisition, staging, task receipts and update discovery. It does not install, import, authorize or activate resources. Register platform adapters through the host's authorized adapter bridge, initialize at server start and close at shutdown. RPC transport lives in [`../rpc/trpc/resource-downloads.ts`](../rpc/trpc/resource-downloads.ts) (`resourceDownloads.*`), and adoption/credential handoff lives in [`../resource-adoption/`](../resource-adoption/).
 
 - `resolve` returns opaque candidate IDs and safe display metadata. Ambiguous adapters are returned for explicit selection. `start` accepts only a resolved candidate ID.
 - `list` / `get` expose progress; `cancel` aborts the network/child process; `retry` starts a fresh transfer. No byte-range resume is claimed. Signed URLs remain in memory; after restart they require source resolution again.

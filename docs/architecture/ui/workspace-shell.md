@@ -27,7 +27,9 @@ Workspace 的开合和尺寸变化不触发聊天正文重新排版。用户可�
 
 关闭 Dock 不改变当前聊天身份。活动工作面板由统一 `/studio` 下的 History State 表达，URL 主要承接外部入口；仅悬停 Menu 入口可以临时预览导航，但不会写入历史或展开工作面板，移出后自动关闭。
 
-Dock 导航负责切换模块，不承担领域数据本身。资源、预设、API 配置等内容由各自工作面板渲染。
+Dock 导航负责切换模块，不承担领域数据本身。资源、预设、API 配置等内容由各自工作面板渲染。此外，应用顶层（`app.tsx`）统一挂载跨面板全局浮层宿主：Promise 驱动的阻断确认弹窗 `ConfirmDialogHost`、从 Rail「统计」入口打开的 `StudioDashboard` 浮层、资源下载更新提示以及官方扩展首次安装引导。
+
+在移动端阅读与后台生成场景下，Shell 还负责两项壳层反馈：`useMobileReadingChrome` 根据正文滚动方向与增量连续更新 `--loom-mobile-chrome-progress`，平滑收放移动端顶栏与底部输入区；`tab-attention` 在标签页失焦且后台运行结束时动态绘制红点 Favicon、更新标题前缀并触发移动端触觉反馈。
 
 ## 3. 统一 Page Header
 

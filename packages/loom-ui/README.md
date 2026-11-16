@@ -33,7 +33,8 @@
 
 Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
-- 基础组件导出：`Button`、`IconButton`、`TextInput`、`Checkbox`、`Field`、`SearchField`、`Toggle`、`Radio` / `RadioGroup`、`Textarea`、`Slider` / `ElasticSlider`、`Dialog`、Menu、Skeleton、`LoadingText`、状态指示器及上述列表/表单组件；
+- 基础组件导出：`Button`、`IconButton`、`TextInput`、`Checkbox`、`Field`、`SearchField`、`Toggle`、`Radio` / `RadioGroup`、`Textarea`、`Slider` / `ElasticSlider`、`Dialog`（含遮罩命中辅助 `isDialogBackdropPoint`）、Menu（含 `DropdownMenuSub` / `DropdownMenuSubTrigger` / `DropdownMenuSubContent` 级联子菜单）、Skeleton、`LoadingText`、状态指示器及上述列表/表单组件；
+- 动效常量导出：`mobileMotionDuration`、`mobileMotionEasing`、`mobileReleaseTarget`、`mobileResistance`（供移动端抽屉与手势跟手阻尼统一复用）；
 - 样式入口：`@loom-studio/ui/styles.css`；
 - 核心类型：各组件对应的 `*Props` 类型契约。
 

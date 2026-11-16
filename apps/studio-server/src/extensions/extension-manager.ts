@@ -726,7 +726,7 @@ export function createServerExtensionManager(options: {
             }
             if (request.enabled) await enableModule(request.packageId, item.moduleId, item.grants, request.target)
             else await disableModule(request.packageId, item.moduleId, request.target)
-            batch.results.push({ moduleId: item.moduleId, status: unchanged ? 'unchanged' : 'completed' })
+            batch.results.push({ moduleId: item.moduleId, status: 'completed' })
           } catch (error) {
             batch.results.push({ moduleId: item.moduleId, status: 'failed', message: error instanceof Error ? error.message : String(error) })
           }

@@ -33,18 +33,6 @@ import type { Translator } from '../../../shared/i18n/index.js'
 import type { Logger } from '@loom-studio/logging'
 import { notify } from '../../../shared/notifications/index.js'
 
-type NarrativeSubmission = {
-  api: StudioApi
-  timelineId: string
-  branchId: string
-  nodeId: string
-  expectedHeadNodeId: string | null
-  content: string
-  attachments?: ChatAttachment[]
-  committed: boolean
-  delivered: boolean
-}
-
 type JsonObject = { [key: string]: ClientJsonValue }
 export type NarrativeSwipeView = NonNullable<Awaited<ReturnType<StudioApi['narratives']['getSwipes']>>['swipe']>
 
@@ -139,8 +127,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [agentComposerInput, setAgentComposerInput] = useState('')
   const [lastRun, setLastRun] = useState<InvokeAgentTurnResult>()
   const startingNarrativeRef = useRef(false)
-  const narrativeSubmissionRef = useRef<NarrativeSubmission | undefined>(undefined)
-  const [narrativeSubmission, setNarrativeSubmission] = useState<NarrativeSubmission>()
   const [promptPreview, setPromptPreview] = useState<PreviewAgentTurnResult>()
   const [composerInput, setComposerInput] = useState(input.initialInput)
   const composerInputsRef = useRef({ narrative: composerInput, agent: agentComposerInput })
@@ -808,9 +794,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       return retryDiscussionInput(latestInput.id, latestInput.entry.content)
     }
     if (swipe) return generateSwipe('retry')
-    const submission = narrativeSubmissionRef.current
-    if (!submission || !ownsNarrativeSubmission(submission)) return
-    await sendNarrativeInput(submission)
   }
 
   async function reviseUserInput(sessionId: string, entryId: string, expectedContent: string, expectedAttachments: import('@loom-studio/shared').ChatAttachment[], content: string, attachments: import('@loom-studio/shared').ChatAttachment[]) {
@@ -849,107 +832,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           narrativeTarget: { timelineId: timeline.id, branchId: branch.id } }, createConfirmedRun)
       })
     } finally { retryingDiscussion.current = false }
-  }
-
-  function ownsNarrativeSubmission(submission: NarrativeSubmission) {
-    return submission.api === input.api && submission.api === cardSourceRef.current.api && !cardSourceRef.current.disposed
-      && submission.timelineId === displayedNarrativeRef.current.timelineId
-      && submission.branchId === displayedNarrativeRef.current.branchId
-  }
-
-  function publishNarrativeSubmission(submission: NarrativeSubmission) {
-    narrativeSubmissionRef.current = submission
-    setNarrativeSubmission(submission)
-  }
-
-  async function sendNarrativeInput(retry?: NarrativeSubmission): Promise<void> {
-    const content = retry?.content ?? composerInput.trim()
-    const attachments = retry?.attachments ?? narrativeAttachments.values
-    if (content.length === 0 && !attachments.length) return undefined
-    if (!timeline || !branch || displayedNarrativeRef.current.timelineId !== timeline.id || displayedNarrativeRef.current.branchId !== branch.id) {
-      await input.runAction(async () => { throw new Error('请先点击“开始一个新故事”') })
-      return undefined
-    }
-    if (replacingOpeningRef.current || openingChanged || root.activeRun?.status === 'running') return undefined
-    if (runRecovery?.target === 'narrative' && runRecovery.refreshFailed) return undefined
-    if (swipeOperationRef.current || startingNarrativeRef.current || (observedRunRef.current?.target === 'narrative' && ownsRun(observedRunRef.current)
-      && (observedRunRef.current.status === 'running' || observedRunRef.current.observing))) return undefined
-
-    startingNarrativeRef.current = true
-    try {
-      await input.runAction(async () => {
-        const effectivePresetId = input.selectedAgentPresetId ?? safeLocalStorage.getItem('loom.studio.selectedAgentPresetId') ?? primarySessionRef.current?.agentPresetId
-        if (!effectivePresetId) throw new Error('请先选择故事使用的 Agent 预设')
-        if (effectivePresetId && primarySessionRef.current && primarySessionRef.current.agentPresetId !== effectivePresetId) {
-          await root.configure({ agentPresetId: effectivePresetId }).catch(() => undefined)
-        }
-        if (root.activeRun?.status === 'suspended') await root.abandon()
-        let currentTimeline = timeline
-        let currentBranch = branch
-
-        const previous = narrativeSubmissionRef.current
-        let submission = retry ?? (previous && ownsNarrativeSubmission(previous)
-          && !previous.delivered && previous.content === content && JSON.stringify(previous.attachments) === JSON.stringify(attachments) ? previous : {
-            api: input.api, timelineId: currentTimeline.id, branchId: currentBranch.id,
-            nodeId: createId(), expectedHeadNodeId: currentBranch.headNodeId ?? null,
-            content, attachments, committed: false, delivered: false,
-          })
-        publishNarrativeSubmission(submission)
-        if (!submission.committed) {
-          const written = await input.api.narratives.appendInput({
-            timelineId: submission.timelineId, branchId: submission.branchId,
-            nodeId: submission.nodeId, expectedHeadNodeId: submission.expectedHeadNodeId,
-            content: submission.content, attachments: submission.attachments,
-          })
-          submission = { ...submission, committed: true }
-          publishNarrativeSubmission(submission)
-          if (!ownsNarrativeSubmission(submission)) return
-          currentTimeline = written.timeline
-          currentBranch = written.branch
-          setTimeline(written.timeline)
-          setBranch(written.branch)
-          setBranches(current => current.map(item => item.id === written.branch.id ? written.branch : item))
-          setNodes(current => current.some(node => node.id === written.node.id) ? current : [...current, written.node])
-        }
-        if (input.api !== cardSourceRef.current.api
-          || displayedNarrativeRef.current.timelineId !== currentTimeline.id || displayedNarrativeRef.current.branchId !== currentBranch.id) {
-          return
-        }
-        const session = primarySessionRef.current
-        if (!session || session.timelineId !== currentTimeline.id) throw new Error('故事根 Session 尚未就绪')
-        if (!ownsNarrativeSubmission(submission)) return
-
-        const started = await createConfirmedRun({
-          agentSessionId: session.id,
-          input: content, attachments,
-          activationFacts: input.activationFacts,
-          macroSelections: input.getMacroSelections?.(currentTimeline.id, currentBranch.id),
-          narrativeTarget: {
-            timelineId: currentTimeline.id,
-            branchId: currentBranch.id,
-            inputNodeId: submission.nodeId,
-          },
-        })
-        publishNarrativeSubmission({ ...submission, delivered: true })
-        if (input.api !== cardSourceRef.current.api
-          || displayedNarrativeRef.current.timelineId !== currentTimeline.id || displayedNarrativeRef.current.branchId !== currentBranch.id) {
-          return
-        }
-        const draftKey = readComposerDraftKey(currentTimeline, currentBranch, input.selectedCardId)
-        if (!retry) {
-          narrativeAttachments.clear()
-          clearDraft(draftKey)
-          if (inputModeRef.current === 'roleplay') {
-            if (composerInputsRef.current.narrative === composerInput) composerInputsRef.current.narrative = ''
-            setComposerInput(current => current === composerInput ? '' : current)
-          }
-        }
-        await root.executeStarted(started.runId)
-
-      })
-    } finally {
-      startingNarrativeRef.current = false
-    }
   }
 
   async function submitAgentTurn(event: FormEvent) {
@@ -1563,11 +1445,8 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     retryNarrativeInput,
     retryDiscussionInput,
     reviseUserInput,
-    canRetryNarrativeInput: root.activeRun?.status === 'suspended' || root.activeRun?.status === 'failed' || root.recovery?.status === 'failed' || (canRetryDiscussion && root.activeRun?.status !== 'running') || (swipe ? Boolean(swipe.canGenerate && !swipe.active && !swipe.suspended && !swipeBusy
-      && primarySessionRef.current && !runRecoveryBusy) : Boolean(narrativeSubmission && ownsNarrativeSubmission(narrativeSubmission)
-      && agentSessionReady && !startingRunRef.current && !runRecoveryBusy
-      && !(observedRunRef.current && ownsRun(observedRunRef.current)
-        && (observedRunRef.current.status === 'running' || observedRunRef.current.observing)))),
+    canRetryNarrativeInput: root.activeRun?.status === 'suspended' || root.activeRun?.status === 'failed' || root.recovery?.status === 'failed' || (canRetryDiscussion && root.activeRun?.status !== 'running') || Boolean(swipe && swipe.canGenerate && !swipe.active && !swipe.suspended && !swipeBusy
+      && primarySessionRef.current && !runRecoveryBusy),
     approveAgentMutation,
     cancelAgentRun,
     pauseAgentRun,

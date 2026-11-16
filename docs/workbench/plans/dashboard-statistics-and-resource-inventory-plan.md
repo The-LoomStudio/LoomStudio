@@ -1,6 +1,6 @@
 # Dashboard 真实数据、资源清点与统计采集实施方案
 
-> **状态**：首版真实数据接入已实现；定向验证完成，待用户界面与真实 Provider 验收。
+> **状态**：首版真实数据与界面已落地；待补齐面板内部四语言文案、服务端快照提示本地化与大角色集分页。
 > **日期**：2026-10-25
 > **当前授权**：用户已授权实施。入口采用工作区「活动」分组的「历史」下方，打开浮层；不放 Header、不新增工作区 Panel。
 
@@ -20,8 +20,8 @@
 
 | 能力 | 当前事实与入口 | 缺口 / 第一批可展示内容 |
 | --- | --- | --- |
-| UI | [DashboardDialog / DashboardPanel](../../../apps/studio-client/src/widgets/dashboard/dashboard-panel.tsx)、[展示输入](../../../apps/studio-client/src/widgets/dashboard/dashboard-view.ts)；样例只在 dev preview | 复用组件，增加资源视图与真实加载 / 缺数状态；当前 `DashboardSnapshot` 是展示输入，不是后端合同 |
-| 数据查询 | [SqliteDataEngine](../../../packages/data-engine/src/sqlite.ts)已有 `read`、`readSnapshot`、事务与 migration；[定向查询先例](../../../packages/application-data/src/text-transform/queries.ts)已在 Application Data 使用 SQL 聚合所需的读入口 | 不缺 SQL 执行基础，缺领域统计查询；不能让客户端加载全部 Document / Transcript 后计数 |
+| UI | [DashboardDialog / DashboardPanel](../../../apps/studio-client/src/widgets/dashboard/dashboard-panel.tsx)、[展示输入](../../../apps/studio-client/src/widgets/dashboard/dashboard-view.ts)（早期 dev preview 样例已下线移除） | 复用组件，增加资源视图与真实加载 / 缺数状态；当前 `DashboardSnapshot` 是展示输入，不是后端合同 |
+| 数据查询 | [SqliteDataEngine](../../../packages/data-engine/src/sqlite.ts)已有 `read`、`readSnapshot`、事务与 migration，可在 Application Data 使用 SQL 聚合所需的读入口 | 不缺 SQL 执行基础，缺领域统计查询；不能让客户端加载全部 Document / Transcript 后计数 |
 | 资源 | [Document 类型](../../../packages/application-runtime/src/foundation/document-types.ts)、[Card 列表](../../../packages/application-runtime/src/runtime/cards-runtime.ts)、[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)、[扩展安装](../../../packages/application-runtime/src/runtime/extensions-runtime.ts)已有权威身份 | 可直接统计当前非 tombstone 的实体；现有分页 / 全量映射列表不等于计数接口 |
 | Agent 用量 | [Transcript 类型](../../../packages/application-data/src/agent/types.ts)有 request-measurement / provider-observation；[tool-loop](../../../packages/application-runtime/src/agents/tool-loop.ts)尽力保存估算和 usage，失败不阻断调用 | 可以只读查看已记录历史，但不足以声称累计实际用量完整；缺独立、结构化、可索引的长期调用事实 |
 | 其他模型调用 | [Session 摘要](../../../packages/application-runtime/src/agents/session-summary.ts)、[Provider 测试](../../../packages/application-runtime/src/runtime/providers-runtime.ts)、扩展 chat 使用 Chat Gateway；[Profiled Gateway](../../../packages/application-runtime/src/providers/gateway.ts)另供 `ai.invoke/start` 和扩展能力调用 | 必须覆盖两条入口。能力调用的 [AiGatewayInvokeResult](../../../packages/ai-gateway/src/capability-registry.ts)只有通用 output，没有标准 TokenUsage |
@@ -112,7 +112,7 @@
 
 旧 Transcript 和短期日志保留现有查看能力，但不导入统计账本。首次启用时持久记录采集起点，重启、升级不重新归零；不得因为新增指标或应用初始化而清空已有事实。
 
-已确认累计 Token 不因删除角色、故事、会话或提供商配置而减少或消失。用量表不使用业务删除级联，聚合也不能通过“只关联当前存活对象”的 INNER JOIN 隐式丢掉记录；关联已删除时显示已删除 / 不可用，管理跳转禁用。统计不进入 Timeline 归档、导入或恢复流程，重新导入故事不增加消耗。日志过期或关闭不影响账本，不设置会让累计用量缩水的自动统计 TTL。全部记录的累计值与最近 7 / 30 天的筛选小计明确区分；滚动窗口移出旧请求不代表删除历史累计。
+已确认累计 Token 不因删除角色、故事、会话或提供商配置而减少或消失。用量表不使用业务删除级联，聚合也不能通过“只关联当前存活对象”的 INNER JOIN 隐式丢掉记录；关联已删除时显示已删除 / 不可用，管理跳转禁用。统计不进入 Timeline 归档、导入或恢复流程，重新导入故事不增加消耗。日志过期或关闭不影响账本，不设置会让累计用量缩水的自动统计 TTL。全部记录的累计值与本周（周一至周日）或最近 30 天的筛选小计明确区分；周次结束或滚动窗口移出旧请求不代表删除历史累计。
 
 当前资源数量仍随新增 / 删除变化。发送次数按上线后实际接受的行为事实统计，不通过现存消息数反算；其展示可以区分当前角色与已删除关联，但不把删除解释为一次负发送。
 
@@ -256,9 +256,9 @@ UI 验收由用户完成：浮层大小、资源分类和单位、日期作用�
 - Narrative 接受输入与独立 Agent 接受用户消息处写发送事实，保持原事务原子性；重放、续跑、重试、普通导入路径不另加发送。
 - `dashboard.usage / usageRequests / play / resources / storage / database` 通过现有认证和 tRPC 提供窄查询。调用事实按时间和 ID 游标分页，不返回正文、凭据或文件路径。调用记录不依赖短期日志。
 - 资源库存覆盖角色、Lore 与条目、预设、扩展 Package/安装目标、Script、正则、提取器、媒体、故事与独立会话。文件快照按受管理根分类；SQLite 主文件和 sidecar 计实际逻辑字节，表/索引页及空闲页独立展示。
-- 正式入口位于工作区「活动」的历史下方，点击打开通用 Dialog；移动端先关闭导航抽屉。概览、用量、游玩、资源、存储共五个视图，保留加载、错误、缺数和刷新；管理动作复用已有入口。Dev Preview 继续使用模拟数据。
+- 正式入口位于工作区「活动」的历史下方，点击打开通用 Dialog；移动端先关闭导航抽屉。概览、用量、游玩、资源、存储共五个视图，支持「本周（周一至周日补齐 7 天）/ 最近 30 天 / 全部记录」时间口径，并提供按时间桶与提供商 / 模型展开的堆叠构成图（`breakdown`）及模型品牌图标，保留加载、错误、缺数和刷新；管理动作复用已有入口。过渡期的 Dev Preview 已下线移除。
 
-采用较小的首版组织：没有另建 overview RPC、Runtime 统计管理器或通用指标协议。概览复用三类聚合查询；角色分组与当前故事摘要一次返回，客户端搜索/排序；调用事实分页。数据库直接列实际表及所属索引，不伪造不可准确归类的业务记录总数。存储扫描只在展开存储或在该视图刷新时运行，60 秒缓存并合并并发请求；不清理文件、不执行 checkpoint/VACUUM。
+采用较小的首版组织：没有另建 overview RPC、独立的 `statistics-runtime.ts` 包装层或通用指标协议，统计查询由 `application-data/src/statistics/store.ts` 提供并在 `studio-server/src/rpc/trpc/dashboard.ts` 直接装配。概览复用三类聚合查询；角色分组与当前故事摘要一次返回，客户端搜索/排序；调用事实分页。数据库直接列实际表及所属索引，不伪造不可准确归类的业务记录总数。存储扫描只在展开存储或在该视图刷新时运行，60 秒缓存并合并并发请求；不清理文件、不执行 checkpoint/VACUUM。
 
 当前限制：Dashboard 内容沿用中文草稿文案，入口已接四语言；完整四语言内容、本地化服务端快照提示、超大角色集合的服务端分页尚未完成。管理入口可用但不自动定位所有具体资源/配置项。文件扫描不是原子快照，遇到链接、预算或 IO 问题明确显示不完整。已删除角色保留发送事实，但禁止跳转；已删除提供商保留用量及名称快照。
 

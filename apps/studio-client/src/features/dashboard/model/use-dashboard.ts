@@ -1,15 +1,29 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
-import type { DashboardPeriod, DashboardSnapshot, DashboardTone, DashboardView } from '../../../widgets/dashboard/dashboard-view.js'
+import type { DashboardPeriod, DashboardSnapshot, DashboardTone, DashboardView, UsageDay } from '../../../widgets/dashboard/dashboard-view.js'
 
 const tones: DashboardTone[] = ['accent', 'info', 'success', 'warning', 'pink', 'cyan', 'muted']
 function captureRange(period: DashboardPeriod) {
-  const to = new Date()
+  const now = new Date()
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  if (period === '7') {
+    // 以自然周（周一至周日）为统计单位
+    const dayOfWeek = (now.getDay() + 6) % 7 // 0 为周一，6 为周日
+    const from = new Date(now)
+    from.setDate(now.getDate() - dayOfWeek)
+    from.setHours(0, 0, 0, 0)
+
+    const to = new Date(from)
+    to.setDate(from.getDate() + 7)
+    to.setHours(0, 0, 0, 0)
+    return { from: from.toISOString(), to: to.toISOString(), timeZone }
+  }
+  const to = new Date(now)
   const from = new Date(to)
-  from.setDate(from.getDate() - (period === '7' ? 6 : 29))
+  from.setDate(from.getDate() - 29)
   from.setHours(0, 0, 0, 0)
-  return { to: to.toISOString(), ...(period !== 'all' ? { from: from.toISOString() } : {}), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }
+  return { to: to.toISOString(), ...(period !== 'all' ? { from: from.toISOString() } : {}), timeZone }
 }
 
 export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
@@ -29,8 +43,8 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
     if (open) setSelection(previous => ({ ...previous, revision: previous.revision + 1, range: captureRange(previous.period) }))
   }
   const base = ['dashboard', endpoint]
-  const usage = useQuery({ queryKey: [...base, 'usage', range], queryFn: () => api.dashboard.usage(range), enabled: open, staleTime: 30000 })
-  const play = useQuery({ queryKey: [...base, 'play', range], queryFn: () => api.dashboard.play(range), enabled: open, staleTime: 30000 })
+  const usage = useQuery({ queryKey: [...base, 'usage', range], queryFn: () => api.dashboard.usage(range), enabled: open, staleTime: 30000, placeholderData: keepPreviousData })
+  const play = useQuery({ queryKey: [...base, 'play', range], queryFn: () => api.dashboard.play(range), enabled: open, staleTime: 30000, placeholderData: keepPreviousData })
   const resources = useQuery({ queryKey: [...base, 'resources', revision], queryFn: () => api.dashboard.resources(), enabled: open, staleTime: 30000 })
   const storage = useQuery({ queryKey: [...base, 'storage', revision], queryFn: () => api.dashboard.storage(revision > 0), enabled: open && view === 'storage', staleTime: 60000 })
   const database = useQuery({ queryKey: [...base, 'database', revision], queryFn: () => api.dashboard.database(), enabled: open && view === 'storage', staleTime: 60000 })
@@ -122,8 +136,73 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
     providerBreakdownByDate.set(item.date, pExisting)
   }
 
+  const rawDaysMap = new Map((usage.data?.days ?? []).map(day => [day.date, day]))
+  const targetDates: string[] = []
+  const timeZone = range.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+
+  if (period === '7' && range.from) {
+    const start = new Date(range.from)
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start)
+      d.setDate(start.getDate() + i)
+      targetDates.push(formatter.format(d))
+    }
+  } else if (period === '30' && range.from) {
+    const start = new Date(range.from)
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(start)
+      d.setDate(start.getDate() + i)
+      targetDates.push(formatter.format(d))
+    }
+  } else if (period === 'all' && usage.data?.days.length) {
+    const firstDate = usage.data.days[0]!.date
+    const lastDate = usage.data.days.at(-1)!.date
+    if (firstDate.length === 10 && lastDate.length === 10) {
+      const [fy, fm, fd] = firstDate.split('-').map(Number)
+      const [ly, lm, ld] = lastDate.split('-').map(Number)
+      if (fy && fm && fd && ly && lm && ld) {
+        const startUtc = Date.UTC(fy, fm - 1, fd)
+        const endUtc = Date.UTC(ly, lm - 1, ld)
+        const diffDays = Math.round((endUtc - startUtc) / 86400000)
+        if (diffDays >= 0 && diffDays <= 366) {
+          const utcFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' })
+          for (let i = 0; i <= diffDays; i++) {
+            targetDates.push(utcFormatter.format(new Date(startUtc + i * 86400000)))
+          }
+        }
+      }
+    }
+  }
+
+  const paddedDays: UsageDay[] = (targetDates.length ? targetDates : (usage.data?.days ?? []).map(d => d.date)).map(dateStr => {
+    const day = rawDaysMap.get(dateStr)
+    const modelSlices = modelBreakdownByDate.get(dateStr)
+    const providerSlices = providerBreakdownByDate.get(dateStr)
+    const dayTotal = day ? (day.total ?? (day.input + day.output)) : 0
+    const fallbackSlice = [{
+      id: 'default',
+      name: '总用量',
+      provider: '',
+      total: dayTotal,
+      color: slicePalette[0]!,
+    }]
+    return {
+      date: dateStr,
+      input: day?.input ?? 0,
+      output: day?.output ?? 0,
+      requests: day?.requests ?? 0,
+      total: dayTotal,
+      slices: modelSlices && modelSlices.length > 0 ? modelSlices : fallbackSlice,
+      modelSlices: modelSlices && modelSlices.length > 0 ? modelSlices : fallbackSlice,
+      providerSlices: providerSlices && providerSlices.length > 0 ? providerSlices : fallbackSlice,
+    }
+  })
+
   const data: DashboardSnapshot = {
-    rangeLabel: `${range.from ? new Date(range.from).toLocaleDateString() : '采集开始'} — ${new Date(range.to).toLocaleDateString()}`,
+    rangeLabel: period === '7' && range.from
+      ? `${new Date(range.from).toLocaleDateString()} — ${new Date(new Date(range.from).getTime() + 6 * 86400000).toLocaleDateString()}`
+      : `${range.from ? new Date(range.from).toLocaleDateString() : '采集开始'} — ${new Date(range.to).toLocaleDateString()}`,
     collectionStartedAt: usage.data?.collectionStartedAt,
     notices,
     ready: Boolean(usage.data && play.data && resources.data),
@@ -133,28 +212,7 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
       totalReported: row.totalReported, inputReported: row.inputReported, outputReported: row.outputReported,
       requests: row.requests, unreported: row.unreported, tone: tones[index % tones.length]!,
     })) ?? [],
-    days: usage.data?.days.map(day => {
-      const modelSlices = modelBreakdownByDate.get(day.date)
-      const providerSlices = providerBreakdownByDate.get(day.date)
-      const dayTotal = day.total ?? (day.input + day.output)
-      const fallbackSlice = [{
-        id: 'default',
-        name: '总用量',
-        provider: '',
-        total: dayTotal,
-        color: slicePalette[0]!,
-      }]
-      return {
-        date: day.date,
-        input: day.input,
-        output: day.output,
-        requests: day.requests,
-        total: dayTotal,
-        slices: modelSlices && modelSlices.length > 0 ? modelSlices : fallbackSlice,
-        modelSlices: modelSlices && modelSlices.length > 0 ? modelSlices : fallbackSlice,
-        providerSlices: providerSlices && providerSlices.length > 0 ? providerSlices : fallbackSlice,
-      }
-    }) ?? [],
+    days: paddedDays,
     play: play.data?.rows.map((row, index) => ({ id: row.id ?? 'unassociated', name: row.name,
       subtitle: `最近发送 ${new Date(row.lastSent).toLocaleString()}`, tone: tones[index % tones.length]!, sends: row.sends, activeDays: row.days, canOpen: Boolean(row.available), stories: row.stories.map(story => ({ ...story, name: story.name ?? '未命名故事', updated: new Date(story.updated).toLocaleDateString() })),
     })) ?? [],

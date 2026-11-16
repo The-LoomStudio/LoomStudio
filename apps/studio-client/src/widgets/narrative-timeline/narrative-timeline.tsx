@@ -173,9 +173,17 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     setActiveEntryId(props.timeline[0]?.id)
   }, [activeEntryId, props.timeline, props.anchorNodeId, anchorStatus])
 
+  useEffect(() => {
+    savingRef.current = false
+    setSaving(false)
+    setSaveError(undefined)
+    setEditingId(undefined)
+    setEditingInputSwipe(false)
+    setDraft('')
+  }, [props.timelineId, props.scrollRestorationScope])
+
   function beginEdit(node: NarrativeNodeView, inputSwipe = false) {
     if (savingRef.current) return
-    saveCallbackRef.current = inputSwipe ? (_nodeId, raw) => props.inputSwipe!.onGenerate(raw) : props.onEditNode
     setEditingInputSwipe(inputSwipe)
     setSaveError(undefined)
     const messageBody = messageSurfaceRefs.current
@@ -195,7 +203,6 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     setDraft('')
   }
 
-  const saveCallbackRef = useRef(props.onEditNode)
   const savingRef = useRef(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string>()
@@ -215,7 +222,11 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     setSaving(true)
     setSaveError(undefined)
     try {
-      await saveCallbackRef.current(editingId, rawValue)
+      if (editingInputSwipe) {
+        await props.inputSwipe!.onGenerate(rawValue)
+      } else {
+        await props.onEditNode(editingId, rawValue)
+      }
       savingRef.current = false
       cancelEdit()
     } catch (error) {

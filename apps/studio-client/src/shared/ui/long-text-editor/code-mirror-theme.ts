@@ -12,17 +12,8 @@ export const loomEditorTheme = EditorView.theme({
   '.cm-scroller': {
     minHeight: 'var(--loom-long-text-editor-content-min-height, 180px)',
     overflow: 'auto',
-    scrollbarColor: 'color-mix(in srgb, var(--loom-color-text-subtle) 34%, var(--loom-color-surface-subtle)) var(--loom-color-surface-subtle)',
-    scrollbarWidth: 'thin',
     fontFamily: 'var(--loom-long-text-editor-font-family, var(--loom-font-family-mono))',
     lineHeight: 'var(--loom-long-text-editor-line-height, 1.72)',
-  },
-  '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
-  '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'var(--loom-color-surface-subtle)' },
-  '.cm-scroller::-webkit-scrollbar-thumb': {
-    border: '2px solid var(--loom-color-surface-subtle)',
-    borderRadius: '999px',
-    backgroundColor: 'color-mix(in srgb, var(--loom-color-text-subtle) 34%, var(--loom-color-surface-subtle))',
   },
   '.cm-content': {
     padding: '4px 0 20px',

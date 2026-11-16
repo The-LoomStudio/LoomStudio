@@ -12,10 +12,10 @@ Locales:
   ko-KR
 
 Source:
-  apps/studio-client/src/shared/i18n/zh-cn.ts
-  apps/studio-client/src/shared/i18n/en-us.ts
-  apps/studio-client/src/shared/i18n/ja-jp.ts
-  apps/studio-client/src/shared/i18n/ko-kr.ts
+  apps/studio-client/src/shared/i18n/zh-cn/*.ts (由 zh-cn.ts 聚合导出)
+  apps/studio-client/src/shared/i18n/en-us/*.ts (由 en-us.ts 聚合导出)
+  apps/studio-client/src/shared/i18n/ja-jp/*.ts (由 ja-jp.ts 聚合导出)
+  apps/studio-client/src/shared/i18n/ko-kr/*.ts (由 ko-kr.ts 聚合导出)
 ```
 
 `zh-CN` 字典定义 `MessageKey`，英语、日语和韩语字典必须覆盖相同 key；统一资源表通过类型约束检查。`createTranslator(locale)` 负责查找文案，缺失时回退中文，并支持 `{{name}}` 命名插值。

@@ -75,7 +75,7 @@ export function StudioPanelRight(props: StudioPanelRightProps) {
 
   if (props.mobile) return (
     <Dialog id={props.id ?? 'studio-panel-right'} open={props.open} onClose={props.onClose}
-      title="Agent Session" layout="workbench" mobileOpenHandle={props.showMobileHandle} onOpen={props.onOpen} className={styles.mobileSession}>
+      title="Agent Session" layout="workbench" mobileOpenHandle={props.showMobileHandle} mobileOpenHandleLabel="打开 Agent Session" onOpen={props.onOpen} className={styles.mobileSession}>
       <div className={styles.body}>{props.children}</div>
       {props.footer ? <footer className={styles.footer}>{props.footer}</footer> : null}
     </Dialog>

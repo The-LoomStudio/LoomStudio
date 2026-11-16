@@ -7,13 +7,10 @@
 | 计划 | 状态 | 真正剩余范围 |
 | --- | --- | --- |
 | [Fake Provider 真实链路调试](./fake-provider-debug-runtime-plan.md) | 方向已确认 / 待实施 | 模拟模型响应，复用正式 Run、工具、持久化与日志；按真实闭环、可控生命周期、前端调试三阶段交付。本次仅编写计划。 |
-| [Lore 树顺序与锚点投影](./lore-tree-injection-order-plan.md) | 已接入 / 待界面验收 | 树 DFS 顺序、作者深度清理及只读锚点分组已实现；待用户确认布局、移动端与键盘体验。 |
-| [Timeline 玩家资料 State](./timeline-player-profile-state-plan.md) | 已接入 / 待界面验收 | 内置玩家资料、启动副本、作者引用及消费接线已完成；确认启动窗口与运行态编辑体验，真实 Provider 未验收。 |
 | [扩展角色目录与 Framework 依赖](./extension-character-catalog-plan.md) | W1–W3 已归档 / W4–W5 延期 | 仅保留远程角色目录、跨包 RPC 与独立脚本依赖；诺姆已实际导入使用。 |
 | [资源下载与更新](./resource-download-and-update-plan.md) | 实施中 / 第二轮接续 | 来源策略、包版本与 Card 更新采用（脚本/载荷/扩展归档/媒体）已接入并定向验证；待玩家修改冲突保护、私有依赖界面及真实环境验收。 |
 | [综合审查修复与优化](./full-stack-audit-remediation-2026-10-26.md) | 部分实施 | BR-01/02、BP-02/04、FR-R01/06已完成；其他确认问题、精简与条件优化由原工作包继续承接。 |
-| [Dashboard 统计与资源清点](./dashboard-statistics-and-resource-inventory-plan.md) | 首版已接入 / 待验收 | 活动分组入口；原生 Gateway 持久用量、资源/存储快照与发送统计已接入，取消时长；见方案中的验证与限制。 |
-| [预设库与配置浮层](./preset-library-integration.md) | 已接入 / 待界面验收 | 正式目录、顶部配置标签与即时保存已实现；确认目录密度及浮层操作体验 |
+| [Dashboard 统计与资源清点](./dashboard-statistics-and-resource-inventory-plan.md) | 首版已落地 / 局部待补 | 活动分组入口、原生 Gateway 持久用量、资源/存储快照与发送统计已落地验收；待补齐面板内部四语言文案、快照提示本地化与大角色集分页。 |
 | [可选依赖与通用组件评估](./optional-dependency-evaluation-plan.md) | 延期候选 / 未试验 | FileTree 等组件与可选集成先验证适配净收益；Agent/数据库/通用框架暂缓，未授权正式引入 |
 | [Agent 通用触发与常驻配置](./agent-trigger-and-standing-resource-bindings-plan.md) | 待收束合同 | 通用投递、常驻引用冲突与消费入口；旧独立主接收方已退出。 |
 | [Loom Script 分发与运行](./loom-script-distribution-and-runtime-plan.md) | 部分实施 | 原生 Worker 已交付；不可变 Workspace 文件执行、采用与恢复未接通。 |
@@ -36,3 +33,4 @@
 
 2026-11-04：[前后端职责与 API 九项修复](../../archive/plans/frontend-backend-api-remediation-2026-11-04.md)已完成；定向证据和未验收边界见[报告](../../archive/issues/frontend-backend-responsibility-audit-2026-11-03.md)。
 2026-11-04：[前端 CDP 审计修复实施](../../archive/plans/frontend-cdp-remediation-2026-11-04.md)（三批及追加收敛）已完成归档；延期边界统一由[接续清单](../issues/audit-follow-ups.md)承接。
+2026-11-15：[Lore 树顺序与锚点投影](../../archive/plans/lore-tree-injection-order-plan.md)、[Timeline 玩家资料 State](../../archive/plans/timeline-player-profile-state-plan.md)与[预设库与配置浮层](../../archive/plans/preset-library-integration.md)已确认界面验收收口并归档（连同早期[客户端 Macro/State 重构计划](../../archive/plans/studio-client-macro-state-refactor-plan.md)一并收入[历史 Plan 索引](../../archive/plans/README.md)）。

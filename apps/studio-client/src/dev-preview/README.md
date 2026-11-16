@@ -17,6 +17,10 @@
 
 验证入口：`tests/integration/application-runtime/regex-preview.test.ts` 使用独立临时目录，检查原生规则与 SQLite 关闭重开，测试结束清理目录。
 
+## 通用目录选择器预览
+
+访问 `/dev/preview/picker`（实现于 [`catalog-picker-preview.tsx`](./catalog-picker-preview.tsx)），用于在纯内存样例下验证双栏悬浮目录选择器 [`CatalogPicker`](../shared/ui/catalog-picker/catalog-picker.tsx) 的模型来源切换、预设分组检索、品牌图标呈现与移动端下钻交互，不发起业务请求。
+
 ## 测试 Fixtures 说明
 
 本目录下的 `script-management-fixtures.ts` 与 `observability-fixtures.ts` 供单元测试（如 `tests/unit/client/script-management-panel.test.ts`、`tests/unit/client/observation-reading-ui.test.ts`）复用，请勿直接移除。

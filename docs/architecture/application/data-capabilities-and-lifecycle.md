@@ -59,7 +59,7 @@ Document、Prompt Resource、State、Narrative 等 Store 共享 SQLite Data Engi
 
 Narrative Node 持久化 `kind: 'user-input' | 'narrative'`，区分用户输入与剧情内容，独立于 Agent Transcript 的 `role` 和节点 `source`。正文输入及 Swipe 输入版本写为 `user-input`；开场白与正文追加默认写为 `narrative`。编辑复制、分支读取、采样与 Timeline 归档保留 kind，UI 不再根据邻居、Run 或 Swipe 状态推断身份。当前数据库 schema 不回填旧 Node：namespace 版本不匹配时拒绝打开；Timeline Archive v2 校验要求每个节点显式提供 kind。`narrative` 表达内容用途，不保证其作者一定是 AI。
 
-Timeline UI 正文编辑属于当前分支：以开始编辑时的 Branch Head 和原正文作为并发基线，在同一 Changeset 中复制目标节点至末节点的路径，仅替换目标正文，并切换该分支 Head。后续正文、节点 State Revision、分支 State Head 和来源信息保持不变；其他分支继续引用原路径。不触发回滚、生成或 State 重算。被替换路径使用新节点 ID，普通历史编辑保留原 ID 用于历史引用。唯一例外是仍开放且只有单个节点的初始化开场：同步更新 opening.nodeId、标记 custom 并保留作者候选 id，删除旧开场节点，使编辑后的自编开场仍可替换；已关闭窗口不重新打开。
+Timeline UI 正文编辑属于当前分支：以开始编辑时的 Branch Head 和原正文作为并发基线，在同一 Changeset 中复制目标节点至末节点的路径，仅替换目标正文，并切换该分支 Head。后续正文、节点 State Revision、分支 State Head 和来源信息保持不变；其他分支继续引用原路径。不触发回滚、生成或 State 重算。被替换路径使用新节点 ID，普通历史编辑保留原 ID 用于历史引用。唯一例外是仍开放且只有单个节点的初始化开场：同步更新 opening.nodeId、标记 custom 并保留作者候选 id，删除旧开场节点，使编辑后的自编开场仍可替换；已关闭窗口不重新打开。正文末尾删除（`deleteNarrativeNode`）同样按当前分支 Head CAS 执行，仅将当前分支的 `headNodeId`、State Head 与 Workspace Head 恢复至父节点位置，不删除中间历史楼层，也不物理清除其他分支可能引用的底层节点与 Transcript Entry。
 
 归档恢复按节点父链与分支记录分别恢复拓扑。`forkedFromNodeId` 是历史分叉来源，不保证仍处于父分支当前路径；正文编辑保留下来的历史节点允许一同归档。UI 保存失败保留草稿，分支 Head 或原文变化时拒绝旧保存，不自动强制覆盖。
 

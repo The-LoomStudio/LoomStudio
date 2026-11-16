@@ -34,7 +34,9 @@ Application / UI:
 
 用户节点写入失败时不向 Session 投递；投递失败仍保留已提交节点。当前页面的显式重投递复用原节点 ID，并投递到 Timeline 根 Session，不重复追加用户正文。普通副 Session 不接收这条 Narrative 输入。Agent 的最终回复不自动成为 Timeline 正文，正文只能经授权工具写入；工具失败通过 Tool Result 表达。Run 已结束但后续读取失败时只重读，不自动重跑。未投递节点的重试状态只保留在当前页面，没有跨刷新持久化的提交重试树；已有持久检查点的 Run 可按 Agent Runtime 的冷恢复合同显式恢复。
 
-已有正文的编辑使用开始编辑时的 Branch Head 和原正文作并发基线，等待后端持久化成功才退出编辑；失败保留输入。后端按分支复制路径并返回新节点身份，UI 不把修改当成只改内存，也不自行覆盖其他分支。持久化语义见[数据生命周期](../data-capabilities-and-lifecycle.md)与[Agent/Narrative 边界](../agent/runtime-and-session.md#6-narrative-边界)。
+已有正文的编辑使用开始编辑时的 Branch Head 和原正文作并发基线，等待后端持久化成功才退出编辑；失败保留输入。后端按分支复制路径并返回新节点身份，UI 不把修改当成只改内存，也不自行覆盖其他分支。
+
+末尾节点删除（`deleteNarrativeNode`）仅允许作用于当前分支的最新消息节点（`branch.headNodeId === nodeId`）：若当前存在运行中任务会先自动 `abandon()`，再通过 `narratives.deleteNode` 将当前分支 `headNodeId` 回退至父节点，并同步刷新 Timeline、分支索引与根叙事投影。持久化语义见[数据生命周期](../data-capabilities-and-lifecycle.md)与[Agent/Narrative 边界](../agent/runtime-and-session.md#6-narrative-边界)。
 
 ## 正文窗口与 Renderer 生命周期
 

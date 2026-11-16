@@ -2,7 +2,7 @@
 
 Client 第一方业务 API 入口。先看 [`studio-api.ts`](./studio-api.ts) 的领域方法适配，再看 [`trpc-client.ts`](./trpc-client.ts) 的类型推导与传输，最后看 [`session-fetch.ts`](./session-fetch.ts) 的浏览器会话行为。
 
-`StudioRpcInputs` / `StudioRpcOutputs` 从 Server `AppRouter` 推导，`StudioApi` 是 `createStudioApi` 的返回类型。Feature 通过 App 注入 `StudioApi`，不应自行复制 DTO 或创建平行 RPC client。新增/调整第一方 procedure 时，沿 Server Router 类型修正 API 映射和 Feature 调用；具体服务端合同由 Server 文档与实现负责。
+`StudioRpcInputs` / `StudioRpcOutputs` 从 Server `AppRouter` 推导，`StudioApi` 是 `createStudioApi` 的返回类型（覆盖 `cards`、`narratives` 含 `deleteNode`、`sessions`、`promptResources`、`agentPresets`、`observations`、`dashboard`、`resourceDownloads`、`extensions`、`settings`、`logs` 等第一方领域入口）。Feature 通过 App 注入 `StudioApi`，不应自行复制 DTO 或创建平行 RPC client。新增/调整第一方 procedure 时，沿 Server Router 类型修正 API 映射和 Feature 调用；具体服务端合同由 Server 文档与实现负责。
 
 `trpc-client` 默认以 `/trpc` 为基地址，向 `/trpc/<procedure>` 发送同源 POST，并使用 `createSessionFetch`。fetch 会带同源凭证；浏览器遇到 401 时尝试 `POST /auth/session`，仅在认证成功后重试原请求一次。这不是通用网络重试策略。RPC 失败日志由注入 Logger 记录，不在 API 层承担领域状态缓存。
 

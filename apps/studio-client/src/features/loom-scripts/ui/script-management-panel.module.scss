@@ -22,7 +22,8 @@
 .heading small, .muted { color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-2); line-height: 1.6; }
 .muted { margin-block: var(--loom-page-header-padding); }
 .tabs { flex-shrink: 0; padding-inline: var(--loom-page-header-padding); }
-.content { flex: 1; min-height: 0; overflow: auto; padding: var(--loom-divider-space) var(--loom-page-header-padding); }
+.content { flex: 1; min-height: 0; overflow: auto; padding: 0 var(--loom-page-header-padding) var(--loom-divider-space); }
+.content::before { content: ''; display: block; height: 16px; }
 .sectionHeading, .mountHeading, .sourceToolbar { justify-content: space-between; }
 .sectionHeading h4 { margin: 0; }
 .mount { padding-block: calc(var(--loom-page-header-padding) * 1.5); border-bottom: 1px solid var(--loom-color-divider); margin-bottom: calc(var(--loom-page-header-padding) * 1.5); }
@@ -57,7 +58,7 @@
 .examples { padding: 8px var(--script-inset); border-top: 0; }
 .heading { padding: 16px 24px; gap: 12px; }
 .tabs { padding-inline: 24px; }
-.content { padding: 16px 24px 24px; scrollbar-gutter: stable; }
+.content { padding: 0 24px 24px; scrollbar-gutter: stable; }
 .treeToggle {
   display: grid;
   place-items: center;

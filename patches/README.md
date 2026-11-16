@@ -7,3 +7,9 @@ LoomStudio只提供瞬时通知，不使用Sonner的无限历史。补丁在依�
 ESM与CommonJS发布入口均已修改，由package.json和pnpm-lock.yaml通过pnpm可复现地应用。业务代码不在运行时改getHistory()或私有数组。行为回归见tests/unit/client/notification-retention.test.ts，包含真实Toaster自然到期。
 
 此策略使getHistory()仅包含未退休记录；应用没有需要退休历史的消费者。升级Sonner时需复核补丁，若上游提供等价正式退休策略即可移除。已运行Vite的旧预构建缓存不会因此自动保证更新，应在重启开发服务或新构建后验收；不要为此擅自刷新有草稿的用户页。
+
+## @codemirror/merge@6.12.2
+
+只读差异视图（`ReadOnlyDiff`）关闭 `mergeControls` 展示统一对比时，`@codemirror/merge` 在文档末尾边界的 `fromLine` / `toLine` 越界偏移以及空旧块（`ch.fromA >= ch.toA`）会触发范围异常或渲染多余的空白删除挂件。
+
+补丁在 ESM 与 CommonJS 入口同步修正两处行为：`fromLine` / `toLine` 对文档末尾偏移做安全钳制；`buildDeletedChunks` 在 `!mergeControls` 且 `ch.fromA >= ch.toA` 时跳过空删除块挂件。升级 `@codemirror/merge` 时需复核上游 chunk 行边界与只读无控件模式，并在 `LongTextEditor` Diff 弹窗、观测源对比与角色/资源更新审阅路径回归验证。

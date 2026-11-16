@@ -7,7 +7,7 @@
 1. [`trpc/router.ts`](./trpc/router.ts)：`studioTrpcRouter` 组装当前静态 procedure，并导出 `AppRouter` 类型。
 2. [`trpc/context.ts`](./trpc/context.ts)：context、公共 middleware、错误形状、`jsonInput` 与 `serviceProcedure`。
 3. [`trpc/services-context.ts`](./trpc/services-context.ts) → [`server.ts`](../server.ts)：核对 procedure 所需服务如何装配。
-4. 按问题进入 `trpc/application/<领域>.ts`、[`trpc/services.ts`](./trpc/services.ts)或 [`trpc/kernel.ts`](./trpc/kernel.ts)，再沿实际调用进入 Runtime / Kernel / Server 服务。
+4. 按问题进入 `trpc/application/<领域>.ts`、[`trpc/services.ts`](./trpc/services.ts)、[`trpc/dashboard.ts`](./trpc/dashboard.ts)、[`trpc/resource-downloads.ts`](./trpc/resource-downloads.ts) 或 [`trpc/kernel.ts`](./trpc/kernel.ts)，再沿实际调用进入 Runtime / Kernel / Server 服务。
 
 ## 类型、输入与可信上下文
 
@@ -23,6 +23,7 @@ HTTP 已完成应用会话认证，`trpc-request.ts` 注入 `runtime`、`request
 | --- | --- |
 | `trpc/application/` | 通常把解析后的 input 与可信 `ctx.request` 交给 `ctx.runtime`；查询不必机械传入写入上下文。领域版本冲突、绑定、采用、恢复和事务由 Runtime / Store 负责。 |
 | `trpc/services.ts` / `dashboard.ts` | 使用注入的日志、官方内容、网络、目录、AI Gateway 或统计服务；不在 procedure 内创建第二份服务状态。 |
+| `trpc/resource-downloads.ts` | 对接注入的 `resourceDownloads`（来源解析、暂存、依赖准备、更新检查）与 `resourceDownloadUse`（采用预览与落地确认）。 |
 | `trpc/application/loom-scripts.ts` | Script 文档/Mount 写入交给 Runtime；需要更新 Server 实例时再协调注入的 Script service。保存源码不等于启动实例。 |
 | `trpc/kernel.ts` 的平台 procedure | 通过 typed input 转入已有 Kernel `callRpc`，保留 Kernel 的 owner、安装检查与调度。 |
 

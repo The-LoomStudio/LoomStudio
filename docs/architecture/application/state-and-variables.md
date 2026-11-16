@@ -50,4 +50,4 @@ State 对象路径只读取自身属性。包括 `__proto__`、`constructor` 和
 
 Global Definition 更新与 State 写入在提交事务内检查当前值和约束，避免并发校验基于过期定义。Global State 撤销、Definition-only 撤销以及混合默认值撤销均检查最终 Definition / Snapshot 组合；不兼容的 Schema 或只读值变更整体失败，不自动迁移其他历史。相同幂等请求并发命中时返回原 Revision 和 Changeset，不产生空提交或重复 State 通知。
 
-Agent 官方工具为 `official/read_state` 与 `official/update_state`。Narrative Agent 只能访问 Global 与本 Turn 绑定的 Timeline / Branch；`update_state` 默认使用 Tool Invocation ID 作为幂等键。每次成功 Tool 写入是独立 Changeset，后续 Provider 失败或用户暂停不会自动撤销。
+Agent 官方工具的持久化 / 挂载 Tool ID 为 `official/read_state` 与 `official/update_state`（模型侧暴露名称为 `read_state` 与 `update_state`）。Narrative Agent 只能访问 Global 与本 Turn 绑定的 Timeline / Branch；`update_state` 默认使用 Tool Invocation ID 作为幂等键。每次成功 Tool 写入是独立 Changeset，后续 Provider 失败或用户暂停不会自动撤销。

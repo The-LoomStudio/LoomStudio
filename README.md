@@ -206,9 +206,8 @@ LoomStudio/
 │   ├── studio-server/     # 本地服务
 │   └── playground/        # 命令行调试入口
 ├── packages/              # 运行逻辑、存储、模型接入与共享组件
-├── official/              # 随主程序发行的基础内容
+├── official/              # 随主程序发行的基础内容与内置样例源
 ├── extensions/            # 独立安装或开发的扩展，不由主仓库跟踪
-├── examples/              # 示例内容
 ├── public/                # 图片等展示资源
 └── docs/                  # 使用说明与开发文档
 ```

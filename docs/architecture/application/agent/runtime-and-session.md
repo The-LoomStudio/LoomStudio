@@ -119,7 +119,7 @@ Run 状态记录中的版本化 `recovery` 保存原请求、实际 Branch、Pro
 
 `application.appendNarrativeInput` 原子提交 canonical user message 与正文索引，并开启轮次；随后以 `narrativeTarget.inputNodeId` 启动 Run。Loop 复用已保存 user Entry，投递失败保留输入且不重复追加。讨论直接向同 Session 发消息，归当前轮次；首轮前属于准备阶段。
 
-声明式模式提供 `declare_narrative`，只声明下一条完整普通 Assistant 内容为正文，采用后允许继续调用工具，未声明的普通回复结束 Run。自动模式只在扮演执行中采用普通 Assistant 文本；讨论回复、工具 JSON 与 reasoning 不进入正文。partial / length 续段保存逻辑身份，完整消息与正文索引同事务采用，checkpoint 保存声明的消费状态。编辑仍使用已有正文编辑能力，不改写历史工具事实。
+声明式模式提供 `declare_narrative`，只声明下一条完整普通 Assistant 内容为正文，采用后允许继续调用工具，未声明的普通回复结束 Run。自动模式只在扮演执行中采用普通 Assistant 文本；讨论回复、工具 JSON 与 reasoning 不进入正文。partial / length 续段保存逻辑身份，完整消息与正文索引同事务采用，checkpoint 保存声明的消费状态。编辑仍使用已有正文编辑能力，不改写历史工具事实。`application.deleteNarrativeNode` 仅允许删除当前分支的最新末尾节点（校验 `branch.headNodeId === nodeId === expectedHeadNodeId`），通过事务内 `restoreBranch` 将分支 `headNodeId` 回退到父节点并同步恢复父节点的 State / Workspace 版本引用，不物理抹除底层不可变历史节点或 Transcript 记录。
 
 一轮包含扮演输入及下一次扮演前的所有 Run、指导和修订；Swipe 切换整段采用位置，同时恢复 State / Workspace。旧楼层 Fork 共享既有工作前缀。辅助执行携带固定来源与采用游标；候选或内容版本变化后拒绝过期写入。辅助会话的有效工作历史和工作摘要同样按来源过滤，原始事实保留。
 

@@ -6,7 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { CodeMirrorEditor, type CodeMirrorEditorHandle } from '../../../apps/studio-client/src/shared/ui/long-text-editor/code-mirror-editor.js'
 import { LoomScriptSourceFields } from '../../../apps/studio-client/src/features/loom-scripts/ui/loom-script-source-fields.js'
 import { TextRulePreviewDialog } from '../../../apps/studio-client/src/features/loom-scripts/ui/text-rule-preview-dialog.js'
-import { createTextRuleScriptTemplate } from '../../../apps/studio-client/src/features/loom-scripts/model/script-template.js'
+import { createScriptTemplate, createTextRuleScriptTemplate } from '../../../apps/studio-client/src/features/loom-scripts/model/script-template.js'
 import { parseLoomScriptSource, serializeLoomScriptMetadata } from '@loom-studio/shared/loom-scripts'
 import { defaultScriptPreviewSource } from '../../../apps/studio-client/src/features/loom-scripts/model/script-preview-source.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
@@ -57,7 +57,9 @@ it('previews the complete unsaved rule source and shows the result without savin
 
 
 it('defaults Agent-only rules to Agent and otherwise follows the current context or Narrative', () => {
+  expect(parseLoomScriptSource(createScriptTemplate()).metadataId).toMatch(/^script\.[A-Za-z0-9]{11}$/)
   const metadata = parseLoomScriptSource(createTextRuleScriptTemplate())
+  expect(metadata.metadataId).toMatch(/^rule\.[A-Za-z0-9]{11}$/)
   const contribution = metadata.contributions[0]!
   if (contribution.kind !== 'text-transform') throw new Error('Expected rule')
   contribution.rule.targets = ['agent-session']

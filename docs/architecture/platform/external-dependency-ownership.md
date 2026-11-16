@@ -18,12 +18,12 @@ Loom Studio 选择第三方依赖时，不只记录“安装了什么”，还�
 | Context Menu / Dropdown | Radix primitives | 键盘导航、焦点、Dismiss 和 Overlay 基础语义。业务层组合项目内容，不重复实现菜单基础设施。 |
 | 搜索命令列表 | `cmdk`，由 `@loom-studio/ui` 导出 `CommandMenu` | 可搜索选项的过滤、键盘选择和列表语义；领域组件提供选项与操作，不另建通用命令列表引擎。 |
 | 瞬时通知 | Sonner | 成功、失败和短时反馈。可恢复错误和持久状态仍由对应 feature 或页面拥有。 |
-| 长文本与代码编辑 | CodeMirror / Lezer | 需要语法、搜索、历史、差异或结构化高亮的编辑器。普通短字段继续使用原生 input/textarea。 |
+| 长文本与代码编辑 | CodeMirror / Lezer / `@codemirror/merge` | 需要语法、搜索、历史、差异（`ReadOnlyDiff`，受管补丁见 `patches/`）或结构化高亮的编辑器。普通短字段继续使用原生 input/textarea。 |
 | Markdown 展示 | react-markdown + remark-gfm | 第一方 Markdown 到 React 的渲染路径。不得用正则或 `innerHTML` 再建简化 Markdown parser。 |
 | 消息分段与 HTML 结构解析 | `unified` / `remark-parse` / `remark-gfm` + `parse5` | `message-segments.ts` 以 Markdown AST 与 HTML parser 判定完整 HTML 块、代码块及普通文本；`html-document.ts` 负责文档结构与序列化，不用正则猜 HTML 树。 |
 | Markdown 内安全 HTML | `rehype-raw` + `rehype-sanitize` | `safe-html.ts` 解析原始 HTML、约束允许的标签与样式后消毒；完整 HTML 文档另走隔离 iframe，不混为同一执行边界。 |
 | YAML 解析与序列化 | `yaml` | State 等 YAML 文本的结构化解析。业务代码不手写缩进、标量和转义规则。 |
-| 图标 | Lucide 与既有品牌图标资产 | 通用操作图标优先 Lucide；品牌图标使用已有静态资产，不重复维护手绘通用 SVG。 |
+| 图标 | Lucide + `@lobehub/icons-static-svg` | 通用操作图标优先 Lucide；模型与供应商标识统一走 `ModelBrandIcon` 封装的静态 SVG 资产，不重复维护手绘通用 SVG。 |
 | 样式 | SCSS Modules + `--loom-*` Custom Properties | 局部样式隔离和公共主题 token。当前没有 Tailwind、CSS-in-JS 或重型全局组件库合同。 |
 
 状态所有权可以简化为：

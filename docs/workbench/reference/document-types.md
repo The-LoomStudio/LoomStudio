@@ -47,5 +47,7 @@ Document Store 管理需要版本与 Revision 的 typed JSON 聚合，不是所�
 | Prompt Resource | 资源头、Node、Revision、Lore Mount 与 Preset Tool Mount；[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/types.ts) |
 | State | `state_scopes / state_revisions`；[State Store](../../../packages/application-data/src/state/types.ts) |
 | Timeline Workspace | `workspace_revisions` 保存不可变工作树版本，Branch 记录当前引用；[Workspace Store](../../../packages/application-data/src/workspace/store.ts) |
+| Statistics | `statistics_metadata / usage_requests / play_interactions`（`application.statistics@1`）保存模型调用用量与已接受交互的长期聚合事实；[Statistics Store](../../../packages/application-data/src/statistics/README.md) |
+| Observation（内存 / 可选文件快照） | 有界 TTL 模型构建与请求观测记录，不写 SQLite Document 表；[Observation Store](../../../packages/application-runtime/src/observability/README.md) |
 
 旧 `airp.agentProfile`、`airp.session`、`airp.narrative_branch`、`airp.narrative_entry`、`airp.branch_state_snapshot`、`airp.run`、`airp.commit_candidate`、`airp.runtime_entry`、`airp.agent_transcript_entry` 已不在当前注册表中；`airp.promptResource` 也不再是 Prompt Resource 权威存储。Agent Preset 使用 Prompt Resource，不要依据历史类型创建新记录。共享事务与实际提交边界见 [Data Architecture](../../architecture/data/README.md)。

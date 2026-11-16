@@ -3,6 +3,7 @@
 本目录保存正式官方内容的作者源文件。Official 是维护来源，不是权限或自动启用资格。
 
 - `extensions/loom-assistant/`：本地维护的助手预设、角色与表情资源，已从主仓库停止追踪；独立仓库：[LS_Nom_Assistant](https://github.com/The-LoomStudio/LS_Nom_Assistant)。运行诺姆专属集成测试前需克隆仓库到此本地目录，主仓库不携带其图片。
+- `cards/character-status/`：仓库内保留的 Card Bundle 结构与导入流程演示样例源（含自有正则、提取器与挂载说明，详见 [`cards/character-status/README.md`](cards/character-status/README.md)；正式发行包排除该目录）。
 - ST 数据兼容、The World 等具有独立发布周期的扩展，在根目录 `extensions/` 安装和开发，不纳入主仓库跟踪；本地开发副本由 `.gitignore` 排除。
 - `official/extensions/` 只保留随主程序发行的轻量官方内容。“官方”表示维护来源，不决定独立扩展的安装目录。
 - 接口测试扩展位于 `tests/fixtures/extensions/`，正式 Server 默认不扫描该目录。开发者通过已有 dev-link 或显式 `extensionRootDirectory` 加载。

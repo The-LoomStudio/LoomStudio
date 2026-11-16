@@ -11,8 +11,8 @@ Studio Server 是本地 Node.js 进程的 Composition Root 与 Transport Adapter
 | 当前问题 | 下一入口 |
 | --- | --- |
 | 服务如何创建、启动前要准备什么、关闭次序 | 本文“组合根与启动前提” → [`src/server.ts`](./src/server.ts) |
-| 请求为什么被拒绝、静态文件/媒体/SSE如何投递、取消与请求预算 | [HTTP 边界](./src/http/README.md) → `http-server.ts` / `trpc-request.ts` |
-| procedure 在哪里、参数交给谁、服务如何注入、扩展动态调用 | [RPC 边界](./src/rpc/README.md) → `trpc/router.ts` / `context.ts` |
+| 请求为什么被拒绝、静态文件/媒体/SSE如何投递、取消与请求预算 | [HTTP 边界](./src/http/README.md) → `src/http/http-server.ts` / `trpc-request.ts` |
+| procedure 在哪里、参数交给谁、服务如何注入、扩展动态调用 | [RPC 边界](./src/rpc/README.md) → `src/rpc/trpc/router.ts` / `context.ts` |
 | 领域写入、恢复或权限合同 | [Application Architecture](../../docs/architecture/application/README.md)、[Kernel](../../docs/architecture/kernel/README.md)、[Extensions](../../docs/architecture/extensions/README.md) |
 
 ## 开发入口
@@ -27,7 +27,7 @@ Studio Server 是本地 Node.js 进程的 Composition Root 与 Transport Adapter
 pnpm dev:server
 ```
 
-该命令会先构建内部 Packages，持续监听 Packages，再通过 `tsx watch` 启动 Server。独立扩展在根目录 `extensions/` 开发，自行构建并通过扩展中心重载，不由主程序代为构建。默认监听 `127.0.0.1:18010`，可通过 `PORT` 覆盖；开发客户端 Origin 默认放行 `http://127.0.0.1:18011`，可通过 `STUDIO_CLIENT_URL` 覆盖。持久数据默认写入仓库 `data/`，缓存和日志默认在 `.loomstudio-dev/`。`LOOM_STUDIO_DATA_ROOT` 可覆盖持久数据根；已有旧目录的迁移及显式 `LOOM_STUDIO_HOME` 行为见 [Getting Started](../../docs/guide/getting-started.md)。
+该命令会先构建内部 Packages，持续监听 Packages，再通过 `tsx watch` 启动 Server。独立扩展在根目录 `extensions/` 开发，自行构建并通过扩展中心重载，不由主程序代为构建。默认监听 `127.0.0.1:18010`，可通过 `PORT` 覆盖；开发客户端 Origin 默认放行 `http://127.0.0.1:18011`，可通过 `STUDIO_CLIENT_URL` 覆盖。需要局域网真机调试时，使用 `pnpm dev:server:lan` / `pnpm dev:client:lan`（注入 `LOOM_DEV_LAN=1`），在开发模式下额外放行 RFC 1918 私网、链路本地与 `.local` Origin（生产模式始终关闭）。持久数据默认写入仓库 `data/`，缓存和日志默认在 `.loomstudio-dev/`。`LOOM_STUDIO_DATA_ROOT` 可覆盖持久数据根；已有旧目录的迁移及显式 `LOOM_STUDIO_HOME` 行为见 [Getting Started](../../docs/guide/getting-started.md)。
 
 监听排除 `.tsbuildinfo`，避免 TypeScript 构建元数据更新引起无效重启和重复启动 banner；运行文件发生变化仍会正常重启并打印新的启动信息。修改监听参数后需重新启动 `pnpm dev:server`。
 
@@ -58,8 +58,8 @@ pnpm exec vitest run tests/unit/studio-server tests/integration/studio-server
 - [`src/codecs/`](./src/codecs/)：Card PNG / ZIP 编解码与打包器（`card-png.ts`, `card-bundle-zip.ts`）。
 - [`src/platform/`](./src/platform/)：本地运行路径、系统代理与网络设置（`local-paths.ts`, `system-proxy.ts`, `network-settings.ts`）。
 - [`src/logging/`](./src/logging/)：结构化日志观测适配器（`ai-gateway-logging.ts`, `document-store-logging.ts`）。
-- [`src/extensions/`](./src/extensions/)：Package Source、安装、desired state 和 Server Module 编排。
-- [资源下载与查更](./src/resource-downloads/README.md)：来源适配、后端暂存、任务与版本记录；采用由 `resource-adoption` 交给现有 Runtime／安装器。
+- [`src/extensions/`](./src/extensions/)：Package Source、安装、desired state、关联 Loom Script 归档导出（`extension-script-export.ts`）和 Server Module 编排。
+- [资源下载与查更](./src/resource-downloads/README.md) / [`src/resource-adoption/`](./src/resource-adoption/)：来源适配、后端暂存、任务与版本记录；采用预览、落地确认与来源凭据存储由 `resource-adoption/` 交给现有 Runtime／安装器／SecretStore。
 - [`src/scripts/`](./src/scripts/)：Loom Script 的 Server 实例协调、源码准备与停止清理。
 
 ```text

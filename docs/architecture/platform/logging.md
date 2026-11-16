@@ -428,8 +428,8 @@ Application Runtime 的 Observation Store 保存 Run、PromptBuild、独立 API 
 
 - 默认最多保留 1,000 条记录，单条 2 MiB、总计 32 MiB，生命周期最长 24 小时；更新不续期。容量不足会淘汰记录族，捕获失败或超限会报告丢失或部分证据，不能据此推断请求没有执行。
 - Server 在配置目录的 `observations/` 下提供可选快照持久化，初始关闭，可通过模型日志界面开启跨重启保留；关闭会删除快照，但不清空当前内存记录。开启后仍受相同保留预算与过期时间限制，写盘异步执行，恢复或 IO 错误通过持久化状态显式报告。
-- `observations.list/get/getRequest/getBuild` 提供列表及详情，`observations.persistence/setPersistence` 管理保留设置，`observations.references` 解析当前可见关联名称。读取会检查相关 Session、Timeline 与安装是否仍可见；当前名称是读取投影，不是历史请求证据。
-- 模型日志按记录和步骤查看构建、请求与返回，并可关联应用日志；缺失、过期和部分证据需明确展示。Snapshot 是有界诊断副本，不是 canonical Transcript、Run checkpoint、Core Replay 或完整长期审计档案。
+- `observations.list/get/getRequest/getBuild` 提供列表及详情（列表按 `kind`、`status`、`agentSessionId`、`timelineId`、`cursor`、`limit` 过滤；摘要项携带可选 `modelId` 供界面展示与模型标识解析），`observations.persistence/setPersistence` 管理保留设置，`observations.references` 解析当前可见关联名称。读取会检查相关 Session、Timeline 与安装是否仍可见；当前名称是读取投影，不是历史请求证据。
+- 模型日志按记录和步骤查看构建、请求与返回（来源条目支持原文与渲染结果只读 Diff 对比），并可关联应用日志；缺失、过期和部分证据需明确展示。Snapshot 是有界诊断副本，不是 canonical Transcript、Run checkpoint、Core Replay 或完整长期审计档案；长期跨周期的 Token 用量与交互聚合由独立的 SQLite `StatisticsStore`（`application.statistics`）负责，不从受 TTL 淘汰影响的 Observation 回填。
 
 源码入口：[Observation 合同](../../../packages/application-runtime/src/observability/types.ts)、[Store](../../../packages/application-runtime/src/observability/store.ts)、[持久化](../../../packages/application-runtime/src/observability/persistence.ts)、[可见性与读取](../../../packages/application-runtime/src/runtime/observability-runtime.ts)、[RPC](../../../apps/studio-server/src/rpc/trpc/application/observability.ts)和[Logs Panel](../../../apps/studio-client/src/widgets/log-viewer/logs-panel.tsx)。验证入口：[Store 单元测试](../../../tests/unit/application-runtime/observability.test.ts)、[持久化单元测试](../../../tests/unit/application-runtime/observability-persistence.test.ts)和[读取界面单元测试](../../../tests/unit/client/observation-reading-ui.test.ts)。
 

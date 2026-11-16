@@ -810,7 +810,6 @@
   border-left: 0;
   background: var(--loom-color-surface);
   font-size: var(--loom-font-size-4);
-  scrollbar-width: thin;
   container-name: studio-panel;
   container-type: inline-size;
 }
@@ -957,12 +956,6 @@
   transition:
     border-top-left-radius var(--loom-shell-motion-duration-enter) var(--loom-shell-motion-easing),
     border-left-color var(--loom-shell-motion-duration-enter) var(--loom-shell-motion-easing);
-}
-
-.dockPanelHost::-webkit-scrollbar,
-.dockPanelHost *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
 }
 
 .panelStage {
