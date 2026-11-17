@@ -122,9 +122,66 @@ describe('Studio Server dataRoot process lock and SQLite backups', () => {
       } finally {
         manualDb.close()
       }
+
+      const concurrent = await Promise.all(
+        Array.from({ length: 5 }, () => callRpc<{ filename: string; path: string; sizeBytes: number }>(
+          migratedAddress.port,
+          'dashboard.createBackup',
+          {},
+        )),
+      )
+      expect(new Set(concurrent.map(item => item.filename)).size).toBe(5)
+      expect(new Set(concurrent.map(item => item.path)).size).toBe(5)
+      for (const item of concurrent) {
+        expect(item.filename).toMatch(/^studio-backup-.*\.sqlite$/)
+        expect(item.path).toBe(join(backupsDir, item.filename))
+        expect(item.sizeBytes).toBeGreaterThan(0)
+        expect((await stat(item.path)).size).toBe(item.sizeBytes)
+        const db = new DatabaseSync(item.path, { readOnly: true })
+        try {
+          expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
+        } finally {
+          db.close()
+        }
+      }
     } finally {
       await migrated?.close().catch(() => {})
       await initial.close().catch(() => {})
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('co-locates backups alongside sqlitePath when localPaths is omitted', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'loom-sqlite-path-backup-')))
+    const sqlitePath = join(root, 'custom.sqlite')
+    const server = createStudioServer({
+      sqlitePath,
+      secretBackend: createMemorySecretBackend(),
+      extensionRootDirectory: join(root, 'empty-repository'),
+      extensionInstalledDirectory: join(root, 'app/extensions'),
+    })
+
+    try {
+      const address = await server.listen(0)
+      expect(existsSync(join(root, 'loom.lock'))).toBe(true)
+
+      await callRpc(address.port, 'application.createCard', { name: 'SqlitePath Backup Card' })
+      const backup = await callRpc<{ filename: string; path: string; sizeBytes: number }>(
+        address.port,
+        'dashboard.createBackup',
+        {},
+      )
+      expect(backup.filename).toMatch(/^studio-backup-.*\.sqlite$/)
+      expect(backup.path).toBe(join(root, 'backups', backup.filename))
+      expect(backup.sizeBytes).toBeGreaterThan(0)
+      const db = new DatabaseSync(backup.path, { readOnly: true })
+      try {
+        expect(db.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
+      } finally {
+        db.close()
+      }
+    } finally {
+      await server.close().catch(() => {})
       await rm(root, { recursive: true, force: true })
     }
   })

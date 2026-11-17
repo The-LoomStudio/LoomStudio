@@ -78,26 +78,47 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     queryClient.setQueryData(capabilitiesKey, (current: NonNullable<typeof capabilitiesQuery.data> | undefined) => update(current ?? []))
   }
 
+  async function refreshProviderSettings() {
+    await Promise.all([refreshProviderAccounts(), refreshAiProviders(), refreshAiCapabilityProfiles()])
+  }
+
+  const refreshRef = useRef({
+    refreshProviderAccounts,
+    refreshAiCapabilityProfiles,
+    refreshProviderSettings,
+  })
+  refreshRef.current = {
+    refreshProviderAccounts,
+    refreshAiCapabilityProfiles,
+    refreshProviderSettings,
+  }
+
   useEffect(() => {
     if (typeof EventSource === 'undefined') return
     return subscribeDataCommits(
       operations => {
-        if (operations.some(op => op.entityType === 'providerProfile')) {
-          void queryClient.invalidateQueries({ queryKey: accountsKey, exact: true })
+        if (operations.some(op =>
+          op.entityType === 'airp.providerProfile'
+          || op.entityType === 'documents.*'
+          || op.scope?.entityType === 'airp.providerProfile'
+          || op.scope?.entityType === 'documents.*',
+        )) {
+          void refreshRef.current.refreshProviderAccounts().catch(() => {})
         }
-        if (operations.some(op => op.entityType === 'aiCapabilityProfile')) {
-          void queryClient.invalidateQueries({ queryKey: capabilitiesKey, exact: true })
+        if (operations.some(op =>
+          op.entityType === 'airp.aiCapabilityProfile'
+          || op.entityType === 'documents.*'
+          || op.scope?.entityType === 'airp.aiCapabilityProfile'
+          || op.scope?.entityType === 'documents.*',
+        )) {
+          void refreshRef.current.refreshAiCapabilityProfiles().catch(() => {})
         }
       },
       () => {
-        void queryClient.invalidateQueries({ queryKey: ['provider-settings', input.endpoint] })
+        void refreshRef.current.refreshProviderSettings().catch(() => {})
       },
     )
-  }, [queryClient, input.endpoint, accountsKey, capabilitiesKey])
-
-  async function refreshProviderSettings() {
-    await Promise.all([refreshProviderAccounts(), refreshAiProviders(), refreshAiCapabilityProfiles()])
-  }
+  }, [input.endpoint, input.api])
 
   async function invokeAiCapability(
     request: Omit<AiGatewayInvokeInput, 'signal' | 'caller'>,

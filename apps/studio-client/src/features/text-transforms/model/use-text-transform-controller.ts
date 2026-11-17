@@ -169,7 +169,14 @@ export function useTextTransformController(props: TextTransformProps) {
     if (typeof EventSource === 'undefined') return
     return subscribeDataCommits(
       operations => {
-        if (operations.some(op => op.entityType === 'textTransformRule' || op.entityType === 'textExtractor')) {
+        if (operations.some(op =>
+          op.entityType === 'airp.textTransformRule'
+          || op.entityType === 'airp.textExtractor'
+          || op.entityType === 'documents.*'
+          || op.scope?.entityType === 'airp.textTransformRule'
+          || op.scope?.entityType === 'airp.textExtractor'
+          || op.scope?.entityType === 'documents.*',
+        )) {
           void invalidateAndRefresh()
         }
       },

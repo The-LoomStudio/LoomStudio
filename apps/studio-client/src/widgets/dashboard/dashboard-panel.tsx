@@ -23,7 +23,7 @@ const tokens = (value: number) => value >= 1000000 ? `${(value / 1000000).toFixe
 const bytes = (value: number) => value >= 1024 ** 3 ? `${(value / 1024 ** 3).toFixed(2)} GiB` : `${(value / 1024 ** 2).toFixed(value ? 1 : 0)} MiB`
 const totalTokens = (row: UsageRow) => row.total ?? row.input + row.output
 const toneStyle = (tone: DashboardTone) => ({ '--category-color': `var(--dashboard-${tone})` }) as CSSProperties
-const views = [
+export const dashboardViews = [
   { id: 'overview', label: '概览' }, { id: 'usage', label: '模型用量' },
   { id: 'play', label: '游玩统计' }, { id: 'resources', label: '资源' }, { id: 'storage', label: '数据与存储' },
 ] as const
@@ -41,11 +41,15 @@ function CharacterAvatar({ row }: { row: PlayRow }) {
     : row.name.slice(0, 1)}</span>
 }
 
-export function DashboardDialog(props: Props & { open: boolean; onClose(): void; headerActions?: ReactNode; detailContent?: ReactNode }) {
-  const [view, setView] = useWorkbenchView<DashboardView>('dashboard.tab', 'overview', views.map(view => view.id))
+export function DashboardDialog(props: Props & { open: boolean; onClose(): void; view?: DashboardView; headerActions?: ReactNode; detailContent?: ReactNode }) {
+  const [storedView, setStoredView] = useWorkbenchView<DashboardView>('dashboard.tab', 'overview', dashboardViews.map(item => item.id))
+  const view = props.view ?? storedView
   const snapshot = view === 'resources' || view === 'storage'
   const rangeHelp = props.data.collectionStartedAt ? `用量与发送记录始于 ${new Date(props.data.collectionStartedAt).toLocaleDateString()}，此前的数据未补录。` : undefined
-  const changeView = (next: DashboardView) => { setView(next); props.onViewChange?.(next) }
+  const changeView = (next: DashboardView) => {
+    if (props.view === undefined) setStoredView(next)
+    props.onViewChange?.(next)
+  }
   const hasLoaded = useRef(false)
   if (props.data.ready) hasLoaded.current = true
   const initialLoading = !hasLoaded.current && props.data.ready === false
@@ -191,12 +195,12 @@ export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewC
   </button>)}</div> : <Empty title={search ? '没有找到匹配的角色' : '还没有游玩记录'} description={search ? '试试角色名称或故事关键词。' : '开始一段故事后，在这里回看你的足迹。'} />
 
   return <section className={styles.panel} aria-label="统计">
-    <div className={styles.navigation}><Tabs items={views} activeId={view} onChange={navigate} ariaLabel="Dashboard 视图" /><div className={styles.period}>{view === 'usage' && data.collectionStartedAt && <InfoDialog title="统计口径"><p>从 {new Date(data.collectionStartedAt).toLocaleDateString()} 开始记录，不补录此前用量。只统计提供商报告的 Token，包含重试和未采用的生成。</p></InfoDialog>}
+    <div className={styles.navigation}><Tabs items={dashboardViews} activeId={view} onChange={navigate} ariaLabel="Dashboard 视图" /><div className={styles.period}>{view === 'usage' && data.collectionStartedAt && <InfoDialog title="统计口径"><p>从 {new Date(data.collectionStartedAt).toLocaleDateString()} 开始记录，不补录此前用量。只统计提供商报告的 Token，包含重试和未采用的生成。</p></InfoDialog>}
       {view === 'storage' || view === 'resources' ? null : <><span className={styles.periodLabel}>统计范围</span><select aria-label="统计时间范围" value={period} onChange={event => onPeriodChange(event.target.value as DashboardPeriod)}><option value="7">本周 (周一至周日)</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select></>}
     </div></div>
     <div className={styles.scroll}>
       {detailTitle ? <div className={styles.detail}>
-        <Button size="small" variant="ghost" onClick={() => setDetail(undefined)}><ArrowLeft size={15} />返回{views.find(item => item.id === view)?.label}</Button>
+        <Button size="small" variant="ghost" onClick={() => setDetail(undefined)}><ArrowLeft size={15} />返回{dashboardViews.find(item => item.id === view)?.label}</Button>
         <div className={styles.detailHeading}><div><span className={styles.eyebrow}>{selectedStorage ? 'STORAGE' : selectedCard ? 'PLAY ACTIVITY' : 'MODEL USAGE'}</span><h2 tabIndex={-1} ref={heading}>{detailTitle}</h2><p>{selectedStorage?.description ?? selectedCard?.subtitle ?? selectedProvider?.model}</p></div>
           {(!selectedStorage || selectedStorage.action) && selectedCard?.canOpen !== false && <Button onClick={() => onAction({ kind: detail!.kind, id: selectedProvider?.providerProfileId ?? detail!.id, label: selectedStorage?.action ?? (selectedCard ? '打开角色' : '配置提供商') })}><ArrowUpRight size={16} />{selectedStorage?.action ?? (selectedCard ? '打开角色' : '配置提供商')}</Button>}
         </div>

@@ -60,7 +60,7 @@ export function subscribeDataCommits(
             ...(typeof item.kind === 'string' ? { kind: item.kind } : {}),
             ...(parseOperationScope(item.scope) ?? {}),
           }))
-        if (operations.length === 0 && 'overflow' in data && data.overflow === true) {
+        if ('overflow' in data && data.overflow === true) {
           onConnected()
           return
         }

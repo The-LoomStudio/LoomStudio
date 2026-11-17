@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
 import { useDashboard } from '../../../apps/studio-client/src/features/dashboard/model/use-dashboard.js'
 import { StudioDashboard } from '../../../apps/studio-client/src/app/studio-dashboard.js'
+import { useStudioLayoutStore } from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
+import { DashboardDialog } from '../../../apps/studio-client/src/widgets/dashboard/dashboard-panel.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
 let root: ReturnType<typeof createRoot> | undefined
@@ -14,6 +16,7 @@ afterEach(async () => {
   client?.clear()
   document.body.replaceChildren()
   localStorage.clear()
+  useStudioLayoutStore.setState({ viewPreferences: {} })
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -158,4 +161,51 @@ it('creates a database backup from the storage view and refreshes storage snapsh
   expect(dashboard.createBackup).toHaveBeenCalledTimes(1)
   expect(dashboard.storage).toHaveBeenCalledTimes(2)
   expect(dashboard.storage).toHaveBeenLastCalledWith(true)
+})
+
+it('immediately fetches storage and database queries on first open when dashboard.tab is persisted as storage', async () => {
+  const { api, dashboard, render } = setup()
+  dashboard.storage.mockResolvedValueOnce({
+    groups: [{ id: 'database', name: '数据库', bytes: 4096, files: 1 } as never],
+    volumes: [],
+    errors: [],
+    asOf: '2026-11-04T01:00:00Z',
+  })
+  dashboard.database.mockResolvedValueOnce({
+    tables: [{ name: 'documents', bytes: 2048 } as never],
+    freeBytes: 512,
+  })
+  useStudioLayoutStore.getState().setViewPreference('dashboard.tab', 'storage')
+
+  await render(createElement(StudioDashboard, { api, endpoint: 'one', open: true, onClose: vi.fn(), onAction: vi.fn() }))
+
+  expect(dashboard.storage).toHaveBeenCalledTimes(1)
+  expect(dashboard.storage).toHaveBeenCalledWith(false)
+  expect(dashboard.database).toHaveBeenCalledTimes(1)
+  expect(document.body.textContent).toContain('应用存储')
+  expect(document.body.textContent).toContain('数据库')
+})
+
+it('falls back to persisted dashboard.tab when DashboardDialog is mounted standalone without a view prop', async () => {
+  const { render } = setup()
+  useStudioLayoutStore.getState().setViewPreference('dashboard.tab', 'storage')
+
+  await render(createElement(DashboardDialog, {
+    open: true,
+    onClose: vi.fn(),
+    period: '30',
+    onPeriodChange: vi.fn(),
+    onAction: vi.fn(),
+    data: {
+      ready: true,
+      rangeLabel: '范围',
+      usage: [],
+      days: [],
+      play: [],
+      storage: [],
+      storageUpdatedAt: '2026-11-04',
+    },
+  }))
+
+  expect(document.body.textContent).toContain('应用存储')
 })

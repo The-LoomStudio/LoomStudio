@@ -114,7 +114,7 @@ Dock 的“历史”沿用内部 `recent` 身份，属于工具浮层；内容�
 
 历史的原生 Dialog 内，ContextMenu / DropdownMenu 通过 UI 包的 DialogPortalContext 挂入最近的所属 Dialog，并以它为碰撞边界，避免落入模态层外的 inert 页面。普通页面菜单继续沿用默认 Portal；嵌套 Dialog 拥有自己的菜单宿主。
 
-Rail「活动」分组在历史下方提供独立「统计」入口，触发 `StudioDashboard` 统计与资源库存浮层；资源下载与更新通知可通过 `/studio/extensions?downloads=1` 直接定位到扩展与资源下载界面。
+Rail「活动」分组在历史下方提供独立「统计」入口，触发 `StudioDashboard` 统计与资源库存浮层（`StudioDashboard` 单点持有 `dashboard.tab` 视图状态并透传给 `DashboardDialog`，在 `storage` 页提供“备份数据库”/`dashboard.createBackup` 操作）；工作区排错侧栏 `InspectorPanel` 内嵌统一三联视图 `RunTroubleshootingLedgers`，按 `runId`/`correlationId`/`buildId` 串联 Prompt、模型调用与诊断日志；资源下载与更新通知可通过 `/studio/extensions?downloads=1` 直接定位到扩展与资源下载界面。
 
 ### 预设与模型两列悬浮选择
 

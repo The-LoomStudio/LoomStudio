@@ -88,7 +88,7 @@ Agent 主动读取与 ToolResult 的生命周期由 Runtime 管理，不等于 P
 
 Canonical message、Tool Invocation / Result、恢复检查点与 terminal Run State 分阶段执行必要提交；这些写入失败不会作为观测故障被忽略。请求 Token 估算、`request-measurement` 与 `provider-observation` 的落库及对应通知则是 best-effort：失败不重试或阻止模型调用，也不回滚已完成步骤。Transcript 因而可能缺少计量或供应商 Usage，不能据此判断请求没有发生或将缺失值当作零。
 
-Server 的 Run 事件重放由 `ApplicationRuntime`（`packages/application-runtime/src/agents/agent-run-service.ts`）管理，使用绝对游标、单 Run 1 MiB / Runtime 总计 8 MiB 的序列化预算；游标过期时显式重新同步 Transcript 和当前流式状态。`prepareAgentTurn` 将完整的 `projection`、`promptBuildTrace`、`toolPromptBuildTrace` 与 `macroInspection` 直接写入对应 `buildId` 的 `ObservationBuild` 记录（三账本按 `traceId / buildId` 关联）；`invokeAgentTurn` 与 `completed` 运行事件仅返回包含 `buildId` 的轻量完成回执，不再携带大体积 Trace 载荷，也不再维护 `pendingCompletion` 两分钟内存暂存或 `acknowledge-completion` 握手。前端 Inspector 在展开排查面板时按 `buildId` 懒查询 `observations.getBuild`。上述事件重放预算不是整个进程的硬 heap 上限，也不是历史 Trace 的持久化合同。
+Server 的 Run 事件重放由 `ApplicationRuntime.runs`（`createAgentRunService`，已下沉至 [`packages/application-runtime/src/agents/agent-run-service.ts`](../../../../packages/application-runtime/src/agents/agent-run-service.ts)）管理，使用绝对游标、单 Run 1 MiB / Runtime 总计 8 MiB 的序列化预算；游标过期时显式重新同步 Transcript 和当前流式状态。`prepareAgentTurn` 将完整的 `messages`、`sources`、`variables`、`transformations`、`diagnostics`、`projection`、`promptBuildTrace`、`toolPromptBuildTrace` 与 `macroInspection` 写入对应 `buildId` 的持久化 `ObservationBuild` 记录；`invokeAgentTurn` 与 `completed` 运行事件仅返回包含 `buildId` 的轻量完成回执，不再携带大体积 Trace 载荷，也不再维护 `pendingCompletion` 两分钟内存暂存或 `acknowledge-completion` 握手。前端 Inspector 在展开排查面板时按 `runId` / `correlationId` / `buildId` 关联三账本（Prompt 投影账本经 `application.observations.getBuild` 按 `buildId` 懒查询、模型调用账本经 `observations.list` / `getRequest` 查询 `kind: 'api'` 观测记录、诊断与日志账本聚合 `logs` 与 `diagnostics`）。上述事件重放预算不是整个进程的硬 heap 上限，也不是历史 Trace 的持久化合同。
 
 ### 显式冷恢复
 
@@ -138,8 +138,11 @@ Run 状态记录中的版本化 `recovery` 保存原请求、实际 Branch、Pro
 - [`packages/application-runtime/src/data/agent/types.ts`](../../../../packages/application-runtime/src/data/agent/types.ts)
 - [`packages/application-runtime/src/data/agent/store.ts`](../../../../packages/application-runtime/src/data/agent/store.ts)
 - [`packages/application-runtime/src/narrative/sampling.ts`](../../../../packages/application-runtime/src/narrative/sampling.ts)
+- [`packages/application-runtime/src/agents/agent-run-service.ts`](../../../../packages/application-runtime/src/agents/agent-run-service.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
 - [`packages/application-runtime/src/agents/agent-turn.ts`](../../../../packages/application-runtime/src/agents/agent-turn.ts)
+- [`packages/application-runtime/src/runtime/observability-runtime.ts`](../../../../packages/application-runtime/src/runtime/observability-runtime.ts)
+- [`packages/application-runtime/src/observability/types.ts`](../../../../packages/application-runtime/src/observability/types.ts)
 
 ### 中断状态与审批恢复
 

@@ -62,6 +62,7 @@ export function useRunLedgers(input: UseRunLedgersInput) {
 
   const detail = detailQuery.data?.record.id === activeRecordId ? detailQuery.data : undefined
   const activeSummary = detail?.record ?? availableRecords.find(record => record.id === activeRecordId)
+  const activeStatus = activeSummary?.status
   const children = detail?.children ?? []
   const correlationId = activeSummary?.origin?.correlationId
     ?? children.find(child => child.origin?.correlationId)?.origin?.correlationId
@@ -74,11 +75,11 @@ export function useRunLedgers(input: UseRunLedgersInput) {
     ?? (activeRecordId === input.runId ? input.buildId : undefined)
 
   const buildQuery = useQuery({
-    queryKey: [...baseKey, 'build', resolvedBuildId],
+    queryKey: [...baseKey, 'build', resolvedBuildId, activeStatus],
     enabled: enabled && Boolean(resolvedBuildId),
     queryFn: () => input.api.observations.getBuild(resolvedBuildId!),
     placeholderData: keepPreviousData,
-    refetchInterval: activeSummary?.status === 'running' ? 2000 : false,
+    refetchInterval: activeStatus === 'running' ? 2000 : false,
     refetchIntervalInBackground: false,
   })
 
@@ -114,11 +115,11 @@ export function useRunLedgers(input: UseRunLedgersInput) {
   const callIdsKey = useMemo(() => callSummaries.map(item => item.id).join(','), [callSummaries])
 
   const callEntriesQuery = useQuery({
-    queryKey: [...baseKey, 'call-entries', callIdsKey],
+    queryKey: [...baseKey, 'call-entries', callIdsKey, activeStatus],
     enabled: enabled && callSummaries.length > 0,
     queryFn: () => Promise.all(callSummaries.map(item => input.api.observations.getRequest(item.id))),
     placeholderData: keepPreviousData,
-    refetchInterval: activeSummary?.status === 'running' ? 2000 : false,
+    refetchInterval: activeStatus === 'running' ? 2000 : false,
     refetchIntervalInBackground: false,
   })
 
@@ -207,11 +208,11 @@ export function useRunLedgers(input: UseRunLedgersInput) {
     modelCalls,
     diagnosticLogLedger,
     loading: {
-      runs: runsQuery.isPending,
-      detail: detailQuery.isPending,
-      build: buildQuery.isPending,
-      calls: callEntriesQuery.isPending || apiListQuery.isPending,
-      logs: logsQuery.isPending || diagnosticsQuery.isPending,
+      runs: runsQuery.isLoading,
+      detail: detailQuery.isLoading,
+      build: buildQuery.isLoading,
+      calls: callEntriesQuery.isLoading || apiListQuery.isLoading,
+      logs: logsQuery.isLoading || diagnosticsQuery.isLoading,
     },
     errors: {
       runs: runsQuery.error,

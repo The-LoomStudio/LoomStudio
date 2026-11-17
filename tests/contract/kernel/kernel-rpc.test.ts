@@ -1,6 +1,7 @@
 import { onTestFinished } from 'vitest'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
+import { createInMemoryDocumentStore, createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import type { ExtensionHost } from '@loom-studio/kernel/extension-host'
 import { createKernel } from '@loom-studio/kernel'
 import { describe, expect, it, vi } from 'vitest'
@@ -334,6 +335,62 @@ it('compacts large UTF-8 commits and rollback summaries into a single frame with
   expect(events[1]?.payload.changesetId).toBe(reverted.commit.changesetId)
   expect(events[1]?.payload.overflow).toBe(true)
   expect(Buffer.byteLength(JSON.stringify(events[1]?.payload), 'utf8')).toBeLessThanOrEqual(65536)
+  expect(diagnostics.list()).toHaveLength(0)
+})
+
+it('preserves attribution scope when compacting >32 KiB real SQLite document commits', async () => {
+  const diagnostics = createInMemoryDiagnosticsRegistry()
+  const documents = createSqliteDocumentStore({ filename: ':memory:' })
+  const extensionHost: ExtensionHost = {
+    discover: async () => { throw new Error('not implemented') },
+    activate: async () => { throw new Error('not implemented') },
+    activateAll: async () => [],
+    reload: async () => { throw new Error('not implemented') },
+    dispose: async () => {},
+    forget: async () => {},
+    disposeAll: async () => {},
+    list: () => [],
+    diagnostics: () => [],
+  }
+  const kernel = createKernel({ documents, dataCommits: documents, diagnostics, extensionHost })
+  onTestFinished(async () => {
+    try {
+      await kernel.stop()
+    } finally {
+      await documents.close()
+    }
+  })
+  await kernel.start()
+  const events: Array<{ name: string; payload: { changesetId: string; overflow?: boolean; operations: Array<Record<string, unknown>> } }> = []
+  kernel.getEventBus().subscribe(['data.changed'], event => { events.push(event as never) })
+
+  const installationId = extensionInstallationId('example.events', { kind: 'card', cardId: 'card-1' })
+  const committed = await documents.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+    for (let index = 0; index < 200; index++) {
+      await tx.write({
+        id: `scoped-document-with-long-distinct-entity-id-${String(index).padStart(4, '0')}`,
+        type: 'test.note',
+        content: { index },
+        expectedVersion: 'new',
+        meta: { ownerExtensionId: 'example.events', ownerInstallationId: installationId },
+      })
+    }
+  })
+
+  expect(events).toHaveLength(1)
+  expect(events[0]?.payload.changesetId).toBe(committed.commit.changesetId)
+  expect(events[0]?.payload.overflow).toBe(true)
+  expect(Buffer.byteLength(JSON.stringify(events[0]?.payload), 'utf8')).toBeLessThanOrEqual(65536)
+  expect(events[0]?.payload.operations).toEqual([
+    {
+      store: 'documents',
+      kind: 'create',
+      entityType: 'test.note',
+      entityId: '*',
+      scope: { cardId: 'card-1', installationId },
+      count: 200,
+    },
+  ])
   expect(diagnostics.list()).toHaveLength(0)
 })
 

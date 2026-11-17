@@ -192,9 +192,9 @@ Studio 将 URI 渲染为可点击引用查看器。查看器按 URI 中的身份
 
 ### 稳定提示词
 
-默认教程由 CodeAct Tool Definition 的现有 `prompt.guidance` 持久化。当前初始化会同步无扩展来源的官方 Tool Definition；带 origin 的扩展工具按各自来源管理，不能据此声称所有编辑都会跨初始化保留。公共说明及各方法使用统一的用途、签名、参数、返回、示例与限制模板。
+默认教程由 CodeAct Tool Definition 的现有 `prompt.guidance` 持久化。`officialCodeActTool`（`official/codeact`，`freeform`）携带 `prompt.content: { targetAnchorId: '@chat.tools' }`，而结构化工具 `officialCodeActJsonTool`（`official/codeact_json`，`structured`）不携带 `prompt.content`（结构化工具挂载亦不允许配置 `mount.content`）。当前初始化会同步无扩展来源的官方 Tool Definition；带 origin 的扩展工具按各自来源管理，不能据此声称所有编辑都会跨初始化保留。公共说明及各方法使用统一的用途、签名、参数、返回、示例与限制模板。
 
-无论采用哪种传输，教程只作为一份 `runtime.codeact.instructions` Contribution 投影到 `@chat.tools` 或挂载指定位置。Native `tools[]` 保留必要 schema 和简短说明，Content 协议说明也不再重复整本教程；同时启用两个别名时使用编译顺序中第一个入口的教程。缺少/禁用目标锚点时，Preview 中记录 `codeact.instructions_unmounted`，不另找位置强行注入。
+无论采用哪种传输，[`createContentToolPromptRuntimeInputs`](../../../../packages/application-runtime/src/agents/tool-loop.ts) 均只在启用任意 CodeAct 入口时投影一份 `runtime.codeact.instructions` Contribution，目标默认落到 `mount.content?.targetAnchorId ?? '@chat.tools'`（`localDepth` 默认 `0`）。Native `tools[]` 保留必要 schema 和简短说明，Content 协议说明也不再重复整本教程；同时启用两个别名时使用编译顺序中第一个入口的教程。缺少/禁用目标锚点时，Preview 中记录 `codeact.instructions_unmounted`，不另找位置强行注入。
 
 实现与定向验收：
 

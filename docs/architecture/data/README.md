@@ -43,10 +43,10 @@ Prompt Resource 使用当前 schema namespace `application.prompt-resource@9`。
 
 Studio Server 当前创建一个 `@loom-studio/kernel`（`data-engine`）SQLite Engine，并把同一 Engine 注入 Document Store。Engine 负责：
 
-- 单 SQLite connection 的生命周期（启动前由 `<dataRoot>/loom.lock` 目录独占锁保护）；
+- 单 SQLite connection 的生命周期（启动 Stage 1 由 `@loom-studio/kernel/platform` 的 `acquireProcessLock` 获取 `<dataRoot>/loom.lock` 目录独占锁保护）；
 - 公开读写的 FIFO 串行化；
 - `BEGIN IMMEDIATE` transaction 与失败回滚；
-- 在线一致性热快照备份 `SqliteDataEngine.backup`（基于 `VACUUM INTO`，排入 FIFO 队列确保事务一致性）；
+- 在线一致性热快照备份 `SqliteDataEngine.backup`（基于 `VACUUM INTO`，排入 FIFO 队列确保事务一致性，服务 Stage 2 预迁移保护快照与 `dashboard.createBackup`）；
 - namespaced schema 初始化；
 - 一次 transaction 对应一个 Changeset / Data Commit Fact；
 - commit 成功后的进程内通知。
@@ -57,7 +57,7 @@ Studio Server 当前创建一个 `@loom-studio/kernel`（`data-engine`）SQLite 
 - `platform.documents@2`：`documents`、`document_revisions` 及其索引与外键约束；
 - `platform.blob-store@1`：`stored_blobs` 与 SHA-256 唯一索引；
 - `platform.asset-store@1`：`source_artifacts`、`media_assets` 及 Blob / owner 索引；
-- `platform.extension-state@1`：`extension_installations`、`extension_official_setup` 与 `extension_dev_links`。
+- `platform.extension-state@1`：`extension_installations`、`extension_official_setup`、`extension_dev_links` 与 `extension_state_migrations`。
 
 Store 通过 `initializeSchema({ namespace, version, initialize })` 声明当前 schema。空 namespace 在事务中直接建立当前最终 DDL 并记录版本；版本相同时继续打开；任意已有非零版本不匹配都会拒绝打开，不做连续版本升级、降级或兼容读取。初始化失败时 DDL 与版本记录一起回滚。Engine 使用 WAL 与 foreign key，不依赖 ORM、通用 Repository 或外部 migration framework。
 
@@ -101,7 +101,7 @@ Document Store 不再自行打开第二条 SQLite connection，也不再写第�
 
 - 通用 `changesetId / createdAt / committedAt / actor / correlation`；
 - 不含正文的 `store / kind / entityId / entityType / version` operations，以及写入源头前置附带的 `DataCommitOperationScope` 归属标签（`cardId / timelineId / installationId`）；
-- 当单次事务操作数超过批量阈值时，自动折叠为按 `store + scope` 聚合的 `overflow: true` 范围失效提示，以单帧 `data.changed` 投递，不再进行 64 KiB 分片或投影 `docs.changed`。
+- 当单次事务操作数或体积超过预算时，由 `compactCommitPayload` 自动折叠为按 `scope` 或 `store + scope` 聚合的 `overflow: true` 范围失效提示，以单帧 `data.changed` 投递，不再进行 64 KiB 分片（已移除 `splitCommitPayload`）或投影 `docs.changed`。
 
 Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit Source。测试或其他宿主组合如果使用非 Engine Document Store，可直接注入 Store；其 `subscribeCommits` 已满足同一订阅合同，不需要转发工厂。
 

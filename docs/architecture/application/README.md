@@ -6,14 +6,14 @@ Studio Application 是 Loom Studio 第一方内建的 AIRP 领域层。它定义
 
 ## 源码入口
 
-领域流程、所需 Store / Gateway 注入及局部模块导航从 [Application Runtime README](../../../packages/application-runtime/README.md)进入；领域持久化从 [Application Data README](../../../packages/application-runtime/src/data/README.md)进入。界面分层从 [Client FSD](../../../apps/studio-client/README.md#源码导航与-fsd-架构规范)进入，传输与宿主服务从 [Server README](../../../apps/studio-server/README.md)进入。先确认所有者，再沿各包内的局部说明定位实现；整体关系见[系统总览](../system-overview.md)。
+领域流程、所需 Store / Gateway 注入及局部模块导航从 [Application Runtime README](../../../packages/application-runtime/README.md)进入；领域持久化已合入 `@loom-studio/application-runtime/data` 子入口（[Data 子模块 README](../../../packages/application-runtime/src/data/README.md)）。界面分层从 [Client FSD](../../../apps/studio-client/README.md#源码导航与-fsd-架构规范)进入，传输与宿主服务从 [Server README](../../../apps/studio-server/README.md)进入。先确认所有者，再沿各包内的局部说明定位实现；整体关系见[系统总览](../system-overview.md)。
 
 ## 子分类
 
 | 分类                                                   | 职责                                                                                  | 状态与入口                                             |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | 模型观测 | Build / Provider 观察及可选保留；运行日志与 Transcript 分别拥有各自合同 | [Runtime 包导航](../../../packages/application-runtime/README.md#源码导航)、[日志与观测边界](../platform/logging.md) |
-| 统计与 Dashboard 数据 | 累计模型用量、交互计数与当前资源/存储快照的来源 | [Data 包导航](../../../packages/application-runtime/src/data/README.md)、[Server 组合与服务入口](../../../apps/studio-server/README.md) |
+| 统计与 Dashboard 数据 | 累计模型用量、交互计数与当前资源/存储快照的来源 | [Data 子模块导航](../../../packages/application-runtime/src/data/README.md)、[Server 组合与服务入口](../../../apps/studio-server/README.md) |
 | Timeline 归档与恢复 | Session、分支、State、Workspace 及扩展参与者的归档边界 | [Runtime 包导航](../../../packages/application-runtime/README.md#源码导航)、[归档与恢复合同](agent/runtime-and-session.md#6-narrative-边界) |
 | [用户资料与背景集合](user-profiles.md) | 全局用户配置、头像、背景目录与媒体引用；不属于剧情 State | [Runtime 包导航](../../../packages/application-runtime/README.md#源码导航) |
 | [全局资源搜索](global-resource-search.md) | 导航、定义全文索引、范围关系、空关键词浏览与定位高亮 | 已实现；独立于运行时内容搜索 |
@@ -40,15 +40,20 @@ Extension 安装可分别以全局或 Card 为目标；资源 origin 关联安�
 
 ## Application Runtime Context
 
-`packages/application-runtime` 当前使用内部 `ApplicationRuntimeContext` 统一承载稳定基础设施能力：
+`packages/application-runtime` 当前通过 [`foundation/application-context.ts`](../../../packages/application-runtime/src/foundation/application-context.ts) 中的内部 `ApplicationRuntimeContext` 统一承载稳定基础设施能力：
 
 ```text
-agents? / narratives?
-dataEngine / documents / promptResources / states
-sourceArtifacts? / mediaAssets? / secrets
+agents? / narratives? / observations
+dataEngine / documents / promptResources / states / workspaces / swipes
+blobs? / sourceArtifacts? / mediaAssets? / secrets
 gateway / providerAdapters / aiCapabilities / agentTools
-logger? / now() / createId(prefix)
+macroProviders / promptProcessors / stateContent / stateContributions
+narrativeContext / narrativeActivity / extensionReadonlyFiles / timelineArchiveParticipants
+extensionPorts / scopeValidator
+logger? / runtimeLogger? / now() / createId(prefix)
 ```
+
+`createApplicationRuntime()`（[`runtime/runtime.ts`](../../../packages/application-runtime/src/runtime/runtime.ts)）另通过 `runs`（下沉至 [`agents/agent-run-service.ts`](../../../packages/application-runtime/src/agents/agent-run-service.ts)）暴露 Run 执行与重放服务，并通过 `extensionPorts`（`ApplicationExtensionPorts`）与 `scopeValidator`（`ApplicationScopeValidator`）向 Server Extension Host 适配器输出受控能力端口与作用域校验器；AI 调用经扁平化的单通道 `createUnifiedAiGateway`（[`providers/gateway.ts`](../../../packages/application-runtime/src/providers/gateway.ts)）统一采集观测、统计与日志。
 
 Context 是 Application Runtime 的基础设施工具箱，不是业务状态容器。影响一次行为结果的输入继续通过 operation request 显式传递，例如：
 

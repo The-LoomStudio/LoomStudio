@@ -1,5 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { extensionInstallationId } from '@loom-studio/application-runtime'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createId } from '@loom-studio/shared'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -181,5 +183,57 @@ describe('Extension State Store capability persistence', () => {
       grantedUiCapabilities: [],
       updatedAt,
     })
+  })
+
+  it('persists SQLite migration markers so emptied installations do not resurrect from legacy JSON on reload', async () => {
+    const dbPath = join(directory, 'studio.sqlite')
+    const officialSetupFile = join(directory, 'official-extension-setup.json')
+    const devLinksFile = join(directory, 'dev-links.json')
+    await writeFile(filename, JSON.stringify({
+      version: 3,
+      packages: {
+        'example.state': {
+          modules: {
+            server: {
+              enabled: true,
+              grants: { 'events.subscribe': ['state'], assets: [] },
+              updatedAt,
+            },
+          },
+        },
+      },
+    }))
+    await writeFile(officialSetupFile, JSON.stringify({ completed: true, bundled: ['official.story-memory'] }))
+    await writeFile(devLinksFile, JSON.stringify({ extensions: [{ id: 'example.state', path: directory }] }))
+
+    const engine = createSqliteDataEngine({ filename: dbPath, createId, now: () => updatedAt })
+    try {
+      const store = createExtensionStateStore({
+        engine,
+        filename,
+        officialSetupFile,
+        devLinksFile,
+        now: () => updatedAt,
+      })
+      await store.load()
+      expect(store.get('example.state', 'server')?.enabled).toBe(true)
+      expect(store.readOfficialSetup()).toEqual({ completed: true, bundled: ['official.story-memory'] })
+
+      await expect(store.deletePackage('example.state')).resolves.toBe(true)
+      expect(store.get('example.state', 'server')).toBeUndefined()
+
+      const reloaded = createExtensionStateStore({
+        engine,
+        filename,
+        officialSetupFile,
+        devLinksFile,
+        now: () => updatedAt,
+      })
+      await reloaded.load()
+      expect(reloaded.get('example.state', 'server')).toBeUndefined()
+      expect(reloaded.readOfficialSetup()).toEqual({ completed: true, bundled: ['official.story-memory'] })
+    } finally {
+      await engine.close()
+    }
   })
 })

@@ -26,10 +26,9 @@ function captureRange(period: DashboardPeriod) {
   return { to: to.toISOString(), ...(period !== 'all' ? { from: from.toISOString() } : {}), timeZone }
 }
 
-export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
+export function useDashboard(api: StudioApi, endpoint: string, open: boolean, view: DashboardView = 'overview') {
   const [selection, setSelection] = useState(() => ({ period: '30' as DashboardPeriod, revision: 0, open, range: captureRange('30') }))
   const [storageRevision, setStorageRevision] = useState(0)
-  const [view, setView] = useState<DashboardView>('overview')
   // Capture before constructing queries so reopening never subscribes to the previous range first.
   let current = selection
   if (selection.open !== open) {
@@ -240,7 +239,6 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
     range,
     period,
     setPeriod,
-    setView,
     refresh,
     refreshing: queries.some(query => query.isFetching),
     createBackup: () => backup.mutateAsync(),

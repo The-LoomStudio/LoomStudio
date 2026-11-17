@@ -3,7 +3,7 @@
 源码入口与局部文件导航见 [Kernel README](../../../packages/kernel/README.md)。HTTP、认证、静态 tRPC procedure 和进程服务注入由 [Server README](../../../apps/studio-server/README.md)承接；它们不是 Kernel 内部模块。整体装配关系见[系统总览](../system-overview.md)。
 
 
-Studio Kernel 是 Loom Studio 的业务无感知协调层。它组装平台服务、维护统一 RPC 注册面和进程内事件总线，但不理解 Card、Session、Prompt、Agent、Provider 等 Application 语义。
+Studio Kernel 是 Loom Studio 的业务无感知协调层。它组装平台服务、维护统一 RPC 注册面和进程内事件总线，但不理解 Card、Session、Prompt、Agent、Provider 等 Application 语义。`@loom-studio/kernel` 保持零上层依赖（不依赖 `application-runtime` 或 `ai-gateway`），并通过 9 个子路径导出底层原语：`./data-engine`、`./document-store`、`./asset-store`、`./secret-store`、`./diagnostics`、`./extension-host`、`./platform`、`./extension-manager`、`./script-runtime`。
 
 本文对应当前实现：
 
@@ -72,7 +72,7 @@ createKernel(options)
 1. 组合根（Studio Server）释放媒体监听，并调用 HTTP Server 的 `shutdown()`；HTTP 层拒绝新请求（503）、停止监听，对在途请求的 `AbortController` 发出取消并关闭网络连接；
 2. HTTP 层等待已登记的请求 Promise 收敛，不用强制超时越过尚未完成的 Store 操作；
 3. 组合根调用 `kernel.stop()`；Kernel 此时发布 `system.stopping`，释放 Data Commit 订阅，并通过统一 `ExtensionHost`（同时纳管 `kind: 'extension'` 与 `kind: 'script'`）`disposeAll` 释放全部活动扩展、`.loom.js` 脚本与受管 Worker Scope，最后在 `finally` 中释放内建 RPC 注册、收束为 inactive；
-4. 组合根重试 Secret Store 待清理项，关闭 Observation Store，排空 `DataEngine` FIFO 队列后关闭 SQLite，最后释放 `<dataRoot>/loom.lock` 目录独占锁并关闭日志器。
+4. 组合根重试 Secret Store 待清理项，关闭 Observation Store，排空 `DataEngine` FIFO 队列后关闭 SQLite，最后释放 `<dataRoot>/loom.lock` 目录独占锁（由 `@loom-studio/kernel/platform` 的 `acquireProcessLock` 获取）并关闭日志器。
 
 在途 HTTP 请求的取消与排空由 HTTP 层拥有，不依赖 `system.stopping` 事件。实现入口：[Server 组合根](../../../apps/studio-server/src/server.ts)、[HTTP 生命周期](../../../apps/studio-server/src/http/http-server.ts)与[Kernel 生命周期](../../../packages/kernel/src/kernel.ts)。
 
@@ -109,7 +109,7 @@ Extension handler 获得的 context 由 Kernel 注入真实 `packageId`、`modul
 |---|---|
 | `system.*` | 健康检查、版本与能力信息、动态 introspection（过滤 `kind: 'script'` 内部模块） |
 | `events.*` | 保留给未来真实 Event Transport；当前没有伪订阅 RPC |
-| `extensions.*` | Package Catalog、Module 启停/reload、诊断查询，以及唯一动态扩展调用网关 `extensions.invoke` |
+| `extensions.*` | Package Catalog、Module 启停/reload、诊断查询，以及唯一动态扩展调用网关 `extensions.invoke`（原 `kernel.invoke` 与 `extensions.callPackageRpc` 已移除） |
 | `diagnostics.*` | 平台诊断读取 |
 
 具体方法和参数应以 Kernel public surface 与 `system.introspect` 的运行时结果为准，不在架构文档中复制第二份完整 RPC schema。
@@ -118,10 +118,10 @@ Extension handler 获得的 context 由 Kernel 注入真实 `packageId`、`modul
 
 Kernel 启动后订阅注入的领域无关 Data Commit Source。当前 Studio Server 直接注入共享 SQLite Data Engine；测试或其他宿主组合可直接注入普通 Document Store，其 `subscribeCommits` 已满足订阅合同。
 
-每次成功提交发布单帧 `data.changed`（`version: 2`）：
+每次成功提交通过 `compactCommitPayload` 发布单帧 `data.changed`（`version: 2`）：
 
 - 写入源头在事务内通过 `DataCommitOperationScope` 前置附带可信归属标签（`cardId / timelineId / installationId`），只携带轻量失效标识（`store / kind / entityType / entityId / version / scope`），绝不承载正文大包；
-- 当单次事务操作数超过批量阈值时，自动折叠为按 `store + scope` 聚合的 `overflow: true` 范围失效提示；
+- 当单次事务操作数或体积超过预算（64 条操作 / 32 KiB）时，`compactCommitPayload` 自动折叠为按 `scope` 或 `store + scope` 聚合的 `overflow: true` 范围失效提示；
 - 已移除 `docs.changed` 兼容投影事件、64 KiB 分片器（`splitCommitPayload`）、前端 4 MiB / 10 秒重组缓冲及服务端跨表反查过滤。
 
 Kernel 从 `clientId` 推导 Document actor，并忽略请求中伪造的 actor 或 owner metadata。`correlationId`、`callId` 和 `parentCallId` 会继续传入 Document Store。

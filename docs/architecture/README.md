@@ -41,7 +41,7 @@ Architecture
 
 | 分类 | 正式职责 |
 |---|---|
-| [`kernel/`](kernel/) | 业务无感知的 Kernel、RPC、事件和平台服务组装边界 |
+| [`kernel/`](kernel/) | 业务无感知的宿主 Kernel（零上层应用依赖）、RPC、事件与底层平台服务组装边界 |
 | [`data/`](data/) | Document、Revision、Changeset、持久化和审计数据边界 |
 | [`extensions/`](extensions/) | 平台级 Extension Host、Manifest、生命周期和 SDK 边界 |
 | [`platform/`](platform/) | 不属于 Kernel、也不只属于第一方 Application 的共享平台能力 |

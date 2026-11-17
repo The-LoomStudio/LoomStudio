@@ -81,7 +81,7 @@ Host 与 Frame 使用专用 `MessageChannel` 交换 bootstrap、update、dispose
 
 `client` 在主窗口、`server` 在 Node 服务同进程执行，均需用户明确授权；不能把它们描述为代码隔离沙箱。代码导出 `activate(ctx)`，返回的清理句柄及宿主注册句柄由现有 Extension Host 管理，停止、刷新时回收。任意同进程代码自行产生的外部副作用不保证撤销。
 
-Client 使用现有状态读取、History、Renderer、通知、信号及清理能力；Server 使用现有状态、事件订阅、宏、Prompt Processor、资产等能力。没有安装身份或 Timeline lease 的 API 明确不可用，不能通过合成脚本包名借用其他扩展权限。运行器对不支持的授权能力给出诊断。
+Client 使用现有状态读取、History、Renderer、通知、信号及清理能力；Server 使用现有状态、事件订阅（含 `events.subscribe:platform-data` 订阅 `data.changed` 等）、宏、Prompt Processor、资产等能力。没有安装身份或 Timeline lease 的 API 明确不可用，不能通过合成脚本包名借用其他扩展权限。运行器对不支持的授权能力给出诊断。
 
 未被更高优先级采用遮蔽的全局实例不随角色切换停止；角色实例随角色切换，切换同角色 Timeline 保持实例。Client 的 `ctx.timeline.target` 读取当前目标；显式 State 订阅保留原目标，不自动改写。已经发出的读操作前后检查目标，旧目标结果不作为新 Timeline 数据返回。服务重启按全局启用配置重新启动 Server 脚本，不恢复闭包或补放旧事件。
 
@@ -143,7 +143,7 @@ Inline Mount 只替换渲染投影中的目标范围，不修改 Canonical Narra
 - [`apps/studio-client/src/features/loom-scripts/runtime/`](../../../apps/studio-client/src/features/loom-scripts/runtime/)
 - [`apps/studio-client/src/features/loom-scripts/model/client-script-runtime.ts`](../../../apps/studio-client/src/features/loom-scripts/model/client-script-runtime.ts)
 - [`apps/studio-server/src/scripts/script-service.ts`](../../../apps/studio-server/src/scripts/script-service.ts)
-- [`packages/kernel/src/script-runtime/server-script-runtime.ts`](../../../packages/kernel/src/script-runtime/server-script-runtime.ts)（作为 `kind: 'script'` 模块并入统一 `ExtensionHost`）
+- [`packages/kernel/src/script-runtime/server-script-runtime.ts`](../../../packages/kernel/src/script-runtime/server-script-runtime.ts)（`@loom-studio/kernel/script-runtime`，通过 `registerModule` 作为 `kind: 'script'` 模块并入统一 [`ExtensionHost`](../../../packages/kernel/src/extension-host/index.ts)，在默认扩展目录 `list()` 中与普通扩展隔离）
 - [`client-renderer-host.md`](client-renderer-host.md)
 - [`../application/history-text-pipeline.md`](../application/history-text-pipeline.md)
 

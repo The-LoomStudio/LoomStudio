@@ -9,9 +9,10 @@ Extension Package 允许零 Module，仅携带声明式资源。静态贡献声�
 本文对应当前实现与可执行验证：
 
 - [`packages/extension-sdk/src/index.ts`](../../../packages/extension-sdk/src/index.ts)
-- [`packages/kernel/src/extension-host/index.ts`](../../../packages/kernel/src/extension-host/index.ts)
-- [`packages/kernel/src/extension-manager/`](../../../packages/kernel/src/extension-manager/)
-- [`apps/studio-server/src/extensions/`](../../../apps/studio-server/src/extensions/)
+- [`packages/kernel/src/extension-host/index.ts`](../../../packages/kernel/src/extension-host/index.ts)（`@loom-studio/kernel/extension-host`）
+- [`packages/kernel/src/extension-manager/`](../../../packages/kernel/src/extension-manager/)（`@loom-studio/kernel/extension-manager`）
+- [`packages/kernel/src/script-runtime/`](../../../packages/kernel/src/script-runtime/)（`@loom-studio/kernel/script-runtime`）
+- [`apps/studio-server/src/extensions/`](../../../apps/studio-server/src/extensions/)（含 [`extension-event-projection.ts`](../../../apps/studio-server/src/extensions/extension-event-projection.ts)）
 - [`apps/studio-client/src/features/extension-renderers/`](../../../apps/studio-client/src/features/extension-renderers/)
 - [`scripts/dev/verify-server-extension.ts`](../../../scripts/dev/verify-server-extension.ts)
 - [`tests/integration/studio-server/extension-install.test.ts`](../../../tests/integration/studio-server/extension-install.test.ts)
@@ -43,7 +44,7 @@ Card Package 可携带 Extension Package 实际归档。安装身份由 `package
 
 Server Extension Manager 负责：
 
-- 默认从 `<installationRoot>/official/extensions/*` 发现官方包，从 `<installationRoot>/extensions/<packageId>` 发现安装包；安装目录按 Package ID 平铺，不含版本子目录。模块启用状态、官方初始化记录与开发链接默认持久化在共享 SQLite 的 `platform.extension-state@1`（`extension_installations`、`extension_official_setup`、`extension_dev_links`），启动加载时自动一次性迁移导入旧 `<dataRoot>/config/extensions-*.json`（与包代码目录分开），并保留内存同步快照；Server 配置可覆盖发现目录、安装根和状态目录。测试扩展位于 `tests/fixtures/extensions/*`，仅通过显式开发配置加载；
+- 默认从 `<installationRoot>/official/extensions/*` 发现官方包，从 `<installationRoot>/extensions/<packageId>` 发现安装包；安装目录按 Package ID 平铺，不含版本子目录。模块启用状态、官方初始化记录与开发链接默认持久化在共享 SQLite 的 `platform.extension-state@1`（`extension_installations`、`extension_official_setup`、`extension_dev_links` 与 `extension_state_migrations`），保留内存同步快照；Server 配置可覆盖发现目录、安装根和状态目录。首次迁移旧版 JSON（`state.json` / `extensions-*.json`、`official-extension-setup.json`、`dev-links.json`）前如原库存在会先触发 `pre-state-migration` SQLite 备份，并在事务内原子写入 `extension_state_migrations(source, migrated_at)` 完成标记（`installations` / `official-setup` / `dev-links`）；`set()`、`deletePackage()`、`writeOfficialSetup()` 与 `removeExtensionDevLink()` 同样写入对应迁移标记。一旦来源已标记完成，即便后续 SQLite 表被清空（如卸载全部扩展或移除全部开发链接），启动加载与 `readDevLinks()` 也不会再次回退读取旧 JSON，避免已删除状态的“幽灵复活”。测试扩展位于 `tests/fixtures/extensions/*`，仅通过显式开发配置加载；
 - 按 `packageId` 建立 Catalog 并处理来源冲突；
 - 校验 Manifest v2、Module ID、runtime 与 entry 路径边界；
 - 发现 Client-only 和纯资源 Package，但只编排 Server Module；
@@ -59,7 +60,7 @@ Server Extension Manager 负责：
 ### 生命周期与异常恢复保证
 
 - **卸载容错与重试（Uninstallation Resilience）**：Server 卸载扩展时，先持久化将其标记为禁用，再尽力 `dispose()` 所有关联模块。若过程中发生异常，保留包来源记录、授权声明与 Catalog 状态，明确未完成状态并通过平台诊断暴露，允许调用方重试卸载或重建恢复，绝不损坏全局状态一致性。
-- **状态订阅安全（State Subscription Safety）**：统一 `ExtensionHost`（`packages/kernel/src/extension-host`，同时纳管 `kind: 'extension' | 'script'`）保证预先已处于 Abort 状态的 Signal 绝不会创建有效订阅；正常取消订阅与重复调用 `dispose()` 完全幂等。
+- **状态订阅安全（State Subscription Safety）**：统一 `ExtensionHost`（`@loom-studio/kernel/extension-host`，`packages/kernel/src/extension-host/`）同时纳管 `kind: 'extension' | 'script'` 服务端模块，并通过 `@loom-studio/kernel/script-runtime` 的 `registerModule` 接入 Server Script，`list({ includeScripts })` 默认对普通扩展目录过滤 `script` 模块；同时保证预先已处于 Abort 状态的 Signal 绝不会创建有效订阅，正常取消订阅与重复调用 `dispose()` 完全幂等。
 - **客户端实例隔离与清理**：Client Extension Host 在模块卸载或清理发生异常时，严格隔离故障，绝不影响其他正常注册的扩展；失效实例立即失去资源访问权，且旧 Catalog 异步回调绝不会复活已卸载的实例。
 
 ## 用户发起的原生数据批量导入
@@ -206,7 +207,7 @@ Host 不暴露 Kernel、SQL connection 或内部 Registry，也不保存插件�
 
 Client Module 通过 `activate(ctx)` 获得 Renderer 注册与打开、Manifest Command Handler 注册、Package-owned Record 读取、Config 读写与订阅、Style 工厂注册、State / History 读取、Package namespace RPC、Asset / Package File URL、Logger、Identity 与 `AbortSignal`。Action Placement 由 Manifest 静态声明并由 Host 投影；Client Host 同样不暴露 Kernel、SQL、Application Store 或全局 Registry。完整合同见 [`client-renderer-host.md`](client-renderer-host.md)。
 
-`ctx.rpc.call()` 只用于调用 Extension RPC。它拒绝 `system.*`、`docs.*`、`extensions.*`、`application.*` 等 Studio 保留 namespace，插件不能借通用 RPC 绕过 Host capability。Application 领域能力通过明确的 typed capability 开放；当前包括 Scoped Storage 与 Portable Payload，不把全部 Studio RPC 默认交给插件。
+`ctx.rpc.call()` 只用于调用 Extension RPC。它拒绝 `studioReservedNamespaces`（`system`、`events`、`docs`、`extensions`、`diagnostics`、`application`、`logs`、`studio`），插件不能借通用 RPC 绕过 Host capability。前端与客户端桥接调用非平台命名空间的动态扩展方法时，统一经单个 `extensions.invoke` tRPC 网关进入 Kernel（原 `docs.*` RPC、`kernel.invoke` 与 `extensions.callPackageRpc` 已移除）。Application 领域能力通过明确的 typed capability 开放；当前包括 Scoped Storage 与 Portable Payload，不把全部 Studio RPC 默认交给插件。
 
 Server RPC 默认在当前安装目标内解析：`ctx.rpc.call(method, params)` 不会在角色安装缺失方法时自动回退全局。同名方法可以分别注册在全局与不同 Card；调用已启用的全局扩展服务使用 `ctx.rpc.call(method, params, { scope: 'global' })`。模块不能通过此选项指定另一 Card。安装目标来自 Host，不从业务 params 推断；无目标的普通 Kernel 调用和公开 introspect 仍只访问全局方法。
 
@@ -227,7 +228,9 @@ Card 包的安装、更新、卸载及模块启用已通过管理 API 与扩展�
 
 Extension Event 的 definition、publisher 与 subscriber 都携带 Package、Module、Instance identity。Module 自己的 protected event 使用 `extension:<packageId>` capability；跨 Module 协作应走 Host RPC/Event，而不是获取 sibling 实例对象。
 
-Server 自定义事件还携带 Host 提供的安装目标：同名定义按 Global/Card 分开注册，发布与扩展订阅只在相同安装目标内匹配，权限检查不因目标隔离而省略。Card 自定义事件的 `meta.installationId` 标识来源；平台观察者仍可跨安装观察。此处不代表平台事件已按 Card 完整过滤，平台事件需要由其具体事实来源解析目标，相关迁移仍在进行。
+Server 自定义事件还携带 Host 提供的安装目标：同名定义按 Global/Card 分开注册，发布与扩展订阅只在相同安装目标内匹配，权限检查不因目标隔离而省略。Card 自定义事件的 `meta.installationId` 标识来源；平台观察者仍可跨安装观察。
+
+平台数据提交事件 `data.changed`（定义版本 `2`，`protected` 可见性）受 `platform-data` 事件能力保护（`events.subscribe` 合法类别为 `documents`、`narrative`、`agent`、`diagnostics`、`platform-data`、`state` 及 `extension:<packageId>`）。Kernel 通过 `publishCommitNotification` 与 `compactCommitPayload` 发布提交摘要，超过 `64` 条操作或 `32 KiB` UTF-8 预算时按作用域与归属作用域（`{ cardId?, timelineId?, installationId? }`）逐级折叠为 `entityId: '*'` / `<store>.*` 并标记 `overflow: true`。在 `apps/studio-server/src/extensions/extension-event-projection.ts` 中，`projectExtensionEvent` 为 Card 安装执行过滤投影：携带 `scope.installationId`（及匹配的 `scope.cardId`）的提交，或携带 `scope.cardId` 的非 `documents` / `prompt-resources` 存储（`narrative`、`state` 等）提交直接走 **O(1)** 归属投影，无需回查底层 Store；仅缺少归属 scope 的 `documents` / `prompt-resources`（需具名 `entityId !== '*'` 与 `toVersion`）或缺少 `scope.timelineId` 的 `narrative` / `state` 操作回退到 Store 归属查询，被 `overflow: true` 折叠且无归属 scope 的通配操作直接安全跳过。`extensions.changed` 与 `entity.lifecycle.changed` 亦分别按 `packageId + target.cardId` 与 `root.kind === 'card'` 过滤。
 
 Server Card 安装的 State read/write 只允许所属 Card 的现存 Timeline，不允许 Global State、其他 Card 或未知 Timeline；归属由 Server 查询 Narrative Store，不能从调用参数声明中采信。`ctx.state.subscribe` 和通用 `ctx.events.subscribe(['state.changed'])` 共用同一检查，模块或订阅已停止时不交付迟到的归属查询结果。State 读写请求在异步校验前复制，事件订阅者各自获得副本。全局安装保留已有的 State 能力范围，Manifest/Grant 检查仍适用。
 
@@ -256,27 +259,31 @@ Server Module 的 `ctx.documents` 当前执行以下默认拒绝规则：
 
 ## 6. 管理 RPC
 
-Kernel 当前提供：
+Kernel 与 Studio Server 的 `extensions` tRPC Router（[`apps/studio-server/src/rpc/trpc/kernel.ts`](../../../apps/studio-server/src/rpc/trpc/kernel.ts)）当前提供：
 
 ```text
-extensions.invoke
+extensions.invoke                  # 唯一动态扩展 RPC 网关（{ packageId, target?, method, params? }）
 extensions.listPackages
-extensions.installPackage
-extensions.installPackageZip
-extensions.uninstallPackage
-extensions.importPackageResources
-extensions.removePackageResources
-extensions.enableModule
-extensions.disableModule
-extensions.reloadModule
+extensions.installPackage / installPackageZip / uninstallPackage
+extensions.installCardPackage / updateCardPackage / uninstallCardPackage
+extensions.previewRemoteInstall / previewPackageZip / previewRemoteChange / checkRemoteUpdate / commitRemoteInstall
+extensions.officialSetup / finishOfficialSetup
+extensions.importPackageResources / previewPackageResources / updatePackageResources / removePackageResources
+extensions.importCardPackageResources / updateCardPackageResources / removeCardPackageResources
+extensions.enableModule / disableModule / reloadModule
+extensions.startModuleBatch / getModuleBatch / listModuleBatches
+extensions.listRecoveryRecords / importConvertedBatch
+extensions.listCharacters / previewCharacter / importCharacter / exportPackage
 extensions.getDiagnostics
 ```
+
+`extensions.invoke` 是前端与客户端访问动态扩展方法的唯一入口，强制校验 `method.startsWith(`${packageId}.`)` 并在 Kernel 中绑定 `expectedExtensionPackageId` 与 `extensionTarget`（默认 `{ kind: 'global' }`）；历史 `docs.*` RPC、`kernel.invoke` 与 `extensions.callPackageRpc` 已全部移除，静态平台与管理操作必须走各自 typed procedure。
 
 `installPackage` 当前接收本地 `sourceDirectory`，安全复制并原子安装到用户数据目录；不处理 Archive 或网络下载。`uninstallPackage` 接受 installed 或单一 dev-link 来源：installed 删除复制后的版本目录，dev-link 只从开发链接清单解绑而不删除源码。两者都会释放并 forget Module、清除该 Package 的 enabled/grant 状态；仓库内置 Package 不可卸载。定位字段使用独立 `packageId` 与 `moduleId`。
 
 `extensions.listPackages` 是插件管理界面的初始快照入口。Package 项返回上述静态元数据、受控 `iconUrl`、不含绝对目录的 `sourceKinds`，以及 `available`、Module desired/runtime state 和声明式资源。图标通过 `GET /extensions/:packageId/:version/icon` 读取，浏览器不会获得 Package 的物理目录。
 
-动态变化通过 `GET /extensions/events` 的 SSE 连接推送。`extensions.changed` 覆盖 installed、uninstalled、enabled、disabled 与 reloaded；事件只携带 `packageId`、可选 `moduleId/version` 和 action。客户端收到事件后重新调用 `extensions.listPackages` 获取权威快照，不把 SSE payload 当作完整状态或新的 CRUD 通道。Data commit 还会投影为 `extensions.data.changed`，用于使 Client Renderer Projection 失效重建。
+动态变化通过 `GET /extensions/events` 的 SSE 连接推送（广播 `extensions.changed`、`extensions.data.changed`、`data.changed`、`entity.lifecycle.changed`、`directories.media.changed` 与 agent run 列表变更）。`extensions.changed` 覆盖 installed、updated、uninstalled、enabled、disabled 与 reloaded；事件只携带 `packageId`、可选 `moduleId/version/target` 和 action。客户端收到事件后重新调用 `extensions.listPackages` 获取权威快照，不把 SSE payload 当作完整状态或新的 CRUD 通道。Data commit 还会广播 `data.changed`（供客户端 TanStack Query 通过 `subscribeDataCommits` 失效刷新）并派生 `extensions.data.changed`，用于使 Client Renderer Projection 失效重建。
 
 Client Entry、iframe source 与 Package 静态资源通过 `GET /extensions/:packageId/:version/files/*` 的同源路由读取。Server 校验 Package、版本和路径边界，浏览器不获得物理目录。
 

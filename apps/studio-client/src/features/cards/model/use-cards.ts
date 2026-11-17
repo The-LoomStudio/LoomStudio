@@ -115,10 +115,10 @@ export function useCards(input: UseCardsInput) {
     return subscribeDataCommits(
       operations => {
         const hasCardChange = operations.some(op =>
-          op.entityType === 'card'
-          || op.entityType === 'cardSource'
-          || op.scope?.entityType === 'card'
-          || op.scope?.entityType === 'cardSource',
+          op.entityType === 'airp.cardSource'
+          || op.entityType === 'documents.*'
+          || op.scope?.entityType === 'airp.cardSource'
+          || op.scope?.entityType === 'documents.*',
         )
         if (!hasCardChange) return
         void queryClient.invalidateQueries({ queryKey: ['cards', apiScope] })

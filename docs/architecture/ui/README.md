@@ -36,7 +36,7 @@ Architecture / Application / UI:
 - 插件 locale resources；
 - 完整复数与相对时间格式化（日期、时间和数字已有统一 Intl 封装）；
 - 跨窗口焦点模型；
-- 跨模型精确 Tokenizer 协商协议（长文本与审阅只读 Diff 已基于 `@codemirror/merge` 在 `shared/ui/read-only-diff` 落地）。
+- 跨模型精确 Tokenizer 协商协议（客户端统一通过 `@loom-studio/shared/tokenizer/contracts` 与隔离的 `tokenizer.worker.ts` 惰性加载 `@loom-studio/shared/tokenizer` 执行计数；长文本与审阅只读 Diff 已基于 `@codemirror/merge` 在 `shared/ui/read-only-diff` 落地）。
 
 当前路线从 [UI Plan 索引](../../workbench/plans/ui/README.md) 进入。以下材料分别保留历史依据和当前草稿，归档候选不自动成为待办：
 

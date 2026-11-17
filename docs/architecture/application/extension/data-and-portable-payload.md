@@ -48,7 +48,7 @@ Config 与 Record 分别保存为 `airp.extensionConfig` 和 `airp.extensionReco
 
 Studio Client Host 通过 `application.listExtensionConfigs/getExtensionConfig/upsertExtensionConfig` 管理声明式设置，Client Extension 则只获得自动绑定当前 Package 的 `ctx.configs.list/get/upsert/subscribe`。Client 更新同样要求现有 Document Version；`subscribe` 由已提交的 `extensions.data.changed` 触发重新读取并比较版本，不接收 Host 表单 draft。
 
-角色安装的 Config 只允许本角色 scope，或由真实 `Timeline.createdFrom.cardId` 证明属于该角色的 Timeline / Session scope；禁止 global scope 和其他角色的 scope。全局安装可以在现有实体 scope 中使用自己的命名空间，同包全局/角色安装的值与版本互不替代。角色设置控件的 card scope 按安装目标绑定；Timeline / Session 归属不明时不可提交，后端仍进行权威校验。
+角色安装的 Config 只允许本角色 scope，或由真实 `Timeline.createdFrom.cardId` 证明属于该角色的 Timeline / Session scope；禁止 global scope 和其他角色的 scope。该规则与实体引用归属统一由 `ApplicationRuntime.scopeValidator`（`validateStorageScope` / `validateEntityRef`）在后端校验。全局安装可以在现有实体 scope 中使用自己的命名空间，同包全局/角色安装的值与版本互不替代。角色设置控件的 card scope 按安装目标绑定；Timeline / Session 归属不明时不可提交，后端仍进行权威校验。
 
 Host 字段保留本地草稿及首次编辑的版本基线；失败后暂停自动提交，不能因重读到新版就静默覆盖服务端。用户可明确采用服务端值，或在已读取的最新基线上重新应用当前草稿；读取失败保留草稿并提供重读入口，不能盲写。最新记录不存在时允许明确采用默认值或重新创建；这沿用现有 absence / tombstone 写入合同，不增加 create-if-absent 保证。API、Package、安装 Target 或有效 scope 身份切换会重建字段，旧异步结果不进入新身份；成功只确认已提交快照，不清除等待期间继续编辑的草稿。
 
@@ -78,7 +78,8 @@ Host 始终使用当前 `packageId`，Extension 不能伪造 owner、读取其�
 - 删除 Agent Session 时，同一 transaction 会 tombstone 该 Session Scope 的 Config / Record；
 - Global 和其他 Scope 不受上述删除影响；
 - Node / Message Event 只负责触发处理，持久 Binding 才是可恢复事实；
-- Data commit 会经 `extensions.data.changed` 通知 Client Renderer 使 Projection 失效，但 SSE 不是持久事实或增量数据载荷；
+- Data commit 会经公共的 `extensions.data.changed` 通知 Client Renderer 使 Projection 失效，并经受保护的 `data.changed` 向持有 `platform-data` 能力的订阅者广播提交摘要（SSE 不是持久事实或增量数据载荷）；
+- `data.changed` 的 `DataCommitOperation.scope`（`cardId`、`timelineId`、`installationId`）在写入提交时前置发出：领域 Store 经 [`data/scope.ts`](../../../../packages/application-runtime/src/data/scope.ts) 与 `prompt-resource` 归属函数注入，Document Store 由 [`sqlite-store.ts`](../../../../packages/kernel/src/document-store/sqlite-store.ts) 按 `ownerInstallationId` 与 `airp.*` 文档类型提取。超限提交由 `compactCommitPayload`（[`commit-notifications.ts`](../../../../packages/kernel/src/commit-notifications.ts)）先按具体 scope、再按归属 scope（`cardId` / `timelineId` / `installationId`）折叠并标记 `overflow: true`，使事件始终保留在单帧预算内；Server 端的 [`extension-event-projection.ts`](../../../../apps/studio-server/src/extensions/extension-event-projection.ts) 优先直接匹配 `scope.installationId` 与 `scope.cardId`，以 **O(1)** 完成角色卡扩展的事件过滤，仅在旧式或缺失归属的 operation 上回退查库；
 - Card 删除提交后会广播 `entity.lifecycle.changed`；Event 只用于扩展对账，不参与删除事务的正确性；
 - 删除或回滚 Record 只改变 Asset 引用，未引用 Asset / Blob 的回收留给独立 GC。
 
@@ -111,8 +112,11 @@ Extension publishes Payload
 ## 6. 实现位置
 
 - [`packages/extension-sdk/src/index.ts`](../../../../packages/extension-sdk/src/index.ts)
-- [`packages/extension-sdk/extension-host/src/index.ts`](../../../../packages/kernel/src/extension-host/index.ts)
+- [`packages/kernel/src/extension-host/index.ts`](../../../../packages/kernel/src/extension-host/index.ts)
+- [`packages/application-runtime/src/foundation/application-context.ts`](../../../../packages/application-runtime/src/foundation/application-context.ts)
 - [`packages/application-runtime/src/runtime/extensions-runtime.ts`](../../../../packages/application-runtime/src/runtime/extensions-runtime.ts)
 - [`packages/application-runtime/src/cards/card-bundle.ts`](../../../../packages/application-runtime/src/cards/card-bundle.ts)
+- [`apps/studio-server/src/extensions/extension-application-adapter.ts`](../../../../apps/studio-server/src/extensions/extension-application-adapter.ts)
+- [`apps/studio-server/src/extensions/extension-event-projection.ts`](../../../../apps/studio-server/src/extensions/extension-event-projection.ts)
 - [`apps/studio-server/src/main.ts`](../../../../apps/studio-server/src/main.ts)
 - [`apps/studio-server/src/codecs/card-bundle-zip.ts`](../../../../apps/studio-server/src/codecs/card-bundle-zip.ts)

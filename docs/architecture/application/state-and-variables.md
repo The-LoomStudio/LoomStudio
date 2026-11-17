@@ -2,7 +2,7 @@
 
 > **状态**：State v1 核心运行链已实现并晋升。独立 State Artifact 资源管理与运行态软引用检查由 [State 资源与引用检查后续](../../workbench/issues/state-resource-and-reference-follow-ups.md) 跟踪，不阻塞当前合同。
 
-Loom Studio 当前的 State 只区分两个持久化 Scope：Workspace Global State 与 Narrative Timeline State。这不是整个系统所有数据的 Scope 列表。两者共享 `@loom-studio/application-runtime`（`src/data/`）中 State Store 的 Scope / immutable Revision / Snapshot 合同；Timeline 的当前 Head 由 Narrative Branch 持有，Global Head 由 State Scope 持有。
+Loom Studio 当前的 State 只区分两个持久化 Scope：Workspace Global State 与 Narrative Timeline State。这不是整个系统所有数据的 Scope 列表。两者共享 `@loom-studio/application-runtime/data`（[`packages/application-runtime/src/data/state/`](../../../packages/application-runtime/src/data/state/)）中 State Store 的 Scope / immutable Revision / Snapshot 合同；Timeline 的当前 Head 由 Narrative Branch 持有，Global Head 由 State Scope 持有。
 
 State 提供结构化运行数据、Schema 校验与可追溯修改，不是全部可变文本的统一容器。Application 层已经定义 Entity Type、显式 Entity、Component Definition、精确 / Entity Type 批量 Mount 与软引用；它们在创建 Timeline 时编译为普通 JSON Snapshot，不形成第二个 Entity Store，也不包含自动游戏规则调度。文本资源、宏和 Extension 私有记录的区别见 [数据能力与生命周期边界](data-capabilities-and-lifecycle.md)。
 

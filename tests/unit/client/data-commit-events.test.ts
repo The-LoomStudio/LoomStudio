@@ -145,9 +145,14 @@ it('delivers single-frame commits and triggers refresh on overflow without deliv
   expect(refresh).toHaveBeenCalledOnce()
   expect(commit).toHaveBeenCalledOnce()
   stream.emit('data.changed', JSON.stringify({ payload: {
+    changesetId: 'overflow-collapsed', overflow: true, operations: [{ store: 'documents', kind: 'update', entityType: 'documents.*', entityId: '*', count: 80 }],
+  } }))
+  expect(refresh).toHaveBeenCalledTimes(2)
+  expect(commit).toHaveBeenCalledOnce()
+  stream.emit('data.changed', JSON.stringify({ payload: {
     changesetId: 'empty', overflow: false, operations: [],
   } }))
-  expect(refresh).toHaveBeenCalledOnce()
+  expect(refresh).toHaveBeenCalledTimes(2)
   expect(commit).toHaveBeenCalledTimes(2)
   expect(commit).toHaveBeenLastCalledWith([])
   stop()

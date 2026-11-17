@@ -2,12 +2,13 @@ import type { ExtensionManifest } from '@loom-studio/extension-sdk'
 import { isRecord, type JsonValue } from '@loom-studio/shared'
 import { access, readFile, readdir, realpath, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
-import type { DataCommitOperation, SqliteDataEngine } from '../data-engine/index.js'
+import type { SqliteDataEngine } from '../data-engine/index.js'
 import { parseExtensionManifest } from '../extension-host/index.js'
 import { writeJsonAtomically } from '../platform/atomic-json.js'
 import { resolvePromptResourceFiles, type PromptResourceFileLoader } from './extension-package-installer.js'
 import {
   initializeExtensionStateSchema,
+  markExtensionStateSourceMigrated,
   readExtensionDevLinksFile,
   type ExtensionDevLinkRecord,
 } from './extension-state-store.js'
@@ -59,7 +60,7 @@ export async function discoverExtensionSources(options: {
   sources.push(...(options.bundledDirectories ?? []).map(directory => ({ kind: 'repository' as const, directory })))
   await collectSources(
     { kind: 'dev-link', directory: options.devLinksFile ?? 'sqlite:extension_dev_links' },
-    () => readDevLinks(options.devLinksFile, options.engine, options.now),
+    () => readDevLinks(options.devLinksFile, options.engine),
     sources,
     failures,
   )
@@ -168,7 +169,6 @@ async function scanChildDirectories(parent: string, kind: 'repository' | 'instal
 async function readDevLinks(
   filename?: string,
   engine?: SqliteDataEngine,
-  now?: () => string,
 ): Promise<ExtensionSource[]> {
   if (!engine) {
     if (!filename) return []
@@ -177,14 +177,7 @@ async function readDevLinks(
   }
 
   initializeExtensionStateSchema(engine)
-  let rows = await readDevLinksFromSqlite(engine)
-  if (rows.length === 0 && filename) {
-    const migrated = await readExtensionDevLinksFile(filename)
-    if (migrated.length > 0) {
-      await migrateDevLinksToSqlite(engine, migrated, now?.() ?? new Date().toISOString())
-      rows = await readDevLinksFromSqlite(engine)
-    }
-  }
+  const rows = await readDevLinksFromSqlite(engine)
   return rows.map(toDevLinkSource)
 }
 
@@ -196,14 +189,6 @@ export async function removeExtensionDevLink(
 ): Promise<boolean> {
   if (engine) {
     initializeExtensionStateSchema(engine)
-    const rows = await readDevLinksFromSqlite(engine)
-    if (rows.length === 0 && filename) {
-      const migrated = await readExtensionDevLinksFile(filename)
-      if (migrated.length > 0) {
-        await migrateDevLinksToSqlite(engine, migrated, now?.() ?? new Date().toISOString())
-      }
-    }
-
     const existing = await engine.read(db =>
       db
         .prepare('SELECT package_id FROM extension_dev_links WHERE package_id = ?')
@@ -217,6 +202,7 @@ export async function removeExtensionDevLink(
       async tx => {
         const info = tx.database.prepare('DELETE FROM extension_dev_links WHERE package_id = ?').run(packageId)
         if (info.changes > 0) {
+          markExtensionStateSourceMigrated(tx.database, 'dev-links', now?.() ?? new Date().toISOString())
           tx.recordOperations([
             {
               store: 'extension-state',
@@ -262,36 +248,6 @@ async function readDevLinksFromSqlite(engine: SqliteDataEngine): Promise<Extensi
       .all() as Array<{ package_id: string; directory: string }>
     return rows.map(row => ({ packageId: row.package_id, directory: row.directory }))
   })
-}
-
-async function migrateDevLinksToSqlite(
-  engine: SqliteDataEngine,
-  links: readonly ExtensionDevLinkRecord[],
-  createdAt: string,
-): Promise<void> {
-  await engine.transact(
-    { actor: extensionDevLinksActor, reason: 'extension-dev-links.migrate' },
-    async tx => {
-      const insert = tx.database.prepare(
-        'INSERT OR IGNORE INTO extension_dev_links (package_id, directory, created_at) VALUES (?, ?, ?)',
-      )
-      const ops: DataCommitOperation[] = []
-      for (const link of links) {
-        const info = insert.run(link.packageId, link.directory, createdAt)
-        if (info.changes > 0) {
-          ops.push({
-            store: 'extension-state',
-            kind: 'create',
-            entityId: link.packageId,
-            entityType: 'extension.dev-link',
-          })
-        }
-      }
-      if (ops.length > 0) {
-        tx.recordOperations(ops)
-      }
-    },
-  )
 }
 
 function toDevLinkSource(link: ExtensionDevLinkRecord): ExtensionSource {

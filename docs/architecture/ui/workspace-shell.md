@@ -27,7 +27,9 @@ Workspace 的开合和尺寸变化不触发聊天正文重新排版。用户可�
 
 关闭 Dock 不改变当前聊天身份。活动工作面板由统一 `/studio` 下的 History State 表达，URL 主要承接外部入口；仅悬停 Menu 入口可以临时预览导航，但不会写入历史或展开工作面板，移出后自动关闭。
 
-Dock 导航负责切换模块，不承担领域数据本身。资源、预设、API 配置等内容由各自工作面板渲染。此外，应用顶层（`app.tsx`）统一挂载跨面板全局浮层宿主：Promise 驱动的阻断确认弹窗 `ConfirmDialogHost`、从 Rail「统计」入口打开的 `StudioDashboard` 浮层、资源下载更新提示以及官方扩展首次安装引导。
+Dock 导航负责切换模块，不承担领域数据本身。资源、预设、API 配置等内容由各自工作面板渲染。此外，应用顶层（`app.tsx`）统一挂载跨面板全局浮层宿主：Promise 驱动的阻断确认弹窗 `ConfirmDialogHost`、从 Rail「统计」入口打开的 [`StudioDashboard`](../../../apps/studio-client/src/app/studio-dashboard.tsx) 浮层（由 `StudioDashboard` 单点持有 `useWorkbenchView('dashboard.tab', 'overview', ...)` 状态并向 `useDashboard` 与 [`DashboardDialog`](../../../apps/studio-client/src/widgets/dashboard/dashboard-panel.tsx) 传入 `view` / `onViewChange`，`storage` 标签页提供受服务端序列化保护的“备份数据库”/`dashboard.createBackup` 入口并在成功后递增 `storageRevision` 刷新快照）、资源下载更新提示以及官方扩展首次安装引导。
+
+在排查与观测入口上，[`InspectorPanel`](../../../apps/studio-client/src/widgets/inspector-panel/inspector-panel.tsx) 顶部嵌入三联排错视图 [`RunTroubleshootingLedgers`](../../../apps/studio-client/src/features/observability/ui/run-troubleshooting-ledgers.tsx)（由 [`use-run-ledgers.ts`](../../../apps/studio-client/src/features/observability/model/use-run-ledgers.ts) 驱动），将同一轮次的 Prompt Projection（`observations.getBuild`）、Model Calls（`observations.getRequest`）与 Diagnostics & Logs（`logs.list` + `diagnostics.list`）按 `runId`、`correlationId` 与 `buildId` 关联展示，支持 `All (3-Ledger)` 统一视图与单账本聚焦切换，并通过 `isLoading` 区分首次加载、在 Query Key 中携带 `activeSummary?.status` 以防止终态切换冻结，以及经 `role="alert"` 显式呈现 `errors.runs` / `errors.detail`。
 
 在移动端阅读与后台生成场景下，Shell 还负责两项壳层反馈：`useMobileReadingChrome` 根据正文滚动方向与增量连续更新 `--loom-mobile-chrome-progress`，平滑收放移动端顶栏与底部输入区；`tab-attention` 在标签页失焦且后台运行结束时动态绘制红点 Favicon、更新标题前缀并触发移动端触觉反馈。
 
@@ -89,13 +91,29 @@ Window 内部使用 Column Layout 表达水平并列区域。Rail、Explorer、D
 
 ## 7. 当前边界
 
-### 异步操作状态
+### 异步操作状态、Query 缓存与前端基础设施边界
 
 Studio 的临时异步状态按 `bootstrap`、`cards`、`resources`、`provider-settings`、`session` 和 `mutation` 分域管理。一个域的读取或写入不会锁死其他无关面板；错误也保留在发生操作的域内，再由 Shell 选择最新错误展示。
 
 尚未迁移到 Query 的可能竞态读取使用 latest-wins：旧请求可以在 Bridge 中自然完成，但完成后不得覆盖更新的界面状态。Mutation 不采用 latest-wins，必须完整执行；Context Asset 写入继续由现有队列保证顺序。
 
-Prompt Resource、Lore Mount、Preset Tool Mount、Provider 显式目录及搜索、背景、用户档案、模型观测等已迁移消费者的缓存型远端状态由 TanStack Query 管理，负责同 key 请求去重、缓存和失效；默认关闭自动重试与窗口聚焦刷新。Query Cache 不是领域持久化，也不保存未提交草稿。其他领域仍按各自 feature 的现有读取模型工作，不能因为根应用已经提供 QueryClient 就假装所有 RPC 都支持取消或自动缓存。完整依赖所有权见 [`../platform/external-dependency-ownership.md`](../platform/external-dependency-ownership.md)。
+`@tanstack/react-query`（根应用在 [`main.tsx`](../../../apps/studio-client/src/main.tsx) 配置 `refetchOnWindowFocus: false`、`refetchOnReconnect: false`、`retry: false`、`staleTime: 30_000`）作为已迁移远端状态的权威缓存层，负责同 key 请求去重、缓存、占位保留与失效；Query Cache 不是领域持久化，也不保存未提交草稿。当前权威消费者已覆盖：
+
+- 角色卡目录与详情（[`use-cards.ts`](../../../apps/studio-client/src/features/cards/model/use-cards.ts)）；
+- Provider 账号、AI 能力预设与网关提供商（[`use-provider-settings.ts`](../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.ts)、[`use-explicit-catalog.ts`](../../../apps/studio-client/src/shared/api/use-explicit-catalog.ts)）；
+- 用量、游玩、资源库存与存储/数据库快照（[`use-dashboard.ts`](../../../apps/studio-client/src/features/dashboard/model/use-dashboard.ts)、[`studio-dashboard.tsx`](../../../apps/studio-client/src/app/studio-dashboard.tsx)）；
+- 模型观测与 Inspector 三联排错账本（[`use-observations.ts`](../../../apps/studio-client/src/features/observability/model/use-observations.ts)、[`use-run-ledgers.ts`](../../../apps/studio-client/src/features/observability/model/use-run-ledgers.ts)）；
+- 历史预览与会话摘要状态（[`use-history-previews.ts`](../../../apps/studio-client/src/features/sessions/model/use-history-previews.ts)、[`use-session-summary-status.ts`](../../../apps/studio-client/src/features/sessions/model/use-session-summary-status.ts)、[`session-summary-activity.tsx`](../../../apps/studio-client/src/features/sessions/ui/session-summary-activity.tsx)）；
+- 运行时状态变量与来源检查（[`state-variables-panel.tsx`](../../../apps/studio-client/src/features/state-variables/ui/state-variables-panel.tsx)、[`state-sources-panel.tsx`](../../../apps/studio-client/src/features/state-variables/ui/state-sources-panel.tsx)）；
+- 扩展包列表、模块批处理与包内资源预览（[`use-client-extension-runtime.ts`](../../../apps/studio-client/src/features/extension-renderers/model/use-client-extension-runtime.ts)、[`extension-module-batches.tsx`](../../../apps/studio-client/src/features/extension-renderers/ui/extension-module-batches.tsx)、[`extension-package-resources.tsx`](../../../apps/studio-client/src/features/extension-renderers/ui/extension-package-resources.tsx)）；
+- 文本转换目录、Prompt Resource / Lore Mount / Tool Mount、官方内容、用户档案、个人背景与全局搜索等其余已迁移模块。
+
+实时缓存失效统一通过 [`subscribeDataCommits`](../../../apps/studio-client/src/shared/api/data-commit-events.ts) 监听共享 `/extensions/events` SSE 连接上的 `data.changed` 事件：消费者匹配 `entityType` 与 `scope?.entityType`（包括 `airp.*` 文档类型如 `airp.cardSource`、`airp.providerProfile`、`airp.aiCapabilityProfile`、`airp.textTransformRule`、`airp.textExtractor`，以及大提交折叠后的 `documents.*` 通配符）；当事件携带 `overflow: true` 时（即使 `operations` 非空而是包含折叠后的 `documents.*` 条目），`subscribeDataCommits` 立即触发 `onConnected()` 回调使订阅方执行全量刷新，避免遗漏变更。未迁移领域仍按各自 feature 的现有读取模型工作，完整依赖所有权见 [`../platform/external-dependency-ownership.md`](../platform/external-dependency-ownership.md)。
+
+此外，两项客户端专项基础设施约定如下：
+
+- **Tokenizer 惰性 Worker 隔离**：主包仅从 `@loom-studio/shared/tokenizer/contracts` 导入类型、限额常量与 `applyTokenMultiplier`，绝不将 `gpt-tokenizer` 词表打入主 bundle；完整计数入口 `@loom-studio/shared/tokenizer` 只在 [`tokenizer.worker.ts`](../../../apps/studio-client/src/shared/tokenizer/tokenizer.worker.ts) 内加载，由 [`client.ts`](../../../apps/studio-client/src/shared/tokenizer/client.ts) 在首次计数时惰性创建 Dedicated Worker（`use-token-counts.ts` 提供 300ms 防抖与 `AbortSignal` 取消，支持单批最多 128 项、单文本 1,000,000 UTF-16 code units、队列上限 32）。
+- **角色媒体 `?v=` 不可变缓存**：[`cardMediaUrl`](../../../apps/studio-client/src/shared/lib/card-media.ts) 在 `/cards/:cardId/media/:target` 地址中拼接 `&revision=${mediaRevision}` 及可选 `&v=${encodeURIComponent(updatedAt)}`；服务端 `handleCardMedia` 在 `?v=` 匹配角色 `updatedAt` 或 `version` 时返回 `Cache-Control: private, max-age=31536000, immutable`，否则回退 `no-cache` 并结合 `ETag` / `304` 协商，SSE `directories.media.changed` 与重连触发 `invalidateCardMedia()` 刷新 `mediaRevision`。
 
 下列能力尚未实现，不属于当前 Shell contract：
 

@@ -47,14 +47,14 @@ Streaming domain lifecycle   -> owning Agent / Narrative feature
 | 主应用 RPC | `@trpc/server` / `@trpc/client` | 官方 adapter/client 负责 procedure 路由、请求响应协议、错误封装和跨端类型推导。业务逻辑仍由 Application Runtime、领域服务和 Store 拥有；不重复维护手写 RPC 方法表与传输协议。 |
 | SQLite | Node `node:sqlite` + `@loom-studio/kernel` (`data-engine`) | Connection、当前 schema 初始化、`VACUUM INTO` 热备份与 transaction 的统一入口。领域 Store 不各自创建数据库基础设施。 |
 | Provider HTTP 与代理 | Undici | Application Runtime 的 Provider 请求和 `ProxyAgent`。普通 Server 路由优先使用平台现有 HTTP 能力。 |
-| ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩/解压。Card 另用现有 `zip-checksums.ts` 读取完整性元数据、配合 Node CRC32 验证实际数据；这不是第二套解压器，不另建重复编解码。 |
+| ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩/解压。Card 另用 `@loom-studio/kernel/asset-store` 提供的 `zip-checksums.ts` 读取完整性元数据、配合 Node CRC32 验证实际数据（原 `studio-server` 过渡垫片已移除）；这不是第二套解压器，不另建重复编解码。 |
 | 扩展依赖版本判定 | `semver` | Server 的扩展下载/安装预览校验依赖版本范围；不提供自动版本求解或后台更新。 |
 | Unified Diff | `diff` | Runtime 的 Resource Filesystem 与 Session Summary 使用既有 parser / patch 应用能力；领域层继续校验目标、基线与提交，不手写第二份补丁格式解析器。 |
 | 边界 Schema | Zod | 用于 tRPC 输入边界、AI Gateway Provider 配置和 Shared Lore Mount RPC Schema；既有领域 reader 通过 adapter 接入 tRPC，不要求全部改写为 Zod object。新增跨端结构化边界且没有既有 parser 时优先复用；可信内部纯函数不重复 parse。 |
 | 系统凭据与敏感密钥托管 | `@napi-rs/keyring` + `@loom-studio/kernel` (`secret-store`) | 操作系统安全凭据链（Keychain/SecretService）与 SQLite 元数据双层物理隔离；受控闭包临时借用、写入意图防丢失持久化与生命周期清理队列，绝不向数据库或日志写入明文。 |
 | CodeAct 隔离与受信任实验执行 | `quickjs-emscripten` / `node:vm` | 正式 CodeAct 使用 QuickJS 的内存上限、截止时间中断与受控宿主桥，不直接提供宿主文件、网络或进程能力。Playground 的 `node:vm` 仅执行受信任实验片段，不构成不可信代码的安全边界，也不承诺与 QuickJS 相同的资源隔离。 |
 | 跨端纯契约 | `@loom-studio/shared` | 纯领域 JSON DTO、Schema 和浏览器/Node 都可执行的纯逻辑；主应用 RPC 方法签名由 Server `AppRouter` 推导，不在 Shared 另建一份方法表。不得依赖 React、数据库、Node 专属 API 或 Application Runtime。 |
-| 基础文本 Token 计数 | `gpt-tokenizer` / `@loom-studio/tokenizer` | 固定 `o200k_base`，按字面计数；目标模型系数是估算，不替代 Provider usage。词表由独立包拥有，Client 仅在共享 Worker 加载；派生资源计数不写数据库。 |
+| 基础文本 Token 计数 | `gpt-tokenizer` / `@loom-studio/shared/tokenizer` | 固定 `o200k_base`，按字面计数；目标模型系数是估算，不替代 Provider usage。词表由 `packages/shared/src/tokenizer*`（`./tokenizer`、`./tokenizer/async`、`./tokenizer/contracts`）独立子入口拥有，Client 仅在隔离 Web Worker 中加载；派生资源计数不写数据库。 |
 
 TypeScript 类型不替代运行时信任边界校验，Zod 也不替代内部类型系统。某个跨端领域采用 Zod 后，
 Schema 应成为该字段的类型来源；已有 Manifest 等专用 parser 不因本规则被机械重写。
@@ -74,7 +74,7 @@ Server 的 `./trpc` 是仅含 `types` 的 package export，Client 通过 TypeScr
 - 主应用使用 `POST /trpc/<procedure>`，Query 也通过 POST；使用普通 `httpLink`，服务端关闭 batching。旧 `/rpc` 不再提供兼容入口。
 - Node HTTP 层完成认证与 Origin 检查，并将有大小预算的请求体、可信 Session 身份和取消信号交给官方 Fetch adapter。客户端的 `createSessionFetch` 负责 Session bootstrap 与一次 401 恢复。
 - procedure 错误使用 tRPC 格式；原始领域错误码在 `error.data.domainCode`，关联信息在 `error.data.correlationId` / `callId`，不向客户端输出 stack。认证、请求体过大等 HTTP 前置失败仍由 HTTP 层响应。
-- `extensions.invoke` 只承接动态扩展方法（`{ packageId, target, method, params }`），转入 Kernel 已有的权限与生命周期调度；静态平台与宿主管理命名空间必须走具体 typed procedure，不能借该网关绕过输入契约。Kernel 自身不依赖 tRPC。
+- `extensions.invoke` 只承接动态扩展方法（`{ packageId, target, method, params }`），转入 Kernel 已有的权限与生命周期调度（原 `kernel.invoke` 与 `extensions.callPackageRpc` 已移除并合入该唯一入口）；静态平台与宿主管理命名空间必须走具体 typed procedure，不能借该网关绕过输入契约。Kernel 自身不依赖 tRPC。
 - SSE 与 `/assets` 媒体 HTTP 路径保持独立；本次选型不建立 tRPC subscription，也不改变领域状态或持久化所有权。事件 envelope 类型由 `@loom-studio/extension-sdk` 提供，不定义主应用 RPC envelope。
 
 实现入口：[`HTTP adapter`](../../../apps/studio-server/src/http/trpc-request.ts)、

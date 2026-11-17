@@ -4,8 +4,9 @@ import { Button } from '@loom-studio/ui'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { useDashboard } from '../features/dashboard/model/use-dashboard.js'
 import { notify } from '../shared/notifications/index.js'
-import { DashboardDialog } from '../widgets/dashboard/dashboard-panel.js'
-import type { DashboardAction } from '../widgets/dashboard/dashboard-view.js'
+import { useWorkbenchView } from '../shared/studio-shell/use-workbench-view.js'
+import { DashboardDialog, dashboardViews } from '../widgets/dashboard/dashboard-panel.js'
+import type { DashboardAction, DashboardView } from '../widgets/dashboard/dashboard-view.js'
 import type { StudioApi } from '../shared/api/studio-api.js'
 import styles from '../widgets/dashboard/dashboard-panel.module.scss'
 
@@ -15,7 +16,8 @@ function formatBackupSize(sizeBytes: number): string {
 }
 
 export function StudioDashboard(props: { api: StudioApi; endpoint: string; open: boolean; onClose(): void; onAction(action: DashboardAction): void }) {
-  const dashboard = useDashboard(props.api, props.endpoint, props.open)
+  const [view, setView] = useWorkbenchView<DashboardView>('dashboard.tab', 'overview', dashboardViews.map(item => item.id))
+  const dashboard = useDashboard(props.api, props.endpoint, props.open, view)
   const [providerId, setProviderId] = useState<string>()
   const backupInFlightRef = useRef(false)
   const onAction = (action: DashboardAction) => {
@@ -36,8 +38,8 @@ export function StudioDashboard(props: { api: StudioApi; endpoint: string; open:
       backupInFlightRef.current = false
     }
   }
-  return <DashboardDialog open={props.open} onClose={props.onClose} data={dashboard.data} period={dashboard.period}
-    onPeriodChange={dashboard.setPeriod} onViewChange={dashboard.setView} onAction={onAction}
+  return <DashboardDialog open={props.open} onClose={props.onClose} view={view} data={dashboard.data} period={dashboard.period}
+    onPeriodChange={dashboard.setPeriod} onViewChange={setView} onAction={onAction}
     onCreateBackup={handleCreateBackup} creatingBackup={dashboard.creatingBackup}
     detailContent={providerId && <DashboardCalls api={props.api} endpoint={props.endpoint} open={props.open}
       providerId={providerId} range={dashboard.range} rangeLabel={dashboard.data.rangeLabel}

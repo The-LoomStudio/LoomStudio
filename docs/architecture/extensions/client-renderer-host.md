@@ -156,12 +156,12 @@ ctx.logger / ctx.signal / ctx.extension
 约束：
 
 - Record 读取始终绑定当前 `packageId`；
-- Client RPC 只能调用当前 Package namespace；
+- Client RPC 只能调用当前 Package namespace，经统一 `extensions.invoke` tRPC 网关（`{ packageId, target, method, params }`）路由；旧 `callPackageRpc`、`kernel.invoke` 与 `docs.*` RPC 已移除；
 - State 与 History 通过 Application RPC 读取，不暴露 Store；
 - `state.subscribe(target, handler, onError?)` 立即读取一次，后续数据事件和重连触发复核；同一 revision 不重复通知，不承诺逐个历史 revision 投递。失败交给 `onError` 或日志，再次成功可重新投递相同 revision；
 - Timeline 实例只能读取/订阅自己的固定目标；目标切换、暂停或释放订阅后忽略迟到结果。State 订阅和 Config 订阅在模块 abort 时解除。宿主不能撤销已开始执行的任意 JS 回调，扩展的异步处理仍须遵守 `ctx.signal`；
 - Asset 和 Package File 只获得受控 URL，不获得物理路径；
-- Data commit 会产生 `extensions.data.changed` SSE，Client Host 收到后使 Renderer Projection 失效重建；
+- Data commit 会在 `/extensions/events` SSE 广播 `data.changed`（供前端 Query 缓存失效）与 `extensions.data.changed`；Client Extension Host 收到 `extensions.data.changed` 后刷新 Timeline 参与状态、使 Renderer Projection 失效重建并通知 Config / State 订阅；
 - Client Config 始终绑定当前 `packageId`，更新使用 Document Version 乐观并发；订阅只在服务端提交成功并产生数据事件后读取新的权威快照；
 - 当前没有 Client State mutation、任意 Application RPC 或通用 Event Subscription。
 - `notifications.show` 需要 `ui.notify` 声明与用户授权，只允许有限流的站内纯文本；iframe 使用 `connectIframeContext()`，不会直接获得整个 Client Context。普通消息 HTML 不接入这条业务桥。

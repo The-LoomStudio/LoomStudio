@@ -201,21 +201,31 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
           const dataEngine = createSqliteDataEngine({ filename: databaseFile, createId, now: nowIso })
           resources.dataEngine = dataEngine
 
-          const backupRoot = join(localPaths.dataRoot, 'backups')
-          const createSqliteBackup = async (prefix: string): Promise<{ filename: string; path: string; sizeBytes: number }> => {
-            await mkdir(backupRoot, { recursive: true })
-            const stamp = nowIso().replace(/[:.]/g, '-')
-            let filename = `${prefix}-${stamp}.sqlite`
-            let path = join(backupRoot, filename)
-            let suffix = 1
-            while (existsSync(path)) {
-              filename = `${prefix}-${stamp}-${suffix}.sqlite`
-              path = join(backupRoot, filename)
-              suffix += 1
-            }
-            await dataEngine.backup(path)
-            const info = await stat(path)
-            return { filename, path, sizeBytes: info.size }
+          const backupRoot = !options.localPaths && options.sqlitePath && options.sqlitePath !== ':memory:'
+            ? join(dirname(resolve(options.sqlitePath)), 'backups')
+            : join(localPaths.dataRoot, 'backups')
+          let backupSequence = 0
+          let backupQueue = Promise.resolve()
+          const createSqliteBackup = (prefix: string): Promise<{ filename: string; path: string; sizeBytes: number }> => {
+            const run = backupQueue.then(async () => {
+              if (databaseFile === ':memory:') {
+                await dataEngine.backup(join(backupRoot, `${prefix}.sqlite`))
+              }
+              await mkdir(backupRoot, { recursive: true })
+              const stamp = nowIso().replace(/[:.]/g, '-')
+              let filename: string
+              let path: string
+              do {
+                backupSequence += 1
+                filename = `${prefix}-${stamp}-${backupSequence}.sqlite`
+                path = join(backupRoot, filename)
+              } while (existsSync(path))
+              await dataEngine.backup(path)
+              const info = await stat(path)
+              return { filename, path, sizeBytes: info.size }
+            })
+            backupQueue = run.then(() => undefined, () => undefined)
+            return run
           }
 
           const extensionStateDirectory = resolve(options.extensionStateDirectory ?? localPaths.extensionRoot)

@@ -1,11 +1,14 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { zipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { discoverExtensionSources, removeExtensionDevLink } from '@loom-studio/kernel/extension-manager'
 import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
+import { createId, nowIso } from '@loom-studio/shared'
 import { authenticatedFetch, callRpc } from './helpers.js'
 
 const temporaryDirectories: string[] = []
@@ -220,6 +223,111 @@ describe('Studio Server Extension Package install lifecycle', () => {
       database.close()
     }
     await expect(readFile(join(sourceDirectory, 'manifest.json'), 'utf8')).resolves.toContain('example.installed')
+  })
+
+  it('does not resurrect migrated legacy extension state or dev links after emptying across refresh or restart', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'loom-extension-no-resurrect-'))
+    temporaryDirectories.push(root)
+    const sourceDirectory = await writeTestPackage(root)
+    const localPaths = resolveLoomStudioLocalPaths({ home: join(root, 'home') })
+    const emptyRepository = join(root, 'empty-repository')
+    const installedDirectory = join(root, 'app/extensions')
+
+    await mkdir(dirname(localPaths.extensionStateFile), { recursive: true })
+    await writeFile(localPaths.extensionStateFile, JSON.stringify({
+      version: 3,
+      packages: {
+        'example.installed': {
+          modules: {
+            server: {
+              enabled: true,
+              grants: { 'events.subscribe': [], assets: ['assets.publish'] },
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          },
+        },
+      },
+    }), 'utf8')
+    await writeFile(localPaths.extensionDevLinksFile, `${JSON.stringify({
+      extensions: [{ id: 'example.installed', path: sourceDirectory }],
+    }, null, 2)}\n`, 'utf8')
+
+    const first = createStudioServer({ localPaths, extensionRootDirectory: emptyRepository, extensionInstalledDirectory: installedDirectory })
+    const firstAddress = await first.listen(0)
+    try {
+      await expect(callRpc<{ items: Array<{ packageId: string; modules: Array<{ moduleId: string; desired: { enabled: boolean; grants: { assets: string[] } } }> }> }>(
+        firstAddress.port,
+        'extensions.listPackages',
+        {},
+      )).resolves.toMatchObject({
+        items: [{
+          packageId: 'example.installed',
+          modules: expect.arrayContaining([
+            expect.objectContaining({ moduleId: 'server', desired: expect.objectContaining({ enabled: true, grants: expect.objectContaining({ assets: ['assets.publish'] }) }) }),
+          ]),
+        }],
+      })
+      await expect(callRpc(firstAddress.port, 'extensions.invoke', {
+        packageId: 'example.installed',
+        method: 'example.installed.status',
+        params: {},
+      })).resolves.toEqual({ active: true })
+
+      await callRpc(firstAddress.port, 'extensions.uninstallPackage', {
+        packageId: 'example.installed',
+        version: '1.0.0',
+      })
+
+      // Refresh while running must remain empty even with legacy JSON files still present.
+      await expect(callRpc(firstAddress.port, 'extensions.listPackages', {})).resolves.toEqual({ items: [] })
+      await expect(callRpc(firstAddress.port, 'extensions.invoke', {
+        packageId: 'example.installed',
+        method: 'example.installed.status',
+        params: {},
+      })).rejects.toThrow('method not found')
+    } finally {
+      await first.close()
+    }
+
+    // Source discovery / dev-link removal refresh against SQLite must not re-migrate devLinksFile.
+    const probeEngine = createSqliteDataEngine({ filename: localPaths.databaseFile, createId, now: nowIso })
+    try {
+      const discovery = await discoverExtensionSources({
+        installedDirectory,
+        devLinksFile: localPaths.extensionDevLinksFile,
+        engine: probeEngine,
+        now: nowIso,
+      })
+      expect(discovery).toEqual({ discovered: [], failures: [] })
+      await expect(removeExtensionDevLink(localPaths.extensionDevLinksFile, 'example.installed', probeEngine, nowIso)).resolves.toBe(false)
+    } finally {
+      await probeEngine.close()
+    }
+
+    const second = createStudioServer({ localPaths, extensionRootDirectory: emptyRepository, extensionInstalledDirectory: installedDirectory })
+    const secondAddress = await second.listen(0)
+    try {
+      await expect(callRpc(secondAddress.port, 'extensions.listPackages', {})).resolves.toEqual({ items: [] })
+      await expect(callRpc(secondAddress.port, 'extensions.invoke', {
+        packageId: 'example.installed',
+        method: 'example.installed.status',
+        params: {},
+      })).rejects.toThrow('method not found')
+    } finally {
+      await second.close()
+    }
+
+    const database = new DatabaseSync(localPaths.databaseFile, { readOnly: true })
+    try {
+      expect(database.prepare('SELECT package_id FROM extension_dev_links').all()).toEqual([])
+      expect(database.prepare('SELECT installation_id FROM extension_installations').all()).toEqual([])
+      const markers = database.prepare('SELECT source FROM extension_state_migrations ORDER BY source').all() as Array<{ source: string }>
+      expect(markers.map(row => row.source)).toEqual(['dev-links', 'installations'])
+    } finally {
+      database.close()
+    }
+    await expect(readFile(localPaths.extensionStateFile, 'utf8')).resolves.toContain('example.installed')
+    await expect(readFile(localPaths.extensionDevLinksFile, 'utf8')).resolves.toContain('example.installed')
   })
 
   it('installs a packaged ZIP through the RPC and serves its module files', async () => {

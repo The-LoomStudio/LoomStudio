@@ -11,7 +11,7 @@ import type {
   RegistrationHandle
 } from './types.js'
 
-export function createBuiltinHandlers(kernel: Kernel,
+function createBuiltinHandlers(kernel: Kernel,
   options: CreateKernelOptions,
   eventBus: EventBus,
   versions: {
@@ -80,25 +80,6 @@ export function summarizeDataCommit(commit: DataCommitFact): JsonValue {
   }
 }
 
-export function summarizeDocumentCommit(commit: DataCommitFact, operations = readDocumentOperations(commit)): JsonValue {
-  return {
-    changesetId: commit.changesetId,
-    operations: operations.map(operation => ({
-      kind: operation.kind,
-      documentId: operation.entityId,
-      type: operation.entityType,
-      ...(operation.fromVersion !== undefined ? { fromVersion: operation.fromVersion } : {}),
-      ...(operation.toVersion !== undefined ? { toVersion: operation.toVersion } : {}),
-    })),
-    documents: operations.map(operation => ({
-      id: operation.entityId,
-      type: operation.entityType,
-      ...(operation.toVersion !== undefined ? { version: operation.toVersion } : {}),
-      tombstoned: operation.kind === 'delete',
-    })),
-  }
-}
-
 function summarizeDataOperation(operation: DataCommitOperation): JsonValue {
   return {
     store: operation.store,
@@ -120,8 +101,4 @@ export function dataCommitEventOptions(commit: DataCommitFact): EventEmitOptions
     callId: commit.callId,
     parentCallId: commit.parentCallId,
   }
-}
-
-export function readDocumentOperations(commit: DataCommitFact): DataCommitOperation[] {
-  return commit.operations.filter(operation => operation.store === 'documents')
 }

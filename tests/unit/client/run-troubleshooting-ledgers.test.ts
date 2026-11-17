@@ -15,6 +15,7 @@ afterEach(async () => {
   await act(async () => root?.unmount())
   client?.clear()
   document.body.replaceChildren()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -312,5 +313,311 @@ describe('InspectorPanel 3-ledger troubleshooting', () => {
     expect(diagnosticsLedger.textContent).toContain('Correlated turn log line')
     expect(diagnosticsLedger.textContent).not.toContain('Unrelated other run log')
     expect(diagnosticsLedger.textContent).not.toContain('Unrelated diagnostic message')
+  })
+
+  it('renders empty states cleanly instead of eternal loading when there are 0 runs', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+
+    const api = {
+      observations: {
+        list: vi.fn(async () => ({ records: [], dropped: 0 })),
+        get: vi.fn(async () => null),
+        getBuild: vi.fn(async () => null),
+        getRequest: vi.fn(async () => null),
+      },
+      logs: { list: vi.fn(async () => ({ items: [], cursor: undefined, hasMore: false })) },
+      diagnostics: { list: vi.fn(async () => ({ items: [] })) },
+    } as unknown as StudioApi
+
+    await act(async () => {
+      root!.render(
+        createElement(
+          QueryClientProvider,
+          { client: client! },
+          createElement(InspectorPanel, {
+            api,
+            endpoint: 'empty-runs-endpoint',
+            agentTranscript: [],
+            cardSnapshot: null,
+            promptBuildSteps: [],
+            promptBuildTrace: null,
+            promptMessages: null,
+            providerPayloadPreview: null,
+            runDetails: null,
+            t: createTranslator('zh-CN'),
+          }),
+        ),
+      )
+    })
+
+    await flushUi()
+
+    const rootEl = container.querySelector('[data-loom-component="inspector-3-ledgers"]')!
+    expect(rootEl.textContent).not.toContain('正在读取模型日志证据…')
+    expect(container.querySelector('[data-ledger="prompt"]')!.textContent).toContain('No ObservationBuild projection recorded for this selection.')
+    expect(container.querySelector('[data-ledger="calls"]')!.textContent).toContain('No correlated model calls recorded for this run.')
+    expect(container.querySelector('[data-ledger="diagnostics"]')!.textContent).toContain('No correlated diagnostics or logs for this run.')
+  })
+
+  it('renders empty states cleanly when a run has missing buildId and 0 model calls', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+
+    const runId = 'run-no-build'
+    const runSummary: ObservationSummary = {
+      id: runId,
+      kind: 'run',
+      title: 'Run Without Build',
+      status: 'completed',
+      capturedAt: '2026-11-17T10:00:00.000Z',
+      updatedAt: '2026-11-17T10:00:01.000Z',
+      expiresAt: '2026-11-24T10:00:00.000Z',
+      availability: 'recorded',
+      origin: { correlationId: 'corr-no-build' },
+    }
+
+    const api = {
+      observations: {
+        list: vi.fn(async (input?: { kind?: string }) => (
+          input?.kind === 'api' ? { records: [], dropped: 0 } : { records: [runSummary], dropped: 0 }
+        )),
+        get: vi.fn(async () => ({ record: runSummary, children: [] })),
+        getBuild: vi.fn(async () => null),
+        getRequest: vi.fn(async () => null),
+      },
+      logs: { list: vi.fn(async () => ({ items: [], cursor: undefined, hasMore: false })) },
+      diagnostics: { list: vi.fn(async () => ({ items: [] })) },
+    } as unknown as StudioApi
+
+    await act(async () => {
+      root!.render(
+        createElement(
+          QueryClientProvider,
+          { client: client! },
+          createElement(InspectorPanel, {
+            api,
+            endpoint: 'missing-build-endpoint',
+            runId,
+            agentTranscript: [],
+            cardSnapshot: null,
+            promptBuildSteps: [],
+            promptBuildTrace: null,
+            promptMessages: null,
+            providerPayloadPreview: null,
+            runDetails: null,
+            t: createTranslator('zh-CN'),
+          }),
+        ),
+      )
+    })
+
+    await flushUi()
+
+    const rootEl = container.querySelector('[data-loom-component="inspector-3-ledgers"]')!
+    expect(rootEl.textContent).not.toContain('正在读取模型日志证据…')
+    expect(api.observations.getBuild).not.toHaveBeenCalled()
+    expect(api.observations.getRequest).not.toHaveBeenCalled()
+    expect(container.querySelector('[data-ledger="prompt"]')!.textContent).toContain('No ObservationBuild projection recorded for this selection.')
+    expect(container.querySelector('[data-ledger="calls"]')!.textContent).toContain('No correlated model calls recorded for this run.')
+  })
+
+  it.each(['runs', 'detail'] as const)('surfaces %s query errors in the ledger header', async kind => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+
+    const api = {
+      observations: {
+        list: kind === 'runs'
+          ? vi.fn(async () => { throw new Error('Runs list failed') })
+          : vi.fn(async () => ({ records: [], dropped: 0 })),
+        get: kind === 'detail'
+          ? vi.fn(async () => { throw new Error('Run detail failed') })
+          : vi.fn(async () => null),
+        getBuild: vi.fn(async () => null),
+        getRequest: vi.fn(async () => null),
+      },
+      logs: { list: vi.fn(async () => ({ items: [], cursor: undefined, hasMore: false })) },
+      diagnostics: { list: vi.fn(async () => ({ items: [] })) },
+    } as unknown as StudioApi
+
+    await act(async () => {
+      root!.render(
+        createElement(
+          QueryClientProvider,
+          { client: client! },
+          createElement(InspectorPanel, {
+            api,
+            endpoint: `error-${kind}-endpoint`,
+            runId: kind === 'detail' ? 'run-err-1' : undefined,
+            agentTranscript: [],
+            cardSnapshot: null,
+            promptBuildSteps: [],
+            promptBuildTrace: null,
+            promptMessages: null,
+            providerPayloadPreview: null,
+            runDetails: null,
+            t: createTranslator('zh-CN'),
+          }),
+        ),
+      )
+    })
+
+    await flushUi()
+
+    const alert = container.querySelector('[data-loom-component="inspector-3-ledgers"] [role="alert"]')!
+    expect(alert).not.toBeNull()
+    expect(alert.textContent).toContain('读取模型日志失败，请重试。')
+    expect(alert.textContent).toContain(kind === 'runs' ? 'Runs list failed' : 'Run detail failed')
+  })
+
+  it('refreshes build and call snapshots when a running observation transitions to terminal state', async () => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const container = document.createElement('div')
+    document.body.append(container)
+    root = createRoot(container)
+
+    const runId = 'run-transition-1'
+    const buildId = 'build-transition-1'
+    const requestId = 'req-transition-1'
+    const correlationId = 'corr-transition-1'
+
+    let currentStatus: ObservationSummary['status'] = 'running'
+
+    const makeRunSummary = (status: ObservationSummary['status']): ObservationSummary => ({
+      id: runId,
+      kind: 'run',
+      title: 'Transitioning Run',
+      status,
+      capturedAt: '2026-11-17T10:00:00.000Z',
+      updatedAt: '2026-11-17T10:00:02.000Z',
+      expiresAt: '2026-11-24T10:00:00.000Z',
+      buildId,
+      durationMs: status === 'running' ? 250 : 1200,
+      availability: 'recorded',
+      origin: { correlationId },
+    })
+
+    const buildSummary: ObservationSummary = {
+      id: buildId,
+      kind: 'build',
+      parentId: runId,
+      title: 'Prompt Build',
+      status: 'completed',
+      capturedAt: '2026-11-17T10:00:00.100Z',
+      updatedAt: '2026-11-17T10:00:00.300Z',
+      expiresAt: '2026-11-24T10:00:00.000Z',
+      durationMs: 30,
+      availability: 'recorded',
+      origin: { correlationId, sourceRunId: runId },
+    }
+
+    const requestSummary: ObservationSummary = {
+      id: requestId,
+      kind: 'request',
+      parentId: runId,
+      providerStep: 1,
+      title: 'Primary Model Request',
+      status: 'running',
+      capturedAt: '2026-11-17T10:00:00.400Z',
+      updatedAt: '2026-11-17T10:00:01.200Z',
+      expiresAt: '2026-11-24T10:00:00.000Z',
+      durationMs: 400,
+      availability: 'recorded',
+      modelId: 'gpt-4o-mini',
+      origin: { correlationId, sourceRunId: runId },
+    }
+
+    const observationsGetBuild = vi.fn(async (): Promise<ObservationEntry> => ({
+      ...buildSummary,
+      status: currentStatus,
+      build: {
+        messages: [{ role: 'user', content: 'Hello' }],
+        sources: currentStatus === 'running'
+          ? []
+          : [{ id: 'src-final', title: 'Final Persona', path: 'preset/final', activationKind: 'always', active: true, reason: 'Finalized after turn' }],
+        diagnostics: [],
+      },
+    }))
+
+    const observationsGetRequest = vi.fn(async (): Promise<ObservationEntry> => ({
+      ...requestSummary,
+      status: currentStatus,
+      request: {
+        phase: currentStatus === 'running' ? 'invoking' : 'completed',
+        model: { providerProfileId: 'openai-main', modelId: 'gpt-4o-mini' },
+        ...(currentStatus === 'running' ? {} : { finishReason: 'stop', usage: { inputTokens: 111, outputTokens: 222, totalTokens: 333 } }),
+      },
+    }))
+
+    const api = {
+      observations: {
+        list: vi.fn(async (input?: { kind?: string }) => (
+          input?.kind === 'api' ? { records: [], dropped: 0 } : { records: [makeRunSummary(currentStatus)], dropped: 0 }
+        )),
+        get: vi.fn(async () => ({
+          record: makeRunSummary(currentStatus),
+          children: [buildSummary, { ...requestSummary, status: currentStatus }],
+        })),
+        getBuild: observationsGetBuild,
+        getRequest: observationsGetRequest,
+      },
+      logs: { list: vi.fn(async () => ({ items: [], cursor: undefined, hasMore: false })) },
+      diagnostics: { list: vi.fn(async () => ({ items: [] })) },
+    } as unknown as StudioApi
+
+    await act(async () => {
+      root!.render(
+        createElement(
+          QueryClientProvider,
+          { client: client! },
+          createElement(InspectorPanel, {
+            api,
+            endpoint: 'transition-endpoint',
+            runId,
+            buildId,
+            agentTranscript: [],
+            cardSnapshot: null,
+            promptBuildSteps: [],
+            promptBuildTrace: null,
+            promptMessages: null,
+            providerPayloadPreview: null,
+            runDetails: null,
+            t: createTranslator('zh-CN'),
+          }),
+        ),
+      )
+    })
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+
+    expect(container.querySelector('[data-ledger="calls"]')!.textContent).toContain('invoking')
+    expect(container.querySelector('[data-ledger="prompt"]')!.textContent).not.toContain('Final Persona')
+
+    const buildCallsWhileRunning = observationsGetBuild.mock.calls.length
+    const requestCallsWhileRunning = observationsGetRequest.mock.calls.length
+
+    currentStatus = 'completed'
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100)
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(50) })
+
+    expect(observationsGetBuild.mock.calls.length).toBeGreaterThan(buildCallsWhileRunning)
+    expect(observationsGetRequest.mock.calls.length).toBeGreaterThan(requestCallsWhileRunning)
+    expect(container.querySelector('[data-ledger="prompt"]')!.textContent).toContain('Final Persona')
+    expect(container.querySelector('[data-ledger="calls"]')!.textContent).toContain('111 / 222')
+    expect(container.querySelector('[data-ledger="calls"]')!.textContent).toContain('finish: stop')
   })
 })

@@ -16,6 +16,13 @@ flowchart LR
 
 Server 分别组装 Runtime、Kernel 和 Store；Application Runtime 不通过 Kernel 编排业务。Client 通过 API 消费服务，不直接加载 Server、数据库或 Runtime 的运行时代码。
 
+### Workspace 包分层（7 个内部包 + 3 个 Apps）
+
+当前仓库收敛为 **7 个高内聚 Workspace 包**（`ai-gateway`、`application-runtime`、`extension-sdk`、`kernel`、`logging`、`loom-ui`、`shared`）与 **3 个应用**（`studio-client`、`studio-server`、`playground`）：
+
+- `@loom-studio/kernel` 严守**零上层依赖**（不依赖 `application-runtime` 或 `ai-gateway`），通过 9 个子路径导出底层宿主与存储原语：`./data-engine`、`./document-store`、`./asset-store`、`./secret-store`、`./diagnostics`、`./extension-host`、`./platform`、`./extension-manager`、`./script-runtime`。
+- `@loom-studio/shared` 保持纯 JS 跨端契约与工具（零 Node 依赖），其中 `./tokenizer`、`./tokenizer/async`、`./tokenizer/contracts`（`packages/shared/src/tokenizer*`）由 Client 在隔离 Web Worker 中加载，避免主线程阻塞。
+
 | 要理解的部分 | 所有者与下一阅读入口 |
 | --- | --- |
 | 前端层次、状态、界面组装与依赖复用 | [Client README](../../apps/studio-client/README.md#源码导航与-fsd-架构规范)；FSD 是本项目的实际分工，Entities 当前以 DTO / 类型为主 |

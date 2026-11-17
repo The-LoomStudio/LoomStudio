@@ -86,7 +86,7 @@ Preset 挂载与预览是构建表面的静态投影：
 
 每个 Provider Step 保存 Provider、Model、Provider Call ID、raw / normalized stop reason 和 usage。Provider Observation 是外部事实，Run State 是 Runtime 判断。`stop` 不必然表示 Agent 完成，`tool_call` 也不直接等同于整个 Run 的状态。
 
-模型日志使用的 Build / Provider Observation Store 与 canonical Transcript、运行日志及累计统计分别拥有各自生命周期。观测的读取、临时容量及可选保留从 [Runtime 模块导航](../../../../packages/application-runtime/README.md#源码导航)进入，累计用量从 [Application Data](../../../../packages/application-runtime/src/data/README.md)进入；不在本页复制 Store API。日志与观测的跨模块边界见[日志合同](../../platform/logging.md)。
+模型日志使用的 Build / Provider Observation Store 与 canonical Transcript、运行日志及累计统计分别拥有各自生命周期。观测的读取、临时容量及可选保留从 [Runtime 模块导航](../../../../packages/application-runtime/README.md#源码导航)进入，累计用量从 [Application Runtime ./data](../../../../packages/application-runtime/src/data/README.md)进入；不在本页复制 Store API。日志与观测的跨模块边界见[日志合同](../../platform/logging.md)。
 
 ## 7. 失效业务引用与宽松构建契约
 
@@ -101,6 +101,8 @@ Preset 挂载与预览是构建表面的静态投影：
 ## Extension 直接构建与模型调用
 
 Extension Server Module 可在 `ai.invoke` capability 下调用 `ctx.ai.invokeModel({ model, messages, providerOptions?, delivery?, signal?, onEvent? })`。模型必须显式指定 Provider Profile 与已启用的 Model ID；平台从 Secret Store 在网关内部取凭据，不向扩展返回 API Key，也不回退 Agent Preset。`onEvent` 只转发普通网关的实际流事件；fake Provider 的整段结果不是 token delta。原有 `ctx.ai.invoke({ profileId, input })` 仍是独立的 capability-profile 合同。
+
+Server Extension Host 通过 `ApplicationRuntime.extensionPorts` 获取扁平化的单通道 `createUnifiedAiGateway`（实现 `AiGateway & ProfiledAiGateway`，位于 `packages/application-runtime/src/providers/gateway.ts`），在同一条网关路径中直接完成 `ObservationStore`（`kind: 'api'`）、`StatisticsStore` 统计与 `providerLogger` / `onLog` 日志采集，不再使用多层包装器叠套；扩展 `invokeModel` 直接以 `purpose: 'extension-model'`、`context.observationOrigin` 与关联上下文调用网关并省略 `sessionId`（不使用 `'extension-direct'` 假会话标识）。
 
 Agent Turn 的 `promptAddition` 仅对该次 Preview/Run 生效，附加 Lore ID 与 Anchor 内容由共用准备路径编译，不修改持久 Mount。扩展 `ctx.prompt.build` 可不带 Session/model 独立构建；传入的资源 ID 仅允许引用本扩展安装导入的 Preset/Lore，运行时创建结构化内容的来源身份。它不执行 Agent Loop、不自动挑选模型，也不授予读取其他安装或用户资源的能力。
 
@@ -117,6 +119,8 @@ Agent Turn 的 `promptAddition` 仅对该次 Preview/Run 生效，附加 Lore ID
 - [`packages/ai-gateway/src/types.ts`](../../../../packages/ai-gateway/src/types.ts)
 - [`packages/ai-gateway/src/gateway.ts`](../../../../packages/ai-gateway/src/gateway.ts)
 - [`packages/ai-gateway/src/provider-registry.ts`](../../../../packages/ai-gateway/src/provider-registry.ts)
+- [`packages/application-runtime/src/providers/gateway.ts`](../../../../packages/application-runtime/src/providers/gateway.ts)
+- [`packages/application-runtime/src/foundation/application-context.ts`](../../../../packages/application-runtime/src/foundation/application-context.ts)
 - [`packages/application-runtime/src/agents/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agents/tool-prompt-build.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
 - [`apps/studio-client/src/features/prompt-resources/model/preset-tool-projection.ts`](../../../../apps/studio-client/src/features/prompt-resources/model/preset-tool-projection.ts)

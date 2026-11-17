@@ -31,13 +31,13 @@ logs/
     └── .card-installed/<archive-sha256>/<package-id>/<version>/
 ```
 
-正式运行的 data/cache/log 默认使用用户目录。Server 启动 Stage 1 会在 `<dataRoot>/loom.lock` 建立目录独占锁（记录 PID、启动时间与端口），防止双开毁库；`backups/` 目录通过 `SqliteDataEngine.backup`（`VACUUM INTO`）生成在线一致性热快照，并可通过 `dashboard.createBackup` 触发。扩展模块状态、官方初始化与开发链接已收归 SQLite `platform.extension-state@1`（首次启动自动迁移旧 `config/extensions-*.json`）；`extensionInstalledDirectory` 可覆盖代码安装根；`extensionStateDirectory` 仍可作为显式 JSON 覆盖目录，默认使用共享 SQLite 持久化。
+正式运行的 data/cache/log 默认使用用户目录。Server 启动 Stage 1 会通过 `acquireProcessLock` 在 `<dataRoot>/loom.lock` 建立目录独占锁（记录 PID、启动时间与端口），防止双开毁库；`backups/` 目录通过 `SqliteDataEngine.backup`（`VACUUM INTO`）生成在线一致性热快照（Stage 2 预迁移保护与 `dashboard.createBackup` 共用同一队列）。扩展模块状态、官方初始化与开发链接已收归 SQLite `platform.extension-state@1`（含 `extension_state_migrations` 记录首次启动从旧 `config/extensions-*.json` 的一次性迁移）；`extensionInstalledDirectory` 可覆盖代码安装根；`extensionStateDirectory` 仍可作为显式 JSON 覆盖目录，默认使用共享 SQLite 持久化。
 
 根开发命令通过 [开发路径配置](../../../scripts/lib/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。启动器不迁移或恢复其他目录中的旧数据库；Store namespace 版本必须匹配当前代码。测试使用注入的临时目录。
 
 ## 2. SQLite 与 Blob 的权威边界
 
-SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。两者的公共工厂 `createAssetStore` / `createBlobStore` 均由 `@loom-studio/kernel`（`asset-store`）导出；字节实现位于 `packages/kernel/src/asset-store/blobs/`，合包不改变文件路径、Blob 身份或 `platform.blob-store` schema namespace。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
+SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。两者的公共工厂 `createAssetStore` / `createBlobStore` 均由 `@loom-studio/kernel`（`./asset-store`）导出；字节实现位于 `packages/kernel/src/asset-store/blobs/`，容器校验 `zip-checksums.ts` 位于 `packages/kernel/src/asset-store/containers/zip-checksums.ts`（原 `studio-server` 过渡垫片已移除），合包不改变文件路径、Blob 身份或 `platform.blob-store` schema namespace。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
 
 Blob 写入使用 Node stream、staging file、同步计算 SHA-256、按 hash 原子 finalize，再在调用者事务中提交 `stored_blobs` metadata。同 hash 的两个 prepared 写入中，一方失败/丢弃绝不删除另一方已提交或共用的 finalized 字节。公开 API 只接受 `blobId`，不返回物理路径。当前允许暂留无引用的孤儿文件，不实现全量物理 GC。
 

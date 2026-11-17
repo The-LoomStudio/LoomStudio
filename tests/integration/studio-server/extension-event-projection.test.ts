@@ -350,4 +350,102 @@ describe('Card extension platform event projection', () => {
       await engine.close()
     }
   })
+
+  it('preserves card/installation attribution scope and projects >32 KiB real document commits with distinct entityIds', async () => {
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
+    const documents = createSqliteDocumentStore({ engine })
+    const installationA = extensionInstallationId(packageId, a.target)
+    const installationB = extensionInstallationId(packageId, b.target)
+    try {
+      const committed = await documents.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+        for (let index = 0; index < 140; index++) {
+          await tx.write({
+            id: `card-a-distinct-document-identifier-${String(index).padStart(4, '0')}`,
+            type: 'test.note',
+            content: { index },
+            expectedVersion: 'new',
+            meta: { ownerExtensionId: packageId, ownerInstallationId: installationA },
+          })
+          await tx.write({
+            id: `card-b-distinct-document-identifier-${String(index).padStart(4, '0')}`,
+            type: 'test.note',
+            content: { index },
+            expectedVersion: 'new',
+            meta: { ownerExtensionId: packageId, ownerInstallationId: installationB },
+          })
+        }
+        await tx.write({
+          id: 'unscoped-doc-1',
+          type: 'test.note',
+          content: {},
+          expectedVersion: 'new',
+        })
+      })
+
+      const rawSummary = summarizeDataCommit(committed.commit)
+      expect(Buffer.byteLength(JSON.stringify(rawSummary), 'utf8')).toBeGreaterThan(32 * 1024)
+
+      const compacted = compactCommitPayload(rawSummary, 64 * 1024) as JsonObject
+      expect(compacted.overflow).toBe(true)
+      expect(Buffer.byteLength(JSON.stringify(compacted), 'utf8')).toBeLessThanOrEqual(64 * 1024)
+      expect(compacted.operations).toEqual(expect.arrayContaining([
+        {
+          store: 'documents',
+          kind: 'create',
+          entityType: 'test.note',
+          entityId: '*',
+          scope: { cardId: 'A', installationId: installationA },
+          count: 140,
+        },
+        {
+          store: 'documents',
+          kind: 'create',
+          entityType: 'test.note',
+          entityId: '*',
+          scope: { cardId: 'B', installationId: installationB },
+          count: 140,
+        },
+        {
+          store: 'documents',
+          kind: 'create',
+          entityType: 'test.note',
+          entityId: '*',
+          count: 1,
+        },
+      ]))
+
+      const overflowEvent = event('data.changed', compacted)
+      expect(await projectExtensionEvent({ documents }, overflowEvent, a)).toMatchObject({
+        payload: {
+          changesetId: committed.commit.changesetId,
+          overflow: true,
+          operations: [{
+            store: 'documents',
+            kind: 'create',
+            entityType: 'test.note',
+            entityId: '*',
+            scope: { cardId: 'A', installationId: installationA },
+            count: 140,
+          }],
+        },
+      })
+      expect(await projectExtensionEvent({ documents }, overflowEvent, b)).toMatchObject({
+        payload: {
+          changesetId: committed.commit.changesetId,
+          overflow: true,
+          operations: [{
+            store: 'documents',
+            kind: 'create',
+            entityType: 'test.note',
+            entityId: '*',
+            scope: { cardId: 'B', installationId: installationB },
+            count: 140,
+          }],
+        },
+      })
+      expect(await projectExtensionEvent({ documents }, overflowEvent, { ...a, packageId: 'other.package' })).toBeUndefined()
+    } finally {
+      await engine.close()
+    }
+  })
 })

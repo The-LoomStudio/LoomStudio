@@ -17,7 +17,7 @@
 
 ## 开发预览与验证范围
 
-打开 `/dev/preview/scene-card`。预览使用同一份脚本、正式 Script Runtime 与 RendererSurfaceHost，图片取自仓库中的官方包；目录数据为内存样例，不代表已经安装到当前工作台。可以停用、启用、刷新实例、模拟缺包，并下载脚本。不会调用业务 API 或修改用户数据。
+独立的 `/dev/preview/scene-card` 路由已随旧预览清理移除（当前仅保留 `/dev/preview/regex` 与 `/dev/preview/picker`）。场景背景卡的交互验证通过工作台“脚本 → 场景卡示例”草稿与“开发联调”热更新路径完成，直接复用正式 Script Runtime 与 RendererSurfaceHost。
 
 定向测试覆盖 Metadata、资源授权、当前角色过滤、快照隔离、版本化包地址、切图、迟到图片事件、缺包与停用清理。大图和实际图片加载的视觉效果仍需在浏览器中确认。
 

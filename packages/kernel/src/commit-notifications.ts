@@ -67,10 +67,29 @@ function collapseOperationsByScope(operations: JsonValue[]): JsonObject[] {
   return collapsed
 }
 
+function attributionScope(scope: JsonValue | undefined): JsonObject | undefined {
+  if (!isJsonObject(scope)) return undefined
+  const next: JsonObject = {}
+  if (typeof scope.cardId === 'string') next.cardId = scope.cardId
+  if (typeof scope.timelineId === 'string') next.timelineId = scope.timelineId
+  if (typeof scope.installationId === 'string') next.installationId = scope.installationId
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
+function attributionScopeKey(scope: JsonObject | undefined): string {
+  if (!scope) return ''
+  return JSON.stringify([
+    scope.cardId ?? null,
+    scope.timelineId ?? null,
+    scope.installationId ?? null,
+  ])
+}
+
 function collapseOperationsByStoreScope(operations: JsonObject[]): JsonObject[] {
   const groups = new Map<string, { store?: JsonValue; scope?: JsonObject; kinds: Set<JsonValue>; entityTypes: Set<JsonValue>; count: number }>()
   for (const item of operations) {
-    const key = JSON.stringify([item.store ?? null, scopeKey(item.scope)])
+    const scope = attributionScope(item.scope)
+    const key = JSON.stringify([item.store ?? null, attributionScopeKey(scope)])
     const itemCount = typeof item.count === 'number' ? item.count : 1
     const existing = groups.get(key)
     if (existing) {
@@ -81,7 +100,7 @@ function collapseOperationsByStoreScope(operations: JsonObject[]): JsonObject[] 
     }
     groups.set(key, {
       ...(item.store !== undefined ? { store: item.store } : {}),
-      ...(isJsonObject(item.scope) ? { scope: item.scope } : {}),
+      ...(scope ? { scope } : {}),
       kinds: new Set(item.kind !== undefined ? [item.kind] : []),
       entityTypes: new Set(item.entityType !== undefined ? [item.entityType] : []),
       count: itemCount,
@@ -91,7 +110,7 @@ function collapseOperationsByStoreScope(operations: JsonObject[]): JsonObject[] 
     ...(group.store !== undefined ? { store: group.store } : {}),
     kind: group.kinds.size === 1 ? [...group.kinds][0]! : 'update',
     entityType: group.entityTypes.size === 1 ? [...group.entityTypes][0]! : `${String(group.store ?? 'data')}.*`,
-    entityId: typeof group.scope?.entityId === 'string' ? group.scope.entityId : '*',
+    entityId: '*',
     ...(group.scope ? { scope: group.scope } : {}),
     count: group.count,
   }))

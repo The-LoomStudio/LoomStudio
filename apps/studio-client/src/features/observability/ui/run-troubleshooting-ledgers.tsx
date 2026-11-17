@@ -31,6 +31,12 @@ function statusTone(status?: string): 'success' | 'info' | 'danger' | 'warning' 
   return 'neutral'
 }
 
+function formatLedgerErrorDetail(error: unknown): string {
+  if (error instanceof Error && error.message) return ` (${error.message})`
+  if (typeof error === 'string' && error) return ` (${error})`
+  return ''
+}
+
 export function RunTroubleshootingLedgers(props: RunTroubleshootingLedgersProps) {
   const [view, setView] = useState<LedgerFilter>('all')
   const ledgers = useRunLedgers({
@@ -134,6 +140,13 @@ export function RunTroubleshootingLedgers(props: RunTroubleshootingLedgersProps)
             </span>
           )}
         </div>
+      )}
+
+      {(ledgers.errors.runs || ledgers.errors.detail) && (
+        <p className={styles.errorBox} role="alert">
+          {props.t('observation.readError')}
+          {formatLedgerErrorDetail(ledgers.errors.runs ?? ledgers.errors.detail)}
+        </p>
       )}
 
       <div className={styles.ledgerGrid} data-layout={view === 'all' ? 'unified' : 'focused'}>

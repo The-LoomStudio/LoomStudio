@@ -8,7 +8,7 @@
 
 同时采用一个主题，可以叠加多个增强。安装、采用样式与授权运行 Client Module 是三个独立动作。纯 CSS 贡献不需要模块。若声明 `moduleId`，它必须引用本包的 Client Module；默认需要先授权代码。仅声明 `supportsCssOnly: true` 的贡献允许在模块未启用时使用 CSS 部分，此字段不能单独用于无模块贡献。
 
-完整样例见 [官方主题包](../../../official/extensions/themes/manifest.json)（`official.themes`）：当前内置 `catppuccin`、`indigo-dark`、`indigo-light`、`warm-orange`、`nord`、`everforest`、`yozakura-night` 以及经典界面与极简黑白等纯色板主题（早期 `paper` 与 `tide` 主题已于 1.2.0 移除）；`smooth-motion`、`mint`、`amber` 是三个独立增强，其中 `smooth-motion` 支持纯 CSS 模式，并在授权 `motion` 模块后提供 JS 面板动效。默认开发入口直接从 `official/extensions/` 发现此包，无需复制到用户安装目录；JS 是无需额外构建的 ES Module。官方包不能删除式卸载，可以取消采用外观或停用模块。源码修改需要服务重新发现或重启，没有文件级 HMR。
+完整样例见 [官方主题包](../../../official/extensions/themes/manifest.json)（`official.themes`）：当前内置 `catppuccin`、`indigo-dark`、`indigo-light`、`warm-orange`、`nord`、`everforest`、`yozakura-night`、`tokyo-night`、`black-blue`、`mono-dark`（极简黑）与 `mono-light`（极简白）等纯色板主题（早期 `paper` 与 `tide` 主题已于 1.2.0 移除）；`smooth-motion`、`mint`、`amber` 是三个独立增强，其中 `smooth-motion` 支持纯 CSS 模式，并在授权 `motion` 模块后提供 JS 面板动效。默认开发入口直接从 `official/extensions/` 发现此包，无需复制到用户安装目录；JS 是无需额外构建的 ES Module。官方包不能删除式卸载，可以取消采用外观或停用模块。源码修改需要服务重新发现或重启，没有文件级 HMR。
 
 ## CSS、素材与优先级
 

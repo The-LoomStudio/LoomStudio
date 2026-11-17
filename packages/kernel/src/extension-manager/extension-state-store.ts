@@ -14,6 +14,26 @@ const extensionStateNamespace = 'platform.extension-state'
 const extensionStateSchemaVersion = 1
 const extensionStateActor = { kind: 'kernel' as const, id: extensionStateNamespace }
 
+type ExtensionStateMigrationSource = 'installations' | 'official-setup' | 'dev-links'
+
+const extensionStateMigrationsTableSql = `
+  CREATE TABLE IF NOT EXISTS extension_state_migrations (
+    source TEXT PRIMARY KEY,
+    migrated_at TEXT NOT NULL
+  );
+`
+
+export function markExtensionStateSourceMigrated(
+  database: SqliteDataEngine['database'],
+  source: ExtensionStateMigrationSource,
+  migratedAt: string,
+): void {
+  database.exec(extensionStateMigrationsTableSql)
+  database
+    .prepare('INSERT OR IGNORE INTO extension_state_migrations (source, migrated_at) VALUES (?, ?)')
+    .run(source, migratedAt)
+}
+
 export type ExtensionModuleDesiredState = {
   enabled: boolean
   grantedEventCapabilities: EventCapabilityCategory[]
@@ -87,6 +107,8 @@ export function initializeExtensionStateSchema(engine: SqliteDataEngine): void {
           directory TEXT NOT NULL,
           created_at TEXT NOT NULL
         );
+
+        ${extensionStateMigrationsTableSql}
       `)
     },
   })
@@ -129,10 +151,19 @@ export function createExtensionStateStore(options: {
       const devLinksCountRow = db
         .prepare('SELECT COUNT(*) AS count FROM extension_dev_links')
         .get() as { count: number }
+      const hasMigrationsTable = Boolean(
+        db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'extension_state_migrations'").get(),
+      )
+      const migratedSources = new Set(
+        hasMigrationsTable
+          ? (db.prepare('SELECT source FROM extension_state_migrations').all() as Array<{ source: string }>).map(row => row.source)
+          : [],
+      )
       return {
         installationRows,
         officialRow,
         hasDevLinks: devLinksCountRow.count > 0,
+        migratedSources,
       }
     })
 
@@ -143,7 +174,7 @@ export function createExtensionStateStore(options: {
         const modules = parseInstallationModules(row.installation_id, JSON.parse(row.modules_json) as unknown)
         nextState.installations[row.installation_id] = { modules }
       }
-    } else if (options.filename) {
+    } else if (!snapshot.migratedSources.has('installations') && options.filename) {
       const migrated = await readState(options.filename)
       if (Object.keys(migrated.installations).length > 0) {
         nextState = migrated
@@ -155,7 +186,7 @@ export function createExtensionStateStore(options: {
     let officialToMigrate: OfficialExtensionSetupState | undefined
     if (snapshot.officialRow) {
       nextOfficialSetup = parseOfficialSetup(JSON.parse(snapshot.officialRow.setup_json) as unknown)
-    } else if (options.officialSetupFile) {
+    } else if (!snapshot.migratedSources.has('official-setup') && options.officialSetupFile) {
       const migratedOfficial = await readOfficialSetupFile(options.officialSetupFile)
       if (migratedOfficial !== undefined) {
         nextOfficialSetup = migratedOfficial
@@ -164,7 +195,7 @@ export function createExtensionStateStore(options: {
     }
 
     let devLinksToMigrate: ExtensionDevLinkRecord[] | undefined
-    if (!snapshot.hasDevLinks && options.devLinksFile) {
+    if (!snapshot.hasDevLinks && !snapshot.migratedSources.has('dev-links') && options.devLinksFile) {
       const migratedLinks = await readExtensionDevLinksFile(options.devLinksFile)
       if (migratedLinks.length > 0) {
         devLinksToMigrate = migratedLinks
@@ -194,6 +225,7 @@ export function createExtensionStateStore(options: {
                 })
               }
             }
+            markExtensionStateSourceMigrated(tx.database, 'installations', migratedAt)
           }
           if (officialToMigrate !== undefined) {
             const info = tx.database
@@ -207,6 +239,7 @@ export function createExtensionStateStore(options: {
                 entityType: 'extension.official-setup',
               })
             }
+            markExtensionStateSourceMigrated(tx.database, 'official-setup', migratedAt)
           }
           if (devLinksToMigrate) {
             const insertDevLink = tx.database.prepare(
@@ -223,6 +256,7 @@ export function createExtensionStateStore(options: {
                 })
               }
             }
+            markExtensionStateSourceMigrated(tx.database, 'dev-links', migratedAt)
           }
           if (ops.length > 0) {
             tx.recordOperations(ops)
@@ -266,6 +300,7 @@ export function createExtensionStateStore(options: {
               tx.database
                 .prepare('DELETE FROM extension_installations WHERE installation_id = ?')
                 .run(installationId)
+              markExtensionStateSourceMigrated(tx.database, 'installations', options.now())
               tx.recordOperations([
                 {
                   store: 'extension-state',
@@ -333,6 +368,7 @@ export function createExtensionStateStore(options: {
                   'INSERT INTO extension_installations (installation_id, modules_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(installation_id) DO UPDATE SET modules_json = excluded.modules_json, updated_at = excluded.updated_at',
                 )
                 .run(installationId, JSON.stringify(nextInstallation.modules), updatedAt)
+              markExtensionStateSourceMigrated(tx.database, 'installations', updatedAt)
               tx.recordOperations([
                 {
                   store: 'extension-state',
@@ -373,6 +409,7 @@ export function createExtensionStateStore(options: {
                   'INSERT INTO extension_official_setup (id, setup_json, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET setup_json = excluded.setup_json, updated_at = excluded.updated_at',
                 )
                 .run(JSON.stringify(normalized), updatedAt)
+              markExtensionStateSourceMigrated(tx.database, 'official-setup', updatedAt)
               tx.recordOperations([
                 {
                   store: 'extension-state',
