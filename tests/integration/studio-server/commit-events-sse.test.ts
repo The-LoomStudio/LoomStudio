@@ -43,8 +43,9 @@ it('broadcasts commit and Agent task list notifications to every SSE connection'
           } catch (error) { if (!controller.signal.aborted) throw error }
         })())
       }
-      for (let i = 0; i < 2; i++) await callRpc(port, 'docs.write', {
-        id: `test:sse-${i}`, type: 'test.note', content: {}, expectedVersion: 'new',
+      for (let i = 0; i < 2; i++) await callRpc(port, 'application.upsertStateDefinition', {
+        definitionId: `test-sse-${i}`,
+        definition: { kind: 'timeline-template', templateVersion: 1, schema: { type: 'object' }, initial: {} },
       })
       await expect.poll(() => received.map(events => events.filter(name => name === 'data.changed').length)).toEqual([2, 2])
       await expect.poll(() => received.map(events => events.filter(name => name === 'extensions.data.changed').length)).toEqual([2, 2])

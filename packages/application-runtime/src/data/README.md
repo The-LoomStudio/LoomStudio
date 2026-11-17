@@ -1,0 +1,101 @@
+# `@loom-studio/application-data`
+
+> **状态**：Active Package Guide / Current Source Is Authority
+
+`@loom-studio/application-data` 是 Loom Studio 统一的领域存储核心包。在架构简化演进中，它将原本分散的 `agent-store`、`narrative-store`、`state-store` 与 `prompt-resource-store` 深度整合为一个高内聚的持久化模块。
+
+## 领域存储与辅助统计
+
+本包负责将 AIRP（AI Role-Play）核心业务实体的生命周期、状态迁移与快照持久化到共享的 SQLite 存储中：
+
+1. **Agent 存储 (`src/agent/`)**：
+   - 管理普通副会话及与 Timeline 同 ID 的特殊会话（`AgentSession.kind`），使用 Append-only 的 canonical Transcript（`AgentTranscriptEntry`），不以 Provider wire message 为持久化模型；
+   - 保存 Message、Observation、Tool Invocation/Result 与 Run 状态；`appendEntries()` 使用 `expectedEntryCount` 校验并发基线，校验工具调用与结果的配对。
+2. **Narrative 存储 (`src/narrative/`)**：
+   - 管理故事 Header（`NarrativeTimeline`）、分支（`NarrativeBranch`）与正文投影索引（`NarrativeNode.entryId`）；正文只存于 canonical message，查询视图读取同一内容；
+   - 支持分支创建/切换、沿 parent 链分页与 `editBranchNode()` 路径复制；不负责模型重演或 Agent 执行。
+3. **State 存储 (`src/state/`)**：
+   - 维护 `StateScope` 与包含 JSON snapshot、operations 的 `StateRevision`，提供全局状态 Head 的版本校验；
+   - 记录每次状态变更的操作者（Actor）与因果提交事实。
+4. **Prompt Resource 存储 (`src/prompt-resource/`)**：
+   - 持久化树形层级的提示词资源（Preset、Lore、Logic、Runtime 节点）；
+   - 管理独立的 Lore Mount Registry 与 Agent Preset Tool Mount，以及资源 Header/Node 的版本修订；嵌套资源树是消费投影，不是整份 Document 权威存储。Agent Preset 复用 `resourceKind: preset`，不是独立 Profile 存储实体。
+   - Lore Mount 同时支持全局来源与预设消费来源，保留失效引用身份及 nullable 解析结果；预设的 `useCardLore` / `textUses` 存在 Resource metadata，不增加预设包所有权或独立运行作用域。
+5. **Workspace 存储 (`src/workspace/`)**：
+   - 保存 Timeline 共享文件树的不可变版本，文本保存在树中，二进制引用 Blob；初始化包含 `MEMORY.md`。
+   - 使用独立 `application.workspace` namespace；Narrative Store 负责装配，Branch / Node 的 Workspace 引用与恢复点归 Narrative 管理。新版本与 Branch 引用由领域流程显式组合到同一事务，不是任意宿主目录同步。
+6. **统计存储 (`src/statistics/`)**：
+   - 持久化 Provider 请求用量记录与被接受的用户交互，供 Dashboard 汇总；它是辅助统计能力，不是 Agent Transcript 或 Provider Observation 的替代存储。采集与保留边界见 [`statistics/README.md`](./statistics/README.md)。
+
+---
+
+## 架构规约与外部依赖所有权 (Rules & Boundaries)
+
+1. **共享 SQLite 事务管道**：
+   - 本包**强依赖 `@loom-studio/data-engine`**，运行期公开读写进入统一 FIFO；Store 创建时以 `initializeSchema({ namespace, version, initialize })` 初始化当前 schema，不把初始化当作运行期排队操作；
+   - **严禁私自建立第二套 SQLite 连接**。跨 Store 写入通过各 Store 的 `transaction(tx)` 参与同一 Engine 事务，共享 Changeset；只有成功且非空的提交才通知 `DataCommitFact`。
+2. **拒绝 ORM 抽象**：
+   - 坚持使用原生 SQL 查询与 Data Engine 命名空间 schema 初始化，**严禁引入 Prisma、TypeORM 或复杂实体映射框架**。
+3. **领域界限清晰**：
+   - 本包仅负责数据实体的持久化、版本校验与结构化查询；
+   - **严禁编写提示词编译、模型调用循环（Tool Loop）或前端交互逻辑**（这些全部归属于 `application-runtime`）。
+
+---
+
+## 公共入口
+
+Package 主入口为 [`src/index.ts`](./index.ts)，重导出领域 Store、统计采集与相关查询合同：
+
+```ts
+import {
+  createAgentStore,
+  createNarrativeStore,
+  createStateStore,
+  createPromptResourceStore,
+  createWorkspaceStore,
+  createStatisticsStore,
+  recordUserInteraction,
+} from '@loom-studio/application-data'
+```
+
+- [`src/agent/`](./agent/)：导出 `createAgentStore` 及会话与 Transcript 类型；
+- [`src/narrative/`](./narrative/)：导出 `createNarrativeStore` 及时间线/分支类型（沿 parent 链游标读取，为 Narrative Sampling 提供底层支撑）；
+- [`src/state/`](./state/)：导出 `createStateStore` 及状态变更类型（State Delta 支持合法空键重放与合并保真）；
+- [`src/prompt-resource/`](./prompt-resource/)：导出 `createPromptResourceStore` 及资源树操作类型；
+- [`src/workspace/`](./workspace/)：导出 `createWorkspaceStore`、文件树条目与不可变版本类型；
+- [`src/statistics/`](./statistics/README.md)：导出 `createStatisticsStore`、`recordUserInteraction` 与统计类型；依赖共享 Data Engine，采集入口与口径见模块说明；
+
+内部 [`src/json.ts`](./json.ts) 提供数据持久化 JSON 保真断言，显式拒绝 `NaN`、`Infinity` 等非有限数字，保护合法空键、`null`、`0` 与 `false`；它不是 package public export。
+
+### 写入与重试边界
+
+- [`NarrativeStore.appendInput()`](./narrative/store.ts) 以固定 `nodeId`、`expectedHeadNodeId` 和正文提交用户输入。同一输入重试返回原节点与原 Changeset；正文、原 parent 或归属不一致返回 `narrative.input_conflict`，不生成第二条正文。调用方在成功落库后另行投递 Agent Session；本 Store 不启动 Agent，也不把两次调用合成一个事务。
+- [`PromptResourceStore.mutateResource()`](./prompt-resource/mutations.ts) 必须携带资源级 `expectedVersion`；不匹配返回 `prompt_resource.conflict`，没有自动合并或改用最新版本重试。一次 mutations 列表在同一事务内提交，Header/Node 修订与提交事实一起生效。
+- 普通 Session 固定 `agentPresetId`；特殊 Timeline Session 可暂未配置。更新预设或正文模式时，Store 拒绝最新 Run 为 `created`、`running`、`suspended`，或 `failed` 且带 `recovery` 检查点；不一概禁止所有失败 Run。允许更新后同一历史继续使用。`entryCount` 是全局单调写入计数；各分支保存采用的 Entry Head，回退不降低计数。
+- 各 Store 声明各自当前 schema 版本。空 namespace 初始化为当前 DDL，匹配版本可打开；已有非零版本不匹配时由 Engine 拒绝，不做历史升级、降级或兼容读取。版本声明以各 `store.ts` 为准。
+
+### 统一游标分页与数据保真底线
+
+- **Prompt Resource Keyset 分页**：`listResources()` 默认按 `updated_at DESC, id DESC`，cursor 保存读取时边界；`order: 'id'` 按稳定 ID 降序，供 Runtime 全量收集与导入冲突扫描使用。cursor 绑定排序、resourceKind 与 includeTombstone，不能当数字 OFFSET 或换筛选复用。默认页长 100，上限 500。
+- **并发与一致性**：更新时间排序允许更新跨越边界；稳定 ID 遍历不会因更新时间变动重复或跳过已有身份，但新建 ID 在已读边界之前时不会补读。需要一致集合的写入、删除、Apply 继续依赖其事务、版本与提交事实保护。
+- **持久化 JSON 保真**：在入库与变更边界严格校验 JSON，杜绝把不可序列化数字洗成 `null`，确保领域扩展属性和空键原样往返。
+
+---
+
+## 构建与验证
+
+```bash
+# 编译 TypeScript 产物
+pnpm --filter @loom-studio/application-data build
+
+# 运行 Agent、Narrative、State 与 Prompt Resource 存储测试
+pnpm exec vitest run tests/unit/agent-store tests/unit/narrative-store tests/unit/state-store tests/unit/prompt-resource-store
+```
+
+---
+
+## 正式文档
+
+- [Data Architecture 统一持久化架构](../../../../docs/architecture/data/README.md)
+- [Application 核心领域架构](../../../../docs/architecture/application/README.md)
+- [Prompt Resource 树形存储设计](../../../../docs/architecture/application/prompt-build/README.md)

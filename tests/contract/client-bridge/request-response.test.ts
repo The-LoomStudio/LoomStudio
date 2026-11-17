@@ -26,14 +26,14 @@ describe('client bridge request-response contract', () => {
   })
   it.each([
     ['system.ping', 'system.ping'],
-    ['example.echo', 'kernel.invoke'],
+    ['example.echo', 'extensions.invoke'],
   ])('routes %s through %s and returns result payloads', async (method, route) => {
     const bridge = createClientBridge({
       endpoint: 'http://localhost/trpc',
       fetch: (async (input, init) => {
         expect(new URL(String(input)).pathname).toBe(`/trpc/${route}`)
-        expect(JSON.parse(String(init?.body))).toEqual(route === 'kernel.invoke'
-          ? { method, params: { echo: 'hello' } } : { echo: 'hello' })
+        expect(JSON.parse(String(init?.body))).toEqual(route === 'extensions.invoke'
+          ? { packageId: 'example', method, params: { echo: 'hello' } } : { echo: 'hello' })
         expect(init?.credentials).toBe('same-origin')
         return createFetch({ result: { data: { ok: true } } })(input, init)
       }) as typeof fetch,

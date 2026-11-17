@@ -316,17 +316,19 @@ describe('Timeline root Session contracts', () => {
     expect(f.failures).toEqual([])
   })
 
-  it('keeps a failed run without a checkpoint terminal', async () => {
+  it('keeps a failed run without a checkpoint terminal when resume is rejected', async () => {
     const f = await mount({ preset: 'writer' })
     f.setEntries([{ ...failedCheckpoint, entry: { kind: 'run-state', state: 'failed', reason } }])
     f.api.agentSessions.subscribeRun.mockResolvedValueOnce({ events: [{ type: 'failed', runId: 'run', error: { name: 'Error', message: reason } }], nextCursor: 1, done: true, state: 'failed' })
+    f.api.agentSessions.resumeRun.mockResolvedValueOnce({ runId: 'run', accepted: false })
     await act(async () => { f.current.setInput('Walk outside') })
     await act(async () => { await f.current.submitTurn(f.event) })
     expect(f.current.rootActiveRun?.status).toBe('failed')
     expect(f.current.rootRecovery).toMatchObject({ status: 'failed', error: reason })
     expect(f.api.agentSessions.runState).not.toHaveBeenCalled()
     await act(async () => { await f.current.resumeRootRun() })
-    expect(f.api.agentSessions.resumeRun).not.toHaveBeenCalled()
+    expect(f.api.agentSessions.resumeRun).toHaveBeenCalledExactlyOnceWith({ runId: 'run', agentSessionId: 'timeline' })
+    expect(f.current.rootActiveRun?.status).toBe('failed')
     expect(f.failures).toEqual([])
   })
 })

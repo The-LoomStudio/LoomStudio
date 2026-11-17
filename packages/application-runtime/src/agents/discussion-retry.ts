@@ -1,5 +1,5 @@
-import type { AgentTranscriptEntry, NarrativeBranch } from '@loom-studio/application-data'
-import type { SqliteDataTransaction } from '@loom-studio/data-engine'
+import type { AgentTranscriptEntry, NarrativeBranch } from '../data/index.js'
+import type { SqliteDataTransaction } from '@loom-studio/kernel/data-engine'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { InvokeAgentTurnInput, RuntimeRequestContext } from '../types.js'
 import { requireAgents, requireNarratives } from '../runtime/context.js'

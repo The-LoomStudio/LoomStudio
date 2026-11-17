@@ -30,7 +30,7 @@ export function RecentPlayPanel(props: RecentPlayPanelProps) {
   const date = useStudioLayoutStore(state => state.playSelectedDate) ?? ''
   const setDate = useStudioLayoutStore(state => state.setPlaySelectedDate)
   const mediaRevision = useCardMediaRevision()
-  const avatar = (card?: CardSummary) => card?.media?.avatarAssetId ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision) : undefined
+  const avatar = (card?: CardSummary) => card?.media?.avatarAssetId ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision, card.updatedAt) : undefined
   const recent = props.recent.flatMap(visit => {
     const card = props.cards.find(item => item.id === visit.cardId)
     return card ? [{ visit, card, timeline: props.timelines.find(item => item.id === visit.timelineId && item.createdFrom?.cardId === card.id) }] : []

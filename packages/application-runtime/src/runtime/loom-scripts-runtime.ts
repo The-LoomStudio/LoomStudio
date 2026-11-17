@@ -111,6 +111,37 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
             },
             expectedVersion: input.expectedVersion,
           })
+          if (document.content.runtime === 'declarative') {
+            const mounts = (await listDocuments<LoomScriptMountContent>(documents, applicationDocumentTypes.loomScriptMount))
+              .filter(mount => mount.content.scriptDocumentId === document.id
+                && mount.content.enabled && mount.content.pinnedDocumentVersion === undefined)
+              .sort((left, right) => (left.content.target.kind === 'user' ? 0 : 1) - (right.content.target.kind === 'user' ? 0 : 1))
+            for (const mount of mounts) {
+              let adoptedSettings: LoomScriptSettings
+              try {
+                adoptedSettings = await adoptSettings(documents, mount.content, document.content, mount.content.settings ?? {})
+                for (const [id, usage] of Object.entries(mount.content.ruleUsage ?? {})) {
+                  const contribution = document.content.contributions.find(item => item.kind === 'text-transform' && item.id === id)
+                  if (!contribution || contribution.kind !== 'text-transform') throw new Error(`Unknown text rule: ${id}`)
+                  applyTextRuleUsage(resolveTextTransformContributionRule(contribution, adoptedSettings), usage)
+                }
+              } catch {
+                continue
+              }
+              await writeDocument<LoomScriptMountContent>(documents, {
+                id: mount.id,
+                type: applicationDocumentTypes.loomScriptMount,
+                content: {
+                  ...mount.content,
+                  adoptedDocumentVersion: document.version,
+                  adoptedSettings,
+                  runtimeRevision: mount.content.runtimeRevision + 1,
+                  updatedAt: timestamp,
+                },
+                expectedVersion: mount.version,
+              })
+            }
+          }
           return toVersioned(document)
         },
       )
@@ -402,7 +433,7 @@ function assertFileName(fileName: string): void {
 
 /** Capture user values only when explicitly adopting; later global edits do not mutate a running instance. */
 export async function adoptSettings(
-  documents: import('@loom-studio/document-store').DocumentTransaction,
+  documents: import('@loom-studio/kernel/document-store').DocumentTransaction,
   mount: LoomScriptMountContent, script: LoomScriptContent, settings: LoomScriptSettings,
 ): Promise<LoomScriptSettings> {
   const inherited = await readInheritedSettings(documents, mount, script)
@@ -410,7 +441,7 @@ export async function adoptSettings(
 }
 
 async function readInheritedSettings(
-  documents: import('@loom-studio/document-store').DocumentTransaction,
+  documents: import('@loom-studio/kernel/document-store').DocumentTransaction,
   mount: LoomScriptMountContent, script: LoomScriptContent,
 ): Promise<LoomScriptSettings> {
   let inherited: LoomScriptSettings = {}

@@ -1,8 +1,8 @@
-import { createAgentStore, type AgentTranscriptEntryData } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createAgentStore, type AgentTranscriptEntryData } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import type { ApplicationRuntime, RuntimeRequestContext } from '@loom-studio/application-runtime'
 import { describe, expect, it, vi } from 'vitest'
-import { getAgentRunService, setAgentRunListChangeListener } from '../../../apps/studio-server/src/agents/agent-run-service.js'
+import { createAgentRunService, type AgentRunRuntime } from '@loom-studio/application-runtime'
 import { createAgentsRuntimeMethods } from '../../../packages/application-runtime/src/runtime/agents-runtime.js'
 import { callApplicationRpc } from '../../support/trpc-caller.js'
 
@@ -16,7 +16,14 @@ function fixture() {
   const actor = { kind: 'system' as const, id: 'test' }
   const methods = createAgentsRuntimeMethods({ agents: store } as Parameters<typeof createAgentsRuntimeMethods>[0])
   const recover = vi.fn(async () => { throw new Error('Unknown tool outcome; refusing replay') })
-  const runtime = { getAgentTranscriptPage: methods.getAgentTranscriptPage, listAgentRunStates: methods.listAgentRunStates, inspectAgentRunState: methods.inspectAgentRunState, prepareAgentRunRecovery: recover } as unknown as ApplicationRuntime
+  const runtime = {
+    getAgentTranscriptPage: methods.getAgentTranscriptPage,
+    listAgentRunStates: methods.listAgentRunStates,
+    inspectAgentRunState: methods.inspectAgentRunState,
+    prepareAgentRunRecovery: recover,
+  } as unknown as ApplicationRuntime & AgentRunRuntime
+  const service = createAgentRunService(runtime)
+  ;(runtime as { runs: typeof service }).runs = service
   async function seed(id: string, state?: Extract<AgentTranscriptEntryData, { kind: 'run-state' }>['state']) {
     await store.createSession({ id, actor, agentPresetId: 'preset', title: `Title ${id}`, timelineId: 'story' })
     if (state) await append(id, `${id}-run`, { kind: 'run-state', state })
@@ -25,7 +32,7 @@ function fixture() {
     const session = (await store.getSession(agentSessionId))!
     return store.appendEntries({ actor, agentSessionId, expectedEntryCount: session.entryCount, entries: [{ runId, entry }] })
   }
-  return { engine, store, actor, runtime, recover, seed, append, service: getAgentRunService(runtime) }
+  return { engine, store, actor, runtime, recover, seed, append, service }
 }
 
 describe('Agent task list', () => {
@@ -79,7 +86,8 @@ describe('Agent task list', () => {
       expect(byId.get('created')).toMatchObject({ state: 'interrupted', canPause: false })
       expect(byId.get('suspended')).toMatchObject({ state: 'suspended', canResume: true, canAbandon: true })
       expect(byId.get('aborted')?.state).toBe('cancelled')
-      for (const id of ['completed', 'failed', 'aborted', 'discarded'])
+      expect(byId.get('failed')).toMatchObject({ canPause: false, canResume: true, canAbandon: true })
+      for (const id of ['completed', 'aborted', 'discarded'])
         expect(byId.get(id)).toMatchObject({ canPause: false, canResume: false, canAbandon: false })
       expect(f.recover).not.toHaveBeenCalled()
       await expect(f.service.resume({ runId: 'running-run', agentSessionId: 'running' })).rejects.toThrow('Unknown tool outcome')
@@ -130,7 +138,7 @@ describe('Agent task list', () => {
     const snapshots: Array<ReturnType<typeof f.service.list>> = []
     try {
       await f.seed('paused')
-      setAgentRunListChangeListener(f.runtime, sessionId => {
+      f.service.setListChangeListener(sessionId => {
         expect(sessionId).toBe('paused')
         snapshots.push(f.service.list({ timelineId: 'story' }))
       })

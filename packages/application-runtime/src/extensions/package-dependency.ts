@@ -1,6 +1,6 @@
 import { satisfies, valid, validRange } from 'semver'
 import { extensionInstallationId, type ExtensionDependency, type ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import { readDocument } from '../foundation/document-store.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import type { ExtensionInstallationContent } from '../types.js'

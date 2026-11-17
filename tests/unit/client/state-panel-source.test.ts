@@ -20,9 +20,109 @@ vi.mock('../../../apps/studio-client/src/shared/ui/extension-icon/extension-icon
   useExtensionIdentities: () => [],
 }))
 
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => {
+  for (const value of hooks.values) {
+    if (value && typeof value === 'object' && 'cleanup' in value && typeof (value as { cleanup?: () => void }).cleanup === 'function') {
+      ;(value as { cleanup: () => void }).cleanup()
+    }
+  }
+  vi.unstubAllGlobals()
+})
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
+const queryStore = vi.hoisted(() => ({
+  entries: new Map<string, {
+    queryKey: readonly unknown[]
+    status: 'pending' | 'success' | 'error'
+    fetching: boolean
+    data?: unknown
+    error?: unknown
+    invalidations: number
+    token: number
+    run?: () => Promise<{ data: unknown; error: unknown }>
+  }>(),
+}))
+class StubEventSource {
+  static CONNECTING = 0
+  static OPEN = 1
+  static CLOSED = 2
+  readyState = 0
+  addEventListener() {}
+  removeEventListener() {}
+  close() {
+    this.readyState = StubEventSource.CLOSED
+  }
+}
+const stableQueryClient = vi.hoisted(() => ({
+  invalidateQueries: async ({ queryKey, exact }: { queryKey?: readonly unknown[]; exact?: boolean } = {}) => {
+    for (const entry of queryStore.entries.values()) {
+      const matched = !queryKey
+        || (exact
+          ? queryKey.length === entry.queryKey.length && queryKey.every((part, index) => Object.is(part, entry.queryKey[index]))
+          : queryKey.length <= entry.queryKey.length && queryKey.every((part, index) => Object.is(part, entry.queryKey[index])))
+      if (matched) {
+        entry.invalidations += 1
+        void entry.run?.()
+      }
+    }
+  },
+}))
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => stableQueryClient,
+  useQuery: ({ queryKey, enabled = true, queryFn }: {
+    queryKey: readonly unknown[]
+    enabled?: boolean
+    queryFn: () => Promise<unknown>
+  }) => {
+    const serialized = JSON.stringify(queryKey)
+    let entry = queryStore.entries.get(serialized)
+    if (!entry) {
+      entry = { queryKey, status: 'pending', fetching: false, invalidations: 0, token: 0 }
+      queryStore.entries.set(serialized, entry)
+    }
+    const target = entry
+    const run = async () => {
+      const token = ++target.token
+      target.fetching = true
+      try {
+        const data = await queryFn()
+        if (target.token === token) {
+          target.status = 'success'
+          target.data = data
+          target.error = undefined
+          target.fetching = false
+        }
+        return { data, error: null }
+      } catch (error) {
+        if (target.token === token) {
+          target.status = 'error'
+          target.error = error
+          target.fetching = false
+        }
+        return { data: target.data, error }
+      }
+    }
+    target.run = run
+    const effectIndex = hooks.cursor++
+    const previous = hooks.values[effectIndex] as { deps: unknown[] } | undefined
+    const deps = [serialized, enabled, target.invalidations]
+    if (!previous || deps.some((value, i) => !Object.is(value, previous.deps[i]))) {
+      hooks.values[effectIndex] = { deps }
+      if (enabled) {
+        hooks.effects.push(() => { void run() })
+      }
+    }
+    return {
+      data: target.data,
+      error: target.error ?? null,
+      isPending: target.status === 'pending',
+      isFetching: target.fetching,
+      isError: target.status === 'error',
+      isSuccess: target.status === 'success',
+      refetch: run,
+    }
+  },
+}))
 vi.mock('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js', async original => {
   const actual = await original<typeof import('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js')>()
   return { ...actual, useStudioLayoutStore: Object.assign(
@@ -92,7 +192,7 @@ function fixture() {
     return tree
   }
   async function settle() {
-    for (let i = 0; i < 4; i++) await Promise.resolve()
+    for (let i = 0; i < 8; i++) await Promise.resolve()
     render()
     return render()
   }
@@ -116,6 +216,8 @@ function fixture() {
 beforeEach(() => {
   vi.stubGlobal('document', { visibilityState: 'visible' })
   vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn(), setInterval: vi.fn(), clearInterval: vi.fn() })
+  vi.stubGlobal('EventSource', StubEventSource)
+  queryStore.entries.clear()
   useStudioLayoutStore.setState({ viewPreferences: {} }); hooks.cursor = 0; hooks.values = []; hooks.effects = []; vi.clearAllMocks() })
 
 describe('State panel source isolation', () => {

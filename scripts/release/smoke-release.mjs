@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { resolveLoomStudioLocalPaths } from '../../apps/studio-server/dist/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '../../packages/kernel/dist/platform/index.js'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const require = createRequire(join(root, 'apps/studio-client/package.json'))

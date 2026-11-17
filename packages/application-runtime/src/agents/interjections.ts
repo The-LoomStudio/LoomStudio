@@ -1,4 +1,4 @@
-import type { AgentStore, AgentTranscriptEntry } from '@loom-studio/application-data'
+import type { AgentStore, AgentTranscriptEntry } from '../data/index.js'
 
 /** Serializes receipt and transcript writes, never Provider or tool execution. */
 const locks = new WeakMap<AgentStore, Map<string, Promise<unknown>>>()

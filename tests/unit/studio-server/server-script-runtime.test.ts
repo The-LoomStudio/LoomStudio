@@ -1,9 +1,9 @@
 import { expect, it, vi, onTestFinished } from 'vitest'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import type { ExtensionHostOptions } from '@loom-studio/extension-host'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import type { ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
 import type { ExtensionMacroProvider } from '@loom-studio/extension-sdk'
-import { createServerScriptRuntime, type ServerScriptRun } from '../../../apps/studio-server/src/scripts/server-script-runtime.js'
+import { createServerScriptRuntime, type ServerScriptRun } from '@loom-studio/kernel/script-runtime'
 
 it('cancels obsolete preparations before module evaluation and continues the new scope', async () => {
   const effects: string[] = []

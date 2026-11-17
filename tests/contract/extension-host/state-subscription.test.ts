@@ -1,11 +1,11 @@
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import type { EventCapabilityCategory, ExtensionHostOptions } from '@loom-studio/extension-host'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
+import type { EventCapabilityCategory, ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
 import type { ExtensionInstallationTarget, ExtensionStateChangeEvent } from '@loom-studio/extension-sdk'
 import { createEventBus } from '@loom-studio/kernel'
 import { afterEach, describe, expect, it, vi, onTestFinished } from 'vitest'
-import { createContext, createExtensionScope } from '../../../packages/extension-sdk/extension-host/src/instance.js'
-import type { ExtensionModuleRecord } from '../../../packages/extension-sdk/extension-host/src/types.js'
+import { createContext, createExtensionScope } from '../../../packages/kernel/src/extension-host/instance.js'
+import type { ExtensionModuleRecord } from '../../../packages/kernel/src/extension-host/types.js'
 import { registerBuiltinEventDefinitions } from '../../../packages/kernel/src/events.js'
 
 const scopes: ReturnType<typeof createExtensionScope>[] = []

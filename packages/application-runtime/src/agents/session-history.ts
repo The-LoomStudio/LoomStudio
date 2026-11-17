@@ -1,5 +1,5 @@
 import { attachmentMessage } from './message-attachments.js'
-import type { AgentStore, AgentTranscriptEntry, AgentTranscriptEntryData } from '@loom-studio/application-data'
+import type { AgentStore, AgentTranscriptEntry, AgentTranscriptEntryData } from '../data/index.js'
 import type { ChatMessage } from '@loom-studio/shared'
 import { renderLoomContentToolResult } from './content-transport.js'
 import { renderToolResult } from './tool-result-text.js'

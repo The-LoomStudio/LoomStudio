@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { QueryClientContext } from '@tanstack/react-query'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createId } from '@loom-studio/shared'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
 import type {
   HistorySource,
   RendererDefinition,
@@ -55,6 +57,8 @@ export function useTextTransformController(props: TextTransformProps) {
   const [rules, setRules] = useState<TextTransformRule[]>([])
   const [extractors, setExtractors] = useState<TextExtractor[]>([])
   const [renderers, setRenderers] = useState<RendererDefinition[]>([])
+  const queryClient = useContext(QueryClientContext)
+  const catalogQueryKey = useMemo(() => ['text-transforms', ownerKey, authoring ? 'authoring' : 'runtime'] as const, [ownerKey, authoring])
   const [rendererRevision, setRendererRevision] = useState(0)
   const [searchValue, setSearchValue] = useState('')
   const [selectedTarget, setSelectedTarget] = useState<SelectedTarget>(authoring ? { kind: 'empty' } : { kind: 'inspection' })
@@ -131,14 +135,19 @@ export function useTextTransformController(props: TextTransformProps) {
     }
   }
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!isCurrentCatalog()) return
     const requestId = ++refreshRequest.current
     try {
       setBusy(true)
-      const [ruleResult, extractorResult, rendererResult] = await Promise.all([
-        props.api.listRules(), props.api.listExtractors(), authoring ? props.api.listRenderers() : Promise.resolve({ renderers: [] }),
+      const fetchCatalog = () => Promise.all([
+        props.api.listRules(),
+        props.api.listExtractors(),
+        authoring ? props.api.listRenderers() : Promise.resolve({ renderers: [] as RendererDefinition[] }),
       ])
+      const [ruleResult, extractorResult, rendererResult] = queryClient
+        ? await queryClient.fetchQuery({ queryKey: catalogQueryKey, queryFn: fetchCatalog, staleTime: 0 })
+        : await fetchCatalog()
       if (!isCurrentCatalog() || requestId !== refreshRequest.current) return
       setRules(ruleResult.rules)
       setExtractors(extractorResult.extractors)
@@ -149,7 +158,26 @@ export function useTextTransformController(props: TextTransformProps) {
     } finally {
       if (isCurrentCatalog() && requestId === refreshRequest.current) setBusy(false)
     }
-  }
+  }, [authoring, catalogQueryKey, props.api, queryClient])
+
+  const invalidateAndRefresh = useCallback(async () => {
+    await queryClient?.invalidateQueries({ queryKey: ['text-transforms'] })
+    await refresh()
+  }, [queryClient, refresh])
+
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return
+    return subscribeDataCommits(
+      operations => {
+        if (operations.some(op => op.entityType === 'textTransformRule' || op.entityType === 'textExtractor')) {
+          void invalidateAndRefresh()
+        }
+      },
+      () => {
+        void invalidateAndRefresh()
+      },
+    )
+  }, [invalidateAndRefresh])
 
   useEffect(() => {
     setSelectedTarget(authoring ? { kind: 'empty' } : { kind: 'inspection' })
@@ -172,7 +200,7 @@ export function useTextTransformController(props: TextTransformProps) {
         expectedVersion: rule.version,
         rule: { ...toRuleDraft(rule), ...patch },
       })
-      await refresh()
+      await invalidateAndRefresh()
       props.onRuntimeChanged?.()
     } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
   }
@@ -199,11 +227,11 @@ export function useTextTransformController(props: TextTransformProps) {
         expectedVersion: rule.version,
         rule: { ...toRuleDraft(rule), orderIndex: next.indexOf(rule) },
       })))
-      await refresh()
+      await invalidateAndRefresh()
       props.onRuntimeChanged?.()
     } catch (cause) {
       const message = readError(cause)
-      await refresh()
+      await invalidateAndRefresh()
       setError(message)
     } finally { setBusy(false) }
   }
@@ -213,8 +241,16 @@ export function useTextTransformController(props: TextTransformProps) {
     setSelectedTarget({ kind: 'rule', id })
     setMobilePane('detail')
     const item = rules.find(rule => rule.id === id)
-    ruleDraftRef.current = { version: item?.version }
+    const draftRef = { version: item?.version }
+    ruleDraftRef.current = draftRef
     setRuleText(item ? JSON.stringify(toRuleDraft(item), null, 2) : defaultRuleText)
+    if (typeof props.api.getRule === 'function') {
+      void props.api.getRule(id).then(result => {
+        if (!isCurrentCatalog() || ruleDraftRef.current !== draftRef) return
+        draftRef.version = result.rule.version
+        setRuleText(JSON.stringify(toRuleDraft(result.rule), null, 2))
+      }).catch(() => {})
+    }
   }
 
   const openedRuleRef = useRef<string | undefined>(undefined)
@@ -246,8 +282,16 @@ export function useTextTransformController(props: TextTransformProps) {
     setSelectedTarget({ kind: 'extractor', id })
     setMobilePane('detail')
     const item = extractors.find(extractor => extractor.id === id)
-    extractorDraftRef.current = { version: item?.version }
+    const draftRef = { version: item?.version }
+    extractorDraftRef.current = draftRef
     setExtractorText(item ? JSON.stringify(toExtractorDraft(item), null, 2) : defaultExtractorText)
+    if (typeof props.api.getExtractor === 'function') {
+      void props.api.getExtractor(id).then(result => {
+        if (!isCurrentCatalog() || extractorDraftRef.current !== draftRef) return
+        draftRef.version = result.extractor.version
+        setExtractorText(JSON.stringify(toExtractorDraft(result.extractor), null, 2))
+      }).catch(() => {})
+    }
   }
 
   function startNewExtractor() {
@@ -277,7 +321,7 @@ export function useTextTransformController(props: TextTransformProps) {
       if (ruleDraftRef.current === baseline) baseline.version = result.rule.version
       setRules(current => [...current.filter(rule => rule.id !== result.rule.id), result.rule])
       setSavedRule({ scope: catalogScope, id: selectedRuleId, text: ruleText })
-      await refresh()
+      await invalidateAndRefresh()
       notify.success(props.t('notify.success.saved'))
     } catch (cause) {
       const message = readError(cause)
@@ -310,7 +354,7 @@ export function useTextTransformController(props: TextTransformProps) {
         } catch (cause) { failedIds.push(nodeId); errors.push(`${rule?.name ?? extractor?.name}: ${readError(cause)}`) }
       }
       props.onRuntimeChanged?.()
-      await refresh()
+      await invalidateAndRefresh()
       const error = errors.join('\n')
       setError(error)
       return { failedIds, error }
@@ -322,7 +366,7 @@ export function useTextTransformController(props: TextTransformProps) {
       const existing = rules.find(rule => rule.id === selectedRuleId)
       await props.api.deleteRule({ ruleId: selectedRuleId, expectedVersion: existing?.version })
       props.onRuntimeChanged?.()
-      await refresh()
+      await invalidateAndRefresh()
       notify.success(props.t('notify.success.deleted'))
     } catch (cause) {
       const message = readError(cause)
@@ -341,7 +385,7 @@ export function useTextTransformController(props: TextTransformProps) {
       if (!isCurrentCatalog()) return
       if (extractorDraftRef.current === baseline) baseline.version = result.extractor.version
       setExtractors(current => [...current.filter(item => item.id !== result.extractor.id), result.extractor])
-      await refresh()
+      await invalidateAndRefresh()
       notify.success(props.t('notify.success.saved'))
     } catch (cause) {
       const message = readError(cause)

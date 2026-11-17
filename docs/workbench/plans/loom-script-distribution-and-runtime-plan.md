@@ -31,9 +31,9 @@
 
 - [现有 Script 合同](../../architecture/extensions/loom-script-runtime.md)及 [Metadata codec](../../../packages/application-runtime/src/scripts/loom-script-codec.ts)：接受 `client-sandbox`、`client`、`client-worker`、`server`；后三种无需 Renderer contribution，采用 `activate(ctx)` 入口。
 - [Script Runtime](../../../packages/application-runtime/src/runtime/loom-scripts-runtime.ts)：源码以 Blob 保存，Document 保存 Metadata、源码引用、摘要和版本，Mount 保存采用关系与授权。当前不是可直接编辑的宿主源码目录，也不是把源码全文直接存进脚本文档。
-- [Blob Store](../../../packages/asset-store/src/blobs/store.ts)：字节文件与 SQL 元数据协作；这一现状不决定后续工作区存储选择。
+- [Blob Store](../../../packages/kernel/src/asset-store/blobs/store.ts)：字节文件与 SQL 元数据协作；这一现状不决定后续工作区存储选择。
 - [CodeAct 合同](../../architecture/application/agent/tool-system.md)：已有按次 QuickJS 执行及脚本附件读取；附件读取不等于正式文件执行入口，也不代表持久代码实例已经实现。
-- [Extension SDK](../../../packages/extension-sdk/src/index.ts)及 [Host](../../../packages/extension-sdk/extension-host/src/instance.ts)：已有 State 订阅与实例注销。
+- [Extension SDK](../../../packages/extension-sdk/src/index.ts)及 [Host](../../../packages/kernel/src/extension-host/instance.ts)：已有 State 订阅与实例注销。
 - [Prompt Processor](../../../packages/extension-sdk/src/prompt-processing.ts)：已有按构建处理采用条目的正文及本轮激活结果的接口。它不是已经接好的任意脚本动态 Prompt 入口。
 
 ## 3. 执行环境与权限

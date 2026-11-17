@@ -1,4 +1,4 @@
-import type { NarrativeStore } from '@loom-studio/application-data'
+import type { NarrativeStore } from '@loom-studio/application-runtime/data'
 import type { ExtensionInstallationTarget } from '@loom-studio/application-runtime'
 
 export async function canAccessExtensionState(

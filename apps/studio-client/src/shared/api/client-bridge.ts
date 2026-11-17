@@ -17,7 +17,11 @@ export function createClientBridge(options: ClientBridgeOptions): ClientBridge {
     url: options.endpoint, methodOverride: 'POST', fetch: createSessionFetch(rawFetch, authEndpoint),
   })] })
   return { call: <T = JsonValue>(method: string, params?: JsonValue, requestOptions?: { signal?: AbortSignal }) => {
-    const platform = ['application', 'official', 'directories', 'settings', 'logs', 'ai', 'system', 'docs', 'extensions', 'diagnostics', 'kernel'].includes(method.split('.')[0]!)
-    return client.mutation(platform ? method : 'kernel.invoke', platform ? params : { method, params }, requestOptions) as Promise<T>
+    const platform = ['application', 'official', 'directories', 'settings', 'logs', 'ai', 'system', 'extensions', 'diagnostics', 'resourceDownloads', 'dashboard'].includes(method.split('.')[0]!)
+    return client.mutation(
+      platform ? method : 'extensions.invoke',
+      platform ? params : { packageId: method.split('.')[0] ?? '', method, params },
+      requestOptions,
+    ) as Promise<T>
   } }
 }

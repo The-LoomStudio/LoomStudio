@@ -102,18 +102,19 @@ describe('Studio Server Extension data capabilities', () => {
         payloadIds: [otherPayload.payload.id],
       })
 
-      const ownPayload = await callRpc<{ id: string; packageId: string }>(port, 'example.data-capabilities.publish', {})
-      await expect(callRpc<Array<{ id: string; packageId: string }>>(
-        port,
-        'example.data-capabilities.listPayloads',
-        {},
+      const invoke = <T>(method: string, params: unknown = {}) =>
+        callRpc<T>(port, 'extensions.invoke', { packageId: 'example.data-capabilities', method: `example.data-capabilities.${method}`, params })
+
+      const ownPayload = await invoke<{ id: string; packageId: string }>('publish')
+      await expect(invoke<Array<{ id: string; packageId: string }>>(
+        'listPayloads',
       )).resolves.toEqual([
         expect.objectContaining({ id: ownPayload.id, packageId: 'example.data-capabilities' }),
       ])
-      await expect(callRpc(port, 'example.data-capabilities.readPayload', {
+      await expect(invoke('readPayload', {
         payloadId: otherPayload.payload.id,
       })).rejects.toThrow('owned by another package')
-      await callRpc(port, 'example.data-capabilities.bind', {
+      await invoke('bind', {
         cardId: createdCard.card.id,
         expectedVersion: otherBound.card.version,
       })
@@ -148,7 +149,7 @@ describe('Studio Server Extension data capabilities', () => {
           ],
         },
       })
-      await callRpc(port, 'example.data-capabilities.clearBindings', {
+      await invoke('clearBindings', {
         cardId: createdCard.card.id,
         expectedVersion: boundCard.card.version,
       })
@@ -166,7 +167,7 @@ describe('Studio Server Extension data capabilities', () => {
       const narrative = await callRpc<{ nodes: Array<{ id: string }> }>(port, 'application.getNarrativePage', {
         timelineId: timeline.timeline.id,
       })
-      const media = await callRpc<{ assetId: string }>(port, 'example.data-capabilities.publishAsset', {})
+      const media = await invoke<{ assetId: string }>('publishAsset')
       const provider = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
         providerExtensionId: 'official.fake',
         displayName: 'Extension Data Test Provider',
@@ -189,14 +190,14 @@ describe('Studio Server Extension data capabilities', () => {
         agentSessionId: agentSession.session.id,
         input: 'Record this turn.',
       })
-      await expect(callRpc(port, 'example.data-capabilities.saveRecord', {
+      await expect(invoke('saveRecord', {
         timelineId: timeline.timeline.id,
         nodeId: 'missing-node',
         agentSessionId: agentSession.session.id,
         messageId: turn.entries.user.id,
         assetId: media.assetId,
       })).rejects.toThrow('Narrative Node not found')
-      const record = await callRpc<{ bindings: Array<{ kind: string }> }>(port, 'example.data-capabilities.saveRecord', {
+      const record = await invoke<{ bindings: Array<{ kind: string }> }>('saveRecord', {
         timelineId: timeline.timeline.id,
         nodeId: narrative.nodes[0]!.id,
         agentSessionId: agentSession.session.id,
@@ -228,14 +229,12 @@ describe('Studio Server Extension data capabilities', () => {
         packageId: 'other.package',
         recordId: listedRecords.records[0]!.id,
       })).rejects.toThrow('not owned by package')
-      await callRpc(port, 'example.data-capabilities.saveTimelineConfig', {
+      await invoke('saveTimelineConfig', {
         timelineId: timeline.timeline.id,
         value: { style: 'watercolor' },
       })
-      await expect(callRpc<Array<{ scope: { kind: string; timelineId: string }; value: unknown }>>(
-        port,
-        'example.data-capabilities.listConfigs',
-        {},
+      await expect(invoke<Array<{ scope: { kind: string; timelineId: string }; value: unknown }>>(
+        'listConfigs',
       )).resolves.toEqual([
         expect.objectContaining({
           scope: { kind: 'timeline', timelineId: timeline.timeline.id },
@@ -244,8 +243,8 @@ describe('Studio Server Extension data capabilities', () => {
       ])
 
       await callRpc(port, 'application.deleteNarrativeTimeline', { timelineId: timeline.timeline.id })
-      await expect(callRpc(port, 'example.data-capabilities.listConfigs', {})).resolves.toEqual([])
-      await expect(callRpc(port, 'example.data-capabilities.listRecords', {})).resolves.toEqual([])
+      await expect(invoke('listConfigs')).resolves.toEqual([])
+      await expect(invoke('listRecords')).resolves.toEqual([])
       expect((await authenticatedFetch(port, `/assets/${media.assetId}`)).status).toBe(200)
     })
   })

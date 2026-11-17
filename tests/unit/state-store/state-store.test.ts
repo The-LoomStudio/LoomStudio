@@ -1,5 +1,5 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createStateStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createStateStore } from '@loom-studio/application-runtime/data'
 import type { JsonObject } from '@loom-studio/shared'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { createId } from '@loom-studio/shared'
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger, readLogFailure, type LogRecord } from '@loom-studio/logging'
 import { createJsonlFileSink, createJsonlLogReader } from '@loom-studio/logging/node'
-import { resolveLoomStudioLocalPaths } from './platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { createStudioServer } from './server.js'
 
 const defaultPort = 18010
@@ -189,6 +189,8 @@ export function runStudioServerCli(): void {
   void main().catch(error => {
     if (isAddressInUseError(error)) {
       console.error(`Loom Studio server port ${error.port ?? defaultPort} is already in use. Stop the existing server or set PORT to another port.`)
+    } else if (isDataRootLockedError(error)) {
+      console.error(error.message)
     } else {
       console.error(error)
     }
@@ -198,4 +200,8 @@ export function runStudioServerCli(): void {
 
 function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException & { port?: number } {
   return error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
+}
+
+function isDataRootLockedError(error: unknown): error is Error & { code: 'server.data_root_locked' } {
+  return error instanceof Error && 'code' in error && error.code === 'server.data_root_locked'
 }

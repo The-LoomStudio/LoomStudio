@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
-import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
+import { createMemorySecretBackend } from '@loom-studio/kernel/secret-store'
 import { authenticatedFetch, callRpc } from './helpers.js'
 import type { ApplyStateMutationResult, StateChangeEvent } from '@loom-studio/application-runtime'
 import { unzipSync, zipSync } from 'fflate'
@@ -48,8 +48,11 @@ export function activate(ctx) {
       })).toString('base64'),
     }
     const cards: Array<{ id: string; version: number }> = []
-    const status = (port: number, cardId: string) => callRpc(port, 'extensions.callPackageRpc', {
+    const status = (port: number, cardId: string) => callRpc(port, 'extensions.invoke', {
       packageId, target: { kind: 'card', cardId }, method: `${packageId}.status`,
+    })
+    const invokeGlobal = (port: number, method: string, params: unknown = {}) => callRpc(port, 'extensions.invoke', {
+      packageId, method, params,
     })
     const first = createStudioServer(options)
     try {
@@ -70,7 +73,7 @@ export function activate(ctx) {
         })
       }
       await expect(callRpc(port, 'extensions.listPackages', {})).resolves.toEqual({ items: [] })
-      await expect(callRpc(port, `${packageId}.status`, {})).rejects.toThrow()
+      await expect(invokeGlobal(port, `${packageId}.status`)).rejects.toThrow()
       await expect(status(port, cards[0]!.id)).resolves.toEqual({ grants: ['state'] })
       await expect(status(port, cards[1]!.id)).resolves.toEqual({ grants: [] })
       const target = { kind: 'card', cardId: cards[0]!.id }
@@ -214,6 +217,8 @@ export function activate(ctx) {
       extensionInstalledDirectory: join(root, 'app/extensions'),
       secretBackend: createMemorySecretBackend(),
     }
+    const invokeState = <T>(port: number, method: string, params: unknown = {}) =>
+      callRpc<T>(port, 'extensions.invoke', { packageId: 'example.state', method: `example.state.${method}`, params })
     const first = createStudioServer(options)
     try {
       const { port } = await first.listen(0)
@@ -225,7 +230,7 @@ export function activate(ctx) {
       })).resolves.toMatchObject({
         module: { desired: { enabled: true, grants: { 'events.subscribe': ['state'] } } },
       })
-      await expect(callRpc(port, 'example.state.status', {})).resolves.toEqual({ active: true, grants: ['state'] })
+      await expect(invokeState(port, 'status')).resolves.toEqual({ active: true, grants: ['state'] })
       const initial = await callRpc<{ snapshot: { revisionId: string } }>(port, 'application.getStateSnapshot', { target: { scope: 'global' } })
       const ui = await callRpc<ApplyStateMutationResult>(port, 'application.applyStateMutation', {
         target: { scope: 'global' }, expectedRevisionId: initial.snapshot.revisionId,
@@ -235,9 +240,9 @@ export function activate(ctx) {
         target: { scope: 'global' }, expectedRevisionId: ui.snapshot.revisionId,
         operations: [{ op: 'set', path: '/subscriptionProbe', value: 2 }], idempotencyKey: 'extension-once',
       }
-      const extension = await callRpc<{ snapshot: { revisionId: string }; changesetId: string }>(port, 'example.state.write', extensionInput)
-      await callRpc(port, 'example.state.write', extensionInput)
-      const changes = await callRpc<StateChangeEvent[]>(port, 'example.state.changes', {})
+      const extension = await invokeState<{ snapshot: { revisionId: string }; changesetId: string }>(port, 'write', extensionInput)
+      await invokeState(port, 'write', extensionInput)
+      const changes = await invokeState<StateChangeEvent[]>(port, 'changes')
       expect(changes).toEqual([
         { target: { scope: 'global' }, revisionId: ui.snapshot.revisionId, changesetId: ui.mutation.changesetId, paths: ['/subscriptionProbe'] },
         { target: { scope: 'global' }, revisionId: extension.snapshot.revisionId, changesetId: extension.changesetId, paths: ['/subscriptionProbe'] },
@@ -250,7 +255,7 @@ export function activate(ctx) {
         target, expectedRevisionId: timelineState.snapshot.revisionId,
         operations: [{ op: 'set', path: '/subscriptionProbe', value: 3 }],
       })
-      expect(await callRpc<StateChangeEvent[]>(port, 'example.state.changes', {})).toEqual([
+      expect(await invokeState<StateChangeEvent[]>(port, 'changes')).toEqual([
         ...changes,
         { target, revisionId: changed.snapshot.revisionId, changesetId: changed.mutation.changesetId, paths: ['/subscriptionProbe'] },
       ])
@@ -261,7 +266,7 @@ export function activate(ctx) {
     const second = createStudioServer(options)
     try {
       const { port } = await second.listen(0)
-      await expect(callRpc(port, 'example.state.status', {})).resolves.toEqual({ active: true, grants: ['state'] })
+      await expect(invokeState(port, 'status')).resolves.toEqual({ active: true, grants: ['state'] })
       await expect(callRpc(port, 'extensions.listPackages', {})).resolves.toMatchObject({
         items: [{
           packageId: 'example.state',

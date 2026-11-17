@@ -9,7 +9,8 @@ Extension Package 允许零 Module，仅携带声明式资源。静态贡献声�
 本文对应当前实现与可执行验证：
 
 - [`packages/extension-sdk/src/index.ts`](../../../packages/extension-sdk/src/index.ts)
-- [`packages/extension-sdk/extension-host/src/index.ts`](../../../packages/extension-sdk/extension-host/src/index.ts)
+- [`packages/kernel/src/extension-host/index.ts`](../../../packages/kernel/src/extension-host/index.ts)
+- [`packages/kernel/src/extension-manager/`](../../../packages/kernel/src/extension-manager/)
 - [`apps/studio-server/src/extensions/`](../../../apps/studio-server/src/extensions/)
 - [`apps/studio-client/src/features/extension-renderers/`](../../../apps/studio-client/src/features/extension-renderers/)
 - [`scripts/dev/verify-server-extension.ts`](../../../scripts/dev/verify-server-extension.ts)
@@ -42,7 +43,7 @@ Card Package 可携带 Extension Package 实际归档。安装身份由 `package
 
 Server Extension Manager 负责：
 
-- 默认从 `<installationRoot>/official/extensions/*` 发现官方包，从 `<installationRoot>/extensions/<packageId>` 发现安装包；安装目录按 Package ID 平铺，不含版本子目录。开发链接默认读取 `<dataRoot>/config/extensions-dev-links.json`，模块状态保存在 `<dataRoot>/config/extensions-state.json`，与包代码目录分开；Server 配置可覆盖发现目录、安装根和状态目录。测试扩展位于 `tests/fixtures/extensions/*`，仅通过显式开发配置加载；
+- 默认从 `<installationRoot>/official/extensions/*` 发现官方包，从 `<installationRoot>/extensions/<packageId>` 发现安装包；安装目录按 Package ID 平铺，不含版本子目录。模块启用状态、官方初始化记录与开发链接默认持久化在共享 SQLite 的 `platform.extension-state@1`（`extension_installations`、`extension_official_setup`、`extension_dev_links`），启动加载时自动一次性迁移导入旧 `<dataRoot>/config/extensions-*.json`（与包代码目录分开），并保留内存同步快照；Server 配置可覆盖发现目录、安装根和状态目录。测试扩展位于 `tests/fixtures/extensions/*`，仅通过显式开发配置加载；
 - 按 `packageId` 建立 Catalog 并处理来源冲突；
 - 校验 Manifest v2、Module ID、runtime 与 entry 路径边界；
 - 发现 Client-only 和纯资源 Package，但只编排 Server Module；
@@ -58,7 +59,7 @@ Server Extension Manager 负责：
 ### 生命周期与异常恢复保证
 
 - **卸载容错与重试（Uninstallation Resilience）**：Server 卸载扩展时，先持久化将其标记为禁用，再尽力 `dispose()` 所有关联模块。若过程中发生异常，保留包来源记录、授权声明与 Catalog 状态，明确未完成状态并通过平台诊断暴露，允许调用方重试卸载或重建恢复，绝不损坏全局状态一致性。
-- **状态订阅安全（State Subscription Safety）**：`packages/extension-sdk/extension-host` 保证预先已处于 Abort 状态的 Signal 绝不会创建有效订阅；正常取消订阅与重复调用 `dispose()` 完全幂等。
+- **状态订阅安全（State Subscription Safety）**：统一 `ExtensionHost`（`packages/kernel/src/extension-host`，同时纳管 `kind: 'extension' | 'script'`）保证预先已处于 Abort 状态的 Signal 绝不会创建有效订阅；正常取消订阅与重复调用 `dispose()` 完全幂等。
 - **客户端实例隔离与清理**：Client Extension Host 在模块卸载或清理发生异常时，严格隔离故障，绝不影响其他正常注册的扩展；失效实例立即失去资源访问权，且旧 Catalog 异步回调绝不会复活已卸载的实例。
 
 ## 用户发起的原生数据批量导入
@@ -258,6 +259,7 @@ Server Module 的 `ctx.documents` 当前执行以下默认拒绝规则：
 Kernel 当前提供：
 
 ```text
+extensions.invoke
 extensions.listPackages
 extensions.installPackage
 extensions.installPackageZip

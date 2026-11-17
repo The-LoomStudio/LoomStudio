@@ -1,9 +1,9 @@
 import type { JsonValue } from '@loom-studio/shared'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore, type DocumentStore } from '@loom-studio/document-store'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import { createInMemoryDocumentStore, type DocumentStore } from '@loom-studio/kernel/document-store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createContext, createExtensionScope } from '../../../packages/extension-sdk/extension-host/src/instance.js'
-import type { ExtensionModuleRecord } from '../../../packages/extension-sdk/extension-host/src/types.js'
+import { createContext, createExtensionScope } from '../../../packages/kernel/src/extension-host/instance.js'
+import type { ExtensionModuleRecord } from '../../../packages/kernel/src/extension-host/types.js'
 import { createExtensionFixture, createExtensionHostHarness, manifest } from './helpers.js'
 
 describe('extension host document ownership contract', () => {
@@ -23,11 +23,11 @@ describe('extension host document ownership contract', () => {
     expect(document?.meta.createdBy).toEqual({ kind: 'extension', id: 'example.documents' })
   })
 
-  it('emits docs.changed for extension-owned document writes', async () => {
+  it('emits data.changed for extension-owned document writes', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     const events: JsonValue[] = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed'], event => { events.push(event as unknown as JsonValue) })
+    kernel.getEventBus().subscribe(['data.changed'], event => { events.push(event as unknown as JsonValue) })
     const dir = createExtensionFixture('document-event-extension', {
       manifest: manifest('example.documentEvents', [{ name: 'example.documentEvents.ping' }], ['example.documentEvents.note']),
       source: `export async function activate(ctx) { await ctx.documents.write({ id: 'example.documentEvents:1', type: 'example.documentEvents.note', content: { ok: true }, expectedVersion: 'new' }); ctx.rpc.register('example.documentEvents.ping', () => ({ ok: true })) }`,
@@ -38,9 +38,15 @@ describe('extension host document ownership contract', () => {
 
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({
-      name: 'docs.changed',
+      name: 'data.changed',
       payload: {
-        documents: [{ id: 'example.documentEvents:1', type: 'example.documentEvents.note', version: 1, tombstoned: false }],
+        operations: [{
+          store: 'documents',
+          kind: 'create',
+          entityId: 'example.documentEvents:1',
+          entityType: 'example.documentEvents.note',
+          toVersion: 1,
+        }],
       },
       meta: { source: 'extension:example.documentEvents' },
     })

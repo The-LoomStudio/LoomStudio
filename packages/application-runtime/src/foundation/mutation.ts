@@ -1,4 +1,4 @@
-import type { DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
+import type { DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import type { MutationReceipt, RuntimeRequestContext } from '../types.js'
 import type { ApplicationRuntimeContext } from './application-context.js'
 

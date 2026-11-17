@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
+import type { TokenUsage } from '@loom-studio/shared/tokenizer/contracts'
 import type {
   AssistantChatMessage,
   ChatMessage,

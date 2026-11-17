@@ -1,5 +1,5 @@
 import type { createApplicationRuntime } from '@loom-studio/application-runtime'
-import type { AssetStore } from '@loom-studio/asset-store'
+import type { AssetStore } from '@loom-studio/kernel/asset-store'
 import type { createCardDirectoryMedia } from '../resource-directories/card-directory-media.js'
 import type { createExtensionImportConversions } from '../extensions/import-conversion.js'
 import type { createStudioHttpServer } from '../http/http-server.js'

@@ -2,6 +2,7 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type {
   AiGatewayCapabilityRegistry,
   AiGatewayInvocationCaller,
+  AiGatewayInvocationContext,
   AiGatewayInvokeResult,
 } from './capability-registry.js'
 import type { AiGatewayRun, AiGatewayRunState } from './types.js'
@@ -29,12 +30,14 @@ export type ProfiledAiGateway = {
     input: JsonValue
     signal?: AbortSignal
     caller?: AiGatewayInvocationCaller
+    context?: AiGatewayInvocationContext
   }): Promise<AiGatewayInvokeResult>
   createRun(input: {
     profileId: string
     input: JsonValue
     signal?: AbortSignal
     caller?: AiGatewayInvocationCaller
+    context?: AiGatewayInvocationContext
   }): AiGatewayRun<AiGatewayInvokeResult>
 }
 
@@ -73,7 +76,7 @@ export function createProfiledAiGateway(options: {
   }
 }
 
-function createProfiledRun(start: (signal: AbortSignal) => Promise<AiGatewayInvokeResult>, externalSignal?: AbortSignal): AiGatewayRun<AiGatewayInvokeResult> {
+export function createProfiledRun(start: (signal: AbortSignal) => Promise<AiGatewayInvokeResult>, externalSignal?: AbortSignal): AiGatewayRun<AiGatewayInvokeResult> {
   const id = `gateway-run-${Math.random().toString(36).slice(2)}`
   const controller = new AbortController()
   const events = new GatewayEventStream<AiGatewayInvokeResult>()

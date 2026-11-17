@@ -2,7 +2,7 @@ import { resourceReleaseSchema } from '@loom-studio/shared'
 import { normalizeCardBundleArtifact, type CardBundleArtifact, type PortableExtensionPayloadArtifact } from '@loom-studio/application-runtime/artifacts'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
 import { crc32 } from 'node:zlib'
-import { readZipChecksums } from './zip-checksums.js'
+import { readZipChecksums } from '@loom-studio/kernel/asset-store'
 import { loadCardResourceFiles, projectCardFiles, restoreCardFiles, validateBundlePath, type CardFilesIndex } from './card-bundle-files.js'
 
 const manifestPath = 'manifest.json'

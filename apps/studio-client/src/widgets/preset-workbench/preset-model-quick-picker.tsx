@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Bot, Check, ChevronDown, Layers, Server, X } from 'lucide-react'
+import { Bot, Check, Layers, Server, X } from 'lucide-react'
 import {
   Button,
   DropdownMenu,
@@ -7,7 +7,7 @@ import {
   DropdownMenuTrigger,
   SearchField,
 } from '@loom-studio/ui'
-import type { ModelProfile, PromptResource, ProviderAccount, ProviderModelSelection } from '../../entities/index.js'
+import type { ModelProfile, PromptResource, ProviderAccount } from '../../entities/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'

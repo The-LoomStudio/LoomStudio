@@ -1,4 +1,6 @@
-import type { ReactElement } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createElement, type ReactElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { formatEntityReference } from '@loom-studio/shared'
 import { StudioResourcePanels } from '../../../apps/studio-client/src/app/studio-resource-panels.js'
@@ -14,9 +16,19 @@ describe('Resource result navigation', () => {
       openResource: vi.fn(),
     }
     const uiState = { setSelectedPresetId: vi.fn() }
-    const panels = StudioResourcePanels({
-      state: { api: {}, promptResourceDrafts: [], startup: { ready: () => true } }, uiState, navigation, assetWorkspaceId: 'workspace',
-    } as unknown as Parameters<typeof StudioResourcePanels>[0])
+    let panels!: ReturnType<typeof StudioResourcePanels>
+    function Harness() {
+      panels = StudioResourcePanels({
+        state: { api: {}, promptResourceDrafts: [], startup: { ready: () => true } }, uiState, navigation, assetWorkspaceId: 'workspace',
+      } as unknown as Parameters<typeof StudioResourcePanels>[0])
+      return null
+    }
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    try {
+      renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(Harness)))
+    } finally {
+      client.clear()
+    }
     const props = (panels[kind](true) as ReactElement<{ onSelectResource(id: string): void }>).props
     props.onSelectResource('created')
     expect(navigation.openUri.mock.calls[0]?.[0]).toBe(formatEntityReference({ kind: 'entity', type: 'resource', id: 'created' }))

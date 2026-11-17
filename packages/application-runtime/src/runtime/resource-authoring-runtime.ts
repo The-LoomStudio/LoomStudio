@@ -1,7 +1,7 @@
 import { resolvePackageIcon, assertPackageDependencyRevisions } from '../extensions/package-dependency.js'
 import { createHash } from 'node:crypto'
 import { authoringApplySchema, authoringResourceSchema, toolReferenceSchema, type AuthoringApplyInput, type AuthoringResource, type AuthoringNode, type JsonObject } from '@loom-studio/shared'
-import type { PromptResource } from '@loom-studio/application-data'
+import type { PromptResource } from '../data/index.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { readDocument } from '../foundation/document-store.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'

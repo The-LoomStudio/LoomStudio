@@ -1,12 +1,11 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { defaultSessionSummaryPolicy, type ApplicationRuntime, type AgentRunEvent } from '@loom-studio/application-runtime'
-import { AgentStoreError } from '@loom-studio/application-data'
+import { AgentStoreError } from '@loom-studio/application-runtime/data'
 import { extensionInstallationId, type ExtensionAgentTaskCreate, type ExtensionAgentTaskInvoke,
   type ExtensionAgentTaskResult, type ExtensionAgentTaskSnapshot, type ExtensionAgentTaskProgress,
   type ExtensionAgentTaskProgressEvent } from '@loom-studio/extension-sdk'
 import type { JsonValue } from '@loom-studio/shared'
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
-import { getAgentRunService } from '../agents/agent-run-service.js'
+import type { DocumentRecord, DocumentStore } from '@loom-studio/kernel/document-store'
 
 type Owner = { packageId: string; installationId: string }
 type Target = { timelineId: string; branchId: string }
@@ -17,7 +16,7 @@ const documentType = 'application.extension-agent-task'
 const documentId = (sessionId: string) => `extension-agent-task:${sessionId}`
 
 export function createExtensionAgentTasks({ runtime, documents }: { runtime: ApplicationRuntime; documents: DocumentStore }) {
-  const runs = getAgentRunService(runtime)
+  const runs = runtime.runs
   const invoking = new Set<string>()
   async function requireTask(owner: Owner, target: Target, sessionId: string, signal?: AbortSignal, includeTombstone = false) {
     signal?.throwIfAborted()
@@ -187,7 +186,7 @@ export function createExtensionAgentTasks({ runtime, documents }: { runtime: App
       return read(owner, target, session.id, signal)
     },
     read,
-    async invoke(owner: Owner, target: Target, input: ExtensionAgentTaskInvoke, signal?: AbortSignal, observation?: import('@loom-studio/extension-host').ExtensionObservationContext): Promise<ExtensionAgentTaskResult> {
+    async invoke(owner: Owner, target: Target, input: ExtensionAgentTaskInvoke, signal?: AbortSignal, observation?: import('@loom-studio/kernel/extension-host').ExtensionObservationContext): Promise<ExtensionAgentTaskResult> {
       const document = await requireTask(owner, target, input.sessionId, signal)
       if (!input.input.trim()) throw new Error('Agent task input is required')
       if (invoking.has(input.sessionId)) throw new Error('Agent task is already running')
@@ -211,7 +210,6 @@ export function createExtensionAgentTasks({ runtime, documents }: { runtime: App
         const result = await finish(record, runId)
         const latest = await documents.get(document.id) as DocumentRecord<Ownership>
         await save(latest, { result })
-        runs.acknowledgeCompletion(runId)
         return result
       } catch (error) {
         if (runId && !terminal) {

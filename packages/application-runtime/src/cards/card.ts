@@ -1,5 +1,5 @@
 import { parseCardFrameworkFields } from './card-framework.js'
-import type { DocumentRecord } from '@loom-studio/document-store'
+import type { DocumentRecord } from '@loom-studio/kernel/document-store'
 import type { JsonObject } from '@loom-studio/shared'
 import { createId, nowIso, normalizeMacroOptions } from '@loom-studio/shared'
 import { isObject } from '../foundation/json.js'

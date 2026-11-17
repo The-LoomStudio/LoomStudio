@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseMacSystemProxy, resolveSystemProxyUrl } from '../../../apps/studio-server/src/platform/system-proxy.js'
+import { parseMacSystemProxy, resolveSystemProxyUrl } from '@loom-studio/kernel/platform'
 
 describe('system proxy resolution', () => {
   it('prefers an explicit proxy environment variable', () => {

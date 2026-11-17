@@ -1,4 +1,4 @@
-import type { NarrativeNode } from '@loom-studio/application-data'
+import type { NarrativeNode } from '../data/index.js'
 import {
   defaultHistoryProjectionBudget,
   type HistoryProjectionBudget,

@@ -83,8 +83,8 @@ function buildInvocationReferences(input: GatewayInvokeChatInput, invocationId: 
   return {
     invocationId,
     runId: input.runId,
-    sessionId: input.sessionId,
-    branchId: input.branchId,
+    ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+    ...(input.branchId !== undefined ? { branchId: input.branchId } : {}),
     ...(input.model ? {
       providerProfileId: input.model.providerProfileId,
       modelId: input.model.modelId,

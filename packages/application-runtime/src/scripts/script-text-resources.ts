@@ -1,5 +1,5 @@
 import { isLoomScriptFileName, loomScriptMediaType, serializeMarkdownTextRule } from '@loom-studio/shared/loom-scripts'
-import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentTransaction } from '@loom-studio/kernel/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { resolveLoomScriptSettings, resolveTextTransformContributionRule, type LoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { JsonValue } from '@loom-studio/shared'

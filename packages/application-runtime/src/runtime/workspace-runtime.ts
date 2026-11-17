@@ -1,4 +1,4 @@
-import type { WorkspaceEntry, WorkspaceRevision } from '@loom-studio/application-data'
+import type { WorkspaceEntry, WorkspaceRevision } from '../data/index.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { RuntimeRequestContext, PreparedBlobStorageWrite } from '../types.js'
 import { narrativeWriteContext, requireNarratives } from './context.js'

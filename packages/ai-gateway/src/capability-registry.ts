@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
+import type { TokenUsage } from '@loom-studio/shared/tokenizer/contracts'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import { createOfficialFakeChatCompletion } from './fake-provider.js'
@@ -50,11 +50,24 @@ export type AiGatewayInvocationCaller = {
   id?: string
 }
 
+export type AiGatewayInvocationContext = {
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
+  timelineId?: string
+  installationId?: string
+  packageId?: string
+  moduleId?: string
+  eventId?: string
+  eventName?: string
+}
+
 export type AiGatewayInvokeInput = {
   profileId: string
   input: JsonValue
   signal?: AbortSignal
   caller?: AiGatewayInvocationCaller
+  context?: AiGatewayInvocationContext
 }
 
 export type AiGatewayRegisteredInvokeInput = {

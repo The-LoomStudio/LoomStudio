@@ -56,7 +56,7 @@ pnpm exec vitest run tests/unit/studio-server tests/integration/studio-server
 - [HTTP 边界](./src/http/README.md)：本地认证、静态/媒体投递、请求取消与 tRPC adapter。
 - [RPC 边界](./src/rpc/README.md)：类型化路由、参数校验与 Runtime/宿主服务交接。
 - [`src/codecs/`](./src/codecs/)：Card PNG / ZIP 编解码与打包器（`card-png.ts`, `card-bundle-zip.ts`）。
-- [`src/platform/`](./src/platform/)：本地运行路径、系统代理与网络设置（`local-paths.ts`, `system-proxy.ts`, `network-settings.ts`）。
+- [`packages/kernel/src/platform/`](../../packages/kernel/src/platform/)：本地运行路径、系统代理、进程锁与网络设置（`local-paths.ts`, `system-proxy.ts`, `network-settings.ts`, `process-lock.ts`）。
 - [`src/logging/`](./src/logging/)：结构化日志观测适配器（`ai-gateway-logging.ts`, `document-store-logging.ts`）。
 - [`src/extensions/`](./src/extensions/)：Package Source、安装、desired state、关联 Loom Script 归档导出（`extension-script-export.ts`）和 Server Module 编排。
 - [资源下载与查更](./src/resource-downloads/README.md) / [`src/resource-adoption/`](./src/resource-adoption/)：来源适配、后端暂存、任务与版本记录；采用预览、落地确认与来源凭据存储由 `resource-adoption/` 交给现有 Runtime／安装器／SecretStore。
@@ -114,10 +114,10 @@ Card、Asset 的独立二进制入口保持各自上限；此请求预算不是�
 
 | 依赖 | 实际入口与职责 |
 | --- | --- |
-| `@trpc/server` | [`http/trpc-request.ts`](./src/http/trpc-request.ts) 使用官方 Fetch adapter；主应用统一 POST、关闭 batching；[`rpc/trpc/context.ts`](./src/rpc/trpc/context.ts) 传播调用链与取消、封装领域错误码，不向客户端输出 stack。动态扩展经 `kernel.invoke` 进入原 Kernel 调度。 |
+| `@trpc/server` | [`http/trpc-request.ts`](./src/http/trpc-request.ts) 使用官方 Fetch adapter；主应用统一 POST、关闭 batching；[`rpc/trpc/context.ts`](./src/rpc/trpc/context.ts) 传播调用链与取消、封装领域错误码，不向客户端输出 stack。动态扩展经 `extensions.invoke` 进入原 Kernel 调度。 |
 | `zod` | `rpc/trpc/` 的结构化输入边界；已有领域 reader 通过 adapter 复用，不机械重写已存在的 Manifest/Artifact parser，也不在可信内部函数重复 parse。 |
 | `fflate` | `codecs/`、扩展安装与官方内容的 ZIP 编解码。`zip-checksums.ts` 只读取完整性元数据，Card 导入另以原生 `node:zlib` CRC32 校验实际字节，不建立第二套解压器。 |
-| `semver` | [`extensions/extension-download.ts`](./src/extensions/extension-download.ts) 校验扩展依赖版本范围；来源与循环检查由安装流程负责，不等于自动版本求解或自动更新。 |
+| `semver` | [`extension-download.ts`](../../packages/kernel/src/extension-manager/extension-download.ts) 校验扩展依赖版本范围；来源与循环检查由安装流程负责，不等于自动版本求解或自动更新。 |
 
 SQLite 由 Data Engine 的原生 `node:sqlite` 实现拥有；系统凭据由 Secret Store 的 `@napi-rs/keyring` 后端拥有。Server 注入这些能力，不复制连接管理或凭据持久化。
 

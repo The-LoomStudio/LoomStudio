@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import type { CardDirectoryCatalog, CardDirectoryPreview, OpenCardDirectoryResult } from '@loom-studio/shared'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { defaultCardPng, encodeCardBundlePng } from '../../../apps/studio-server/src/codecs/card-png.js'
 import { encodeCardBundleZip } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
 import { authenticatedFetch, callRpc } from './helpers.js'
@@ -73,8 +73,20 @@ it('connects archive import, live directory media, in-place Apply and copied-fol
     expect(preview.conflicts).toEqual([])
     await callRpc(port, 'directories.applyChanges', { cardId: card.id, token: preview.token })
     expect(await readFile(join(directory, manifest.media.avatar))).toEqual(replacement)
-    const updated = await callRpc<{ card: { id: string; description: string; promptResourceIds: string[] } }>(port, 'application.getCard', { cardId: card.id })
+    const updated = await callRpc<{ card: { id: string; description: string; promptResourceIds: string[]; updatedAt: string; version: number } }>(port, 'application.getCard', { cardId: card.id })
     expect(updated.card).toMatchObject({ id: card.id, description: 'Edited in the source folder', promptResourceIds: card.promptResourceIds })
+    const immutableMedia = await authenticatedFetch(port, `/cards/${card.id}/media/avatar?v=${encodeURIComponent(updated.card.updatedAt)}`)
+    expect(immutableMedia.status).toBe(200)
+    expect(immutableMedia.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    await immutableMedia.arrayBuffer()
+    const versionMatchedMedia = await authenticatedFetch(port, `/cards/${card.id}/media/avatar?v=${updated.card.version}`)
+    expect(versionMatchedMedia.status).toBe(200)
+    expect(versionMatchedMedia.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+    await versionMatchedMedia.arrayBuffer()
+    const staleMedia = await authenticatedFetch(port, `/cards/${card.id}/media/avatar?v=stale-version`)
+    expect(staleMedia.status).toBe(200)
+    expect(staleMedia.headers.get('cache-control')).toBe('no-cache')
+    await staleMedia.arrayBuffer()
     expect(await callRpc(port, 'directories.previewCard', { cardId: card.id })).toMatchObject({ changes: [], conflicts: [] })
 
     const copied = join(localPaths.dataRoot, 'characters', 'Copied source')

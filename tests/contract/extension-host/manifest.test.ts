@@ -1,4 +1,4 @@
-import { parseExtensionManifest } from '@loom-studio/extension-host'
+import { parseExtensionManifest } from '@loom-studio/kernel/extension-host'
 import { describe, expect, it } from 'vitest'
 
 describe('extension manifest contract', () => {

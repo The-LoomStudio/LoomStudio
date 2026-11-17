@@ -143,7 +143,7 @@ Inline Mount 只替换渲染投影中的目标范围，不修改 Canonical Narra
 - [`apps/studio-client/src/features/loom-scripts/runtime/`](../../../apps/studio-client/src/features/loom-scripts/runtime/)
 - [`apps/studio-client/src/features/loom-scripts/model/client-script-runtime.ts`](../../../apps/studio-client/src/features/loom-scripts/model/client-script-runtime.ts)
 - [`apps/studio-server/src/scripts/script-service.ts`](../../../apps/studio-server/src/scripts/script-service.ts)
-- [`apps/studio-server/src/scripts/server-script-runtime.ts`](../../../apps/studio-server/src/scripts/server-script-runtime.ts)
+- [`packages/kernel/src/script-runtime/server-script-runtime.ts`](../../../packages/kernel/src/script-runtime/server-script-runtime.ts)（作为 `kind: 'script'` 模块并入统一 `ExtensionHost`）
 - [`client-renderer-host.md`](client-renderer-host.md)
 - [`../application/history-text-pipeline.md`](../application/history-text-pipeline.md)
 

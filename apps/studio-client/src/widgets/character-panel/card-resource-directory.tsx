@@ -269,7 +269,7 @@ export function CardResourceDirectory(props: {
     {location.item && location.folder === 'attachments' && location.item !== 'media' && current
       ? <img className={styles.cardImage} alt={location.item === 'avatar' ? t('directory.avatar') : t('directory.background')}
           src={cardMediaUrl(cardId, location.item === 'avatar' ? 'avatar' : 'background',
-            location.item === 'avatar' ? current.media?.avatarAssetId : current.media?.coverAssetId, mediaRevision)} /> : null}
+            location.item === 'avatar' ? current.media?.avatarAssetId : current.media?.coverAssetId, mediaRevision, current.updatedAt)} /> : null}
     {location.item === 'media' && location.folder === 'attachments' && props.directoryApi
       ? <CardResourceOverview api={props.directoryApi} cardId={cardId} onRefresh={props.onRefreshCards} t={t} /> : null}
     {location.folder === 'extensions' && location.item

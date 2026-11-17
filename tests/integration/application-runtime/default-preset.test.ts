@@ -1,12 +1,12 @@
 import { join } from 'node:path'
-import { createAssetStore, createBlobStore } from '@loom-studio/asset-store'
+import { createAssetStore, createBlobStore } from '@loom-studio/kernel/asset-store'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import type { AiGatewayRequest } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, composeAgentTurnPrompt, createPromptProcessorRegistry, type ToolDefinition } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import type { PromptResourceNode } from '../../../packages/application-runtime/src/prompt/prompt-resource-types.js'
 import type { PromptActivation } from '../../../packages/application-runtime/src/prompt/prompt-activation.js'
 import { describe, expect, it, onTestFinished } from 'vitest'
@@ -236,10 +236,12 @@ describe('bundled default preset', () => {
       expect(build).toBeDefined()
       expect(request).toBeDefined()
       expect((await runtime.getObservationRequest({ id: request.id }))?.request?.messages).toEqual(calls[0]!.messages)
-      expect((await runtime.getObservationBuild({ id: build.id }))?.build?.sources).toContainEqual(expect.objectContaining({
+      expect(result.buildId).toBe(build.id)
+      const persistedBuild = await runtime.getObservationBuild({ id: result.buildId })
+      expect(persistedBuild?.build?.sources).toContainEqual(expect.objectContaining({
         original: 'AUTHOR_SOURCE', rendered: 'PROCESSED:AUTHOR_SOURCE', resourceId: preset.id,
       }))
-      expect(result.promptBuildTrace.executions).toEqual([
+      expect(persistedBuild?.build?.promptBuildTrace?.executions).toEqual([
         { processorId: 'test/template', stage: 'prepare' },
         { processorId: 'test/template', stage: 'render', entryId: expect.any(String) },
       ])

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createAgentStore } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createAgentStore } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import { createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
 import type { ChatAttachment } from '@loom-studio/shared'
 import { projectSessionHistory } from '../../../packages/application-runtime/src/agents/session-history.js'

@@ -1,7 +1,7 @@
 import type { MacroInspection } from '@loom-studio/shared'
 import { useMemo } from 'react'
 import type { AgentSession, Card, NarrativeBranch, NarrativeNode, NarrativeTimeline, PromptProjection } from '../entities/index.js'
-import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prompt-build-steps.js'
+import { buildPromptBuildSteps, type PromptBuildStep } from '../features/prompt-build/model/build-prompt-build-steps.js'
 import { renderTemplateMacros, type MacroRenderContext } from '../features/state-variables/model/macro-renderer.js'
 import { readEmptyTimelineText } from './utils.js'
 import { openingChoiceText, type OpeningChoice } from '../features/cards/model/opening-choice.js'
@@ -19,6 +19,7 @@ export function useStudioDerivedValues(input: {
   narrativeInput: string
   promptMessages?: Parameters<typeof buildPromptBuildSteps>[0]['messages']
   promptProjection?: PromptProjection
+  promptBuildTrace?: unknown
   activationFacts: Parameters<typeof buildPromptBuildSteps>[0]['activationFacts']
   macroInspection?: MacroInspection
   sessionBusy: boolean
@@ -62,18 +63,28 @@ export function useStudioDerivedValues(input: {
     && !input.agentChatBusy
     && !input.sessionBusy
 
-  const promptBuildSteps = buildPromptBuildSteps({
-    card: input.selectedCardDetails,
-    userName: renderTemplateMacros('{{user}}', input.macroInspection ? { snapshot: input.macroInspection.snapshot } : macroContext),
-    timeline: input.timeline,
-    branch: input.branch,
-    nodes: input.nodes,
-    input: input.narrativeInput,
-    messages: input.promptMessages,
-    projection: input.promptProjection,
-    activationFacts: input.activationFacts,
-    promptBuildTrace: undefined,
-  }, input.t)
+  const resolvePromptBuildSteps = (build?: {
+    messages?: Parameters<typeof buildPromptBuildSteps>[0]['messages']
+    projection?: PromptProjection
+    promptBuildTrace?: unknown
+    macroInspection?: MacroInspection
+  }): PromptBuildStep[] => {
+    const activeInspection = build?.macroInspection ?? input.macroInspection
+    return buildPromptBuildSteps({
+      card: input.selectedCardDetails,
+      userName: renderTemplateMacros('{{user}}', activeInspection ? { snapshot: activeInspection.snapshot } : macroContext),
+      timeline: input.timeline,
+      branch: input.branch,
+      nodes: input.nodes,
+      input: input.narrativeInput,
+      messages: build?.messages ?? input.promptMessages,
+      projection: build?.projection ?? input.promptProjection,
+      activationFacts: input.activationFacts,
+      promptBuildTrace: build?.promptBuildTrace ?? input.promptBuildTrace,
+    }, input.t)
+  }
+
+  const promptBuildSteps = resolvePromptBuildSteps()
 
   return {
     canSend,
@@ -83,5 +94,6 @@ export function useStudioDerivedValues(input: {
     openingDraft,
     macroContext,
     promptBuildSteps,
+    resolvePromptBuildSteps,
   }
 }

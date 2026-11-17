@@ -1,13 +1,13 @@
 import type { ExtensionBackgroundContribution, ExtensionStyleContribution } from '@loom-studio/extension-sdk'
 import type { ExtensionTextTransformRuleContribution, ExtensionTextExtractorContribution, ExtensionPromptResourceContribution, ExtensionAgentToolContribution, ExtensionSettingContribution } from '@loom-studio/extension-sdk'
-import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
+import type { DiagnosticsRegistry } from './diagnostics/index.js'
 import type {
   DataCommitSource,
-} from '@loom-studio/data-engine'
+} from './data-engine/index.js'
 import type {
   DocumentStore,
-} from '@loom-studio/document-store'
-import type { ExtensionHost, ExtensionRpcHandler } from '@loom-studio/extension-host'
+} from './document-store/index.js'
+import type { ExtensionHost, ExtensionRpcHandler } from './extension-host/index.js'
 import type {
   EventCapabilityCategory,
   EventDefinition,
@@ -245,7 +245,7 @@ export type CreateKernelOptions = {
   protocolVersion?: string
 }
 
-export const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics']
+export const kernelNamespaces = ['system', 'events', 'extensions', 'diagnostics']
 
 export type RpcRegistryEntry = {
   handler: KernelRpcHandler

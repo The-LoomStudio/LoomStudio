@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createExtensionFixture, createExtensionHostHarness } from './helpers.js'
-import { countText } from '@loom-studio/tokenizer'
-import { createTextTokenCounter } from '@loom-studio/tokenizer/async'
+import { countText } from '@loom-studio/shared/tokenizer'
+import { createTextTokenCounter } from '@loom-studio/shared/tokenizer/async'
 
 describe('extension text token counting', () => {
   it('exposes arbitrary text counting without provider or resource access', async () => {

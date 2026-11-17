@@ -5,7 +5,7 @@ import type { ExtensionAgentTaskCreate, ExtensionAgentTaskInvoke, ExtensionAgent
 export type { ExtensionNarrativeSource, ExtensionNarrativeRead, ExtensionNarrativeSnapshot, ExtensionNarrativeActivity, ExtensionReadonlyFiles, ExtensionRecordArchive } from './narrative-work.js'
 import type { ClientStyleFactory, ExtensionStyleContribution } from './styles.js'
 export * from './styles.js'
-import type { TextTokenCounter } from '@loom-studio/tokenizer/contracts'
+import type { TextTokenCounter } from '@loom-studio/shared/tokenizer/contracts'
 import type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
@@ -13,10 +13,111 @@ import type {
   AiGatewayProviderRegistrationHandle,
   RegisteredAiGatewayProvider,
 } from '@loom-studio/ai-gateway'
-import type { DiagnosticInput } from '@loom-studio/diagnostics'
-import type { DocumentRecord, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
 import type { ExtensionLogAccess, ExtensionLogWriter } from '@loom-studio/logging'
 import type { ChatMessage, JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
+
+export type DiagnosticSeverity = 'error' | 'warning' | 'info'
+
+export type Diagnostic = {
+  id: string
+  severity: DiagnosticSeverity
+  code: string
+  message: string
+  source: string
+  packageId?: string
+  moduleId?: string
+  extensionId?: string
+  instanceId?: string
+  documentId?: string
+  correlationId?: string
+  callId?: string
+  createdAt: string
+  details?: JsonValue
+  occurrences?: number
+  lastSeenAt?: string
+}
+
+export type DiagnosticInput = Omit<Diagnostic, 'id' | 'createdAt' | 'occurrences' | 'lastSeenAt'> & {
+  id?: string
+  createdAt?: string
+}
+
+export type ActorRef = {
+  kind: 'kernel' | 'client' | 'extension' | 'workspace-adapter' | 'system'
+  id: string
+}
+
+export type DocumentSourceRef = {
+  kind: 'workspace-file' | 'import-package' | 'generated' | 'manual' | string
+  uri?: string
+  adapterId?: string
+  externalId?: string
+}
+
+export type TombstoneMeta = {
+  deletedAt: string
+  deletedBy: ActorRef
+  reason?: string
+}
+
+export type DocumentMeta = {
+  createdAt: string
+  updatedAt: string
+  createdBy: ActorRef
+  updatedBy: ActorRef
+  ownerExtensionId?: string
+  ownerInstallationId?: string
+  source?: DocumentSourceRef
+  tombstone?: TombstoneMeta
+}
+
+export type DocumentRecord<T = JsonValue> = {
+  id: string
+  type: string
+  version: number
+  content: T
+  meta: DocumentMeta
+}
+
+export type ChangesetOperation = {
+  kind: 'create' | 'update' | 'delete' | 'restore'
+  documentId: string
+  type: string
+  fromVersion?: number
+  toVersion: number
+}
+
+export type ListDocumentsInput = {
+  type?: string
+  includeTombstone?: boolean
+  ownerExtensionId?: string
+  /** null selects legacy/global ownership; omitted leaves installation ownership unrestricted. */
+  ownerInstallationId?: string | null
+  limit?: number
+  cursor?: string
+}
+
+export type WriteDocumentInput = {
+  id?: string
+  type: string
+  content: JsonValue
+  meta?: Partial<DocumentMeta>
+  expectedVersion?: number | 'new'
+  reason?: string
+  actor?: ActorRef
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
+}
+
+export type WriteDocumentResult = {
+  changesetId: string
+  documents: DocumentRecord[]
+  operations: ChangesetOperation[]
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
+}
 import type { StudioEvent } from './events.js'
 export type { EventMeta, StudioEvent } from './events.js'
 import { extensionInstallationId, type ExtensionInstallationTarget } from './installation.js'

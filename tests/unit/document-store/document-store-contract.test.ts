@@ -2,7 +2,7 @@ import {
   createInMemoryDocumentStore,
   type DocumentStore,
   type SqliteDocumentStore,
-} from '@loom-studio/document-store'
+} from '@loom-studio/kernel/document-store'
 import { describe, expect, it, vi } from 'vitest'
 
 const actor = { kind: 'system', id: 'document-store-contract' } as const

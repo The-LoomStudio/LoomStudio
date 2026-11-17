@@ -1,5 +1,5 @@
-import type { DocumentTransaction } from '@loom-studio/document-store'
-import type { SqliteDataTransaction } from '@loom-studio/data-engine'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
+import type { SqliteDataTransaction } from '@loom-studio/kernel/data-engine'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import type { ExtensionInstallationTarget, ExtensionStorageScope } from '../types.js'

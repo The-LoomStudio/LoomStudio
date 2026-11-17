@@ -36,6 +36,7 @@ function setup() {
     storage: vi.fn(async () => ({ groups: [], volumes: [], errors: [], asOf: '2026-11-04T01:00:00Z' })),
     database: vi.fn(async () => ({ tables: [], freeBytes: 0 })),
     usageRequests: vi.fn(async () => ({ items: [], nextCursor: undefined })),
+    createBackup: vi.fn(async () => ({ filename: 'studio-backup.sqlite', path: '/tmp/studio-backup.sqlite', sizeBytes: 2048 })),
   }
   const api = { dashboard } as unknown as StudioApi
   const render = async (element: ReturnType<typeof createElement>) => {
@@ -70,7 +71,11 @@ it('retains closed range keys, then captures current time for reopening, period 
   vi.setSystemTime('2026-11-04T03:00:00Z')
   await show(true)
   expect(dashboard.usage).toHaveBeenCalledTimes(2)
-  expect(dashboard.usage.mock.calls[1]![0].to).toBe('2026-11-04T03:00:00.000Z')
+  const weekMonday = new Date(2026, 10, 2)
+  weekMonday.setHours(0, 0, 0, 0)
+  const nextWeekMonday = new Date(weekMonday)
+  nextWeekMonday.setDate(weekMonday.getDate() + 7)
+  expect(dashboard.usage.mock.calls[1]![0].to).toBe(nextWeekMonday.toISOString())
   expect(value.period).toBe('7')
   expect(dashboard.resources).toHaveBeenCalledTimes(2)
 
@@ -124,7 +129,7 @@ it('creates calls queries only after choosing a provider and keeps their cached 
   await show(false)
   expect(client!.getQueryCache().getAll().map(query => query.queryHash)).toEqual(selectedKeys)
   expect(dashboard.usageRequests).toHaveBeenCalledTimes(1)
-  vi.setSystemTime('2026-11-04T02:45:00Z')
+  vi.setSystemTime('2026-11-11T02:45:00Z')
   await show(true)
   expect(calls()).toHaveLength(2)
   expect(dashboard.usageRequests).toHaveBeenCalledTimes(2)
@@ -132,8 +137,25 @@ it('creates calls queries only after choosing a provider and keeps their cached 
   await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent?.includes('返回用量明细'))!.click())
   expect(calls()).toHaveLength(2)
   expect(calls()[0]!.state.data).toBe(cached)
-  vi.setSystemTime('2026-11-04T03:00:00Z')
+  vi.setSystemTime('2026-11-11T03:00:00Z')
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="刷新统计"]')!.click())
   expect(calls()).toHaveLength(2)
   expect(dashboard.usageRequests).toHaveBeenCalledTimes(2)
+})
+
+it('creates a database backup from the storage view and refreshes storage snapshots', async () => {
+  const { api, dashboard, render } = setup()
+  await render(createElement(StudioDashboard, { api, endpoint: 'one', open: true, onClose: vi.fn(), onAction: vi.fn() }))
+  const storageTab = [...document.querySelectorAll('button')].find(button => button.textContent?.includes('数据与存储'))!
+  await act(async () => storageTab.click())
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+  expect(dashboard.storage).toHaveBeenCalledTimes(1)
+  expect(dashboard.storage).toHaveBeenLastCalledWith(false)
+
+  const backupBtn = [...document.querySelectorAll('button')].find(button => button.textContent?.includes('备份数据库'))!
+  await act(async () => backupBtn.click())
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+  expect(dashboard.createBackup).toHaveBeenCalledTimes(1)
+  expect(dashboard.storage).toHaveBeenCalledTimes(2)
+  expect(dashboard.storage).toHaveBeenLastCalledWith(true)
 })

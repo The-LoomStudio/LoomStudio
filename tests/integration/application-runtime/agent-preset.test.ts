@@ -3,9 +3,9 @@ import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createId, nowIso } from '@loom-studio/shared'
 import { readFile } from 'node:fs/promises'
 import { createAgentToolRegistry, createApplicationRuntime } from '../../../packages/application-runtime/src/index.js'
-import { createSqliteDataEngine } from '../../../packages/data-engine/src/index.js'
-import { createSqliteDocumentStore } from '../../../packages/document-store/src/index.js'
-import { createAgentStore, createPromptResourceStore } from '../../../packages/application-data/src/index.js'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createAgentStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import type { PromptResourceArtifact } from '../../../packages/application-runtime/src/index.js'
 
 describe('Agent preset resource', () => {

@@ -1,7 +1,7 @@
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createApplicationRuntime, createOfficialAgentToolRegistry, type ApplicationRuntimeOptions } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import type { ChatAttachment, ChatMessage } from '@loom-studio/shared'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 

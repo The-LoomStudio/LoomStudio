@@ -1,4 +1,4 @@
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import { applyTextRuleUsage, resolveTextTransformContributionRule, resolveTextExtractorContribution } from '@loom-studio/shared/loom-scripts'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { LoomScriptMountTarget } from './loom-script-contracts.js'

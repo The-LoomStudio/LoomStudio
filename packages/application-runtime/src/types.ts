@@ -1,12 +1,14 @@
 import type { ChatAttachment } from '@loom-studio/shared'
 import type { AddUserBackgroundInput, RemoveUserBackgroundInput, UserBackgroundsConfig } from './profiles/user-backgrounds.js'
 import type { ObservationStore, ObservationOrigin } from './observability/types.js'
+import type { AgentRunService } from './agents/agent-run-service.js'
+export type { AgentRunService, AgentRunSubscription } from './agents/agent-run-service.js'
 import type { AgentApprovalPolicy } from './agents/approval-policy.js'
 import type { CreateUserProfileInput, DeleteUserProfileInput, SelectUserProfileInput, UpdateUserProfileInput, UserProfilesConfig } from './profiles/user-profiles.js'
 import type { LoomScriptContributionDefinition, LoomScriptMountTarget, CreateLoomScriptMountInput, UpdateLoomScriptMountInput, ListLoomScriptMountsInput, MutateLoomScriptMountResult, ListLoomScriptMountsResult } from '@loom-studio/shared/loom-scripts'
 import type { ListPresetToolMountsInput, ListPresetToolMountsResult, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
 export type { ListPresetToolMountsInput, ListPresetToolMountsResult, PresetToolMountInput, ReplacePresetToolMountsInput, ReplacePresetToolMountsResult } from '@loom-studio/shared/tool-mounts'
-import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
+import type { TokenUsage } from '@loom-studio/shared/tokenizer/contracts'
 import type { RequestTokenEstimate } from '@loom-studio/ai-gateway'
 import type {
   AgentTranscriptEntry,
@@ -14,15 +16,15 @@ import type {
   AgentSession,
   AgentStore,
   AgentSessionRunSummary,
-} from '@loom-studio/application-data'
+} from './data/index.js'
 export type {
   AgentTranscriptEntry,
   AgentTranscriptPage,
   AgentSession,
-} from '@loom-studio/application-data'
-import type { DocumentStore } from '@loom-studio/document-store'
+} from './data/index.js'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
 import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
-import type { DataActorRef, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
+import type { DataActorRef, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/kernel/data-engine'
 import type {
   ExtensionAgentToolContribution,
   ExtensionPromptAddition,
@@ -45,13 +47,13 @@ import type {
   NarrativePage,
   NarrativeStore,
   NarrativeTimeline,
-} from '@loom-studio/application-data'
+} from './data/index.js'
 export type {
   NarrativeBranch,
   NarrativeNode,
   NarrativePage,
   NarrativeTimeline,
-} from '@loom-studio/application-data'
+} from './data/index.js'
 import type {
   AssistantChatMessage,
   ChatMessage,
@@ -90,10 +92,10 @@ export type {
   LoreMount,
   LoreMountSource,
 } from '@loom-studio/shared'
-import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
-import type { StateStore } from '@loom-studio/application-data'
-import type { PromptResourceStore } from '@loom-studio/application-data'
-export type { PresetToolMount } from '@loom-studio/application-data'
+import type { SecretRef, SecretStore } from '@loom-studio/kernel/secret-store'
+import type { StateStore } from './data/index.js'
+import type { PromptResourceStore } from './data/index.js'
+export type { PresetToolMount } from './data/index.js'
 import type { ActivationFacts, PromptActivation } from './prompt/prompt-activation.js'
 import type { AgentToolRegistry, ToolDefinition } from './agents/tool-registry.js'
 import type {
@@ -344,6 +346,7 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
   createAgentPreset(input: CreateAgentPresetInput, context?: RuntimeRequestContext): Promise<AgentPresetResult>
   getAgentPreset(input: { agentPresetId: string }): Promise<{ agentPreset: AgentPresetEntry }>
   listAgentPresets(input?: { limit?: number; cursor?: string }): Promise<{ agentPresets: AgentPresetEntry[]; nextCursor?: string }>
+  listAgentPresetSummaries(input?: { limit?: number; cursor?: string }): Promise<ListAgentPresetSummariesResult>
   updateAgentPreset(input: UpdateAgentPresetInput, context?: RuntimeRequestContext): Promise<AgentPresetResult>
   deleteAgentPreset(input: { agentPresetId: string }, context?: RuntimeRequestContext): Promise<DeletePromptResourceResult>
   createAgentSession(input: CreateAgentSessionInput, context?: RuntimeRequestContext): Promise<CreateAgentSessionResult>
@@ -360,7 +363,7 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
     status: import('./agents/session-summary.js').SessionSummaryStatus; summary: AgentTranscriptEntry | null;
     coverage: { retiredThroughSequence: number; sourceThroughSequence: number; messages: { retired: number; source: number; total: number } };
   }>
-  listAgentSessionSummaryTasks(input: { agentSessionId: string }): ReturnType<import('@loom-studio/application-data').AgentStore['listSummaryTasks']>
+  listAgentSessionSummaryTasks(input: { agentSessionId: string }): ReturnType<import('./data/index.js').AgentStore['listSummaryTasks']>
   getAgentSessionSummaryStatus(input: { agentSessionId: string }): import('./agents/session-summary.js').SessionSummaryStatus
   completeAgentSessionHandoff(input: CompleteAgentSessionHandoffInput, context?: RuntimeRequestContext): Promise<CompleteAgentSessionHandoffResult>
   deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
@@ -368,6 +371,9 @@ export type ApplicationRuntime = ReturnType<typeof import('./runtime/resource-au
   reviseAgentInput(input: { agentSessionId: string; entryId: string; expectedContent: string; expectedAttachments?: ChatAttachment[]; content: string; attachments?: ChatAttachment[] }, context?: RuntimeRequestContext): Promise<{ entry: AgentTranscriptEntry; rerun: boolean }>
   submitAgentInterjection(input: SubmitAgentInterjectionInput, context?: RuntimeRequestContext): Promise<{ entry: AgentTranscriptEntry; pending: boolean }>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
+  runs: AgentRunService
+  extensionPorts: import('./foundation/application-context.js').ApplicationExtensionPorts
+  scopeValidator: import('./foundation/application-context.js').ApplicationScopeValidator
   findAgentRunCheckpoint(input: { agentSessionId: string; runId: string }): Promise<AgentTranscriptEntry | null>
   inspectAgentRunState(input: { agentSessionId: string; runId: string }): Promise<{ runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; entryCount: number; reason?: string }>
   prepareAgentRunRecovery(input: { agentSessionId: string; runId?: string }): Promise<import('./agents/run-recovery.js').AgentRunRecovery | undefined>
@@ -431,7 +437,7 @@ export type RuntimeRequestContext = {
     continuation?: {
       sourceRunId: string
       messages: ChatMessage[]
-      userEntry: import('@loom-studio/application-data').AgentTranscriptEntry
+      userEntry: import('./data/index.js').AgentTranscriptEntry
       partialEntryId?: string
       recovery?: import('./agents/run-recovery.js').AgentRunRecoveryCheckpoint
       expectedEntryCount?: number
@@ -439,7 +445,7 @@ export type RuntimeRequestContext = {
     onSuspended?: (checkpoint: {
       sourceRunId: string
       messages: ChatMessage[]
-      userEntry: import('@loom-studio/application-data').AgentTranscriptEntry
+      userEntry: import('./data/index.js').AgentTranscriptEntry
       partialEntryId?: string
       recovery?: import('./agents/run-recovery.js').AgentRunRecoveryCheckpoint
       expectedEntryCount?: number
@@ -868,7 +874,7 @@ export type AppendAgentTranscriptEntriesInput = {
   entries: Array<{
     id?: string
     runId?: string
-    entry: import('@loom-studio/application-data').AgentTranscriptEntryData
+    entry: import('./data/index.js').AgentTranscriptEntryData
   }>
 }
 
@@ -909,7 +915,7 @@ export type UpdateAgentSessionInput = {
   agentSessionId: string
   agentPresetId?: string
   narrativeMode?: 'declared' | 'automatic'
-  summaryPolicy?: import('@loom-studio/application-data').SessionSummaryPolicy
+  summaryPolicy?: import('./data/index.js').SessionSummaryPolicy
   title?: string
 }
 
@@ -975,6 +981,7 @@ export type PreviewAgentTurnResult = {
 export type InvokeAgentTurnResult = {
   summaryStatus?: import('./agents/session-summary.js').SessionSummaryStatus
   runId: string
+  buildId: string
   agentSession: AgentSession
   entries: {
     user: AgentTranscriptEntry
@@ -987,12 +994,8 @@ export type InvokeAgentTurnResult = {
     usage?: GatewayChatResult['usage']
     providerCallId?: string
   }
-  projection: CompiledPrompt
-  promptBuildTrace: PromptBuildTrace
   toolExposures: CompiledToolExposure[]
-  toolPromptBuildTrace: ToolPromptBuildTrace
   mutation: AgentTurnMutationReceipt
-  macroInspection: MacroInspection
 }
 
 export type InspectMacrosInput = {
@@ -1023,6 +1026,10 @@ export type ApplicationRuntimeOptions = {
   states?: StateStore
   logger?: Logger
   runtimeLogger?: Logger
+  providerLogger?: Logger
+  statistics?: import('./data/index.js').StatisticsStore
+  resolveProxyUrl?: () => string | undefined
+  onGatewayLog?: import('./providers/gateway.js').AiGatewayLogHook
   gateway?: AiGateway
   clock?: { now(): Date }
   sourceArtifacts?: SourceArtifactStorage
@@ -1117,8 +1124,8 @@ export type GatewayInvokeChatInput = {
   model?: ProviderModelSelection
   request: CanonicalChatRequest
   runId: string
-  sessionId: string
-  branchId: string
+  sessionId?: string
+  branchId?: string
   context?: RuntimeRequestContext
   abortSignal?: AbortSignal
   delivery?: 'stream' | 'complete'
@@ -1546,6 +1553,32 @@ export type AgentHistoryPolicy = 'persistent' | 'ephemeral'
 export type AgentDelivery = 'stream' | 'complete'
 
 export type AgentPresetEntry = PromptResourceContent & { id: string; version: number }
+export type AgentPresetSummary = {
+  id: string
+  version: number
+  resourceKind: PromptResourceKind
+  rootNodeId: string
+  label: string
+  metadata?: PromptResourceContent['metadata']
+  historyPolicy?: AgentHistoryPolicy
+  model?: ProviderModelSelection
+  delivery?: AgentDelivery
+  approvalPolicy?: AgentApprovalPolicy
+  useCardLore?: boolean
+  useCardText?: boolean
+  useGlobalLore?: boolean
+  useGlobalText?: boolean
+  textUses?: PromptResourceContent['textUses']
+  origin?: PromptResourceContent['origin']
+  sourceArtifactRef?: PromptResourceContent['sourceArtifactRef']
+  createdAt: string
+  updatedAt: string
+  tombstoned?: boolean
+}
+export type ListAgentPresetSummariesResult = {
+  agentPresets: AgentPresetSummary[]
+  nextCursor?: string
+}
 export type CreateAgentPresetInput = {
   name: string
   model?: ProviderModelSelection

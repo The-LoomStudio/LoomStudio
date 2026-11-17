@@ -192,10 +192,11 @@ describe('Narrative正文保存', () => {
     ;(edit.props.onClick as () => void)()
     let editor = render().find(element => element.props.sourceOnly)!
     ;(editor.props.onChange as (value: string) => void)('  User draft\n')
+    editor = render().find(element => element.props.sourceOnly)!
+    const pending = (editor.props.onSubmit as (value: string) => Promise<void>)('  User draft\n')
     const newerCallback = vi.fn().mockResolvedValue(undefined)
     props.onEditNode = newerCallback
     editor = render().find(element => element.props.sourceOnly)!
-    const pending = (editor.props.onSubmit as (value: string) => Promise<void>)('  User draft\n')
     await (editor.props.onSubmit as (value: string) => Promise<void>)('Duplicate')
     expect(save).toHaveBeenCalledTimes(1)
     expect(save).toHaveBeenCalledWith('node', '  User draft\n')

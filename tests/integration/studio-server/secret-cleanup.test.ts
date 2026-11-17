@@ -1,12 +1,12 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createMemorySecretBackend, createSecretStore } from '@loom-studio/secret-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createMemorySecretBackend, createSecretStore } from '@loom-studio/kernel/secret-store'
 import { createId, nowIso } from '@loom-studio/shared'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { callRpc } from './helpers.js'
 
 describe('Studio Server credential cleanup', () => {

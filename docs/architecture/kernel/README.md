@@ -67,12 +67,12 @@ createKernel(options)
 
 ### 优雅停机与资源释放顺序
 
-服务关闭遵循“先停止接纳，再等待在途业务与清理依赖”的阶段化原则：
+服务关闭遵循“先停止接纳，再等待在途业务与清理依赖”的阶段化原则（镜像倒序排空）：
 
-1. 组合根（Studio Server）释放媒体监听，并调用 HTTP Server 的 `shutdown()`；HTTP 层拒绝新请求、停止监听，对在途请求的 `AbortController` 发出取消并关闭网络连接；
+1. 组合根（Studio Server）释放媒体监听，并调用 HTTP Server 的 `shutdown()`；HTTP 层拒绝新请求（503）、停止监听，对在途请求的 `AbortController` 发出取消并关闭网络连接；
 2. HTTP 层等待已登记的请求 Promise 收敛，不用强制超时越过尚未完成的 Store 操作；
-3. 组合根释放 Script Runtime，然后调用 `kernel.stop()`；Kernel 此时发布 `system.stopping`，释放 Data Commit 订阅和所有活动 Extension Scope，并在 `finally` 中释放内建 RPC 注册、收束为 inactive；
-4. 组合根重试 Secret Store 待清理项，关闭 Observation Store，最后关闭 SQLite Data Engine。后续清理由嵌套 `finally` 保障，前序清理失败仍继续释放底层依赖。
+3. 组合根调用 `kernel.stop()`；Kernel 此时发布 `system.stopping`，释放 Data Commit 订阅，并通过统一 `ExtensionHost`（同时纳管 `kind: 'extension'` 与 `kind: 'script'`）`disposeAll` 释放全部活动扩展、`.loom.js` 脚本与受管 Worker Scope，最后在 `finally` 中释放内建 RPC 注册、收束为 inactive；
+4. 组合根重试 Secret Store 待清理项，关闭 Observation Store，排空 `DataEngine` FIFO 队列后关闭 SQLite，最后释放 `<dataRoot>/loom.lock` 目录独占锁并关闭日志器。
 
 在途 HTTP 请求的取消与排空由 HTTP 层拥有，不依赖 `system.stopping` 事件。实现入口：[Server 组合根](../../../apps/studio-server/src/server.ts)、[HTTP 生命周期](../../../apps/studio-server/src/http/http-server.ts)与[Kernel 生命周期](../../../packages/kernel/src/kernel.ts)。
 
@@ -91,12 +91,11 @@ type RpcOwner = 'kernel' | `extension:${string}/${string}`
 ```text
 system.*
 events.*
-docs.*
 extensions.*
 diagnostics.*
 ```
 
-重复方法名会被拒绝。
+重复方法名会被拒绝。`docs.*` 裸数据后门已移除；Document Store 作为内部隔离存储引擎供扩展/脚本使用，不再通过 Kernel RPC 暴露。
 
 ### Extension RPC
 
@@ -108,42 +107,22 @@ Extension handler 获得的 context 由 Kernel 注入真实 `packageId`、`modul
 
 | Family | 当前职责 |
 |---|---|
-| `system.*` | 健康检查、版本与能力信息、动态 introspection |
+| `system.*` | 健康检查、版本与能力信息、动态 introspection（过滤 `kind: 'script'` 内部模块） |
 | `events.*` | 保留给未来真实 Event Transport；当前没有伪订阅 RPC |
-| `docs.*` | Document 查询、写入、删除、Changeset 查询与反向 Changeset |
-| `extensions.*` | Package Catalog、Module 启停/reload 与诊断查询 |
+| `extensions.*` | Package Catalog、Module 启停/reload、诊断查询，以及唯一动态扩展调用网关 `extensions.invoke` |
 | `diagnostics.*` | 平台诊断读取 |
 
 具体方法和参数应以 Kernel public surface 与 `system.introspect` 的运行时结果为准，不在架构文档中复制第二份完整 RPC schema。
 
-## 6. Document 变更与回滚
+## 6. 数据提交与失效广播
 
-Kernel 将 `docs.write`、`docs.delete` 和 `docs.revertChangeset` 转交 Document Store。它负责补充可信调用元数据，不实现 Revision 或冲突算法。
+Kernel 启动后订阅注入的领域无关 Data Commit Source。当前 Studio Server 直接注入共享 SQLite Data Engine；测试或其他宿主组合可直接注入普通 Document Store，其 `subscribeCommits` 已满足订阅合同。
 
-Kernel 启动后订阅注入的领域无关 Data Commit Source。当前 Studio Server 直接注入共享 SQLite Data Engine；测试或其他宿主组合可直接注入普通 Document Store，其 `subscribeCommits` 已满足订阅合同。未来其他权威 Store 复用同一 Engine 提交入口，而不是让 Kernel 依赖 Narrative 或 Agent 业务接口。
+每次成功提交发布单帧 `data.changed`（`version: 2`）：
 
-每次成功提交发布 `data.changed`。如果 Commit Fact 中包含 `store: documents` operation，Kernel 再投影 `docs.changed`。小提交各保持一条原形 payload；大提交在同一 changesetId 下按完整 UTF-8 JSON 的 64 KiB 预算拆分，携带 `chunk: { index, count }`（index 从 0 开始），每片 eventId 独立。同名分片按序发送；docs 的 operations/documents 成对切分，保留操作顺序。下图表示逻辑投影，不代表大提交的物理事件数量：
-
-```text
-docs.write / docs.delete
-  -> Document Store commit
-  -> new Changeset
-  -> data.changed
-  -> docs.changed
-
-docs.revertChangeset
-  -> Document Store 生成反向 Changeset
-  -> data.changed
-  -> docs.changed
-  -> docs.rollback.completed
-
-revert conflict
-  -> 不写入部分结果
-  -> docs.rollback.failed
-  -> 原错误继续返回调用方
-```
-
-回滚不会删除历史 Changeset，而是提交一个新的补偿性 Changeset。因此 Undo 与 Redo 都保留可审计的 Revision 链。
+- 写入源头在事务内通过 `DataCommitOperationScope` 前置附带可信归属标签（`cardId / timelineId / installationId`），只携带轻量失效标识（`store / kind / entityType / entityId / version / scope`），绝不承载正文大包；
+- 当单次事务操作数超过批量阈值时，自动折叠为按 `store + scope` 聚合的 `overflow: true` 范围失效提示；
+- 已移除 `docs.changed` 兼容投影事件、64 KiB 分片器（`splitCommitPayload`）、前端 4 MiB / 10 秒重组缓冲及服务端跨表反查过滤。
 
 Kernel 从 `clientId` 推导 Document actor，并忽略请求中伪造的 actor 或 owner metadata。`correlationId`、`callId` 和 `parentCallId` 会继续传入 Document Store。
 
@@ -162,7 +141,7 @@ Kernel 从 `clientId` 推导 Document actor，并忽略请求中伪造的 actor 
 - 单个订阅者同步异常或 async rejection 不会阻断其他订阅者，并写入 Diagnostics；平台诊断最多保留 1,000 条（单来源最多 100 条），基于事件与订阅稳定身份聚合统计出现次数与最新上下文；
 - `eventNames()` 与 `definitions()` 返回 Runtime Definition Registry 当前事实。
 
-`data.changed` payload 只携带 Changeset ID 与领域无关 operation summaries，不携带 Document content、Prompt、Message 或其他正文。`docs.changed` 保持原有 Document operation / summary 兼容形状。
+`data.changed` payload 只携带 Changeset ID、领域无关轻量 operation summaries（含前置 `DataCommitOperationScope`）及可选 `overflow: true` 范围折叠标识，不携带 Document content、Prompt、Message 或其他正文。
 
 当前平台事件由 Kernel 注册并发布；Extension 事件由 Server Extension Host 注入可信 publisher identity。Document Commit actor 继续生成归一化的 `source` / `clientId`，完整 actor 仍以 Changeset 为权威来源。
 
@@ -205,9 +184,4 @@ callRpc(method, params, context)
 
 历史设计材料保留在 [`讨论归档`](../../archive/discussion/README.md) 中；新的开放问题和实施范围由 [Plan](../../workbench/plans/README.md) 承接。
 
-
-`data.changed`、`docs.changed`、`docs.rollback.completed` 的 definition version 为 2。回滚完成沿用 docs 分片规则并保留 targetChangesetId；通知失败进入 Diagnostics，已提交结果不变，只有实际 revert 失败才发布 rollback.failed。data/docs 独立准备与发送，一方失败不跳过另一方。单个 operation summary 本身超过预算不在当前支持范围内；不截断身份或拆分事务。
-
-未过滤的 Studio SSE 桥接层按 changesetId 重组完整 data 批次后回调；暂存总计最多 4 MiB，10 秒缺片超时、非法序号、重复、断线或超限丢弃半批并刷新权威数据，卸载只释放状态。直接 Commit Source 订阅者仍收到完整事实。
-
-Card 扩展每片按提交版本、归属和安装身份过滤；空片不发送，payload 不携带全局 chunk。每条是授权范围的独立失效提示，不承诺完整事务，不能按 changesetId 去重后忽略后续通知。Server 在 Kernel start 后、Extension Manager 初始化前从原始 Commit Source 安装唯一 extensions.data.changed 派生发布者，每提交一次；启动失败及 close 释放，SSE 连接仅负责投递。派生通知与 data 分片之间不提供跨订阅者全序。
+`data.changed` 保持单帧轻量广播（`version: 2`），不再进行分片发送与客户端重组。Extension 侧的 `extensions.data.changed` 派生通知直接消费前置 `DataCommitOperationScope`（`cardId / timelineId / installationId`）完成授权范围过滤，无需在事件桥接层逐片反查数据库。

@@ -2,7 +2,7 @@ import { satisfies, validRange } from 'semver'
 import { resolvePackageDependency, assertPackageDependencyRevisions } from './package-dependency.js'
 import { extensionInstallationId, installedExtensionContributionId, type ExtensionDependency, type ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
 import { toolReferenceSchema, type AgentToolReference } from '@loom-studio/shared'
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import type { AgentToolRegistry, ToolDefinition } from '../agents/tool-registry.js'
 import { officialAgentToolDefinitions } from '../agents/official-tools/index.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
@@ -71,7 +71,7 @@ export async function assertToolReferenceRevisions(documents: DocumentTransactio
 export async function assertToolDependencyConsumers(input: {
   documents: DocumentTransaction
   mounts: readonly { origin: Record<string, unknown> }[]
-  resources?: readonly import('@loom-studio/application-data').PromptResource[]
+  resources?: readonly import('../data/index.js').PromptResource[]
   packageId: string
   target: ExtensionInstallationTarget
   nextVersion?: string
@@ -131,15 +131,15 @@ export async function assertToolDependencyConsumers(input: {
 }
 
 export async function withToolDependencySnapshot<T>(ctx: {
-  dataEngine: import('@loom-studio/data-engine').SqliteDataEngine
-  promptResources: import('@loom-studio/application-data').PromptResourceStore
-}, operation: (mounts: Awaited<ReturnType<typeof ctx.promptResources.listPresetToolMounts>>, assertFresh: () => void, resources: import('@loom-studio/application-data').PromptResource[]) => Promise<T>): Promise<T> {
+  dataEngine: import('@loom-studio/kernel/data-engine').SqliteDataEngine
+  promptResources: import('../data/index.js').PromptResourceStore
+}, operation: (mounts: Awaited<ReturnType<typeof ctx.promptResources.listPresetToolMounts>>, assertFresh: () => void, resources: import('../data/index.js').PromptResource[]) => Promise<T>): Promise<T> {
   let stale = false
   // ponytail: mount revisions are not part of installation versions; guard the read-to-transaction interval until scoped revisions exist.
   const subscription = ctx.dataEngine.subscribeCommits(() => { stale = true })
   try {
     const mounts = await ctx.promptResources.listPresetToolMounts()
-    const resources: import('@loom-studio/application-data').PromptResource[] = []
+    const resources: import('../data/index.js').PromptResource[] = []
     let cursor: string | undefined
     do { const page = await ctx.promptResources.listResources({ cursor }); resources.push(...page.resources); cursor = page.nextCursor } while (cursor)
     return await operation(mounts, () => { if (stale) throw new Error('Package dependencies changed during preparation; retry') }, resources)

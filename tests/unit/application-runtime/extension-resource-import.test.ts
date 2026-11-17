@@ -2,16 +2,16 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createBlobStore } from '@loom-studio/asset-store'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
 import {
   createApplicationRuntime, createOfficialAgentToolRegistry, composeAgentTurnPrompt,
   officialReadPromptResourceTool, officialSearchPromptResourcesTool,
   type ImportExtensionPackageResourcesInput,
 } from '@loom-studio/application-runtime'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createId, nowIso } from '@loom-studio/shared'
 import { resolveEffectiveTextPipeline } from '../../../packages/application-runtime/src/runtime/transforms-runtime.js'
 import { readAvailableExtensionInstallations } from '../../../packages/application-runtime/src/runtime/extension-resource-access.js'

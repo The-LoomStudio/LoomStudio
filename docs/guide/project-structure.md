@@ -67,43 +67,27 @@ Loom Studio 使用 `pnpm` workspace 构建 Monorepo。核心代码区域是 `pac
 
 ---
 
-## 📦 核心领域包: `packages/`
+## 📦 核心领域包: `packages/` (7 个 Workspace 包)
 
-这些包大多是独立于运行环境的（Node / Browser 均可或有明确边界）。
+这些包大多是独立于运行环境的（Node / Browser 均可或有明确边界），已收敛为 7 个高内聚包：
 
-- 📦 [`packages/application-runtime/`](../../packages/application-runtime/README.md) (AIRP Layer)
-  - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent / State / PromptResource 持久化由 `@loom-studio/application-data` 承担。
-- 📦 [`packages/application-data/`](../../packages/application-data/README.md)
-  - 核心领域持久化中枢，在共享 SQLite 中内聚管理 Agent 会话与权威内容历史、Narrative 分支与正文索引、State 状态修订、Timeline Workspace 不可变版本、Prompt Resource 树与 LoreMount 挂载关系，以及 Dashboard 持久化统计（`application.statistics`）。（注：历史拆分的 `agent-store`、`narrative-store`、`prompt-resource-store`、`state-store` 与 `loom-icons` 均已收拢退役。）
-- 📦 [`packages/kernel/`](../../packages/kernel/README.md)
-  - Studio 的底层发动机，管理内部的核心服务（RPC 注册、事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
-  - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
-- 📦 [`packages/data-engine/`](../../packages/data-engine/README.md)
-  - 共享 SQLite connection、transaction、namespaced schema 初始化、Commit Journal 与提交后通知。
-  - 正式架构说明：[`architecture/data/README.md`](../architecture/data/README.md)。
-- 📦 [`packages/secret-store/`](../../packages/secret-store/README.md)
-  - 平台通用 Secret metadata、受控使用边界与凭证后端接口；SQLite 不保存 Secret 明文，真实系统凭证后端由 Server 组合根注入。
-- 📦 [`packages/document-store/`](../../packages/document-store/README.md)
-  - 保存适合版本化编辑的 Document、Revision 与 Changeset，支持乐观锁与回滚，文件和内存实例共用 SQLite 实现。
-- 📦 [`packages/asset-store/`](../../packages/asset-store/README.md)
-  - 在共享 SQLite 中保存 Source Artifact 与 Media Asset metadata，并通过稳定 ID 关联同包 blobs 模块；Blob 仍独立承担内容寻址文件存储职责。
-- 📦 [`packages/ai-gateway/`](../../packages/ai-gateway/README.md)
-  - 统一的多模型厂商调度网关（基于 Vercel AI SDK），支持流式执行、工具调用、能力画像映射与离线测试 Fake Provider。
-- 📦 [`packages/tokenizer/`](../../packages/tokenizer/README.md)
-  - 跨端纯文本计数与轻量/异步入口；请求估算和 Provider usage 维持不同口径。
-- 📦 [`packages/logging/`](../../packages/logging/README.md)
+- 📦 [`packages/application-runtime/`](../../packages/application-runtime/README.md) (`@loom-studio/application-runtime`, AIRP Layer)
+  - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Run 生命周期与相关领域逻辑；同时内聚原 `application-data`（[`src/data/`](../../packages/application-runtime/src/data/README.md)），在共享 SQLite 中管理 Agent 会话与权威内容历史、Narrative 分支与正文索引、State 状态修订、Timeline Workspace 不可变版本、Prompt Resource 树与 LoreMount 挂载关系，以及 Dashboard 持久化统计（`application.statistics`）。
+- 📦 [`packages/kernel/`](../../packages/kernel/README.md) (`@loom-studio/kernel`)
+  - Studio 的**Host Kernel 宿主内核与共享物理底座**。管理核心服务（RPC 注册、Event Bus、统一 `ExtensionHost`）并内聚原 `data-engine`、`document-store`、`asset-store`、`secret-store`、`diagnostics`、`extension-host` 及从 `studio-server` 下沉的 `platform/`、`extension-manager/`、`script-runtime/`。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
+  - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)、[`architecture/data/README.md`](../architecture/data/README.md)。
+  - 内部子模块：[`data-engine/`](../../packages/kernel/src/data-engine/README.md)（共享 SQLite connection、FIFO 事务、`VACUUM INTO` 备份与 `data.changed` 提交事实）、[`secret-store/`](../../packages/kernel/src/secret-store/README.md)（凭据元数据与系统后端边界）、[`document-store/`](../../packages/kernel/src/document-store/README.md)（版本化 Document/Revision/Changeset）、[`asset-store/`](../../packages/kernel/src/asset-store/README.md)（Source Artifact / Media Asset 与 SHA-256 Blob）、[`extension-host/`](../../packages/kernel/src/extension-host/README.md)（统一 Extension 与 `.loom.js` Script 宿主）、[`diagnostics/`](../../packages/kernel/src/diagnostics/README.md)（非阻塞系统诊断）。
+- 📦 [`packages/ai-gateway/`](../../packages/ai-gateway/README.md) (`@loom-studio/ai-gateway`)
+  - 统一的多模型厂商调度网关（基于 Vercel AI SDK），支持单实例流式执行、工具调用、能力画像映射与离线测试 Fake Provider（含 `/contracts` 纯类型子入口）。
+- 📦 [`packages/logging/`](../../packages/logging/README.md) (`@loom-studio/logging`)
   - Server/Client 共用的结构化运行日志底座，提供 Root/Child Logger、Memory/Console Sink 与查询类型；Node JSONL 旋转持久化通过 `@loom-studio/logging/node` 子入口提供。
   - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
 - 📦 [`packages/loom-ui/`](../../packages/loom-ui/README.md) (`@loom-studio/ui`)
   - 领域无关的原子级 UI 设计系统组件库（Button、TextInput、Field、Radix 菜单原语等），组件内部复用 Lucide 图标。
-- 📦 [`packages/extension-sdk/`](../../packages/extension-sdk/README.md)
-  - 第三方 Extension 作者侧合同（Manifest v2、Activation Context 与 Capability 类型）。
-- 📦 [`packages/extension-sdk/extension-host/`](../../packages/extension-sdk/extension-host/README.md)
-  - 物理嵌套但具有独立 Workspace identity 的 Server Extension Host，负责插件模块加载、授权与生命周期管理。
-- 📦 [`packages/shared/`](../../packages/shared/README.md)
-  - 通用的环境同构工具函数、类型定义 (`JsonValue`, `createId`, 时间处理)、变量宏渲染引擎与 LoreMount 契约。
-- 📦 [`packages/diagnostics/`](../../packages/diagnostics/README.md)
-  - 系统级非阻塞错误/告警收集注册表；模型构建与调用证据由 Application Observation 拥有。
+- 📦 [`packages/extension-sdk/`](../../packages/extension-sdk/README.md) (`@loom-studio/extension-sdk`)
+  - 第三方 Extension 作者侧纯契约 SDK（Manifest v2、Activation Context 与 Capability 类型）。
+- 📦 [`packages/shared/`](../../packages/shared/README.md) (`@loom-studio/shared`)
+  - 通用的环境同构工具函数、类型定义 (`JsonValue`, `createId`, 时间处理)、变量宏渲染引擎、LoreMount 契约与跨端分词估算（[`src/tokenizer/`](../../packages/shared/src/tokenizer/README.md)），零 Node 原生依赖。
 
 Client 的动态 RPC adapter 与 session-fetch 位于 `apps/studio-client/src/shared/api/`；事件 envelope 由 Extension SDK 提供。Core / Runner / TraceAudit 原型已退役。
 

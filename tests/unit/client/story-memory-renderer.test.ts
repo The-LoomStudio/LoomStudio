@@ -26,6 +26,7 @@ it('reviews a whole batch, preserves revision input during polling, escapes sour
   const flush = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(0) }) }
   const click = (text: string) => { const button = [...root.querySelectorAll('button')].find(el => el.textContent === text || el.getAttribute('aria-label') === text); expect(button).toBeDefined(); act(() => button!.click()) }
   await flush()
+  click('查看数据'); await flush()
   expect(root.querySelector('article')!.textContent).toBe(batch.text)
   expect(root.querySelector('img')).toBeNull()
   const input = root.querySelector('textarea')!
@@ -41,7 +42,7 @@ it('reviews a whole batch, preserves revision input during polling, escapes sour
   click('确认整批摘要'); await flush()
   expect(root.textContent).toContain('这份摘要已纳入当前剧情上下文')
   expect(root.querySelector('textarea')).toBeNull()
-  click('总结设置'); await flush()
+  click('调整'); await flush()
   const count = root.querySelector<HTMLInputElement>('[name=batchFloors]')!; act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(count, '24'); count.dispatchEvent(new Event('input', { bubbles: true })) })
   act(() => { root.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true })) }); await flush()
   expect(call).toHaveBeenCalledWith('official.story-memory.configure', expect.objectContaining({ expectedVersion: 1, value: expect.objectContaining({ batchFloors: 24 }) }))

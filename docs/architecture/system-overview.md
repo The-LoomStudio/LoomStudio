@@ -21,9 +21,9 @@ Server 分别组装 Runtime、Kernel 和 Store；Application Runtime 不通过 K
 | 前端层次、状态、界面组装与依赖复用 | [Client README](../../apps/studio-client/README.md#源码导航与-fsd-架构规范)；FSD 是本项目的实际分工，Entities 当前以 DTO / 类型为主 |
 | 进程启动、HTTP、认证、RPC、服务注入与关闭 | [Server README](../../apps/studio-server/README.md#组合根与启动前提) |
 | Card、Timeline、Session、Prompt、工具与导入导出流程 | [Application Runtime README](../../packages/application-runtime/README.md#源码导航) |
-| Transcript、正文索引、State、Workspace、资源树与统计 | [Application Data README](../../packages/application-data/README.md)；共享事务基座见 [Data Engine](../../packages/data-engine/README.md) |
-| 版本化 Document 与 Blob / 媒体资产 | [Document Store](../../packages/document-store/README.md)、[Asset Store](../../packages/asset-store/README.md)；它们不替代上述领域 Store |
-| 动态扩展方法、事件和 Server Module 生命周期 | [Kernel](../../packages/kernel/README.md)、[Extension Host](../../packages/extension-sdk/extension-host/README.md)、[SDK 作者合同](../../packages/extension-sdk/README.md) |
+| Transcript、正文索引、State、Workspace、资源树与统计 | [Application Data README](../../packages/application-runtime/src/data/README.md)；共享事务基座见 [Data Engine](../../packages/kernel/src/data-engine/README.md) |
+| 版本化 Document 与 Blob / 媒体资产 | [Document Store](../../packages/kernel/src/document-store/README.md)、[Asset Store](../../packages/kernel/src/asset-store/README.md)；它们不替代上述领域 Store |
+| 动态扩展方法、事件和 Server Module 生命周期 | [Kernel](../../packages/kernel/README.md)、[Extension Host](../../packages/kernel/src/extension-host/README.md)、[SDK 作者合同](../../packages/extension-sdk/README.md) |
 | 模型调用、凭据、文本计数、日志与诊断 | [共享平台能力入口](platform/README.md) |
 | UI 原语、主题与宿主容器 | [UI Architecture](ui/README.md)、[UI 包](../../packages/loom-ui/README.md) |
 

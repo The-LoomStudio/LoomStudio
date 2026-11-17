@@ -17,7 +17,7 @@ describe('bundled Story Memory through the real extension host', () => {
       const { card } = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'Host memory' })
       const story = await callRpc<{ timeline: { id: string }; branch: { id: string; headNodeId?: string } }>(port, 'application.createNarrativeTimeline', { cardId: card.id })
       const target = { timelineId: story.timeline.id, branchId: story.branch.id }
-      const invoke = <T>(method: string, args = {}) => callRpc<T>(port, 'extensions.callPackageRpc', { packageId, target: { kind: 'global' }, method: `${packageId}.${method}`, params: { ...target, ...args } })
+      const invoke = <T>(method: string, args = {}) => callRpc<T>(port, 'extensions.invoke', { packageId, target: { kind: 'global' }, method: `${packageId}.${method}`, params: { ...target, ...args } })
       await expect(invoke('status')).rejects.toThrow('not active in this Timeline')
       const preview = await callRpc(port, 'application.previewTimelineExtensionAdoption', { ...target, installationId })
       await callRpc(port, 'application.adoptTimelineExtension', preview)

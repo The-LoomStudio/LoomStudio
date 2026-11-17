@@ -1,6 +1,6 @@
 import { applicationDocumentTypes, type TimelineArchiveIdMap, type TimelineArchiveParticipant } from '@loom-studio/application-runtime'
-import type { DocumentStore } from '@loom-studio/document-store'
-import type { ExtensionEntityRef } from '@loom-studio/extension-host'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
+import type { ExtensionEntityRef } from '@loom-studio/kernel/extension-host'
 import { createId, isRecord, type JsonValue } from '@loom-studio/shared'
 
 export type ExtensionRecordArchiveRemapInput = {

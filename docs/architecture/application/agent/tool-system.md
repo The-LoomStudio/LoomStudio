@@ -211,7 +211,7 @@ Studio 将 URI 渲染为可点击引用查看器。查看器按 URI 中的身份
 - [`packages/application-runtime/src/agents/content-transport.ts`](../../../../packages/application-runtime/src/agents/content-transport.ts)
 - [`packages/application-runtime/src/agents/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agents/tool-prompt-build.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
-- [`packages/application-data/src/prompt-resource/types.ts`](../../../../packages/application-data/src/prompt-resource/types.ts)
+- [`packages/application-runtime/src/data/prompt-resource/types.ts`](../../../../packages/application-runtime/src/data/prompt-resource/types.ts)
 
 ### VFS 使用契约补充（2026-10-21）
 

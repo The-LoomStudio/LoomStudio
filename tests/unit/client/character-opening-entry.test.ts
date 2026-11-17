@@ -79,20 +79,27 @@ describe('Character opening entry commands', () => {
     }
     const container = document.createElement('div')
     const root = createRoot(container)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    vi.stubGlobal('EventSource', class extends EventTarget {
+      static OPEN = 1
+      static CLOSED = 2
+      readyState = 0
+      close() { this.readyState = 2 }
+    })
     try {
-      act(() => root.render(createElement(Probe)))
+      act(() => root.render(createElement(QueryClientProvider, { client }, createElement(Probe))))
       await act(async () => { await state.refreshCards() })
       expect(state.selectedCardId).toBe('bad')
       expect(get).not.toHaveBeenCalled()
       await act(async () => { state.setSelectedCardId('bad') })
       expect(get).not.toHaveBeenCalled()
       await act(async () => { state.setSelectedCardId('good') })
-      expect(state.selectedCardDetails?.id).toBe('good')
+      await vi.waitFor(() => expect(state.selectedCardDetails?.id).toBe('good'))
       get.mockClear()
       await act(async () => { state.setSelectedCardId('bad') })
       expect(get).not.toHaveBeenCalled()
       expect(state.selectedCardDetails).toBeUndefined()
-    } finally { act(() => root.unmount()) }
+    } finally { act(() => root.unmount()); client.clear(); vi.unstubAllGlobals() }
   })
 
   it('disables continue without a saved story, creates immediately and previews independently', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { downloadExtensionZip, isPublicAddress, parseDownloadSource, satisfiesExtensionVersion } from '../../../apps/studio-server/src/extensions/extension-download.js'
+import { downloadExtensionZip, isPublicAddress, parseDownloadSource, satisfiesExtensionVersion } from '@loom-studio/kernel/extension-manager'
 
 describe('extension source boundaries', () => {
   it('accepts public HTTPS sources across Git providers and rejects credentials or unsafe refs', () => {

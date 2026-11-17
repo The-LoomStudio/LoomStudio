@@ -138,11 +138,10 @@ describe.each(['undoEdit', 'redoEdit'] as const)('%s navigation after refresh', 
   })
 })
 
-it('passes the active preview or last-run build trace to the Inspector', () => {
-  const runTrace = { diagnostics: [{ severity: 'warning', code: 'tool.missing', toolId: 'gone' }] }
+it('passes only the active preview build trace to the Inspector without reading removed lastRun traces', () => {
   const previewTrace = { variables: { diagnostics: [{ severity: 'warning', code: 'variable.path_missing', path: 'global.gone' }] } }
-  fixture.narrative = { ...fixture.narrative, lastRun: { promptBuildTrace: runTrace } }
-  expect(studio().promptBuildTrace).toBe(runTrace)
+  fixture.narrative = { ...fixture.narrative, lastRun: { buildId: 'build-1' } }
+  expect(studio().promptBuildTrace).toBeUndefined()
   fixture.narrative = { ...fixture.narrative, promptPreview: { promptBuildTrace: previewTrace } }
   expect(studio().promptBuildTrace).toBe(previewTrace)
   fixture.narrative = {}

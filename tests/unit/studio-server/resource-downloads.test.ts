@@ -129,7 +129,7 @@ describe('resource download tasks', () => {
 
   it('preserves dependency Git targets and checks the downloaded dependency version', async () => fixture(async directory => {
     const service = createResourceDownloadService({ directory, transport: async () => archive('1.0.0', [{ id: 'test.dependency', version: '^2.0.0', source: { kind: 'git', url: 'https://git.example/dependency' } }]), acquireGit: async (_source, root) => {
-      const { installExtensionPackageFromZip } = await import('../../../apps/studio-server/src/extensions/extension-package-installer.js')
+      const { installExtensionPackageFromZip } = await import('@loom-studio/kernel/extension-manager')
       const payload = zipSync({ 'manifest.json': strToU8(JSON.stringify({ manifestVersion: 2, id: 'test.dependency', version: '1.0.0', displayName: 'Dependency', engines: { studio: '*' }, modules: [] })) })
       return installExtensionPackageFromZip({ source: payload, installedDirectory: root })
     } })

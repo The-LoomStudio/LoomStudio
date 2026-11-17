@@ -71,7 +71,7 @@ const PAGE_TRANSITION_MS = 180
 
 export function CharacterPanel(props: CharacterPanelProps) {
   const mediaRevision = useCardMediaRevision()
-  const mediaUrl = (card: CharacterCardSummary, target: MediaTarget) => cardMediaUrl(card.id, target, target === 'avatar' ? card.media?.avatarAssetId : card.media?.coverAssetId, mediaRevision) ?? (target === 'avatar' ? '/images/default-card.png' : undefined)
+  const mediaUrl = (card: CharacterCardSummary, target: MediaTarget) => cardMediaUrl(card.id, target, target === 'avatar' ? card.media?.avatarAssetId : card.media?.coverAssetId, mediaRevision, card.updatedAt) ?? (target === 'avatar' ? '/images/default-card.png' : undefined)
   const organization = useCharacterGalleryStore()
   const [galleryMode, setGalleryMode] = useState<GalleryMode>('grid')
   const [query, setQuery] = useState('')

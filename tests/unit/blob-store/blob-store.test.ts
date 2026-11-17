@@ -1,5 +1,5 @@
-import { createBlobStore } from '@loom-studio/asset-store'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

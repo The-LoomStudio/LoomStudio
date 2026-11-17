@@ -18,7 +18,7 @@ describe('Character Group Dialog', () => {
   it('renders the real shared native dialog with an associated title and group controls', () => {
     gallery.groupsOpen = true
     const html = renderCharacterPanel(props)
-    const dialog = html.match(/<dialog\b[^>]*>[\s\S]*?character-group-dialog[\s\S]*?<\/dialog>/)?.[0]
+    const dialog = html.match(/<dialog\b[^>]*>(?:(?!<\/dialog>)[\s\S])*?character-group-dialog[\s\S]*?<\/dialog>/)?.[0]
     expect(dialog).toBeDefined()
     expect(dialog).toContain('data-loom-ui-dialog=""')
     expect(dialog).toContain('role="dialog"')

@@ -1,0 +1,71 @@
+# `@loom-studio/secret-store`
+
+> **状态**：Active Package Guide / Current Source Is Authority
+
+`@loom-studio/secret-store` 是 Loom Studio 敏感凭据（如大模型 API Key、第三方授权 Token）的安全托管与受控使用层。它实现了 SQLite 元数据管理与真实密钥后端的严格物理隔离。
+
+## 业务使命与受控使用模式
+
+在本地多模型工作台中，用户需要配置 OpenAI、Anthropic、Google 等各类供应商的 API 凭据。这些凭据既需要跨重启持久化，又必须受到严格的安全与权限保护。
+`@loom-studio/secret-store` 采用双层隔离架构：
+- **元数据层 (Metadata)**：在共享 SQLite 中维护凭据引用（`secret:<不透明 ID>`）、所属主体（Owner）、用途（Purpose）及生命周期状态（`active` / `pending-delete`）；
+- **凭据后端 (Backend)**：真实明文（`SecretPlaintext`）保存在可插拔后端：
+  - `createKeyringSecretBackend()`：生产环境基于操作系统原生凭据链（Keyring/Keychain）；
+  - `createMemorySecretBackend()`：开发、无头 CI 与单元测试专用的纯内存凭据后端；
+- **受控闭包借用 (`withSecret`)**：
+  外部业务模块严禁直接“读取”明文并随意传递，必须通过受控闭包临时借用：
+  ```ts
+  await secretStore.withSecret(secretRef, { caller: 'ai-gateway', owner, purpose: 'llm_invoke' }, async (plaintext) => {
+    // 仅在闭包内部短暂使用 plaintext.values.apiKey 发起网络调用
+  })
+  ```
+
+---
+
+## 架构规约与安全红线 (Security Rules & Boundaries)
+
+1. **绝对禁止在 SQLite 中持久化明文（No Plaintext in SQLite）**：
+   - SQLite 数据库表只允许保存 `SecretMetadata`，**严禁向数据库写入任何 API Key 或密码明文**；
+2. **严防凭据外泄（No Leakage）**：
+   - 严禁将明文 Secret 序列化输出到日志；Logging 只能对已知敏感键脱敏，不能替调用方识别任意明文；
+   - 严禁将明文 Secret 通过 RPC 或 HTTP 接口直接返回给前端 Web Client；
+3. **两阶段删除与清理重试**：
+   - 删除凭据时采用先标记 `pending-delete`，再清理系统 Keyring，最后确认持久化事实的机制，防止外部 Keyring 状态不一致。
+   - 创建/替换先在现有 cleanup 表登记新 backend key，再写外部后端；metadata 提交与移除新 key 意图同属一个事务。写入中断后，重开 Store 可以清理尚未生效的 key，表中不保存明文。
+   - 同一 Engine 的多个 Store 共享在途 key 保护；cleanup 不删除在途或 active metadata 引用的 key。此机制不提供多进程共享数据库的租约保证。
+   - Studio Server 在开始接纳请求前、在途业务停止且 Kernel 退出后分别重试积压。失败通过 `onCleanupFailure` 接入现有 Diagnostics/Logger，并保留队列，不能将无法确认的删除当作成功。
+   - Keyring 依赖固定为 `@napi-rs/keyring` 2.1.0，使用 `AsyncEntry`；读、写、删除异常转换为安全的 `secret.keyring_*` 错误，不透传原生错误正文。service 默认为 `loom-studio.secrets.v1`，不更换既有 service 身份或凭据格式。
+
+---
+
+## 公共入口
+
+Package 主入口为 [`src/index.ts`](./index.ts)：
+
+- `createSecretStore(options)`：创建 Secret 存储实例（注入 `engine`、`backend`、`createId`、`now` 与借用授权函数 `authorizeUse`，见 [`store.ts`](./store.ts)）；
+- `createKeyringSecretBackend()`：操作系统安全凭据后端工厂；
+- `createMemorySecretBackend()`：内存凭据后端工厂；
+- 核心类型：`SecretStore`、`SecretBackend`、`SecretMetadata`、`SecretPlaintext`、`SecretRef`、`SecretStoreError`。
+
+---
+
+## 依赖职责
+
+`@loom-studio/data-engine` 拥有共享 SQLite 的 metadata / cleanup 事务；`@napi-rs/keyring` 只承接系统凭据字节的读写删除，入口为 [`keyring-backend.ts`](./keyring-backend.ts)。两者不能组成单一物理事务，因此本包维护已有意图与补偿清理，不引入另一套密钥文件、环境变量持久化或凭据缓存。Memory backend 是显式注入的临时实现，不是 Keyring 故障时的静默降级。
+
+## 构建与验证
+
+```bash
+# 编译 TypeScript 产物
+pnpm --filter @loom-studio/secret-store build
+
+# 运行凭据存储单元测试
+pnpm exec vitest run tests/unit/secret-store
+```
+
+---
+
+## 正式文档
+
+- [Data Architecture 统一持久化架构](../../../../docs/architecture/data/README.md)
+- [External Dependency Ownership 依赖所有权](../../../../docs/architecture/platform/external-dependency-ownership.md)

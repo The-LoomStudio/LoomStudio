@@ -21,14 +21,14 @@
 | 能力 | 当前事实与入口 | 缺口 / 第一批可展示内容 |
 | --- | --- | --- |
 | UI | [DashboardDialog / DashboardPanel](../../../apps/studio-client/src/widgets/dashboard/dashboard-panel.tsx)、[展示输入](../../../apps/studio-client/src/widgets/dashboard/dashboard-view.ts)（早期 dev preview 样例已下线移除） | 复用组件，增加资源视图与真实加载 / 缺数状态；当前 `DashboardSnapshot` 是展示输入，不是后端合同 |
-| 数据查询 | [SqliteDataEngine](../../../packages/data-engine/src/sqlite.ts)已有 `read`、`readSnapshot`、事务与 migration，可在 Application Data 使用 SQL 聚合所需的读入口 | 不缺 SQL 执行基础，缺领域统计查询；不能让客户端加载全部 Document / Transcript 后计数 |
-| 资源 | [Document 类型](../../../packages/application-runtime/src/foundation/document-types.ts)、[Card 列表](../../../packages/application-runtime/src/runtime/cards-runtime.ts)、[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)、[扩展安装](../../../packages/application-runtime/src/runtime/extensions-runtime.ts)已有权威身份 | 可直接统计当前非 tombstone 的实体；现有分页 / 全量映射列表不等于计数接口 |
-| Agent 用量 | [Transcript 类型](../../../packages/application-data/src/agent/types.ts)有 request-measurement / provider-observation；[tool-loop](../../../packages/application-runtime/src/agents/tool-loop.ts)尽力保存估算和 usage，失败不阻断调用 | 可以只读查看已记录历史，但不足以声称累计实际用量完整；缺独立、结构化、可索引的长期调用事实 |
+| 数据查询 | [SqliteDataEngine](../../../packages/kernel/src/data-engine/sqlite.ts)已有 `read`、`readSnapshot`、事务与 migration，可在 Application Data 使用 SQL 聚合所需的读入口 | 不缺 SQL 执行基础，缺领域统计查询；不能让客户端加载全部 Document / Transcript 后计数 |
+| 资源 | [Document 类型](../../../packages/application-runtime/src/foundation/document-types.ts)、[Card 列表](../../../packages/application-runtime/src/runtime/cards-runtime.ts)、[Prompt Resource Store](../../../packages/application-runtime/src/data/prompt-resource/store.ts)、[扩展安装](../../../packages/application-runtime/src/runtime/extensions-runtime.ts)已有权威身份 | 可直接统计当前非 tombstone 的实体；现有分页 / 全量映射列表不等于计数接口 |
+| Agent 用量 | [Transcript 类型](../../../packages/application-runtime/src/data/agent/types.ts)有 request-measurement / provider-observation；[tool-loop](../../../packages/application-runtime/src/agents/tool-loop.ts)尽力保存估算和 usage，失败不阻断调用 | 可以只读查看已记录历史，但不足以声称累计实际用量完整；缺独立、结构化、可索引的长期调用事实 |
 | 其他模型调用 | [Session 摘要](../../../packages/application-runtime/src/agents/session-summary.ts)、[Provider 测试](../../../packages/application-runtime/src/runtime/providers-runtime.ts)、扩展 chat 使用 Chat Gateway；[Profiled Gateway](../../../packages/application-runtime/src/providers/gateway.ts)另供 `ai.invoke/start` 和扩展能力调用 | 必须覆盖两条入口。能力调用的 [AiGatewayInvokeResult](../../../packages/ai-gateway/src/capability-registry.ts)只有通用 output，没有标准 TokenUsage |
 | 模型日志 | [ObservationStore](../../../packages/application-runtime/src/observability/store.ts)默认 24 小时 TTL、1000 条 / 32 MiB；可选磁盘快照仍受保留范围限制；[读取端](../../../packages/application-runtime/src/runtime/observability-runtime.ts)还会隐藏已删除关联对象 | 可作短期下钻证据，不能承担长期统计账本；日志关闭、过期或清理不应改变累计用量 |
-| 故事与用户输入 | [Narrative Store](../../../packages/application-data/src/narrative/store.ts)有 Timeline 来源 Card、Branch、Node 与 canonical Transcript 关联；[Agent Store](../../../packages/application-data/src/agent/store.ts)有 round / candidate 身份及会话删除状态 | 可读故事 / 分支数量、当前剧情输入数、最近更新时间。缺“用户实际发送行为”的稳定事实，不能直接拿 entryCount 当消息数 |
+| 故事与用户输入 | [Narrative Store](../../../packages/application-runtime/src/data/narrative/store.ts)有 Timeline 来源 Card、Branch、Node 与 canonical Transcript 关联；[Agent Store](../../../packages/application-runtime/src/data/agent/store.ts)有 round / candidate 身份及会话删除状态 | 可读故事 / 分支数量、当前剧情输入数、最近更新时间。缺“用户实际发送行为”的稳定事实，不能直接拿 entryCount 当消息数 |
 | 游玩时长 | 用户已取消该指标 | 不实现采集、RPC、持久化及展示；不以生成耗时或故事时间跨度替代 |
-| 存储 | [路径解析](../../../apps/studio-server/src/platform/local-paths.ts)、[Server 组合根](../../../apps/studio-server/src/server.ts)、[Blob Store](../../../packages/asset-store/src/blobs/store.ts)已有路径、文件与 blob size metadata | 缺受控文件快照、数据库空间统计、对应 RPC；数据库 bytes 与文件扫描需分层 |
+| 存储 | [路径解析](../../../packages/kernel/src/platform/local-paths.ts)、[Server 组合根](../../../apps/studio-server/src/server.ts)、[Blob Store](../../../packages/kernel/src/asset-store/blobs/store.ts)已有路径、文件与 blob size metadata | 缺受控文件快照、数据库空间统计、对应 RPC；数据库 bytes 与文件扫描需分层 |
 | RPC / Client | [router](../../../apps/studio-server/src/rpc/trpc/router.ts)、[services context](../../../apps/studio-server/src/rpc/trpc/services-context.ts)、[StudioApi](../../../apps/studio-client/src/shared/api/studio-api.ts)已有接线模式；[全局搜索](../../../apps/studio-client/src/features/global-search/model/use-global-search.ts)有按 open 启用 Query 的先例 | 没有 Dashboard 聚合 RPC；新增窄接口，按 endpoint / 条件缓存，保持现有认证 |
 
 当前源码还确认：底层 Chat Gateway 使用 `maxRetries: 0`；不能由此推断第三方 Capability Handler 内部没有自重试。一次宿主调用与一次外部 HTTP 请求必须区分。
@@ -55,7 +55,7 @@
 - 默认统计当前实例全部已存活资源，包括暂未被任何角色采用的资源；同一 ID 被多个角色 / 预设引用只算一次。复制出新 ID 是另一份实体。
 - 初版只承诺存在数量，不把“存在”包装成“可正常执行”。损坏 Prompt 资源的 Header 仍计入保存数量；只有已有诊断明确标为无效时才给出无效子计数，不为 Dashboard 全量解析资源树。
 - tombstone 不计入当前库存；仍占磁盘的修订、旧 Blob 和已删除数据会继续出现在存储统计，因此资源数量下降不保证文件总大小下降。
-- 扩展“安装 / 可发现 / 启用 / 当前 Timeline 参与 / 当前运行实例”各有来源。第一版以安装记录为主，不新增含混的“启用扩展总数”。[Extension Manager](../../../apps/studio-server/src/extensions/extension-manager.ts)的 `listPackages(target)` 按目标返回发现与运行状态，不能只数全局列表来冒充全实例安装数。若需启用状态，新增面向安装目标的摘要读取，并明确取 enabled 的模块还是 Package。
+- 扩展“安装 / 可发现 / 启用 / 当前 Timeline 参与 / 当前运行实例”各有来源。第一版以安装记录为主，不新增含混的“启用扩展总数”。[Extension Manager](../../../packages/kernel/src/extension-manager/extension-manager.ts)的 `listPackages(target)` 按目标返回发现与运行状态，不能只数全局列表来冒充全实例安装数。若需启用状态，新增面向安装目标的摘要读取，并明确取 enabled 的模块还是 Package。
 - SQL 可计数部分在一个 `engine.read` / `readSnapshot` 中完成；只 SELECT COUNT / GROUP BY 所需字段，不用当前 `listPromptResources` 的整树 materialize 流程。
 - 暂不增加资源明细浏览 RPC；分类点击复用现有角色、Lore、Preset、扩展、Script、规则页面。缺少真正的素材管理入口时先只展示计数，不能用无效“管理”按钮充数。
 

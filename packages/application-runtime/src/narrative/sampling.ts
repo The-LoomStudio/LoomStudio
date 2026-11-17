@@ -1,4 +1,4 @@
-import type { NarrativeNode, NarrativeStore } from '@loom-studio/application-data'
+import type { NarrativeNode, NarrativeStore } from '../data/index.js'
 import type { TextTransformDiagnostic, TextTransformPhase } from '../transforms/history-text.js'
 
 export type NarrativeSampleSelection =

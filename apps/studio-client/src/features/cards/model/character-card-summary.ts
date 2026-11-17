@@ -11,4 +11,5 @@ export type CharacterCardSummary = {
   promptResourceIds?: string[]
   lore?: { entries: unknown[] }
   opening?: import('../../../entities/card.js').Card['opening']
+  updatedAt?: string
 }

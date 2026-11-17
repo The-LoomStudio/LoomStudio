@@ -1,4 +1,4 @@
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
 import { describe, expect, it } from 'vitest'
 
 describe('bounded runtime diagnostics', () => {

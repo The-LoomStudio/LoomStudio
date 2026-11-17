@@ -3,49 +3,25 @@ import { createExtensionRecordArchiveParticipant } from './extension-record-arch
 import { createExtensionAgentTasks } from './extension-agent-tasks.js'
 import { createExtensionNarrativeReader } from './extension-narrative-reader.js'
 import {
-  applicationDocumentTypes,
-  type createApplicationRuntime,
-  type createDocumentBackedAiGateway,
-  type createDocumentBackedProfiledAiGateway,
-  type createOfficialAgentToolRegistry,
-  type createMacroProviderRegistry,
-  type createPromptProcessorRegistry,
-  type createStateContentRegistry,
-  type createNarrativeContextRegistry,
-  type createStateContributionRegistry,
+  type ApplicationRuntime,
   type ToolExecutionScope,
   type StateTarget,
 } from '@loom-studio/application-runtime'
 import { AsyncLocalStorage } from 'node:async_hooks'
-import type { createAiGatewayCapabilityRegistry } from '@loom-studio/ai-gateway'
-import type { createAgentStore, createNarrativeStore, createStateStore, PromptResourceStore } from '@loom-studio/application-data'
-import type { AssetStore } from '@loom-studio/asset-store'
-import type { DocumentStore } from '@loom-studio/document-store'
-import type { createExtensionHost } from '@loom-studio/extension-host'
+import type { AssetStore } from '@loom-studio/kernel/asset-store'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
+import type { createExtensionHost } from '@loom-studio/kernel/extension-host'
 import type { createKernel } from '@loom-studio/kernel'
 import { createId } from '@loom-studio/shared'
 import { canAccessExtensionState } from './extension-state-access.js'
 import { projectExtensionEvent } from './extension-event-projection.js'
 
 type Dependencies = {
-  applicationRuntime: ReturnType<typeof createApplicationRuntime>
+  applicationRuntime: ApplicationRuntime
   assets?: AssetStore
-  documents: DocumentStore
+  documents?: DocumentStore
   extensionAgentTasks?: ReturnType<typeof createExtensionAgentTasks>
-  agents?: ReturnType<typeof createAgentStore>
-  narratives?: ReturnType<typeof createNarrativeStore>
-  states?: ReturnType<typeof createStateStore>
-  promptResources: PromptResourceStore
   getKernel(): ReturnType<typeof createKernel>
-  aiCapabilities: ReturnType<typeof createAiGatewayCapabilityRegistry>
-  profiledAiGateway: ReturnType<typeof createDocumentBackedProfiledAiGateway>
-  gateway: ReturnType<typeof createDocumentBackedAiGateway>
-  agentTools: ReturnType<typeof createOfficialAgentToolRegistry>
-  macroProviders: ReturnType<typeof createMacroProviderRegistry>
-  promptProcessors: ReturnType<typeof createPromptProcessorRegistry>
-  stateContent: ReturnType<typeof createStateContentRegistry>
-  narrativeContext: ReturnType<typeof createNarrativeContextRegistry>
-  stateContributions: ReturnType<typeof createStateContributionRegistry>
 }
 
 type ApplicationAdapter = Pick<Parameters<typeof createExtensionHost>[0],
@@ -89,10 +65,25 @@ type ApplicationAdapter = Pick<Parameters<typeof createExtensionHost>[0],
 
 
 export function createExtensionApplicationAdapter({
-  applicationRuntime, assets, documents, agents, narratives, states, promptResources, getKernel,
-  aiCapabilities, profiledAiGateway, gateway, agentTools, macroProviders, promptProcessors,
-  stateContent, narrativeContext, stateContributions, extensionAgentTasks,
+  applicationRuntime,
+  assets,
+  documents,
+  extensionAgentTasks,
+  getKernel,
 }: Dependencies): ApplicationAdapter {
+  const {
+    aiCapabilities,
+    aiGateway,
+    agentTools,
+    macroProviders,
+    promptProcessors,
+    stateContent,
+    narrativeContext,
+    stateContributions,
+    stores,
+  } = applicationRuntime.extensionPorts
+  const resolvedDocuments = documents ?? stores.documents
+  const { narratives, states, promptResources } = stores
   const recordArchiveOwners = new Set<string>()
   const narrativeReader = narratives ? createExtensionNarrativeReader(applicationRuntime, narratives) : undefined
   const toolScopes = new AsyncLocalStorage<ToolExecutionScope>()
@@ -129,7 +120,7 @@ export function createExtensionApplicationAdapter({
       const namespace = `extension.${createHash('sha256').update(`${owner.installationId}:${adapter.id}`).digest('hex')}`
       const handle = applicationRuntime.registerTimelineArchiveParticipant(createExtensionRecordArchiveParticipant({
         namespace, version: adapter.version, packageId: owner.packageId,
-        ownerInstallationId: owner.target.kind === 'global' ? undefined : owner.installationId, documents, remapData: adapter.remap,
+        ownerInstallationId: owner.target.kind === 'global' ? undefined : owner.installationId, documents: resolvedDocuments, remapData: adapter.remap,
       }))
       recordArchiveOwners.add(owner.installationId)
       return { dispose() { handle.unregister(); recordArchiveOwners.delete(owner.installationId) } }
@@ -138,7 +129,7 @@ export function createExtensionApplicationAdapter({
     validateExtensionNarrative: narrativeReader?.validate,
     subscribeNarrativeActivity: applicationRuntime.subscribeNarrativeActivity,
     registerReadonlyFiles: applicationRuntime.registerReadonlyFiles,
-    extensionAgentTasks: extensionAgentTasks ?? createExtensionAgentTasks({ runtime: applicationRuntime, documents }),
+    extensionAgentTasks: extensionAgentTasks ?? createExtensionAgentTasks({ runtime: applicationRuntime, documents: resolvedDocuments }),
     assets: assets
       ? {
           publish: async input => {
@@ -222,22 +213,32 @@ export function createExtensionApplicationAdapter({
       },
     },
     aiCapabilities,
-    aiGateway: profiledAiGateway,
+    aiGateway,
     invokeModel: async (input, owner) => {
       if (typeof input.model?.providerProfileId !== 'string' || !input.model.providerProfileId.trim()
         || typeof input.model.modelId !== 'string' || !input.model.modelId.trim())
         throw new Error('Explicit provider profile and model are required')
       input.signal?.throwIfAborted()
-      const result = await gateway.invokeChat({
+      const result = await aiGateway.invokeChat({
         model: input.model,
         request: {
           messages: input.messages,
           ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+          metadata: {
+            purpose: 'extension-model',
+            ...(owner?.timelineId ? { timelineId: owner.timelineId } : {}),
+          },
         },
         runId: createId('extension-model-run'),
-        ...(owner ? { context: { actor: { kind: 'extension' as const, id: owner.packageId }, observationOrigin: owner } } : {}),
-        sessionId: 'extension-direct',
-        branchId: 'extension-direct',
+        ...(owner ? {
+          context: {
+            actor: { kind: 'extension' as const, id: owner.packageId },
+            ...(owner.correlationId ? { correlationId: owner.correlationId } : {}),
+            ...(owner.callId ? { callId: owner.callId } : {}),
+            ...(owner.parentCallId ? { parentCallId: owner.parentCallId } : {}),
+            observationOrigin: owner,
+          },
+        } : {}),
         ...(input.signal ? { abortSignal: input.signal } : {}),
         ...(input.delivery ? { delivery: input.delivery } : {}),
         ...(input.onEvent ? { onEvent: input.onEvent } : {}),
@@ -341,62 +342,8 @@ export function createExtensionApplicationAdapter({
         }
       },
     }),
-    validateStorageScope: async (scope, target, execution) => {
-      if (scope.kind === 'global') return
-      if (scope.kind === 'card') {
-        const card = await documents.get(scope.cardId)
-        if (!card || card.type !== applicationDocumentTypes.cardSource || card.meta.tombstone) throw new Error(`Card not found: ${scope.cardId}`)
-        return
-      }
-      if (scope.kind === 'timeline') {
-        const timeline = await narratives?.getTimeline(scope.timelineId)
-        if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${scope.timelineId}`)
-        if (target.kind === 'card' && timeline.createdFrom?.cardId !== target.cardId) {
-          throw new Error('Narrative Timeline is outside the extension Card installation')
-        }
-        return
-      }
-      const session = await agents?.getSession(scope.agentSessionId)
-      if (!session || session.deletedAt) throw new Error(`Agent Session not found: ${scope.agentSessionId}`)
-      if (execution && session.timelineId !== execution.timelineId) throw new Error('Agent Session is outside the current Timeline')
-      if (target.kind === 'card') {
-        const timeline = session.timelineId ? await narratives?.getTimeline(session.timelineId) : undefined
-        if (!timeline || timeline.deletedAt || timeline.createdFrom?.cardId !== target.cardId) {
-          throw new Error('Agent Session is outside the extension Card installation')
-        }
-      }
-    },
-    validateEntityRef: async (ref, target, execution) => {
-      if (execution && ref.kind === 'agent-message'
-        && (await agents?.getSession(ref.agentSessionId))?.timelineId !== execution.timelineId) {
-        throw new Error('Agent Message is outside the current Timeline')
-      }
-      if (target.kind === 'card' && ref.kind !== 'asset') {
-        const timelineId = ref.kind === 'agent-message'
-          ? (await agents?.getSession(ref.agentSessionId))?.timelineId
-          : ref.timelineId
-        const timeline = timelineId ? await narratives?.getTimeline(timelineId) : undefined
-        if (!timeline || timeline.deletedAt || timeline.createdFrom?.cardId !== target.cardId) {
-          throw new Error('Entity reference is outside the extension Card installation')
-        }
-      }
-      if (ref.kind === 'narrative-node') {
-        const node = await narratives?.getNode(ref.nodeId)
-        if (!node || node.timelineId !== ref.timelineId) throw new Error(`Narrative Node not found in Timeline: ${ref.nodeId}`)
-        return
-      }
-      if (ref.kind === 'agent-message') {
-        const entry = await agents?.getEntry(ref.messageId)
-        if (!entry || entry.agentSessionId !== ref.agentSessionId) throw new Error(`Agent Message not found in Session: ${ref.messageId}`)
-        return
-      }
-      if (ref.kind === 'asset') {
-        if (!await assets?.getMediaAsset(ref.assetId)) throw new Error(`Media Asset not found: ${ref.assetId}`)
-        return
-      }
-      const timeline = await narratives?.getTimeline(ref.timelineId)
-      if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${ref.timelineId}`)
-    },
+    validateStorageScope: applicationRuntime.scopeValidator.validateStorageScope,
+    validateEntityRef: applicationRuntime.scopeValidator.validateEntityRef,
     callRpc: (method, params, context) => getKernel().callRpc(method, params, context),
     registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId, target) => {
       const handle = getKernel().registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId, target)
@@ -411,7 +358,7 @@ export function createExtensionApplicationAdapter({
       patterns,
       subscriber.kind === 'extension' && subscriber.target?.kind === 'card'
         ? async event => {
-          const projected = await projectExtensionEvent({ documents, narratives, states, promptResources }, event, subscriber)
+          const projected = await projectExtensionEvent({ documents: resolvedDocuments, narratives, states, promptResources }, event, subscriber)
           if (projected) await handler(projected)
         } : handler,
       { subscriber },

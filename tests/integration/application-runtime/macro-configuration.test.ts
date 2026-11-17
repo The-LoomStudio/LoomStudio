@@ -1,10 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createApplicationRuntime, createMacroProviderRegistry } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createId, nowIso, type ChatMessage } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
 

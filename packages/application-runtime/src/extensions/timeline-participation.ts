@@ -1,5 +1,5 @@
-import type { DocumentTransaction } from '@loom-studio/document-store'
-import type { NarrativeTimeline } from '@loom-studio/application-data'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
+import type { NarrativeTimeline } from '../data/index.js'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'

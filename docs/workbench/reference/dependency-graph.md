@@ -30,7 +30,6 @@ flowchart TD
 - [Application Runtime manifest](../../../packages/application-runtime/package.json)
 - [Kernel manifest](../../../packages/kernel/package.json)
 - [Extension SDK manifest](../../../packages/extension-sdk/package.json)
-- [Extension Host manifest](../../../packages/extension-sdk/extension-host/package.json)
 
 ## 核心约束
 

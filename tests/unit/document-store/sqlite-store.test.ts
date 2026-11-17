@@ -1,5 +1,5 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createId, nowIso } from '@loom-studio/shared'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
@@ -443,6 +443,99 @@ describe('sqlite document store', () => {
       store.close()
     } finally {
       await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('attaches upfront DataCommitOperation.scope tags on document writes, deletes, and restores', async () => {
+    let sequence = 0
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-${++sequence}`,
+      now: () => '2026-11-17T00:00:00.000Z',
+    })
+    const store = createSqliteDocumentStore({ engine })
+    const observedScopes: Array<Record<string, unknown> | undefined> = []
+    const subscription = engine.subscribeCommits(commit => {
+      observedScopes.push(...commit.operations.map(op => op.scope as Record<string, unknown> | undefined))
+    })
+
+    try {
+      await store.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+        await tx.write({
+          id: 'card-1',
+          type: 'airp.cardSource',
+          content: { name: 'Card' },
+          expectedVersion: 'new',
+        })
+        await tx.write({
+          id: 'rule-1',
+          type: 'airp.textTransformRule',
+          meta: {
+            ownerExtensionId: 'pkg.ext',
+            ownerInstallationId: 'extension-installation:["card","card-1","pkg.ext"]',
+          },
+          content: {
+            scope: { kind: 'timeline', timelineId: 'tl-9' },
+          },
+          expectedVersion: 'new',
+        })
+        await tx.write({
+          id: 'extension-installation:["card","card-2","pkg.a"]',
+          type: 'airp.extensionInstallation',
+          content: {
+            packageId: 'pkg.a',
+            target: { kind: 'card', cardId: 'card-2' },
+          },
+          expectedVersion: 'new',
+        })
+        await tx.write({
+          id: 'mismatch-1',
+          type: 'airp.agentTool',
+          meta: {
+            ownerExtensionId: 'pkg.other',
+            ownerInstallationId: 'extension-installation:["card","card-1","pkg.ext"]',
+          },
+          content: { label: 'Tool' },
+          expectedVersion: 'new',
+        })
+      })
+
+      const deleted = await store.delete({
+        id: 'card-1',
+        expectedVersion: 1,
+        actor: { kind: 'system', id: 'test' },
+      })
+      await store.revertChangeset({
+        changesetId: deleted.commit.changesetId,
+        actor: { kind: 'system', id: 'test' },
+      })
+
+      expect(observedScopes).toEqual([
+        { store: 'documents', entityId: 'card-1', entityType: 'airp.cardSource', version: 1, cardId: 'card-1' },
+        {
+          store: 'documents',
+          entityId: 'rule-1',
+          entityType: 'airp.textTransformRule',
+          version: 1,
+          cardId: 'card-1',
+          timelineId: 'tl-9',
+          installationId: 'extension-installation:["card","card-1","pkg.ext"]',
+        },
+        {
+          store: 'documents',
+          entityId: 'extension-installation:["card","card-2","pkg.a"]',
+          entityType: 'airp.extensionInstallation',
+          version: 1,
+          cardId: 'card-2',
+          installationId: 'extension-installation:["card","card-2","pkg.a"]',
+        },
+        undefined,
+        { store: 'documents', entityId: 'card-1', entityType: 'airp.cardSource', version: 2, cardId: 'card-1' },
+        { store: 'documents', entityId: 'card-1', entityType: 'airp.cardSource', version: 3, cardId: 'card-1' },
+      ])
+    } finally {
+      subscription.dispose()
+      await engine.close()
     }
   })
 })

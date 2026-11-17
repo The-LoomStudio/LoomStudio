@@ -91,17 +91,36 @@ export const directoriesRouter = t.router({
 })
 
 const aiProcedure = procedure.use(({ ctx, next }) => {
-  if (!ctx.services.aiCapabilities || !ctx.services.aiGateway) throw new Error('AI Gateway unavailable')
-  return next({ ctx: { ...ctx, ai: { registry: ctx.services.aiCapabilities, gateway: ctx.services.aiGateway } } })
+  const registry = ctx.services.aiCapabilities ?? ctx.services.applicationRuntime.extensionPorts.aiCapabilities
+  const gateway = ctx.services.aiGateway ?? ctx.services.applicationRuntime.extensionPorts.aiGateway
+  if (!registry || !gateway) throw new Error('AI Gateway unavailable')
+  return next({ ctx: { ...ctx, ai: { registry, gateway } } })
 })
 const aiInput = z.object({ profileId: z.string(), input: z.json() })
 const runInput = z.object({ runId: z.string() })
 export const aiRouter = t.router({
   providers: t.router({ list: aiProcedure.query(({ ctx }) => ({ providers: ctx.ai.registry.list() })) }),
-  invoke: aiProcedure.input(aiInput).mutation(({ ctx, input }) => ctx.ai.gateway.invoke({ ...input, caller: { kind: 'studio-client' } })),
+  invoke: aiProcedure.input(aiInput).mutation(({ ctx, input }) => ctx.ai.gateway.invoke({
+    ...input,
+    ...(ctx.request.abortSignal ? { signal: ctx.request.abortSignal } : {}),
+    caller: { kind: 'studio-client', ...(ctx.request.clientId ? { id: ctx.request.clientId } : {}) },
+    context: {
+      ...(ctx.request.correlationId ? { correlationId: ctx.request.correlationId } : {}),
+      ...(ctx.request.callId ? { callId: ctx.request.callId } : {}),
+      ...(ctx.request.parentCallId ? { parentCallId: ctx.request.parentCallId } : {}),
+    },
+  })),
   run: t.router({
     create: aiProcedure.input(aiInput).mutation(({ ctx, input }) => {
-      const run = ctx.ai.gateway.createRun({ ...input, caller: { kind: 'studio-client' } })
+      const run = ctx.ai.gateway.createRun({
+        ...input,
+        caller: { kind: 'studio-client', ...(ctx.request.clientId ? { id: ctx.request.clientId } : {}) },
+        context: {
+          ...(ctx.request.correlationId ? { correlationId: ctx.request.correlationId } : {}),
+          ...(ctx.request.callId ? { callId: ctx.request.callId } : {}),
+          ...(ctx.request.parentCallId ? { parentCallId: ctx.request.parentCallId } : {}),
+        },
+      })
       retainAiGatewayRun(ctx.ai.gateway, run)
       return { runId: run.id }
     }),

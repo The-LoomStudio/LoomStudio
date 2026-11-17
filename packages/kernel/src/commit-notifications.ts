@@ -1,47 +1,160 @@
-import type { JsonValue } from '@loom-studio/shared'
-import { serializeError } from '@loom-studio/shared'
+import { isJsonObject, serializeError, type JsonObject, type JsonValue } from '@loom-studio/shared'
 import type { CreateKernelOptions, EventBus, EventEmitOptions } from './types.js'
 
-/** Partition paired summaries in linear serialized-byte work; reserve worst-case chunk digits. */
-export function splitCommitPayload(payload: JsonValue, budget: number): JsonValue[] {
-  const data = payload as Record<string, JsonValue>
-  const operations = data.operations as JsonValue[]
-  const documents = data.documents as JsonValue[] | undefined
-  const { operations: _operations, documents: _documents, ...base } = data
-  const bytes = (value: JsonValue) => Buffer.byteLength(JSON.stringify(value), 'utf8')
-  const operationBytes = operations.map(bytes)
-  const documentBytes = documents?.map(bytes)
-  const empty = { ...base, operations: [], ...(documents ? { documents: [] } : {}) }
-  const arrayBytes = (sizes: number[]) => sizes.reduce((sum, size) => sum + size, 0) + Math.max(0, sizes.length - 1)
-  if (bytes(empty) + arrayBytes(operationBytes) + (documentBytes ? arrayBytes(documentBytes) : 0) <= budget) return [payload]
-  const overhead = bytes({ ...empty, chunk: { index: operations.length, count: operations.length } })
-  const ranges: Array<[number, number]> = []
-  let start = 0
-  let size = overhead
-  for (let index = 0; index < operations.length; index++) {
-    const itemBytes = operationBytes[index]! + (documentBytes?.[index] ?? 0)
-    const separator = index > start ? (documents ? 2 : 1) : 0
-    if (size + itemBytes + separator > budget) {
-      if (index === start) throw new Error('A single commit summary exceeds the notification budget')
-      ranges.push([start, index])
-      start = index
-      size = overhead
-    }
-    size += itemBytes + (index > start ? (documents ? 2 : 1) : 0)
-    if (size > budget) throw new Error('A single commit summary exceeds the notification budget')
-  }
-  ranges.push([start, operations.length])
-  return ranges.map(([from, to], index) => ({ ...base, operations: operations.slice(from, to),
-    ...(documents ? { documents: documents.slice(from, to) } : {}), chunk: { index, count: ranges.length } }))
+const COMPACT_OPERATION_CAP = 64
+const COMPACT_BYTE_CAP = 32 * 1024
+
+function utf8Bytes(value: JsonValue): number {
+  return Buffer.byteLength(JSON.stringify(value), 'utf8')
 }
 
-export function publishCommitNotification(eventBus: EventBus, diagnostics: CreateKernelOptions['diagnostics'], name: string,
-  payload: () => JsonValue, context: EventEmitOptions): void {
+function scopeKey(scope: JsonValue | undefined): string {
+  if (!isJsonObject(scope)) return ''
+  return JSON.stringify([
+    scope.store ?? null,
+    scope.entityType ?? null,
+    scope.entityId ?? null,
+    scope.version ?? null,
+    scope.cardId ?? null,
+    scope.timelineId ?? null,
+    scope.installationId ?? null,
+  ])
+}
+
+type CollapsedGroup = {
+  first: JsonObject
+  count: number
+}
+
+function collapseOperationsByScope(operations: JsonValue[]): JsonObject[] {
+  const groups = new Map<string, CollapsedGroup>()
+  for (const item of operations) {
+    if (!isJsonObject(item)) continue
+    const key = JSON.stringify([item.store ?? null, item.kind ?? null, item.entityType ?? null, scopeKey(item.scope)])
+    const existing = groups.get(key)
+    if (existing) {
+      existing.count++
+      continue
+    }
+    groups.set(key, { first: item, count: 1 })
+  }
+
+  const collapsed: JsonObject[] = []
+  for (const { first, count } of groups.values()) {
+    if (count === 1) {
+      collapsed.push({
+        ...(first.store !== undefined ? { store: first.store } : {}),
+        ...(first.kind !== undefined ? { kind: first.kind } : {}),
+        ...(first.entityType !== undefined ? { entityType: first.entityType } : {}),
+        ...(first.entityId !== undefined ? { entityId: first.entityId } : {}),
+        ...(first.scope !== undefined ? { scope: first.scope } : {}),
+        ...(first.fromVersion !== undefined ? { fromVersion: first.fromVersion } : {}),
+        ...(first.toVersion !== undefined ? { toVersion: first.toVersion } : {}),
+      })
+      continue
+    }
+    const scope = isJsonObject(first.scope) ? first.scope : undefined
+    const entityId = typeof scope?.entityId === 'string' ? scope.entityId : first.entityId
+    collapsed.push({
+      ...(first.store !== undefined ? { store: first.store } : {}),
+      ...(first.kind !== undefined ? { kind: first.kind } : {}),
+      ...(first.entityType !== undefined ? { entityType: first.entityType } : {}),
+      ...(entityId !== undefined ? { entityId } : {}),
+      ...(scope ? { scope } : {}),
+      count,
+    })
+  }
+  return collapsed
+}
+
+function collapseOperationsByStoreScope(operations: JsonObject[]): JsonObject[] {
+  const groups = new Map<string, { store?: JsonValue; scope?: JsonObject; kinds: Set<JsonValue>; entityTypes: Set<JsonValue>; count: number }>()
+  for (const item of operations) {
+    const key = JSON.stringify([item.store ?? null, scopeKey(item.scope)])
+    const itemCount = typeof item.count === 'number' ? item.count : 1
+    const existing = groups.get(key)
+    if (existing) {
+      if (item.kind !== undefined) existing.kinds.add(item.kind)
+      if (item.entityType !== undefined) existing.entityTypes.add(item.entityType)
+      existing.count += itemCount
+      continue
+    }
+    groups.set(key, {
+      ...(item.store !== undefined ? { store: item.store } : {}),
+      ...(isJsonObject(item.scope) ? { scope: item.scope } : {}),
+      kinds: new Set(item.kind !== undefined ? [item.kind] : []),
+      entityTypes: new Set(item.entityType !== undefined ? [item.entityType] : []),
+      count: itemCount,
+    })
+  }
+  return [...groups.values()].map(group => ({
+    ...(group.store !== undefined ? { store: group.store } : {}),
+    kind: group.kinds.size === 1 ? [...group.kinds][0]! : 'update',
+    entityType: group.entityTypes.size === 1 ? [...group.entityTypes][0]! : `${String(group.store ?? 'data')}.*`,
+    entityId: typeof group.scope?.entityId === 'string' ? group.scope.entityId : '*',
+    ...(group.scope ? { scope: group.scope } : {}),
+    count: group.count,
+  }))
+}
+
+function collapseOperationsByStore(operations: JsonObject[]): JsonObject[] {
+  const groups = new Map<string, number>()
+  for (const item of operations) {
+    const store = String(item.store ?? 'unknown')
+    const itemCount = typeof item.count === 'number' ? item.count : 1
+    groups.set(store, (groups.get(store) ?? 0) + itemCount)
+  }
+  return [...groups.entries()].map(([store, count]) => ({
+    store,
+    kind: 'update',
+    entityType: `${store}.*`,
+    entityId: '*',
+    count,
+  }))
+}
+
+/** Keep commit notifications within a single small frame; collapse large commits by scope with overflow=true. */
+export function compactCommitPayload(payload: JsonValue, budget: number): JsonValue {
+  if (!isJsonObject(payload) || !Array.isArray(payload.operations)) return payload
+  const effectiveCap = Math.min(COMPACT_BYTE_CAP, budget)
+  if (payload.operations.length <= COMPACT_OPERATION_CAP && utf8Bytes(payload) <= effectiveCap) {
+    return payload
+  }
+
+  const { operations: rawOperations, ...base } = payload
+  const byScope = collapseOperationsByScope(rawOperations)
+  const scopePayload: JsonObject = { ...base, operations: byScope, overflow: true }
+  if (utf8Bytes(scopePayload) <= effectiveCap) return scopePayload
+
+  const byStoreScope = collapseOperationsByStoreScope(byScope)
+  const storeScopePayload: JsonObject = { ...base, operations: byStoreScope, overflow: true }
+  if (utf8Bytes(storeScopePayload) <= budget) return storeScopePayload
+
+  const byStore = collapseOperationsByStore(byStoreScope)
+  const storePayload: JsonObject = { ...base, operations: byStore, overflow: true }
+  if (utf8Bytes(storePayload) <= budget) return storePayload
+
+  return { ...base, operations: [], overflow: true }
+}
+
+export function publishCommitNotification(
+  eventBus: EventBus,
+  diagnostics: CreateKernelOptions['diagnostics'],
+  name: string,
+  payload: () => JsonValue,
+  context: EventEmitOptions,
+): void {
   try {
     const definition = eventBus.definitions().find(item => item.definition.name === name)!.definition
-    for (const chunk of splitCommitPayload(payload(), definition.maxPayloadBytes!)) eventBus.emit(name, chunk, context)
+    const budget = definition.maxPayloadBytes ?? COMPACT_BYTE_CAP
+    eventBus.emit(name, compactCommitPayload(payload(), budget), context)
   } catch (error) {
-    diagnostics.add({ severity: 'error', code: 'event.commit_notification_failed', source: 'kernel',
-      message: `Data committed; notification failed: ${name}`, details: { eventName: name, error: serializeError(error, 'event.commit_notification_failed') } })
+    diagnostics.add({
+      severity: 'error',
+      code: 'event.commit_notification_failed',
+      source: 'kernel',
+      message: `Data committed; notification failed: ${name}`,
+      details: { eventName: name, error: serializeError(error, 'event.commit_notification_failed') },
+    })
   }
 }

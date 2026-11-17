@@ -3,13 +3,13 @@ import { cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'no
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { zipSync } from 'fflate'
-import type { ExtensionHost, ExtensionManifest } from '@loom-studio/extension-host'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createServerExtensionManager } from '../../../apps/studio-server/src/extensions/extension-manager.js'
-import { createExtensionStateStore } from '../../../apps/studio-server/src/extensions/extension-state-store.js'
-import { acquireExtension, extensionGit } from '../../../apps/studio-server/src/extensions/extension-download.js'
+import type { ExtensionHost, ExtensionManifest } from '@loom-studio/kernel/extension-host'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import { createServerExtensionManager } from '@loom-studio/kernel/extension-manager'
+import { createExtensionStateStore } from '@loom-studio/kernel/extension-manager'
+import { acquireExtension, extensionGit } from '../../../packages/kernel/src/extension-manager/extension-download.js'
 
-vi.mock('../../../apps/studio-server/src/extensions/extension-download.js', async importOriginal => ({
+vi.mock('../../../packages/kernel/src/extension-manager/extension-download.js', async importOriginal => ({
   ...await importOriginal<object>(),
   acquireExtension: vi.fn(),
   extensionGit: vi.fn(),
@@ -274,7 +274,7 @@ describe('remote extension install lifecycle', () => {
     expect(host.activate).not.toHaveBeenCalled()
     listInstallations.mockResolvedValue({ installations: [{
       id: 'installation', version: 1, packageId: 'test.resources', packageVersion: '1.0.0',
-      target: { kind: 'global' }, createdAt: '2026-10-05', updatedAt: '2026-10-05',
+      target: { kind: 'global' },
     }] })
     fixture('test.resources', '2.0.0')
     fixtures.get(source.url)!.manifest.contributes = contributions

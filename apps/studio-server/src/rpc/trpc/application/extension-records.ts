@@ -1,7 +1,7 @@
 import type {
   ApplicationRuntime
 } from '@loom-studio/application-runtime'
-import type { ExtensionEntityRef, ExtensionStorageScope } from '@loom-studio/extension-host'
+import type { ExtensionEntityRef, ExtensionStorageScope } from '@loom-studio/kernel/extension-host'
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,

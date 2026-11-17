@@ -8,6 +8,11 @@ import { ChatComposer } from '../../../apps/studio-client/src/widgets/chat-compo
 import { InfoDialog } from '../../../apps/studio-client/src/shared/ui/info-dialog/info-dialog.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
+const confirmMock = vi.hoisted(() => vi.fn(async () => false))
+vi.mock('../../../apps/studio-client/src/shared/ui/confirm-dialog/index.js', () => ({
+  confirm: confirmMock,
+}))
+
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
   memo: (component: unknown) => component,
@@ -183,7 +188,7 @@ describe('Run recovery controls', () => {
     expect(onSubmit).not.toHaveBeenCalled()
     expect(onChangeInput).toHaveBeenCalledTimes(2)
     expect(agent.find(element => element.type === ChatComposer)!.props.runStatus).toBe('idle')
-    expect(narrative.some(element => element.type === RunRecoveryControls)).toBe(target === 'narrative')
+    expect(narrative.some(element => element.type === RunRecoveryControls)).toBe(false)
     expect(agent.some(element => element.type === RunRecoveryControls)).toBe(target === 'agent')
     if (target === 'narrative') {
       expect(narrative.find(element => element.props['data-loom-object'] === 'agent-composer-layer')!.props['data-active']).toBe('true')
@@ -211,19 +216,19 @@ describe('Agent composer controls', () => {
     expect(buttons.some(button => button.props.children === 'Preview')).toBe(false)
   })
 
-  it('deletes only the current session after confirmation and disables deletion while busy', () => {
+  it('deletes only the current session after confirmation and disables deletion while busy', async () => {
     const props = panelProps()
-    const confirm = vi.fn(() => false)
-    vi.stubGlobal('window', { confirm })
+    confirmMock.mockReset().mockResolvedValue(false)
     const findDelete = (input: AgentChatPanelProps) => elements(AgentChatPanel(input))
       .find(element => element.type === 'button' && element.props['aria-label'] === 'Delete')!
     const button = findDelete(props)
     ;(button.props.onClick as () => void)()
+    await vi.waitFor(() => expect(confirmMock).toHaveBeenCalledOnce())
     expect(props.onDeleteSession).not.toHaveBeenCalled()
-    confirm.mockReturnValue(true)
+    confirmMock.mockResolvedValue(true)
     ;(button.props.onClick as () => void)()
-    expect(confirm).toHaveBeenLastCalledWith(expect.stringContaining('Example'))
-    expect(props.onDeleteSession).toHaveBeenCalledWith('session')
+    await vi.waitFor(() => expect(props.onDeleteSession).toHaveBeenCalledWith('session'))
+    expect(confirmMock).toHaveBeenLastCalledWith(expect.objectContaining({ message: expect.stringContaining('Example') }))
     expect(findDelete({ ...props, busy: true }).props.disabled).toBe(true)
     expect(findDelete({ ...props, session: undefined }).props.disabled).toBe(true)
   })

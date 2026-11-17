@@ -1,33 +1,48 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@loom-studio/ui'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
+import { subscribeExtensionEvents } from '../../../shared/api/extension-events.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 
-type Batches = Awaited<ReturnType<StudioApi['extensions']['listModuleBatches']>>['batches']
 export function ExtensionModuleBatches(props: { api: StudioApi['extensions']; t: Translator; revision: number }) {
-  const [batches, setBatches] = useState<Batches>([])
-  const [error, setError] = useState('')
-  const [refresh, setRefresh] = useState(0)
+  const queryClient = useQueryClient()
+  const batchesQuery = useQuery({
+    queryKey: ['extensions', 'module-batches', props.revision],
+    queryFn: () => props.api.listModuleBatches(),
+    refetchInterval: query => (query.state.data?.batches.some(batch => batch.state !== 'completed') ? 500 : false),
+    refetchIntervalInBackground: false,
+  })
+
   useEffect(() => {
-    let active = true
-    let timer: ReturnType<typeof setTimeout> | undefined
-    async function read() {
-      try {
-        const result = await props.api.listModuleBatches()
-        if (!active) return
-        setBatches(result.batches); setError('')
-        if (result.batches.some(batch => batch.state !== 'completed')) timer = setTimeout(() => void read(), 500)
-      } catch (error) { if (active) setError(error instanceof Error ? error.message : String(error)) }
+    if (typeof EventSource === 'undefined') return
+    const invalidate = () => {
+      void queryClient.invalidateQueries({ queryKey: ['extensions', 'module-batches', props.revision] })
     }
-    void read()
-    return () => { active = false; clearTimeout(timer) }
-  }, [props.api, props.revision, refresh])
+    const unsubscribeExtensions = subscribeExtensionEvents({
+      events: { 'extensions.changed': invalidate },
+    })
+    const unsubscribeCommits = subscribeDataCommits(operations => {
+      if (operations.some(item => item.entityType.startsWith('extension'))) invalidate()
+    }, () => {})
+    return () => {
+      unsubscribeExtensions()
+      unsubscribeCommits()
+    }
+  }, [queryClient, props.revision])
+
+  const batches = batchesQuery.data?.batches ?? []
+  const error = batchesQuery.error instanceof Error
+    ? batchesQuery.error.message
+    : batchesQuery.error ? String(batchesQuery.error) : ''
+
   if (!batches.length && !error) return null
   return <details open={Boolean(error || batches.some(batch => batch.state !== 'completed'))}>
     <summary>{props.t('renderer.batch.title')} · {batches.length}</summary>
     <p>{props.t('renderer.batch.accepted')}</p>
     {error ? <p role="alert">{error}</p> : null}
-    <Button onClick={() => setRefresh(value => value + 1)}>{props.t('renderer.batch.refresh')}</Button>
+    <Button onClick={() => { void batchesQuery.refetch() }}>{props.t('renderer.batch.refresh')}</Button>
     <ul>{[...batches].reverse().map(batch => <li key={batch.batchId}>
       {batch.packageId} · {batch.target.kind === 'card' ? batch.target.cardId : 'Global'} · {props.t(`renderer.batch.${batch.state}`)}
       <ul>{batch.results.map(result => <li key={result.moduleId}>

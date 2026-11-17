@@ -1,7 +1,8 @@
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
-import { useRef, useState, type FormEvent } from 'react'
-import { useExplicitCatalog } from '../../../shared/api/use-explicit-catalog.js'
+import { isCancelledError, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
 import type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
@@ -28,14 +29,10 @@ type UseProviderSettingsInput = {
 export function useProviderSettings(input: UseProviderSettingsInput) {
   const [providerAccountDraft, setProviderAccountDraft] = useState(input.initialProviderAccountDraft)
   const modelQueueRef = useRef(Promise.resolve())
-  const accounts = useExplicitCatalog(['provider-settings', input.endpoint, 'accounts'], readProviderAccounts)
-  const providers = useExplicitCatalog(['provider-settings', input.endpoint, 'providers'], () => input.api.aiGateway.listProviders())
-  const capabilities = useExplicitCatalog(['provider-settings', input.endpoint, 'capabilities'], () => collectPages(async cursor => {
-    const result = await input.api.aiCapabilityProfiles.list({ cursor, limit: 100 })
-    return { items: result.profiles, nextCursor: result.nextCursor }
-  }))
-  const providerAccounts = accounts.items
-  const modelProfiles = projectModelProfiles(providerAccounts)
+  const queryClient = useQueryClient()
+  const accountsKey = useMemo(() => ['provider-settings', input.endpoint, 'accounts'] as const, [input.endpoint])
+  const providersKey = useMemo(() => ['provider-settings', input.endpoint, 'providers'] as const, [input.endpoint])
+  const capabilitiesKey = useMemo(() => ['provider-settings', input.endpoint, 'capabilities'] as const, [input.endpoint])
 
   function readProviderAccounts() {
     return collectPages(async cursor => {
@@ -44,9 +41,59 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     })
   }
 
-  const { refresh: refreshProviderAccounts, publish: setProviderAccounts } = accounts
-  const { refresh: refreshAiProviders } = providers
-  const { refresh: refreshAiCapabilityProfiles, publish: setAiCapabilityProfiles } = capabilities
+  function readAiCapabilityProfiles() {
+    return collectPages(async cursor => {
+      const result = await input.api.aiCapabilityProfiles.list({ cursor, limit: 100 })
+      return { items: result.profiles, nextCursor: result.nextCursor }
+    })
+  }
+
+  const accountsQuery = useQuery({ queryKey: accountsKey, queryFn: readProviderAccounts, enabled: false })
+  const providersQuery = useQuery({ queryKey: providersKey, queryFn: () => input.api.aiGateway.listProviders(), enabled: false })
+  const capabilitiesQuery = useQuery({ queryKey: capabilitiesKey, queryFn: readAiCapabilityProfiles, enabled: false })
+
+  const providerAccounts = accountsQuery.data ?? []
+  const modelProfiles = projectModelProfiles(providerAccounts)
+
+  async function fetchCatalog<T>(queryKey: readonly string[], queryFn: () => Promise<T>) {
+    void queryClient.cancelQueries({ queryKey, exact: true })
+    try {
+      await queryClient.fetchQuery({ queryKey, queryFn, retry: false, staleTime: 0 })
+    } catch (error) {
+      if (!isCancelledError(error)) throw error
+    }
+  }
+
+  const refreshProviderAccounts = () => fetchCatalog(accountsKey, readProviderAccounts)
+  const refreshAiProviders = () => fetchCatalog(providersKey, () => input.api.aiGateway.listProviders())
+  const refreshAiCapabilityProfiles = () => fetchCatalog(capabilitiesKey, readAiCapabilityProfiles)
+
+  function setProviderAccounts(update: (items: ProviderAccount[]) => ProviderAccount[]) {
+    void queryClient.cancelQueries({ queryKey: accountsKey, exact: true })
+    queryClient.setQueryData<ProviderAccount[]>(accountsKey, current => update(current ?? []))
+  }
+
+  function setAiCapabilityProfiles(update: (items: NonNullable<typeof capabilitiesQuery.data>) => NonNullable<typeof capabilitiesQuery.data>) {
+    void queryClient.cancelQueries({ queryKey: capabilitiesKey, exact: true })
+    queryClient.setQueryData(capabilitiesKey, (current: NonNullable<typeof capabilitiesQuery.data> | undefined) => update(current ?? []))
+  }
+
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return
+    return subscribeDataCommits(
+      operations => {
+        if (operations.some(op => op.entityType === 'providerProfile')) {
+          void queryClient.invalidateQueries({ queryKey: accountsKey, exact: true })
+        }
+        if (operations.some(op => op.entityType === 'aiCapabilityProfile')) {
+          void queryClient.invalidateQueries({ queryKey: capabilitiesKey, exact: true })
+        }
+      },
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ['provider-settings', input.endpoint] })
+      },
+    )
+  }, [queryClient, input.endpoint, accountsKey, capabilitiesKey])
 
   async function refreshProviderSettings() {
     await Promise.all([refreshProviderAccounts(), refreshAiProviders(), refreshAiCapabilityProfiles()])
@@ -275,10 +322,10 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     providerAccountDraft,
     setProviderAccountDraft,
     providerAccounts,
-    providerAccountsLoaded: accounts.loaded,
+    providerAccountsLoaded: accountsQuery.data !== undefined,
     modelProfiles,
-    aiProviders: providers.items,
-    aiCapabilityProfiles: capabilities.items,
+    aiProviders: providersQuery.data ?? [],
+    aiCapabilityProfiles: capabilitiesQuery.data ?? [],
     refreshProviderSettings,
     refreshAiProviders,
     refreshProviderAccounts,

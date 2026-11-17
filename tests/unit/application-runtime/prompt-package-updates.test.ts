@@ -1,8 +1,8 @@
 import { createId, nowIso } from '@loom-studio/shared'
 import { createApplicationRuntime, type PromptResourceArtifact } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { describe, expect, it } from 'vitest'
 
 function artifact(): PromptResourceArtifact {

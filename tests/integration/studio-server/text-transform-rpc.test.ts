@@ -1,6 +1,20 @@
+import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { parseLoomScriptSource, resolveLoomScriptSettings, resolveTextTransformContributionRule, serializeMarkdownTextRule } from '@loom-studio/shared/loom-scripts'
 import { callRpc, withStudioServer } from './helpers.js'
+
+function snapshotPersistence(home: string) {
+  const database = new DatabaseSync(resolveLoomStudioLocalPaths({ home, environment: {} }).databaseFile, { readOnly: true })
+  try {
+    return {
+      documents: database.prepare('SELECT id, type, version, tombstoned, content_json FROM documents ORDER BY id').all(),
+      changesets: database.prepare('SELECT id, reason FROM changesets ORDER BY rowid').all(),
+    }
+  } finally {
+    database.close()
+  }
+}
 
 describe('Studio Server text transform RPC', () => {
   it('lists only catalog metadata, filters owners and preserves full definition endpoints', async () => {
@@ -29,16 +43,15 @@ describe('Studio Server text transform RPC', () => {
         .resolves.toEqual({ script: { id: savedRule.scriptDocumentId, contributionKinds: ['text-transform'] } })
       await expect(callRpc(port, 'application.getLoomScriptSummary', { scriptDocumentId: 'missing' }))
         .resolves.toEqual({ script: null })
-      await callRpc(port, 'docs.write', {
-        id: 'catalog-tool', type: 'airp.agentTool', expectedVersion: 'new',
-        content: { owner: { kind: 'workspace' }, name: 'Catalog tool', description: 'Full tool description',
-          input: { type: 'object', properties: { text: { type: 'string' } } }, createdAt: '', updatedAt: '' },
-      })
-      await expect(callRpc(port, 'application.getAgentToolSummary', { toolId: 'catalog-tool' }))
-        .resolves.toEqual({ tool: { id: 'catalog-tool' } })
+      const { tools } = await callRpc<{ tools: Array<{ id: string }> }>(port, 'application.listAgentTools', {})
+      expect(tools.length).toBeGreaterThan(0)
+      const toolId = tools[0]!.id
+      await expect(callRpc(port, 'application.getAgentToolSummary', { toolId }))
+        .resolves.toEqual({ tool: { id: toolId } })
       await expect(callRpc(port, 'application.getAgentToolSummary', { toolId: 'missing' }))
         .resolves.toEqual({ tool: null })
-      await expect(callRpc(port, 'application.getLoomScriptSummary', { scriptDocumentId: 'catalog-tool' }))
+      const { card } = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'Non script document' })
+      await expect(callRpc(port, 'application.getLoomScriptSummary', { scriptDocumentId: card.id }))
         .rejects.toThrow('Unexpected document type')
       const origin = { kind: 'extension-package', packageId: 'catalog-package', packageVersion: '1.0.0',
         contributionId: 'extractor', installationId: 'installation' }
@@ -108,7 +121,7 @@ describe('Studio Server text transform RPC', () => {
   })
 
   it('previews card opening Display rules without creating history or modifying documents', async () => {
-    await withStudioServer(async port => {
+    await withStudioServer(async (port, dir) => {
       const { card } = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'Opening' })
       const { resource } = await callRpc<{ resource: { id: string } }>(port, 'application.createPromptResource', { resourceKind: 'preset', name: 'Preview' })
       const base = {
@@ -135,7 +148,7 @@ describe('Studio Server text transform RPC', () => {
           rule: index < 3 ? rule : { ...rule, matcher: { kind: 'regex', pattern: '<quick_reply>', flags: 'g' } },
         })
       }
-      const before = await callRpc(port, 'docs.list', { limit: 100 })
+      const before = snapshotPersistence(dir)
       const timelines = await callRpc(port, 'application.listNarrativeTimelines', {})
       const text = '<quick_reply>Ready</quick_reply>'
       await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: card.id, text }))
@@ -144,7 +157,7 @@ describe('Studio Server text transform RPC', () => {
         .resolves.toMatchObject({ text: '```html\n<html><body>Preset</body></html>\n```' })
       await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: 'missing', text })).rejects.toThrow()
       await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: card.id, presetId: card.id, text })).rejects.toThrow()
-      expect(await callRpc(port, 'docs.list', { limit: 100 })).toEqual(before)
+      expect(snapshotPersistence(dir)).toEqual(before)
       expect(await callRpc(port, 'application.listNarrativeTimelines', {})).toEqual(timelines)
 
       const { rule: savedRule } = await callRpc<{ rule: { scriptDocumentId: string; version: number } }>(port, 'application.getTextTransformRule', { ruleId: 'preview-1' })
@@ -155,15 +168,11 @@ describe('Studio Server text transform RPC', () => {
       contribution.rule.effect = { kind: 'replace', replacement: '<html><body>$1</body></html>' }
       await callRpc(port, 'application.updateLoomScript', { scriptDocumentId: savedRule.scriptDocumentId,
         expectedVersion: savedRule.version, fileName: artifact.fileName, source: serializeMarkdownTextRule(resolveTextTransformContributionRule(contribution, resolveLoomScriptSettings(metadata.settings)), contribution.id) })
-      // Saving source does not adopt it; the old projection remains visible until refresh.
-      await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: card.id, text }))
-        .resolves.toMatchObject({ text: '```html\n<html><body>Done</body></html>\n```' })
-      const { mounts } = await callRpc<{ mounts: Array<{ id: string; version: number }> }>(port, 'application.listLoomScriptMounts', { scriptDocumentId: savedRule.scriptDocumentId })
-      await callRpc(port, 'application.refreshLoomScriptMount', { mountId: mounts[0]!.id, expectedVersion: mounts[0]!.version })
-      const afterSave = await callRpc(port, 'docs.list', { limit: 100 })
+      // Declarative Loom Scripts immediately adopt saved updates onto enabled unpinned mounts without mutating history on preview.
+      const afterSave = snapshotPersistence(dir)
       await expect(callRpc(port, 'application.previewCardOpeningDisplay', { cardId: card.id, text }))
         .resolves.toMatchObject({ originalText: text, text: '<html><body>Done</body></html>', diagnostics: [] })
-      expect(await callRpc(port, 'docs.list', { limit: 100 })).toEqual(afterSave)
+      expect(snapshotPersistence(dir)).toEqual(afterSave)
       expect(await callRpc(port, 'application.listNarrativeTimelines', {})).toEqual(timelines)
     })
   })

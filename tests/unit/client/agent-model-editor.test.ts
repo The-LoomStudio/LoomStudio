@@ -132,8 +132,7 @@ function pickerFixture() {
     onSelect: vi.fn().mockResolvedValue(undefined), onListModels: vi.fn().mockResolvedValue(['saved', 'fresh']),
   }
   const render = () => { hooks.cursor = 100; return elements(AgentModelPicker(props)) }
-  const fetch = () => render().find(element => element.props.children instanceof Array
-    && element.props.children.includes(props.t('agent.model.fetch')) && typeof element.props.onClick === 'function')!
+  const fetch = () => render().find(element => element.props.children === '获取模型' && typeof element.props.onClick === 'function')!
   return { props, render, fetch }
 }
 

@@ -3,7 +3,7 @@ import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import type { LogHistoryReader, LogReader } from '@loom-studio/logging'
 import type { JsonValue } from '@loom-studio/shared'
 import type { PromptResourceConverter } from '../../extensions/import-conversion.js'
-import type { NetworkSettingsStore } from '../../platform/network-settings.js'
+import type { NetworkSettingsStore } from '@loom-studio/kernel/platform'
 
 type RpcCallContext = {
   clientId: string
@@ -20,9 +20,10 @@ export type StudioRpcServices = {
   resourceDownloadUse?: ReturnType<typeof import('../../resource-adoption/download-use.js').createResourceDownloadUse>
 
   dashboard?: {
-    statistics: import('@loom-studio/application-data').StatisticsStore
+    statistics: import('@loom-studio/application-runtime/data').StatisticsStore
     storage: ReturnType<typeof import('../../statistics/storage-snapshot.js').createStorageSnapshot>
-    database: () => ReturnType<typeof import('@loom-studio/data-engine').readSqliteSpaceUsage>
+    database: () => ReturnType<typeof import('@loom-studio/kernel/data-engine').readSqliteSpaceUsage>
+    createBackup?: () => Promise<{ filename: string; path: string; sizeBytes: number }>
   }
   scripts?: ReturnType<typeof import('../../scripts/script-service.js').createScriptService>
   batchImporter?: ReturnType<typeof import('../../extensions/import-batch.js').createExtensionBatchImporter>
@@ -31,6 +32,10 @@ export type StudioRpcServices = {
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
   kernel: KernelRpcCaller
+  extensionManager?: import('@loom-studio/kernel').ExtensionManagementService
+  extensionHost?: import('@loom-studio/kernel/extension-host').ExtensionHost
+  diagnostics?: import('@loom-studio/kernel/diagnostics').DiagnosticsRegistry
+  characterCatalog?: import('@loom-studio/kernel').ExtensionCharacterCatalogService
   logs?: LogReader
   logHistory?: LogHistoryReader
   networkSettings?: NetworkSettingsStore

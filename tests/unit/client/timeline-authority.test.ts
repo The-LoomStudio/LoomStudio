@@ -3,7 +3,7 @@ import { projectTimelinePositions } from '../../../packages/application-runtime/
 import { projectTimelineRounds } from '../../../apps/studio-client/src/features/narrative-runtime/model/timeline-execution-projection.js'
 import { retainRunPresentation } from '../../../apps/studio-client/src/features/narrative-runtime/model/agent-run-observer.js'
 import { mapObservationStep } from '../../../apps/studio-client/src/features/observability/model/observation-mapping.js'
-import type { AgentTranscriptEntry, NarrativeNode } from '@loom-studio/application-data'
+import type { AgentTranscriptEntry, NarrativeNode } from '@loom-studio/application-runtime/data'
 
 const entry = (id: string, sequence: number, runId: string, data: AgentTranscriptEntry['entry']): AgentTranscriptEntry => ({
   id, sequence, agentSessionId: 'story', createdAt: '', runId, roundId: 'shared-candidate', entry: data,

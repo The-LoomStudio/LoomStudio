@@ -1,11 +1,12 @@
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { parseExtensionManifest } from '../../packages/extension-sdk/extension-host/src/manifest.js'
+import { parseExtensionManifest } from '../../packages/kernel/src/extension-host/manifest.js'
 import { authoringResourceSchema } from '../../packages/shared/src/resource-authoring-contracts.js'
 import { isPromptResourceArtifact } from '../../packages/application-runtime/src/cards/card-bundle-codec.js'
 import { loadResourceAuthoring } from '../../apps/studio-server/src/codecs/resource-authoring.js'
 import { encodeCardBundleZip, loadCardBundleFiles } from '../../apps/studio-server/src/codecs/card-bundle-zip.js'
-import { exportExtensionPackageZip } from '../../apps/studio-server/src/extensions/extension-package-installer.js'
+import { loadPromptResourceFiles } from '../../apps/studio-server/src/codecs/prompt-resource-files.js'
+import { exportExtensionPackageZip } from '../../packages/kernel/src/extension-manager/extension-package-installer.js'
 
 export type ExtensionAuthoringBuildInput = {
   sourceDirectory: string
@@ -142,7 +143,7 @@ export async function buildExtensionAuthoring(input: ExtensionAuthoringBuildInpu
       if (!(await lstat(join(output, packagePath(script.source)))).isFile()) throw new Error(`Missing script source: ${script.source}`)
     }
     // Reuse the existing package export validation without emitting a separate archive.
-    await exportExtensionPackageZip(output, manifest)
+    await exportExtensionPackageZip(output, manifest, { loadPromptResourceFiles })
     return { directory: output, packageId: manifest.id, version: manifest.version, contributions: [...mapped], characters: [...characterMappings] }
   } catch (error) {
     await rm(output, { recursive: true, force: true })

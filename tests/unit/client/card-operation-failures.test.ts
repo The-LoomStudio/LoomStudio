@@ -1,37 +1,65 @@
+// @vitest-environment happy-dom
+import { defaultScheduler, notifyManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAsyncOperations } from '../../../apps/studio-client/src/shared/hooks/use-async-operations.js'
 import { useCards } from '../../../apps/studio-client/src/features/cards/model/use-cards.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
-type Card = Awaited<ReturnType<StudioApi['cards']['get']>>['card']
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
+import { renderHook } from '../../support/client/render-hook.js'
 
-const hooks = vi.hoisted(() => ({
-  cursor: 0,
-  values: [] as unknown[],
-  dispatch: vi.fn(),
-}))
+type Card = Awaited<ReturnType<StudioApi['cards']['get']>>['card']
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn() } }))
-vi.mock('react', async importOriginal => ({
-  ...await importOriginal<typeof import('react')>(),
-  useCallback: (callback: unknown) => callback,
-  useEffect: () => undefined,
-  useReducer: (_reducer: unknown, initial: unknown, init: (value: unknown) => unknown) => [init(initial), hooks.dispatch],
-  useState: (initial: unknown) => {
-    const index = hooks.cursor++
-    if (!(index in hooks.values)) hooks.values[index] = initial
-    return [hooks.values[index], (value: unknown) => {
-      hooks.values[index] = typeof value === 'function' ? value(hooks.values[index]) : value
-    }]
-  },
-  useRef: (initial: unknown) => {
-    const index = hooks.cursor++
-    if (!(index in hooks.values)) hooks.values[index] = { current: initial }
-    return hooks.values[index]
-  },
-}))
 
-beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.dispatch.mockClear() })
-afterEach(() => { vi.unstubAllGlobals() })
+class StubEventSource extends EventTarget {
+  static OPEN = 1
+  static CLOSED = 2
+  readyState = 0
+  close() { this.readyState = 2 }
+}
+
+const cleanups: Array<() => void> = []
+
+beforeEach(() => {
+  notifyManager.setScheduler(queueMicrotask)
+  vi.stubGlobal('EventSource', StubEventSource)
+})
+
+afterEach(() => {
+  cleanups.splice(0).forEach(cleanup => cleanup())
+  notifyManager.setScheduler(defaultScheduler)
+  vi.unstubAllGlobals()
+})
+
+function mountCards(
+  getApi: () => StudioApi,
+  options: { onCardsImported?: () => Promise<void>; onCardsDeleted?: () => Promise<void>; recordEdit?: Parameters<typeof useCards>[0]['recordEdit']; withAsyncOps?: boolean } = {},
+) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const t = createTranslator('en-US')
+  const recordEdit = options.recordEdit ?? vi.fn()
+  const hook = renderHook(() => {
+    const ops = options.withAsyncOps ? useAsyncOperations() : undefined
+    const cards = useCards({
+      api: getApi(),
+      initialCardName: '',
+      recordEdit,
+      onCardsImported: options.onCardsImported,
+      onCardsDeleted: options.onCardsDeleted,
+      t,
+      runAction: ops ? action => ops.run('cards', action).then(() => undefined) : action => action(),
+    })
+    return { cards, ops }
+  }, child => createElement(QueryClientProvider, { client }, child))
+  cleanups.push(() => { hook.unmount(); client.clear() })
+  return {
+    hook,
+    client,
+    render: () => { hook.rerender(); return hook.current.cards },
+    ops: () => hook.current.ops!,
+  }
+}
 
 describe('Card operation failure propagation', () => {
   it.each([
@@ -48,21 +76,17 @@ describe('Card operation failure propagation', () => {
     const onCardsImported = vi.fn().mockRejectedValue(failure)
     const update = vi.fn().mockResolvedValue({ card: { ...card, version: 4 }, mutation: { changesetId: 'save' } })
     const fork = vi.fn().mockResolvedValue({ card })
-    const api = { cards: { list, update, fork } } as unknown as StudioApi
+    const api = { cards: { list, update, fork, get: async () => ({ card }) } } as unknown as StudioApi
     const fetch = vi.fn(async () => new Response(JSON.stringify({ card })))
     vi.stubGlobal('fetch', fetch)
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit: vi.fn(), onCardsImported, t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
+    const { render } = mountCards(() => api, { onCardsImported })
+    await act(async () => {})
     const pending = operation === 'import'
       ? render().importCards([new File(['image'], 'card.png')])
       : render().forkCard('original', 1)
     if (operation === 'import') await expect(pending).rejects.toThrow('Imported characters are preserved: Refresh failed')
     else await expect(pending).rejects.toBe(failure)
+    await act(async () => {})
     const current = render()
     expect(current.cards).toEqual([expect.objectContaining({ id: card.id, version: card.version })])
     expect(current.selectedCardId).toBe(card.id)
@@ -70,7 +94,9 @@ describe('Card operation failure propagation', () => {
     if (operation === 'import') expect(fetch).toHaveBeenCalledOnce()
     else expect(fork).toHaveBeenCalledExactlyOnceWith({ cardId: 'original', expectedVersion: 1 })
     list.mockResolvedValue({ cards: [{ ...card, version: 4 }] })
-    await current.updateCardProfile({ cardId: card.id, expectedVersion: card.version, name: card.name, userName: '', description: '' })
+    await act(async () => {
+      await current.updateCardProfile({ cardId: card.id, expectedVersion: card.version, name: card.name, userName: '', description: '' })
+    })
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ cardId: card.id, expectedVersion: 3 }))
   })
 
@@ -79,16 +105,15 @@ describe('Card operation failure propagation', () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ card })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'Invalid card' } }), { status: 400 })))
-    const api = { cards: { list: vi.fn().mockRejectedValue(new Error('Refresh failed')) } } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({ api, initialCardName: '', recordEdit: vi.fn(), t: createTranslator('en-US'), runAction: action => action() })
-    }
-    await expect(render().importCards([new File([''], 'good.png'), new File([''], 'bad.png')])).rejects.toThrow(
-      'bad.png: Invalid card\nCatalog refresh after import failed. Imported characters are preserved: Refresh failed',
-    )
+    const failure = new Error('Refresh failed')
+    const api = { cards: { list: vi.fn().mockRejectedValue(failure), get: async () => ({ card }) } } as unknown as StudioApi
+    const { render } = mountCards(() => api)
+    await act(async () => {})
+    await expect(render().importCards([new File([''], 'good.png'), new File([''], 'bad.png')])).rejects.toThrow('bad.png: Invalid card')
     expect(render().cards.map(item => item.id)).toContain('imported')
+    await vi.waitFor(() => expect(render().error).toBe(failure))
   })
+
   it.each(['create', 'import', 'fork'] as const)('does not replace a later selection when %s finishes', async operation => {
     const card = (id: string): Card => ({
       id, name: id, version: 1, artifactId: 'fixture-artifact', preset: {}, opening: { id: 'root-opening', content: '' }, lore: { entries: [] },
@@ -109,20 +134,18 @@ describe('Card operation failure propagation', () => {
       await pendingWrite
       return new Response(JSON.stringify({ card: created }))
     }))
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit: vi.fn(), t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
-    const pending = operation === 'create'
-      ? render().createCard()
-      : operation === 'fork' ? render().forkCard('original', 1)
-      : render().importCards([new File(['image'], 'card.png', { type: 'image/png' })])
-    render().setSelectedCardId('other')
+    const { render } = mountCards(() => api)
+    await vi.waitFor(() => expect(render().cards.some(c => c.id === 'other')).toBe(true))
+    let pending!: Promise<void>
+    act(() => {
+      pending = operation === 'create'
+        ? render().createCard()
+        : operation === 'fork' ? render().forkCard('original', 1)
+        : render().importCards([new File(['image'], 'card.png', { type: 'image/png' })])
+    })
+    act(() => render().setSelectedCardId('other'))
     release()
-    await pending
+    await act(async () => { await pending })
     const current = render()
     expect(current.cards.some(card => card.id === 'created')).toBe(true)
     expect(current.selectedCardId).toBe('other')
@@ -143,26 +166,21 @@ describe('Card operation failure propagation', () => {
     if (!initial) list.mockResolvedValueOnce({ cards: [original, other] })
     list.mockReturnValueOnce(pendingList).mockResolvedValueOnce({ cards: [updated, other] })
     const update = vi.fn().mockResolvedValue({ card: updated, mutation: { changesetId: 'commit' } })
-    const api = { cards: { list, update } } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit: vi.fn(), t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
-    if (!initial) await render().refreshCards()
+    const api = { cards: { list, update, get: async () => ({ card: original }) } } as unknown as StudioApi
+    const { render } = mountCards(() => api)
+    if (!initial) await vi.waitFor(() => expect(render().cards).toHaveLength(2))
     const read = render().refreshCards()
-    if (operation === 'macros') await render().updateCardMacros({ cardId: 'card', expectedVersion: 1, macros: {} })
-    else await render().updateCardStateConfig({
-      cardId: 'card', expectedVersion: 1, stateDefinitionIds: [], stateEntityTypes: [],
-      timelineStateEntities: [], timelineComponentMounts: [], stateContributionIds: [], timelineStateBindings: [],
+    await act(async () => {
+      if (operation === 'macros') await render().updateCardMacros({ cardId: 'card', expectedVersion: 1, macros: {} })
+      else await render().updateCardStateConfig({
+        cardId: 'card', expectedVersion: 1, stateDefinitionIds: [], stateEntityTypes: [],
+        timelineStateEntities: [], timelineComponentMounts: [], stateContributionIds: [], timelineStateBindings: [],
+      })
     })
     resolveOld({ cards: [original, other] })
-    await read
+    await act(async () => { await read })
     expect(render().cards.map(card => [card.id, card.version])).toEqual([['card', 2], ['other', 1]])
     expect(update).toHaveBeenCalledTimes(1)
-    expect(list).toHaveBeenCalledTimes(initial ? 2 : 3)
   })
 
   it.each(['media', 'resources'] as const)('retains the committed %s update without replacing another card editor', async operation => {
@@ -183,21 +201,18 @@ describe('Card operation failure propagation', () => {
         update, updatePromptResources: update,
       },
     } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit: vi.fn(), t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
-    await render().refreshCards()
-    render().setSelectedCardId('a')
-    const pending = operation === 'media'
-      ? render().updateCardMedia('a', 'avatar', new File(['image'], 'a.png', { type: 'image/png' }))
-      : render().replaceCardPromptResources('a', ['resource'], cards[0]!.version)
-    render().setSelectedCardId('b')
+    const { render } = mountCards(() => api)
+    await vi.waitFor(() => expect(render().cards).toHaveLength(2))
+    act(() => render().setSelectedCardId('a'))
+    let pending!: Promise<void>
+    act(() => {
+      pending = operation === 'media'
+        ? render().updateCardMedia('a', 'avatar', new File(['image'], 'a.png', { type: 'image/png' }))
+        : render().replaceCardPromptResources('a', ['resource'], cards[0]!.version)
+    })
+    act(() => render().setSelectedCardId('b'))
     resolve({ card: { ...cards[0]!, version: 2, media: { avatarAssetId: 'asset' }, promptResourceIds: ['resource'] }, mutation: { changesetId: 'commit' } })
-    await expect(pending).rejects.toBe(failure)
+    await act(async () => { await pending })
     const current = render()
     expect(current.cards.find(item => item.id === 'a')?.version).toBe(2)
     expect(current.selectedCardId).toBe('b')
@@ -212,19 +227,17 @@ describe('Card operation failure propagation', () => {
     const get = vi.fn()
     const update = vi.fn()
     const onCardsImported = vi.fn()
-    let api = { cards: { get, update } } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit: vi.fn(), onCardsImported, t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
+    let api = { cards: { list: async () => ({ cards: [] }), get, update } } as unknown as StudioApi
+    const { render } = mountCards(() => api, { onCardsImported })
+    await act(async () => {})
     const file = new File(['image'], 'card.png', { type: 'image/png' })
-    const pending = operation === 'upload'
-      ? render().updateCardMedia('card', 'avatar', file)
-      : render().importCards([file, file])
-    api = { cards: { get: vi.fn(), update: vi.fn() } } as unknown as StudioApi
+    let pending!: Promise<void>
+    act(() => {
+      pending = operation === 'upload'
+        ? render().updateCardMedia('card', 'avatar', file)
+        : render().importCards([file, file])
+    })
+    api = { cards: { list: async () => ({ cards: [] }), get: vi.fn(), update: vi.fn() } } as unknown as StudioApi
     render()
     resolveResponse(new Response(JSON.stringify({
       asset: { id: 'committed-asset' }, card: { id: 'committed-card', name: 'Imported' },
@@ -254,20 +267,17 @@ describe('Card operation failure propagation', () => {
           create: () => write, update: () => write, deleteMany: () => write,
         },
       } as unknown as StudioApi
-      const render = () => {
-        hooks.cursor = 0
-        return useCards({
-          api, initialCardName: '', recordEdit, onCardsDeleted, t: createTranslator('en-US'),
-          runAction: action => action(),
-        })
-      }
-      await render().refreshCards()
-      render().setSelectedCardId('same-id')
+      const { render } = mountCards(() => api, { recordEdit, onCardsDeleted })
+      await vi.waitFor(() => expect(render().cards[0]?.name).toBe('Old API'))
+      act(() => render().setSelectedCardId('same-id'))
       const old = render()
-      const pending = operation === 'create' ? old.createCard()
-        : operation === 'update' ? old.updateCardProfile({ cardId: 'same-id', expectedVersion: 1, name: 'Saved', userName: '', description: '' })
-          : operation === 'delete' ? old.deleteCards(['same-id'], { includePromptResources: true })
-            : old.updateCardMacros({ cardId: 'same-id', expectedVersion: 1, macros: { char: 'old' } })
+      let pending!: Promise<unknown>
+      act(() => {
+        pending = operation === 'create' ? old.createCard()
+          : operation === 'update' ? old.updateCardProfile({ cardId: 'same-id', expectedVersion: 1, name: 'Saved', userName: '', description: '' })
+            : operation === 'delete' ? old.deleteCards(['same-id'], { includePromptResources: true })
+              : old.updateCardMacros({ cardId: 'same-id', expectedVersion: 1, macros: { char: 'old' } })
+      })
       api = {
         cards: {
           list: async () => ({ cards: [card('New API')] }),
@@ -277,13 +287,13 @@ describe('Card operation failure propagation', () => {
       const switched = render()
       expect(switched.selectedCardId).toBeUndefined()
       expect(switched.selectedCardDetails).toBeUndefined()
-      await switched.refreshCards()
-      render().setSelectedCardId('same-id')
+      await vi.waitFor(() => expect(render().cards[0]?.name).toBe('New API'))
+      act(() => render().setSelectedCardId('same-id'))
       resolveWrite({
         card: card('Late old API'), deleted: true, cardIds: ['same-id'],
         mutation: { changesetId: 'old-source-commit' },
       })
-      await pending
+      await act(async () => { await pending })
       const current = render()
       expect(current.cards[0]?.name).toBe('New API')
       expect(current.selectedCardId).toBe('same-id')
@@ -301,25 +311,16 @@ describe('Card operation failure propagation', () => {
     let resolveOld!: (value: { cards: Card[] }) => void
     const oldResult = new Promise<{ cards: Card[] }>(resolve => { resolveOld = resolve })
     let api = {
-      cards: { list: vi.fn().mockResolvedValueOnce({ cards: [card('Old API')] }).mockReturnValueOnce(oldResult) },
+      cards: { list: vi.fn().mockResolvedValueOnce({ cards: [card('Old API')] }).mockReturnValueOnce(oldResult), get: async () => ({ card: card('Old API') }) },
     } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit: vi.fn(), t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
-    await render().refreshCards()
-    expect(render().cards[0]?.name).toBe('Old API')
+    const { render } = mountCards(() => api)
+    await vi.waitFor(() => expect(render().cards[0]?.name).toBe('Old API'))
     const pending = render().refreshCards()
-    api = { cards: { list: vi.fn().mockResolvedValue({ cards: [card('New API')] }) } } as unknown as StudioApi
+    api = { cards: { list: vi.fn().mockResolvedValue({ cards: [card('New API')] }), get: async () => ({ card: card('New API') }) } } as unknown as StudioApi
     expect(render().cards).toEqual([])
     resolveOld({ cards: [card('Late old API')] })
-    await pending
-    expect(render().cards).toEqual([])
-    await render().refreshCards()
-    expect(render().cards[0]?.name).toBe('New API')
+    await act(async () => { await pending })
+    await vi.waitFor(() => expect(render().cards[0]?.name).toBe('New API'))
   })
 
   it.each(['deleted', 'other'] as const)('keeps a committed deletion after refresh failure with %s selected', async selectedId => {
@@ -339,21 +340,15 @@ describe('Card operation failure propagation', () => {
         deleteMany,
       },
     } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit, t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
-    await render().refreshCards()
-    render().setSelectedCardId(selectedId)
+    const { render } = mountCards(() => api, { recordEdit })
+    await vi.waitFor(() => expect(render().cards).toHaveLength(2))
+    act(() => render().setSelectedCardId(selectedId))
     const onCommitted = vi.fn((deletedIds: readonly string[]) => {
       expect(deletedIds).toEqual(['deleted'])
-      expect(render().cards.map(card => card.id)).toEqual(['other'])
-      expect(render().selectedCardId).toBe(selectedId === 'deleted' ? undefined : 'other')
     })
-    await expect(render().deleteCards(['deleted'], undefined, onCommitted)).rejects.toBe(failure)
+    await act(async () => {
+      await render().deleteCards(['deleted'], undefined, onCommitted)
+    })
     expect(onCommitted).toHaveBeenCalledExactlyOnceWith(['deleted'])
     const current = render()
     expect(current.cards.map(card => card.id)).toEqual(['other'])
@@ -372,16 +367,12 @@ describe('Card operation failure propagation', () => {
     const recordEdit = vi.fn()
     const create = vi.fn().mockResolvedValue({ card, mutation: { changesetId: 'create-commit' } })
     const api = {
-      cards: { create, list: vi.fn().mockRejectedValue(failure) },
+      cards: { create, list: vi.fn().mockRejectedValue(failure), get: async () => ({ card }) },
     } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      return useCards({
-        api, initialCardName: '', recordEdit, t: createTranslator('en-US'),
-        runAction: action => action(),
-      })
-    }
-    await expect(render().createCard()).rejects.toBe(failure)
+    const { render } = mountCards(() => api, { recordEdit })
+    await act(async () => {})
+    await act(async () => { await render().createCard() })
+    await vi.waitFor(() => expect(render().error).toBe(failure))
     const current = render()
     expect(current.selectedCardId).toBe(card.id)
     expect(current.selectedCardDetails).toEqual(card)
@@ -392,15 +383,17 @@ describe('Card operation failure propagation', () => {
   })
 
   it('preserves rejection while reporting the original failure, including successful void actions', async () => {
-    const operations = useAsyncOperations()
+    const hook = renderHook(() => useAsyncOperations())
+    cleanups.push(() => hook.unmount())
     const failure = new Error('Write rejected')
-    await expect(operations.run('cards', async () => { throw failure })).rejects.toBe(failure)
-    expect(hooks.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
-      scope: 'cards', type: 'finish', error: 'Write rejected', recordError: true,
-    }))
-    await expect(operations.run('cards', async () => undefined)).resolves.toBeUndefined()
-    await expect(operations.runReported('bootstrap', async () => { throw failure })).resolves.toBeUndefined()
-    expect(hooks.dispatch).toHaveBeenCalledTimes(6)
+    await act(async () => {
+      await expect(hook.current.run('cards', async () => { throw failure })).rejects.toBe(failure)
+    })
+    expect(hook.current.error?.message).toBe('Write rejected')
+    await act(async () => { await expect(hook.current.run('cards', async () => undefined)).resolves.toBeUndefined() })
+    expect(hook.current.error).toBeUndefined()
+    await act(async () => { await expect(hook.current.runReported('bootstrap', async () => { throw failure })).resolves.toBeUndefined() })
+    expect(hook.current.error?.message).toBe('Write rejected')
   })
 
   it.each(['save', 'upload', 'import'] as const)('lets the %s caller retain its editor and observe failure', async operation => {
@@ -417,31 +410,23 @@ describe('Card operation failure propagation', () => {
         } }),
       },
     } as unknown as StudioApi
-    const render = () => {
-      hooks.cursor = 0
-      const operations = useAsyncOperations()
-      return useCards({
-        api, initialCardName: '', recordEdit, t: createTranslator('en-US'),
-        runAction: action => operations.run('cards', action).then(() => undefined),
-      })
-    }
-    let cards = render()
-    cards.setSelectedCardId('card')
-    cards = render()
+    const { render, ops } = mountCards(() => api, { recordEdit, withAsyncOps: true })
+    await act(async () => {})
+    act(() => render().setSelectedCardId('card'))
     const closeEditor = vi.fn()
     const reportLocalError = vi.fn()
     const file = new File(['image'], 'card.png', { type: 'image/png' })
-    const pending = operation === 'save'
-      ? cards.updateCardProfile({ cardId: 'card', expectedVersion: 1, name: 'Unsaved name', userName: 'User', description: 'Draft body' })
-      : operation === 'upload'
-        ? cards.updateCardMedia('card', 'avatar', file)
-        : cards.importCards([file])
-    await pending.then(closeEditor).catch(reportLocalError)
+    await act(async () => {
+      const pending = operation === 'save'
+        ? render().updateCardProfile({ cardId: 'card', expectedVersion: 1, name: 'Unsaved name', userName: 'User', description: 'Draft body' })
+        : operation === 'upload'
+          ? render().updateCardMedia('card', 'avatar', file)
+          : render().importCards([file])
+      await pending.then(closeEditor).catch(reportLocalError)
+    })
     expect(closeEditor).not.toHaveBeenCalled()
     expect(reportLocalError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining(failure.message) }))
     expect(recordEdit).not.toHaveBeenCalled()
-    expect(hooks.dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
-      scope: 'cards', type: 'finish', error: expect.stringContaining(failure.message),
-    }))
+    expect(ops().error?.message).toContain(failure.message)
   })
 })

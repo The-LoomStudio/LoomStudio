@@ -1,5 +1,5 @@
-import type { DocumentStore } from '@loom-studio/document-store'
-import type { NarrativeStore } from '@loom-studio/application-data'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
+import type { NarrativeStore } from '../data/index.js'
 import { isRecord } from '@loom-studio/shared'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments } from '../foundation/document-store.js'

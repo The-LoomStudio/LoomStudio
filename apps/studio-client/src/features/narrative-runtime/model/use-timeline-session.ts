@@ -29,7 +29,6 @@ export function useTimelineSession(api: StudioApi, timelineId: string | undefine
     narrativeCommitted: async () => { await runAction(refreshNarrative) },
     completed: (_run, result) => onCompleted?.(result),
     reportFailure: error => notify.providerError(error),
-    reportAcknowledgement: error => notify.providerError(error),
   })
   const { activeRun, setActiveRun, recovery, setRecovery, observed, starting, observe } = lifecycle
 

@@ -15,14 +15,14 @@ import { textTransformsProcedures } from './application/text-transforms.js'
 import { timelineProcedures } from './application/timeline.js'
 import { workspacesProcedures } from './application/workspaces.js'
 import { t } from './context.js'
-import { extensionsRouter, kernelRouter, platformRouters } from './kernel.js'
+import { extensionsRouter, platformRouters } from './kernel.js'
 import { aiRouter, directoriesRouter, logsRouter, officialRouter, settingsRouter } from './services.js'
 
 export const studioTrpcRouter = t.router({
   resourceDownloads: resourceDownloadsRouter,
   dashboard: dashboardRouter,
   ...platformRouters,
-  extensions: extensionsRouter, kernel: kernelRouter,
+  extensions: extensionsRouter,
   official: officialRouter, settings: settingsRouter, logs: logsRouter, directories: directoriesRouter, ai: aiRouter,
   application: t.router({
     ...observabilityProcedures,
@@ -43,4 +43,4 @@ export const studioTrpcRouter = t.router({
 })
 export type AppRouter = typeof studioTrpcRouter
 
-export type { NetworkProxyMode } from '../../platform/network-settings.js'
+export type { NetworkProxyMode } from '@loom-studio/kernel/platform'

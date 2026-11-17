@@ -1,7 +1,7 @@
 import { satisfies, valid, validRange } from 'semver'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
-import type { DocumentTransaction } from '@loom-studio/document-store'
-import type { PromptResourceStore } from '@loom-studio/application-data'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
+import type { PromptResourceStore } from '../data/index.js'
 import type { CardFrameworkFields, ExtensionInstallationContent } from '../types.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { readDocument } from '../foundation/document-store.js'
@@ -67,7 +67,7 @@ export async function validateCardFramework(
 export async function withCardFramework<T>(ctx: {
   documents: DocumentTransaction
   promptResources: Pick<PromptResourceStore, 'listResources'>
-  dataEngine: import('@loom-studio/data-engine').SqliteDataEngine
+  dataEngine: import('@loom-studio/kernel/data-engine').SqliteDataEngine
 }, card: CardFrameworkFields, operation: (resolved: { presetId?: string }) => Promise<T>): Promise<T> {
   if (!card.extensionDependencies?.length && !card.defaultPreset) return operation({})
   let stale = false

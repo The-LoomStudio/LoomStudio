@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KeyringSecretBackendError, createKeyringSecretBackend } from '../../../packages/secret-store/src/keyring-backend.js'
+import { KeyringSecretBackendError, createKeyringSecretBackend } from '@loom-studio/kernel/secret-store'
 
 describe('Keyring Secret Backend', () => {
   it('rejects invalid service names and backend keys before native access', async () => {

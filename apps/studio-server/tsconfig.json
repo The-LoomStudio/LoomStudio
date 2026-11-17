@@ -10,25 +10,7 @@
       "path": "../../packages/ai-gateway"
     },
     {
-      "path": "../../packages/application-data"
-    },
-    {
-      "path": "../../packages/asset-store"
-    },
-    {
       "path": "../../packages/application-runtime"
-    },
-    {
-      "path": "../../packages/data-engine"
-    },
-    {
-      "path": "../../packages/diagnostics"
-    },
-    {
-      "path": "../../packages/document-store"
-    },
-    {
-      "path": "../../packages/extension-sdk/extension-host"
     },
     {
       "path": "../../packages/extension-sdk"

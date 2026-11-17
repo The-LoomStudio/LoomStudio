@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSqliteDataEngine } from '../../../packages/data-engine/src/index.js'
-import { createPromptResourceStore } from '../../../packages/application-data/src/index.js'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { listResourceCatalog, readMappedResource } from '../../../packages/application-runtime/src/prompt/prompt-resource-mapper.js'
 
 describe('Prompt resource management fault isolation', () => {

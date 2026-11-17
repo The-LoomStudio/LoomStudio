@@ -1,6 +1,6 @@
-import type { DocumentStore } from '@loom-studio/document-store'
-import type { NarrativeStore, PromptResourceStore, StateStore } from '@loom-studio/application-data'
-import type { ExtensionHostOptions } from '@loom-studio/extension-host'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
+import type { NarrativeStore, PromptResourceStore, StateStore } from '@loom-studio/application-runtime/data'
+import type { ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
 import { applicationDocumentTypes, extensionInstallationId } from '@loom-studio/application-runtime'
 import { isRecord, type JsonObject } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/extension-sdk'
@@ -31,19 +31,32 @@ export async function projectExtensionEvent(
     return isRecord(payload.root) && payload.root.kind === 'card' && payload.root.id === subscriber.target.cardId
       ? event : undefined
   }
-  const dataEvent = event.name === 'data.changed'
   // Workspace invalidation/count/failure notices have no committed resource scope to project.
-  if (!dataEvent && event.name !== 'docs.changed' && event.name !== 'docs.rollback.completed') return undefined
+  if (event.name !== 'data.changed') return undefined
   if (!Array.isArray(payload.operations)) throw new Error(`Missing committed operations: ${event.name}`)
   const installationId = extensionInstallationId(subscriber.packageId, subscriber.target)
+  const overflow = payload.overflow === true
   const operations: JsonObject[] = []
   for (const item of payload.operations) {
     if (!isRecord(item)) throw new Error(`Invalid committed operation: ${event.name}`)
-    if (dataEvent && item.store === 'prompt-resources') {
+    const scope = isRecord(item.scope) ? item.scope : undefined
+    if (scope && typeof scope.installationId === 'string') {
+      const cardMatches = typeof scope.cardId !== 'string' || scope.cardId === subscriber.target.cardId
+      if (scope.installationId === installationId && cardMatches) operations.push(item as JsonObject)
+      continue
+    }
+    if (scope && typeof scope.cardId === 'string') {
+      if (scope.cardId !== subscriber.target.cardId) continue
+      if (item.store !== 'documents' && item.store !== 'prompt-resources') {
+        operations.push(item as JsonObject)
+        continue
+      }
+    }
+    if (item.store === 'prompt-resources') {
       const source = item.entityType === 'prompt-resource' ? { id: item.entityId, version: item.toVersion }
-        : isRecord(item.scope) && item.scope.store === 'prompt-resources' && item.scope.entityType === 'prompt-resource'
-          ? { id: item.scope.entityId, version: item.scope.version } : undefined
-      if (source && typeof source.id === 'string' && typeof source.version === 'number') {
+        : scope && scope.store === 'prompt-resources' && scope.entityType === 'prompt-resource'
+          ? { id: scope.entityId, version: scope.version } : undefined
+      if (source && typeof source.id === 'string' && source.id !== '*' && typeof source.version === 'number') {
         const metadata = await stores.promptResources?.getResourceMetadataAtVersion(source.id, source.version)
         const origin = metadata?.origin
         if (isRecord(origin) && origin.kind === 'extension-package' && origin.packageId === subscriber.packageId
@@ -51,12 +64,15 @@ export async function projectExtensionEvent(
       }
       continue
     }
-    if (dataEvent && item.store !== 'documents') {
-      if (await operationCardId(stores, item) === subscriber.target.cardId) operations.push(item as JsonObject)
+    if (item.store !== 'documents') {
+      const scopeTimelineId = readScopeTimelineId(scope)
+      if (overflow && !scopeTimelineId && (typeof item.entityId !== 'string' || item.entityId === '*')) continue
+      if (await operationCardId(stores, item, scopeTimelineId) === subscriber.target.cardId) operations.push(item as JsonObject)
       continue
     }
-    const id = dataEvent ? item.entityId : item.documentId
-    if (typeof id !== 'string' || typeof item.toVersion !== 'number') {
+    const id = item.entityId
+    if (typeof id !== 'string' || id === '*' || typeof item.toVersion !== 'number') {
+      if (overflow) continue
       throw new Error(`Missing committed document identity: ${event.name}`)
     }
     const document = await stores.documents.get(id, { version: item.toVersion, includeTombstone: true })
@@ -88,40 +104,43 @@ export async function projectExtensionEvent(
   if (operations.length === 0) return undefined
   return {
     ...event,
-    // Authorized invalidation only: never expose global chunk indices/counts.
     payload: {
-      changesetId: payload.changesetId as string,
-      ...(typeof payload.targetChangesetId === 'string' ? { targetChangesetId: payload.targetChangesetId } : {}),
+      ...(typeof payload.changesetId === 'string' ? { changesetId: payload.changesetId } : {}),
+      ...(overflow ? { overflow: true } : {}),
       operations,
-      ...(!dataEvent ? {
-        documents: operations.map(operation => ({
-          id: operation.documentId!, type: operation.type!, version: operation.toVersion!,
-          tombstoned: operation.kind === 'delete',
-        })),
-      } : {}),
     },
   }
 }
 
-async function operationCardId(stores: EventStores, operation: Record<string, unknown>): Promise<string | undefined> {
+function readScopeTimelineId(scope: Record<string, unknown> | undefined): string | undefined {
+  if (!scope) return undefined
+  if (typeof scope.timelineId === 'string') return scope.timelineId
+  if (scope.store === 'narrative' && scope.entityType === 'narrative.timeline' && typeof scope.entityId === 'string') {
+    return scope.entityId
+  }
+  return undefined
+}
+
+async function operationCardId(
+  stores: EventStores,
+  operation: Record<string, unknown>,
+  scopeTimelineId?: string,
+): Promise<string | undefined> {
   if (typeof operation.entityId !== 'string') throw new Error('Missing committed entity identity')
   const id = operation.entityId
   const options = { includeDeleted: true }
-  let timelineId: string | undefined
-  if (operation.store === 'narrative') {
-    if (operation.entityType === 'narrative.timeline') timelineId = id
-    else if (operation.entityType === 'narrative.branch') timelineId = (await stores.narratives?.getBranch(id, options))?.timelineId
-    else if (operation.entityType === 'narrative.node') timelineId = (await stores.narratives?.getNode(id, options))?.timelineId
-  } else if (operation.store === 'agent') {
-    const scope = operation.scope
-    if (isRecord(scope) && scope.store === 'narrative' && scope.entityType === 'narrative.timeline' && typeof scope.entityId === 'string') {
-      timelineId = scope.entityId
+  let timelineId: string | undefined = scopeTimelineId
+  if (!timelineId) {
+    if (operation.store === 'narrative') {
+      if (operation.entityType === 'narrative.timeline') timelineId = id
+      else if (operation.entityType === 'narrative.branch') timelineId = (await stores.narratives?.getBranch(id, options))?.timelineId
+      else if (operation.entityType === 'narrative.node') timelineId = (await stores.narratives?.getNode(id, options))?.timelineId
+    } else if (operation.store === 'state') {
+      const stateScope = operation.entityType === 'state.scope' ? await stores.states?.getScopeById(id, options)
+        : operation.entityType === 'state.revision' ? await stores.states?.getScopeForRevision(id, options)
+          : undefined
+      if (stateScope?.kind === 'timeline') timelineId = stateScope.ownerId
     }
-  } else if (operation.store === 'state') {
-    const scope = operation.entityType === 'state.scope' ? await stores.states?.getScopeById(id, options)
-      : operation.entityType === 'state.revision' ? await stores.states?.getScopeForRevision(id, options)
-        : undefined
-    if (scope?.kind === 'timeline') timelineId = scope.ownerId
   }
   return timelineId ? (await stores.narratives?.getTimeline(timelineId, options))?.createdFrom?.cardId : undefined
 }

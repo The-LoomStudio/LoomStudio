@@ -1,4 +1,4 @@
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import type { MacroSelectionMap } from '@loom-studio/shared'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments } from '../foundation/document-store.js'

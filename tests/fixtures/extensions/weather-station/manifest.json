@@ -16,7 +16,7 @@
       "entry": "./dist/index.js",
       "capabilities": {
         "events.subscribe": [
-          "documents",
+          "platform-data",
           "extension:example.weatherStation"
         ]
       },

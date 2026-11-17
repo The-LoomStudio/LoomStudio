@@ -203,11 +203,16 @@ describe('Studio Server logging', () => {
         input: 'Private user prompt',
         narrativeTarget: { timelineId: timeline.timeline.id },
       })
-      const turn = await callRpc<{ runId: string; projection: { messages: unknown[] } }>(port, 'application.invokeAgentTurn', {
+      const turn = await callRpc<{ runId: string; buildId: string }>(port, 'application.invokeAgentTurn', {
         agentSessionId: created.session.id,
         input: 'Private runtime prompt',
         narrativeTarget: { timelineId: timeline.timeline.id },
       })
+      const persistedBuild = await callRpc<{ build?: { messages?: unknown[]; projection?: { messages: unknown[] } } } | null>(port, 'application.observations.getBuild', {
+        id: turn.buildId,
+      })
+      const runtimeMessageCount = persistedBuild?.build?.projection?.messages.length
+      expect(runtimeMessageCount).toBeGreaterThan(0)
       const page = await callRpc<{
         items: Array<{
           event?: string
@@ -232,11 +237,11 @@ describe('Studio Server logging', () => {
       expect(page.items[0]?.message).toBe('preview prompt build started')
       expect(page.items[1]?.message).toBe(`preview prompt build completed · ${preview.messages.length} messages`)
       expect(page.items[2]?.message).toBe('runtime prompt build started')
-      expect(page.items[3]?.message).toBe(`runtime prompt build completed · ${turn.projection.messages.length} messages`)
+      expect(page.items[3]?.message).toBe(`runtime prompt build completed · ${runtimeMessageCount} messages`)
       expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: preview.messages.length })
       expect(page.items[0]?.data?.buildId).toBe(page.items[1]?.data?.buildId)
       expect(page.items[0]?.correlationId).toBe(page.items[1]?.correlationId)
-      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: turn.projection.messages.length })
+      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: runtimeMessageCount })
       expect(page.items[3]?.data?.runId).toBe(turn.runId)
       expect(page.items[2]?.data?.buildId).toBe(page.items[3]?.data?.buildId)
       expect(JSON.stringify(page.items)).not.toContain('Private')
@@ -261,7 +266,7 @@ describe('Studio Server logging', () => {
         runId: turn.runId,
         provider: 'fake',
         model: 'fake-echo-m0',
-        messageCount: turn.projection.messages.length,
+        messageCount: runtimeMessageCount,
       })
       expect(JSON.stringify(providerPage.items)).not.toContain('Private')
       const runPage = await callRpc<{ items: Array<{ event: string; data: Record<string, unknown> }> }>(port, 'logs.list', { limit: 10, namespacePrefix: 'runtime.run' })

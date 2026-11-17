@@ -1,7 +1,7 @@
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
-import { createAgentStore, createNarrativeStore, createNarrativeSwipeStore, createPromptResourceStore } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createAgentStore, createNarrativeStore, createNarrativeSwipeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import type { ExtensionNarrativeActivity } from '@loom-studio/extension-sdk'
 import { expect, it } from 'vitest'
 

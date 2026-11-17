@@ -1,7 +1,7 @@
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
 import { createKernel } from '@loom-studio/kernel'
-import type { ExtensionHost } from '@loom-studio/extension-host'
+import type { ExtensionHost } from '@loom-studio/kernel/extension-host'
 import vm from 'node:vm'
 
 console.log('✨ [Playground] 正在初始化 Loom Studio 沙盒...');
@@ -29,9 +29,9 @@ try {
   await kernel.start()
   console.log('🚀 [Playground] Kernel 已成功启动！');
 
-  // 3. 演示通过 Kernel RPC 写入 Document
+  // 3. 演示直接通过 DocumentStore 写入 Document
   console.log('\n📝 正在尝试写入测试数据...');
-  const writeResult = await kernel.callRpc<{ changesetId: string; documents: unknown[] }>('docs.write', {
+  const writeResult = await documents.write({
     id: 'playground.test:1',
     type: 'playground.test',
     content: {
@@ -44,11 +44,9 @@ try {
   console.log(`✅ 写入成功！变更集 ID: ${writeResult.changesetId}`);
   console.log('写入的文档内容:', writeResult.documents[0]);
 
-  // 4. 演示通过 Kernel RPC 查询刚才写入的数据
+  // 4. 演示直接通过 DocumentStore 查询刚才写入的数据
   console.log('\n🔍 正在读取测试数据...');
-  const readResult = await kernel.callRpc<unknown>('docs.get', {
-    id: 'playground.test:1',
-  })
+  const readResult = { document: await documents.get('playground.test:1') }
   console.log('读取到的文档内容:', readResult);
 
   // 5. 演示 system.introspect 返回的能力发现

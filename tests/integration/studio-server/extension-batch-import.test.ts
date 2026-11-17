@@ -17,7 +17,9 @@ function characterPng() {
   return Buffer.concat([defaultCardPng.subarray(0, -12), chunk, defaultCardPng.subarray(-12)])
 }
 
-const owner = { packageId: 'sillytavern.importer', target: { kind: 'global' } }
+const owner = { packageId: 'sillytavern.importer', target: { kind: 'global' } as const }
+const invokeImporter = <T>(port: number, method: string, params: unknown) =>
+  callRpc<T>(port, 'extensions.invoke', { packageId: owner.packageId, target: owner.target, method, params })
 
 describe('extension native batch import', () => {
   it('uses the real Host to import a nested Card, avatar, resources and complete history, and reports unmatched chats', async () => {
@@ -38,8 +40,8 @@ describe('extension native batch import', () => {
       ].map(value => JSON.stringify(value)).join('\n'))
       await writeFile(join(root, 'chats/Missing/Unmatched.jsonl'), JSON.stringify({ mes: 'Unmatched' }))
       await callRpc(port, 'extensions.enableModule', { packageId: owner.packageId, moduleId: 'server' })
-      const { sessionId } = await callRpc<{ sessionId: string }>(port, 'sillytavern.importer.migration.start', { directory: root })
-      await expect.poll(async () => (await callRpc<{ scan: { status: string } }>(port,
+      const { sessionId } = await invokeImporter<{ sessionId: string }>(port, 'sillytavern.importer.migration.start', { directory: root })
+      await expect.poll(async () => (await invokeImporter<{ scan: { status: string } }>(port,
         'sillytavern.importer.migration.inspect', { sessionId })).scan.status).toBe('completed')
       const report = await callRpc(port, 'extensions.importConvertedBatch', { ...owner, sessionId })
       expect(report).toEqual({ imported: 3, skipped: [{ key: 'chats/Missing/Unmatched.jsonl', reason: '没有找到聊天对应的角色卡' }] })
@@ -63,13 +65,13 @@ describe('extension native batch import', () => {
   it('reports accepted writes on conversion failure and consumes the failed session', async () => {
     await withStudioServer(async port => {
       await callRpc(port, 'extensions.enableModule', { packageId: owner.packageId, moduleId: 'server' })
-      const { sessionId } = await callRpc<{ sessionId: string }>(port, 'sillytavern.importer.migration.start', {})
-      await callRpc(port, 'sillytavern.importer.migration.appendBatch', { sessionId, files: [
+      const { sessionId } = await invokeImporter<{ sessionId: string }>(port, 'sillytavern.importer.migration.start', {})
+      await invokeImporter(port, 'sillytavern.importer.migration.appendBatch', { sessionId, files: [
         { path: 'characters/Good.json', source: JSON.stringify({ name: 'Good' }) },
         { path: 'characters/Broken.json', source: '{broken' },
       ] })
       await expect(callRpc(port, 'extensions.importConvertedBatch', { ...owner, sessionId })).rejects.toThrow('已有 1 项写入')
-      await expect(callRpc(port, 'sillytavern.importer.migration.inspect', { sessionId })).rejects.toThrow('not found')
+      await expect(invokeImporter(port, 'sillytavern.importer.migration.inspect', { sessionId })).rejects.toThrow('not found')
       expect((await callRpc<{ cards: unknown[] }>(port, 'application.listCards', {})).cards).toHaveLength(1)
     }, resolve('extensions'))
   })

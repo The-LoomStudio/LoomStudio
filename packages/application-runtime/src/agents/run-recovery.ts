@@ -1,5 +1,5 @@
 import { isRecord, type ChatMessage, type JsonObject } from '@loom-studio/shared'
-import type { AgentStore, AgentTranscriptEntry, AgentTranscriptEntryData } from '@loom-studio/application-data'
+import type { AgentStore, AgentTranscriptEntry, AgentTranscriptEntryData } from '../data/index.js'
 import type { InvokeAgentTurnInput, ProviderModelSelection, ApplyStateMutationInput, GatewayChatResult, TimelineExtensionLease } from '../types.js'
 import type { ProcessedPromptSnapshot } from '../prompt/process-prompt.js'
 import type { NarrativeExecutionSource } from '../runtime/swipe-runtime.js'

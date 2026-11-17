@@ -1,5 +1,5 @@
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
 import { describe, expect, it, onTestFinished } from 'vitest'
 
 describe('Application Runtime construction', () => {

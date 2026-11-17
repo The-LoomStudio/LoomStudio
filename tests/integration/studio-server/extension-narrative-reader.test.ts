@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createExtensionNarrativeReader } from '../../../apps/studio-server/src/extensions/extension-narrative-reader.js'
 

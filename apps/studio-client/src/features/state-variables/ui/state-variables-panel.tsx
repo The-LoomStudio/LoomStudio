@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { StudioPanelActive } from '../../../shared/studio-shell/studio-panel-active.js'
 import { MobileTabPageActive } from '../../../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
 import { useWorkbenchView } from '../../../shared/studio-shell/use-workbench-view.js'
@@ -5,7 +6,9 @@ import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from
 import { ChevronDown, ChevronUp, Clock, Code2, Copy, FileText, Folder, FolderOpen, Globe, Layers, Maximize2, Minus, Plus, RefreshCw, Save } from 'lucide-react'
 import { notify } from '../../../shared/notifications/index.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
-import type { StateSnapshot, StateTarget } from '../../../entities/index.js'
+import type { StateTarget } from '../../../entities/index.js'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
+import { subscribeExtensionEvents } from '../../../shared/api/extension-events.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { Button, type MenuAction } from '@loom-studio/ui'
@@ -31,23 +34,32 @@ type Props = {
 type RuntimeScope = 'global' | 'timeline'
 type SnapshotSource = { api: Props['api']; key: string }
 
+const apiScopeIds = new WeakMap<Props['api'], number>()
+let nextApiScopeId = 1
+
+function getApiScopeId(api: Props['api']): number {
+  let id = apiScopeIds.get(api)
+  if (id === undefined) {
+    id = nextApiScopeId++
+    apiScopeIds.set(api, id)
+  }
+  return id
+}
+
 export function StateVariablesPanel(props: Props) {
+  const queryClient = useQueryClient()
   const panelActive = useContext(StudioPanelActive)
   const pageActive = useContext(MobileTabPageActive)
   const visible = panelActive && pageActive
-  const [globalSnapshot, setGlobalSnapshot] = useState<StateSnapshot>()
-  const [timelineSnapshot, setTimelineSnapshot] = useState<StateSnapshot>()
   const [scope, setScope] = useWorkbenchView<RuntimeScope>('state.runtime.scope', props.timelineTarget ? 'timeline' : 'global', props.timelineTarget ? ['timeline', 'global'] : ['global'])
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [editedProperties, setEditedProperties] = useState<Record<string, unknown>>({})
   const [arrayDrafts, setArrayDrafts] = useState<Record<string, string>>({})
   const [draftContextKey, setDraftContextKey] = useState('')
-  const [snapshotSource, setSnapshotSource] = useState<SnapshotSource>()
   const [treeExpandedIds, setTreeExpandedIds] = useState<string[]>([])
   const [expandedLongTextPaths, setExpandedLongTextPaths] = useState<Set<string>>(new Set())
-  const [error, setError] = useState('')
+  const [actionError, setActionError] = useState('')
   const [saving, setSaving] = useState(false)
-  const requestIdRef = useRef(0)
   const saveRequestRef = useRef<symbol | undefined>(undefined)
   const mountedRef = useRef(true)
   const treeScrollRef = useRef<HTMLDivElement>(null)
@@ -60,9 +72,33 @@ export function StateVariablesPanel(props: Props) {
   const source = sourceRef.current
   const expandedSourceRef = useRef<{ source: SnapshotSource; scope: RuntimeScope } | undefined>(undefined)
 
-  const currentSnapshot = snapshotSource === source
-    ? (scope === 'timeline' ? timelineSnapshot : globalSnapshot)
-    : undefined
+  const dirtyCount = Object.keys(editedProperties).length + Object.keys(arrayDrafts).length
+  const apiScope = getApiScopeId(props.api)
+  const queryKey = useMemo(
+    () => ['state-variables', apiScope, props.timelineTarget?.timelineId, props.timelineTarget?.branchId, props.refreshToken] as const,
+    [apiScope, props.timelineTarget?.timelineId, props.timelineTarget?.branchId, props.refreshToken],
+  )
+  const snapshotsQuery = useQuery({
+    queryKey,
+    enabled: visible,
+    queryFn: async () => {
+      const [globalResult, timelineResult] = await Promise.all([
+        props.api.get({ scope: 'global' }),
+        props.timelineTarget ? props.api.get(props.timelineTarget) : Promise.resolve(undefined),
+      ])
+      return {
+        globalSnapshot: globalResult.snapshot,
+        timelineSnapshot: timelineResult?.snapshot,
+      }
+    },
+    refetchInterval: dirtyCount === 0 && !saving ? 5000 : false,
+    refetchIntervalInBackground: false,
+  })
+
+  const globalSnapshot = snapshotsQuery.data?.globalSnapshot
+  const timelineSnapshot = snapshotsQuery.data?.timelineSnapshot
+  const currentSnapshot = scope === 'timeline' ? timelineSnapshot : globalSnapshot
+  const error = actionError || (snapshotsQuery.error ? readError(snapshotsQuery.error) : '')
   const editContextKey = currentSnapshot
     ? `${targetKey}:${scope}:${currentSnapshot.revisionId}`
     : `${targetKey}:${scope}:loading`
@@ -73,14 +109,12 @@ export function StateVariablesPanel(props: Props) {
     () => stateSnapshotToTreeNodes(currentSnapshot?.value, props.t),
     [currentSnapshot?.value, props.t],
   )
-  const dirtyCount = Object.keys(editedProperties).length + Object.keys(arrayDrafts).length
   const focusKey = JSON.stringify([props.timelineTarget?.timelineId, props.timelineTarget?.branchId, props.focusPath])
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
-      requestIdRef.current += 1
     }
   }, [])
 
@@ -118,56 +152,39 @@ export function StateVariablesPanel(props: Props) {
     revealedPathRef.current = { key: focusKey, api: props.api }
   }, [focusKey, props.api, props.focusPath, props.timelineTarget, scope, currentSnapshot, treeNodes])
 
-  async function refresh(preserveContextKey?: string) {
-    const requestId = ++requestIdRef.current
-    const target = props.timelineTarget
-    try {
-      const [globalResult, timelineResult] = await Promise.all([
-        props.api.get({ scope: 'global' }),
-        target ? props.api.get(target) : Promise.resolve(undefined),
-      ])
-      if (!mountedRef.current || requestId !== requestIdRef.current || sourceRef.current !== source) return
-      // A scope round trip can create a new draft while the previous save is pending.
-      // Rebase that draft only if the user is still editing the same context.
-      if (preserveContextKey && editContextRef.current === preserveContextKey) {
-        const refreshed = scope === 'global' ? globalResult.snapshot : timelineResult?.snapshot
-        if (refreshed) preservedDraftContextRef.current = `${targetKey}:${scope}:${refreshed.revisionId}`
-      }
-      setGlobalSnapshot(globalResult.snapshot)
-      setTimelineSnapshot(timelineResult?.snapshot)
-      setSnapshotSource(source)
-      setError('')
-    } catch (cause) {
-      if (mountedRef.current && requestId === requestIdRef.current && sourceRef.current === source) {
-        setError(readError(cause))
-      }
-    }
-  }
-
   useEffect(() => {
-    setSnapshotSource(undefined)
-    setGlobalSnapshot(undefined)
-    setTimelineSnapshot(undefined)
     setDraftContextKey('')
     setEditedProperties({})
-    setError('')
+    setArrayDrafts({})
+    setActionError('')
   }, [source])
 
   useEffect(() => {
-    if (!visible) return
-    if (snapshotSource !== source || (dirtyCount === 0 && !saveRequestRef.current)) void refresh()
-    return () => { requestIdRef.current++ }
-  }, [source, visible])
-
-  useEffect(() => {
-    if (!visible) return
-    const update = () => {
-      if (document.visibilityState === 'visible' && dirtyCount === 0 && !saveRequestRef.current) void refresh()
+    if (!visible || dirtyCount > 0 || saving) return
+    const invalidate = () => {
+      void queryClient.invalidateQueries({ exact: true, queryKey })
     }
-    window.addEventListener('focus', update)
-    const timer = window.setInterval(update, 5000)
-    return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
-  }, [source, dirtyCount, visible])
+    const unsubscribeData = subscribeDataCommits(
+      operations => {
+        const hasRelevantChange = operations.some(op =>
+          op.entityType === 'state.scope'
+          || op.entityType === 'state.revision'
+          || op.entityType === 'narrative.branch'
+          || op.entityType === 'narrative.timeline',
+        )
+        if (!hasRelevantChange) return
+        invalidate()
+      },
+      invalidate,
+    )
+    const unsubscribeState = subscribeExtensionEvents({
+      events: { 'state.changed': invalidate },
+    })
+    return () => {
+      unsubscribeData()
+      unsubscribeState()
+    }
+  }, [dirtyCount, queryClient, queryKey, saving, visible])
 
   async function saveAllDirtyProperties() {
     const snapshot = currentSnapshot
@@ -178,12 +195,13 @@ export function StateVariablesPanel(props: Props) {
     if (!expectedTarget || snapshot.target.scope !== expectedTarget.scope
       || (snapshot.target.scope === 'timeline' && expectedTarget.scope === 'timeline'
         && (snapshot.target.timelineId !== expectedTarget.timelineId || snapshot.target.branchId !== expectedTarget.branchId))) {
-      setError(props.t('stateVariables.targetMismatch'))
+      setActionError(props.t('stateVariables.targetMismatch'))
       return
     }
     const request = Symbol()
     saveRequestRef.current = request
     setSaving(true)
+    setActionError('')
     try {
       const changes = { ...editedProperties } as Record<string, ClientJsonValue>
       for (const [path, text] of Object.entries(arrayDrafts)) {
@@ -199,11 +217,15 @@ export function StateVariablesPanel(props: Props) {
         setArrayDrafts({})
         notify.success(`${props.t('stateVariables.savedProperties')} ${Object.keys(changes).length}`)
       }
-      await refresh(saveRequestRef.current !== request && editContextRef.current === saveContextKey ? saveContextKey : undefined)
+      const refreshed = await snapshotsQuery.refetch()
+      if (saveRequestRef.current !== request && editContextRef.current === saveContextKey) {
+        const nextSnapshot = scope === 'global' ? refreshed.data?.globalSnapshot : refreshed.data?.timelineSnapshot
+        if (nextSnapshot) preservedDraftContextRef.current = `${targetKey}:${scope}:${nextSnapshot.revisionId}`
+      }
       if (mountedRef.current && sourceRef.current === source) void props.onStateMutated?.()
     } catch (cause) {
       const message = readError(cause)
-      if (mountedRef.current && sourceRef.current === source && saveRequestRef.current === request) setError(message)
+      if (mountedRef.current && sourceRef.current === source && saveRequestRef.current === request) setActionError(message)
       notify.failure('保存状态变量失败', message)
     } finally {
       if (mountedRef.current && sourceRef.current === source && saveRequestRef.current === request) {
@@ -455,7 +477,7 @@ export function StateVariablesPanel(props: Props) {
                 className={styles.toolbarIconBtn}
                 disabled={saving}
                 type="button"
-                onClick={() => void refresh()}
+                onClick={() => { setActionError(''); void snapshotsQuery.refetch() }}
               >
                 <RefreshCw aria-hidden="true" size={14} />
               </button>

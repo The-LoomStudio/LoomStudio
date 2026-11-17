@@ -1,4 +1,7 @@
-import type { ChatMessage } from '@loom-studio/shared'
+import type { ChatMessage, MacroInspection } from '@loom-studio/shared'
+import type { ToolPromptBuildTrace } from '../agents/tool-prompt-build.js'
+import type { PromptBuildTrace } from '../prompt/prompt-build-pipeline.js'
+import type { CompiledPrompt } from '../prompt/prompt-builder.js'
 
 export type ObservationStatus = 'running' | 'completed' | 'failed' | 'aborted' | 'suspended'
 export type ObservationOrigin = {
@@ -53,6 +56,10 @@ export type ObservationBuild = {
   transformations?: unknown[]
   diagnostics?: unknown[]
   trace?: unknown
+  projection?: Omit<CompiledPrompt, 'observation'>
+  promptBuildTrace?: Omit<PromptBuildTrace, 'observation'>
+  toolPromptBuildTrace?: ToolPromptBuildTrace
+  macroInspection?: MacroInspection
 }
 export type ObservationRequest = {
   preparedMessages?: ChatMessage[]

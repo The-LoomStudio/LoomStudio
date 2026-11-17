@@ -1,7 +1,6 @@
 packages:
   - apps/*
   - packages/*
-  - packages/extension-sdk/*
   - official/extensions/*
   - extensions/st-data-compat
   - extensions/the-world

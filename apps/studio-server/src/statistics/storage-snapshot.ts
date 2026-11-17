@@ -1,6 +1,6 @@
 import { lstat, readdir, statfs } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
-import type { LoomStudioLocalPaths } from '../platform/local-paths.js'
+import type { LoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 
 const categories = [
   ['database', '数据库文件'], ['blobs', '素材与原始包'], ['cards', '角色目录'], ['extensions', '扩展数据'],

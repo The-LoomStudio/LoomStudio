@@ -110,6 +110,7 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       resources: () => trpc.dashboard.resources.query(),
       storage: (refresh = false) => trpc.dashboard.storage.query({ refresh }),
       database: () => trpc.dashboard.database.query(),
+      createBackup: () => trpc.dashboard.createBackup.mutate(),
     },
     observations: {
       references: (input: StudioRpcInputs['application']['observations.references']) => trpc.application['observations.references'].query(input),
@@ -174,8 +175,13 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       upsertConfig: (input: { packageId: string; target?: ExtensionInstallationTarget; scope: ExtensionStorageScope; key: string; value: ClientJsonValue; expectedVersion?: number }) => trpc.application['upsertExtensionConfig'].mutate(input),
       listRecords: (input: { packageId: string; target?: ExtensionInstallationTarget; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }) => trpc.application['listExtensionRecords'].query(input),
       getRecord: (packageId: string, recordId: string, target?: ExtensionInstallationTarget) => trpc.application['getExtensionRecord'].query({ packageId, recordId, ...(target ? { target } : {}) }),
-      call: (method: string, params?: ClientJsonValue) => trpc.kernel.invoke.mutate({ method, params }),
-      callInstalled: (input: { packageId: string; target: ExtensionInstallationTarget; method: string; params?: ClientJsonValue }) => trpc.extensions.callPackageRpc.mutate(input),
+      invoke: (input: { packageId: string; target?: ExtensionInstallationTarget; method: string; params?: ClientJsonValue }) => trpc.extensions.invoke.mutate(input),
+      call: (method: string, params?: ClientJsonValue, options?: { packageId?: string; target?: ExtensionInstallationTarget }) => trpc.extensions.invoke.mutate({
+        packageId: options?.packageId ?? method.split('.')[0]!,
+        ...(options?.target ? { target: options.target } : {}),
+        method,
+        params,
+      }),
     },
     settings: {
       getNetwork: () => trpc.settings.network.get.query(undefined),
@@ -184,6 +190,9 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
     logs: {
       list: (input?: LogsListInput) => trpc.logs.list.query((input ?? {})),
       history: (input: LogHistoryQuery, signal?: AbortSignal) => trpc.logs.history.query(input, { signal }),
+    },
+    diagnostics: {
+      list: (input?: Record<string, ClientJsonValue>) => trpc.diagnostics.list.query(input),
     },
     history: {
       revert: async (changesetId: string) => {
@@ -319,7 +328,6 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       invoke: (input: InvokeAgentTurnInput) => trpc.application['invokeAgentTurn'].mutate(input),
       createRun: (input: InvokeAgentTurnInput) => trpc.application['agent.run.create'].mutate(input),
       subscribeRun: (runId: string, cursor?: number, agentSessionId?: string) => trpc.application['agent.run.subscribe'].query({ runId, ...(cursor === undefined ? {} : { cursor }), ...(agentSessionId === undefined ? {} : { agentSessionId }) }),
-      acknowledgeRunCompletion: (runId: string) => trpc.application['agent.run.acknowledge-completion'].mutate({ runId }),
       cancelRun: (runId: string, reason?: string) => trpc.application['agent.run.cancel'].mutate({ runId, ...(reason ? { reason } : {}) }),
       abandonRun: (runId: string, agentSessionId?: string) => trpc.application['agent.run.abandon'].mutate({ runId, agentSessionId }),
       pauseRun: (runId: string) => trpc.application['agent.run.pause'].mutate({ runId }),
@@ -366,6 +374,7 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
     },
     agentPresets: {
       list: (input?: { cursor?: string; limit?: number }) => trpc.application['listAgentPresets'].query((input ?? {})),
+      listSummaries: (input?: { cursor?: string; limit?: number }) => trpc.application['listAgentPresetSummaries'].query((input ?? {})),
       create: (input: CreateAgentPresetInput) => trpc.application['createAgentPreset'].mutate(input),
       update: (input: UpdateAgentPresetInput) => trpc.application['updateAgentPreset'].mutate(input),
       delete: (agentPresetId: string) => trpc.application['deleteAgentPreset'].mutate({ agentPresetId }),

@@ -31,22 +31,26 @@ export function activate(ctx) {
       }
       kernel.registerExtensionRpc(`${packageId}.globalOnly`, packageId, 'server', () => 'global only', 'global-service')
       for (const [index, target] of targets.entries()) {
-        expect(await kernel.callRpc('extensions.callPackageRpc', {
-          packageId, target, method: `${packageId}.identity`, params: { extensionTarget: targets[2] },
+        expect(await kernel.callRpc(`${packageId}.identity`, { extensionTarget: targets[2] }, {
+          extensionTarget: target,
+          expectedExtensionPackageId: packageId,
         })).toBe(instances[index])
         expect(await kernel.callRpc(`${packageId}.identity`, {}, { extensionTarget: target })).toBe(instances[index])
         expect(await kernel.callRpc(`${packageId}.relay`, { extensionTarget: targets[2] }, { extensionTarget: target })).toBe(instances[index])
         expect(await kernel.callRpc(`${packageId}.globalRelay`, {}, { extensionTarget: target })).toBe(instances[0])
       }
-      await expect(kernel.callRpc('extensions.callPackageRpc', {
-        packageId, target: targets[1], method: `${packageId}.globalOnly`,
+      await expect(kernel.callRpc(`${packageId}.globalOnly`, {}, {
+        extensionTarget: targets[1],
+        expectedExtensionPackageId: packageId,
       })).rejects.toThrow('method not found')
-      await expect(kernel.callRpc('extensions.callPackageRpc', {
-        packageId: 'system', target: targets[0], method: 'system.ping',
+      await expect(kernel.callRpc('system.ping', {}, {
+        extensionTarget: targets[0],
+        expectedExtensionPackageId: 'system',
       })).rejects.toThrow('not owned by extension')
-      await expect(kernel.callRpc('extensions.callPackageRpc', {
-        packageId, target: targets[0], method: 'system.ping',
-      })).rejects.toThrow('package namespace')
+      await expect(kernel.callRpc('system.ping', {}, {
+        extensionTarget: targets[0],
+        expectedExtensionPackageId: packageId,
+      })).rejects.toThrow('not owned by extension')
       await expect(kernel.callRpc(`${packageId}.missingLocal`, {}, { extensionTarget: targets[1] })).rejects.toThrow('method not found')
       expect(kernel.getPublicSurface().methods.filter(method => method.name.startsWith(packageId))).toHaveLength(5)
       await extensionHost.dispose(packageId, 'server', targets[1])

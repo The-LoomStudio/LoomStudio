@@ -88,7 +88,7 @@ Agent 主动读取与 ToolResult 的生命周期由 Runtime 管理，不等于 P
 
 Canonical message、Tool Invocation / Result、恢复检查点与 terminal Run State 分阶段执行必要提交；这些写入失败不会作为观测故障被忽略。请求 Token 估算、`request-measurement` 与 `provider-observation` 的落库及对应通知则是 best-effort：失败不重试或阻止模型调用，也不回滚已完成步骤。Transcript 因而可能缺少计量或供应商 Usage，不能据此判断请求没有发生或将缺失值当作零。
 
-Server 的 Run 事件重放使用绝对游标、单 Run 1 MiB / Runtime 总计 8 MiB 的序列化预算；游标过期时显式重新同步 Transcript 和当前流式状态。完整完成结果包含 Inspector 的 Prompt Projection / Build Trace，不等同于可丢弃的事件历史：前端收到并发布 `lastRun` 后调用 `application.agent.run.acknowledge-completion`，释放独立的待交付引用；普通大小的结果仍可留在有界事件重放中。未确认的完成结果最多保留两分钟，期间不因事件预算或终态元数据淘汰而提前丢弃。此必要交付状态可能暂时超过重放字节预算；这些预算不是整个进程的硬 heap 上限，也不是历史 Trace 的持久化合同。
+Server 的 Run 事件重放由 `ApplicationRuntime`（`packages/application-runtime/src/agents/agent-run-service.ts`）管理，使用绝对游标、单 Run 1 MiB / Runtime 总计 8 MiB 的序列化预算；游标过期时显式重新同步 Transcript 和当前流式状态。`prepareAgentTurn` 将完整的 `projection`、`promptBuildTrace`、`toolPromptBuildTrace` 与 `macroInspection` 直接写入对应 `buildId` 的 `ObservationBuild` 记录（三账本按 `traceId / buildId` 关联）；`invokeAgentTurn` 与 `completed` 运行事件仅返回包含 `buildId` 的轻量完成回执，不再携带大体积 Trace 载荷，也不再维护 `pendingCompletion` 两分钟内存暂存或 `acknowledge-completion` 握手。前端 Inspector 在展开排查面板时按 `buildId` 懒查询 `observations.getBuild`。上述事件重放预算不是整个进程的硬 heap 上限，也不是历史 Trace 的持久化合同。
 
 ### 显式冷恢复
 
@@ -135,8 +135,8 @@ Run 状态记录中的版本化 `recovery` 保存原请求、实际 Branch、Pro
 
 ## 8. 实现来源
 
-- [`packages/application-data/src/agent/types.ts`](../../../../packages/application-data/src/agent/types.ts)
-- [`packages/application-data/src/agent/store.ts`](../../../../packages/application-data/src/agent/store.ts)
+- [`packages/application-runtime/src/data/agent/types.ts`](../../../../packages/application-runtime/src/data/agent/types.ts)
+- [`packages/application-runtime/src/data/agent/store.ts`](../../../../packages/application-runtime/src/data/agent/store.ts)
 - [`packages/application-runtime/src/narrative/sampling.ts`](../../../../packages/application-runtime/src/narrative/sampling.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
 - [`packages/application-runtime/src/agents/agent-turn.ts`](../../../../packages/application-runtime/src/agents/agent-turn.ts)

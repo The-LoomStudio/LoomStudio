@@ -1049,7 +1049,7 @@ export function AgentPresetOverview(props: {
 function PresetCardInheritance({ card, enabled, count, resourceLabel }: {
   card?: Card; enabled: boolean; count?: number; resourceLabel: string
 }) {
-  const avatar = card && cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version)
+  const avatar = card && cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version, card.updatedAt)
   return <span className={styles.presetInheritanceSource}>
     {avatar && <img src={avatar} alt="" width={20} height={20} />}
     <span>{card ? `${card.name} · ${count === undefined ? '' : count === 0 ? `暂无关联${resourceLabel} · ` : `${count} 项${resourceLabel} · `}${enabled ? '跟随当前角色' : '未继承'}`
@@ -1272,7 +1272,7 @@ export function PresetTextUses(props: {
         }}
         renderIcon={(node, expanded) => node.kind === 'folder'
           ? props.card?.media?.avatarAssetId && node.id === `source:角色:${props.card.name}`
-            ? <img src={cardMediaUrl(props.card.id, 'avatar', props.card.media.avatarAssetId, props.card.version)} alt="" width={20} height={20} />
+            ? <img src={cardMediaUrl(props.card.id, 'avatar', props.card.media.avatarAssetId, props.card.version, props.card.updatedAt)} alt="" width={20} height={20} />
             : expanded ? <FolderOpen size={15} /> : <Folder size={15} />
           : !candidatesById.has(node.id) ? <AlertTriangle size={15} aria-label="引用不可用" />
           : node.id.startsWith('rule:')

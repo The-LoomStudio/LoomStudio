@@ -1,13 +1,32 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Dialog, IconButton } from '@loom-studio/ui'
 import { Download, PackagePlus, RefreshCw, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { notify } from '../../../shared/notifications/index.js'
 import type { OfficialContentPackage } from '../../../entities/official-content.js'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { downloadBase64 } from '../../../shared/browser/download.js'
 import { confirm } from '../../../shared/ui/confirm-dialog/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import styles from './official-content-dialog.module.scss'
+
+const EMPTY_PACKAGES: OfficialContentPackage[] = []
+const apiScopeIds = new WeakMap<StudioApi['officialContent'], number>()
+let nextApiScopeId = 1
+
+function getApiScopeId(api: StudioApi['officialContent']): number {
+  let id = apiScopeIds.get(api)
+  if (id === undefined) {
+    id = nextApiScopeId++
+    apiScopeIds.set(api, id)
+  }
+  return id
+}
+
+function readError(caught: unknown): string {
+  return caught instanceof Error ? caught.message : String(caught)
+}
 
 export function OfficialContentDialog(props: {
   api: StudioApi['officialContent']
@@ -15,53 +34,72 @@ export function OfficialContentDialog(props: {
   onClose(): void
   t: Translator
 }) {
-  const [packages, setPackages] = useState<OfficialContentPackage[]>([])
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string>()
+  const queryClient = useQueryClient()
+  const apiScope = getApiScopeId(props.api)
+  const queryKey = useMemo(() => ['official-content', apiScope, 'list'] as const, [apiScope])
+  const listQuery = useQuery({
+    queryKey,
+    queryFn: () => props.api.list(),
+  })
+  const [operating, setOperating] = useState(false)
+  const [actionError, setActionError] = useState<string>()
   const active = useRef(false)
-  const pending = useRef(true)
+  const pending = useRef(false)
 
   useEffect(() => {
     active.current = true
-    let current = true
-    void props.api.list().then(result => {
-      if (current) setPackages(result.packages)
-    }, caught => {
-      if (current) setError(caught instanceof Error ? caught.message : String(caught))
-    }).finally(() => {
-      if (current) { pending.current = false; setBusy(false) }
-    })
-    return () => { current = false; active.current = false }
-  }, [props.api])
+    return () => { active.current = false }
+  }, [])
+
+  useEffect(() => {
+    return subscribeDataCommits(
+      operations => {
+        const hasRelevantChange = operations.some(op =>
+          op.entityType === 'extension.official-setup'
+          || op.entityType === 'prompt-resource'
+          || op.entityType.startsWith('airp.'),
+        )
+        if (!hasRelevantChange) return
+        void queryClient.invalidateQueries({ exact: true, queryKey })
+      },
+      () => {
+        void queryClient.invalidateQueries({ exact: true, queryKey })
+      },
+    )
+  }, [queryClient, queryKey])
+
+  const packages = listQuery.data?.packages ?? EMPTY_PACKAGES
+  const busy = operating || listQuery.isPending
+  const error = actionError ?? (listQuery.error ? readError(listQuery.error) : undefined)
 
   async function run(operation: () => Promise<void>) {
-    if (pending.current) return
+    if (pending.current || listQuery.isPending) return
     pending.current = true
-    setBusy(true)
-    setError(undefined)
+    setOperating(true)
+    setActionError(undefined)
     try {
       await operation()
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : String(caught)
-      if (active.current) setError(message)
+      const message = readError(caught)
+      if (active.current) setActionError(message)
       notify.failure(props.t('official.operationFailed'), message)
     } finally {
       pending.current = false
-      if (active.current) setBusy(false)
+      if (active.current) setOperating(false)
     }
   }
 
   async function reload() {
-    const result = await props.api.list()
-    if (active.current) setPackages(result.packages)
+    const result = await listQuery.refetch()
+    if (result.error) throw result.error
   }
 
   async function install(content: OfficialContentPackage) {
-    if (pending.current || !await confirm({ title: props.t('official.installTitle'), message: props.t('official.installConfirm') })) return
+    if (pending.current || listQuery.isPending || !await confirm({ title: props.t('official.installTitle'), message: props.t('official.installConfirm') })) return
     void run(async () => {
       const result = await props.api.install({ packageId: content.id, digest: content.digest })
       if (!active.current) return
-      await reload()
+      await queryClient.invalidateQueries({ exact: true, queryKey })
       if (!active.current) return
       await props.onInstalled()
       if (active.current) notify.success(props.t(result.resources.some(resource => resource.created) ? 'official.installed' : 'official.unchanged'))

@@ -1,7 +1,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { flattenTree, toTree } from '../../../packages/application-data/src/prompt-resource/tree.js'
-import type { PromptResourceTreeNode } from '../../../packages/application-data/src/prompt-resource/types.js'
+import { flattenTree, toTree } from '../../../packages/application-runtime/src/data/prompt-resource/tree.js'
+import type { PromptResourceTreeNode } from '../../../packages/application-runtime/src/data/prompt-resource/types.js'
 
 const treeArbitrary = fc.array(fc.record({
   kind: fc.constantFrom('folder', 'module', 'message', 'slot', 'virtual', 'entry', 'script'),

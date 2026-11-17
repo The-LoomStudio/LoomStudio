@@ -10,9 +10,6 @@
   },
   "dependencies": {
     "@loom-studio/application-runtime": "workspace:*",
-    "@loom-studio/diagnostics": "workspace:*",
-    "@loom-studio/document-store": "workspace:*",
-    "@loom-studio/extension-host": "workspace:*",
     "@loom-studio/kernel": "workspace:*",
     "@loom-studio/shared": "workspace:*",
     "diff": "8.0.2",

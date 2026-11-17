@@ -1,5 +1,4 @@
 import { useAttachmentDrafts } from '../../attachments/use-attachment-drafts.js'
-import type { ChatAttachment } from '@loom-studio/shared'
 import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
 import { createId } from '@loom-studio/shared'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
@@ -126,7 +125,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [agentMessages, setAgentTranscriptEntries] = useState<AgentTranscriptEntry[]>([])
   const [agentComposerInput, setAgentComposerInput] = useState('')
   const [lastRun, setLastRun] = useState<InvokeAgentTurnResult>()
-  const startingNarrativeRef = useRef(false)
   const [promptPreview, setPromptPreview] = useState<PreviewAgentTurnResult>()
   const [composerInput, setComposerInput] = useState(input.initialInput)
   const composerInputsRef = useRef({ narrative: composerInput, agent: agentComposerInput })
@@ -179,7 +177,6 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       setPromptPreview(undefined)
     },
     reportFailure: error => notify.providerError(error, input.t),
-    reportAcknowledgement: error => input.logger?.warn('Agent completion acknowledgement failed; delivery expiry will release the result.', { error }),
     abandonRejected: input.t?.('runRecovery.abandonRejected'),
     abandonNotSuspended: input.t?.('runRecovery.abandonNotSuspended'),
   })

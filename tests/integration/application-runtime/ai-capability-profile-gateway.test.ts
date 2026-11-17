@@ -8,10 +8,10 @@ import {
   createObservationStore,
   createDocumentBackedProfiledAiGateway,
 } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore, createStatisticsStore } from '@loom-studio/application-data'
-import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createPromptResourceStore, createStatisticsStore } from '@loom-studio/application-runtime/data'
+import { createMemorySecretBackend, createSecretStore } from '@loom-studio/kernel/secret-store'
 import { describe, expect, it, vi } from 'vitest'
 
 describe('AI Capability Profile Gateway', () => {

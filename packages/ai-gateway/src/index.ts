@@ -3,7 +3,7 @@ export {
   createAiGatewayCapabilityRegistry,
   registerOfficialFakeAiProvider,
 } from './capability-registry.js'
-export { createProfiledAiGateway } from './profiled-gateway.js'
+export { createProfiledAiGateway, createProfiledRun } from './profiled-gateway.js'
 export {
   createOfficialFakeChatCompletion,
   officialFakeModelId,
@@ -15,6 +15,7 @@ export type {
   AiGatewayCapabilityHandler,
   AiGatewayCapabilityRegistry,
   AiGatewayInvocationCaller,
+  AiGatewayInvocationContext,
   AiGatewayFieldDefinition,
   AiGatewayFieldType,
   AiGatewayInvokeInput,

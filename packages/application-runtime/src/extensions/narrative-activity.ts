@@ -1,5 +1,5 @@
 import type { Logger } from '@loom-studio/logging'
-import type { DataCommitFact, DataCommitSubscription, SqliteDataEngine } from '@loom-studio/data-engine'
+import type { DataCommitFact, DataCommitSubscription, SqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import type { ExtensionNarrativeActivity } from '@loom-studio/extension-sdk'
 
 type BranchHead = { id: string; timeline_id: string; head_node_id: string | null }

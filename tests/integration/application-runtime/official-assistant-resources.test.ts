@@ -1,12 +1,12 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs'
-import { createBlobStore } from '@loom-studio/asset-store'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createApplicationRuntime, createOfficialAgentToolRegistry, type ImportExtensionPackageResourcesInput } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createId, nowIso } from '@loom-studio/shared'
 
 function readOfficialJson(path: string) {

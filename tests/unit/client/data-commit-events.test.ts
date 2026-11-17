@@ -100,9 +100,10 @@ it('refreshes the session and restores one shared stream after a terminal EventS
     old.close()
     old.emit('error')
     old.emit('error')
-    await vi.advanceTimersByTimeAsync(3000)
+    await vi.advanceTimersByTimeAsync(1500)
+    expect(fetch).toHaveBeenCalledTimes(1)
     expect(TestEventSource.instances).toHaveLength(1)
-    await vi.advanceTimersByTimeAsync(3000)
+    await vi.advanceTimersByTimeAsync(1500)
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(fetch).toHaveBeenLastCalledWith('/auth/session', { method: 'POST', credentials: 'same-origin' })
     expect(TestEventSource.instances).toHaveLength(2)
@@ -129,50 +130,41 @@ it('refreshes the session and restores one shared stream after a terminal EventS
   }
 })
 
-it('reassembles interleaved commits and refreshes instead of delivering incomplete batches', () => {
+it('delivers single-frame commits and triggers refresh on overflow without delivering empty commits', () => {
   vi.stubGlobal('EventSource', TestEventSource)
   const commit = vi.fn(), refresh = vi.fn()
   const stop = subscribeDataCommits(commit, refresh)
   const stream = TestEventSource.instances[0]!
-  const send = (id: string, index: number, count = 2) => stream.emit('data.changed', JSON.stringify({ payload: {
-    changesetId: id, chunk: { index, count }, operations: [{ entityType: 'test', entityId: `${id}-${index}` }],
+  stream.emit('data.changed', JSON.stringify({ payload: {
+    changesetId: 'a', operations: [{ entityType: 'test', entityId: 'a-0' }, { entityType: 'test', entityId: 'a-1' }],
   } }))
-  send('a', 0); send('b', 0); send('a', 1); send('b', 1)
-  expect(commit.mock.calls.map(call => call[0].map((op: { entityId: string }) => op.entityId))).toEqual([['a-0', 'a-1'], ['b-0', 'b-1']])
-  send('late', 1)
+  expect(commit.mock.calls.map(call => call[0].map((op: { entityId: string }) => op.entityId))).toEqual([['a-0', 'a-1']])
+  stream.emit('data.changed', JSON.stringify({ payload: {
+    changesetId: 'overflow-1', overflow: true, operations: [],
+  } }))
   expect(refresh).toHaveBeenCalledOnce()
-  send('gap', 0, 3); send('gap', 2, 3)
-  expect(refresh).toHaveBeenCalledTimes(2)
-  send('duplicate', 0); send('duplicate', 0)
-  expect(refresh).toHaveBeenCalledTimes(3)
-  send('disconnect', 0); stream.emit('error')
-  expect(refresh).toHaveBeenCalledTimes(3)
-  stream.emit('error')
-  expect(refresh).toHaveBeenCalledTimes(3)
-  stream.emit('open')
-  expect(refresh).toHaveBeenCalledTimes(4)
-  send('ok', 0); send('ok', 1)
-  expect(commit).toHaveBeenCalledTimes(3)
+  expect(commit).toHaveBeenCalledOnce()
+  stream.emit('data.changed', JSON.stringify({ payload: {
+    changesetId: 'empty', overflow: false, operations: [],
+  } }))
+  expect(refresh).toHaveBeenCalledOnce()
+  expect(commit).toHaveBeenCalledTimes(2)
+  expect(commit).toHaveBeenLastCalledWith([])
   stop()
 })
 
-it('bounds pending bytes and expires missing tails without reading on unmount', () => {
-  vi.useFakeTimers()
+it('ignores overflow after unsubscribe and skips malformed payloads cleanly', () => {
   vi.stubGlobal('EventSource', TestEventSource)
   const commit = vi.fn(), refresh = vi.fn()
   const stop = subscribeDataCommits(commit, refresh)
   const stream = TestEventSource.instances[0]!
-  const send = (id: string, index: number, entityId = id) => stream.emit('data.changed', JSON.stringify({ payload: {
-    changesetId: id, chunk: { index, count: 2 }, operations: [{ entityType: 'test', entityId }],
-  } }))
-  send('large', 0, 'x'.repeat(4 * 1024 * 1024)); send('large', 1)
-  expect(refresh).toHaveBeenCalledOnce()
-  send('missing', 0)
-  vi.advanceTimersByTime(10_000)
-  expect(refresh).toHaveBeenCalledTimes(2)
-  send('unmount', 0); stop()
-  vi.advanceTimersByTime(10_000)
-  expect(refresh).toHaveBeenCalledTimes(2)
+  stream.emit('data.changed', JSON.stringify({ payload: null }))
+  stream.emit('data.changed', JSON.stringify({ payload: { operations: 'bad' } }))
   expect(commit).not.toHaveBeenCalled()
-  vi.useRealTimers()
+  expect(refresh).not.toHaveBeenCalled()
+  stop()
+  stream.emit('data.changed', JSON.stringify({ payload: { overflow: true, operations: [] } }))
+  stream.emit('data.changed', JSON.stringify({ payload: { operations: [{ entityType: 'test', entityId: 'late' }] } }))
+  expect(refresh).not.toHaveBeenCalled()
+  expect(commit).not.toHaveBeenCalled()
 })

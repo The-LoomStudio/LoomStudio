@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { callRpc } from './helpers.js'
 
 describe('studio server converter lifecycle contract', () => {

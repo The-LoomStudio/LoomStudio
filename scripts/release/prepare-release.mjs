@@ -16,7 +16,7 @@ await mkdir(dirname(destination), { recursive: true })
 await mkdir(destination)
 
 const packages = new Map()
-const paths = ['apps/studio-server', 'packages/extension-sdk/extension-host']
+const paths = ['apps/studio-server']
 for (const entry of await readdir(join(root, 'packages'), { withFileTypes: true })) {
   if (entry.isDirectory()) paths.push(`packages/${entry.name}`)
 }

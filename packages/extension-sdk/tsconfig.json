@@ -1,1 +1,14 @@
-{"extends":"../../tsconfig.base.json","compilerOptions":{"rootDir":"src","outDir":"dist","tsBuildInfoFile":"dist/tsconfig.tsbuildinfo"},"references":[{"path":"../tokenizer"},{"path":"../ai-gateway"},{"path":"../diagnostics"},{"path":"../document-store"},{"path":"../logging"},{"path":"../shared"}],"include":["src/**/*.ts"]}
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../ai-gateway" },
+    { "path": "../logging" },
+    { "path": "../shared" }
+  ],
+  "include": ["src/**/*.ts"]
+}

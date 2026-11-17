@@ -1,6 +1,6 @@
-import type { AssetStore } from '@loom-studio/asset-store'
+import type { AssetStore } from '@loom-studio/kernel/asset-store'
 import type { ExtensionAssetCapability } from '@loom-studio/extension-sdk'
-import type { DocumentStore } from '@loom-studio/document-store'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
 import { applicationDocumentTypes, extensionInstallationId, resolvePackageDependency, type ExtensionInstallationContent, type ExtensionInstallationTarget } from '@loom-studio/application-runtime'
 
 export async function canAccessExtensionAsset(

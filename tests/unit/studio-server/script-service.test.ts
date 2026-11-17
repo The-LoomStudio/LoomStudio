@@ -2,8 +2,8 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { expect, it, onTestFinished, vi } from 'vitest'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
 import { createScriptService } from '../../../apps/studio-server/src/scripts/script-service.js'
 
 it.each(['remove', 'dispose', 'owner-delete', 'installation-delete'] as const)('aborts a streaming dependency on %s without executing stale code', async action => {

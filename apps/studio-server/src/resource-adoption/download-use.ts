@@ -5,13 +5,13 @@ import { readFile } from 'node:fs/promises'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import type { Logger } from '@loom-studio/logging'
 import type { ResourceDownloadService } from '../resource-downloads/service.js'
-import type { createServerExtensionManager } from '../extensions/extension-manager.js'
+import type { ServerExtensionManager } from '@loom-studio/kernel/extension-manager'
 import type { createCardTransferService } from '../codecs/card-transfer-service.js'
 import { decodePromptResourceZip } from '../codecs/prompt-resource-zip.js'
 
 export function createResourceDownloadUse(options: {
   downloads: ResourceDownloadService
-  extensions: ReturnType<typeof createServerExtensionManager>
+  extensions: ServerExtensionManager
   runtime: ApplicationRuntime
   cards: ReturnType<typeof createCardTransferService>
   logger?: Logger

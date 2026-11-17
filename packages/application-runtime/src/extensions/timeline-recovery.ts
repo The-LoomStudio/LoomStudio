@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { readDocument, writeDocument } from '../foundation/document-store.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'

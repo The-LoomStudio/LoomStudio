@@ -17,6 +17,7 @@ const hooks = vi.hoisted(() => ({
 // Drive Effect setup/cleanup directly while exercising the real Hook and Client Host.
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
+  useContext: () => undefined,
   useMemo: (create: () => unknown) => create(),
   useCallback: (callback: unknown) => callback,
   useRef: (current: unknown) => ({ current }),

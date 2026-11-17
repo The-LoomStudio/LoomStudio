@@ -1,5 +1,5 @@
 import type { ObservationBuild } from '../observability/types.js'
-import type { PromptResourceStore } from '@loom-studio/application-data'
+import type { PromptResourceStore } from '../data/index.js'
 import type { ExtensionPromptAddition, ExtensionPromptBuildInput } from '@loom-studio/extension-sdk'
 import { renderVariableMacros } from '@loom-studio/shared'
 import { readPromptResourceInputs } from '../cards/card-bundle.js'

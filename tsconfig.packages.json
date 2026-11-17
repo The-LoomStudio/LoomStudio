@@ -2,19 +2,11 @@
   "files": [],
   "references": [
     { "path": "./packages/shared" },
-    { "path": "./packages/tokenizer" },
     { "path": "./packages/logging" },
-    { "path": "./packages/diagnostics" },
-    { "path": "./packages/data-engine" },
-    { "path": "./packages/secret-store" },
-    { "path": "packages/asset-store" },
-    { "path": "./packages/application-data" },
-    { "path": "./packages/document-store" },
     { "path": "./packages/ai-gateway" },
     { "path": "./packages/extension-sdk" },
     { "path": "./packages/loom-ui" },
-    { "path": "./packages/application-runtime" },
-    { "path": "./packages/extension-sdk/extension-host" },
-    { "path": "./packages/kernel" }
+    { "path": "./packages/kernel" },
+    { "path": "./packages/application-runtime" }
   ]
 }

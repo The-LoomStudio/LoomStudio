@@ -117,9 +117,6 @@ export function registerBuiltinEventDefinitions(eventBus: EventBus): void {
   const definitions: EventDefinition[] = [
     platformEvent('data.changed', 'Low-level platform data commit completed', 'protected', 'platform-data'),
     platformEvent('state.changed', 'State commit completed', 'protected', 'state'),
-    platformEvent('docs.changed', 'Document Store commit completed', 'protected', 'documents'),
-    platformEvent('docs.rollback.completed', 'Document changeset rollback completed', 'protected', 'documents'),
-    platformEvent('docs.rollback.failed', 'Document changeset rollback failed', 'protected', 'documents'),
     platformEvent('diagnostics.updated', 'Diagnostics registry changed', 'protected', 'diagnostics'),
     platformEvent('extensions.changed', 'Extension runtime state changed', 'public'),
     platformEvent('extensions.data.changed', 'Extension-visible data projection may have changed', 'public'),
@@ -140,7 +137,7 @@ function platformEvent(
   return {
     name,
     owner: { kind: 'kernel' },
-    version: ['data.changed', 'docs.changed', 'docs.rollback.completed'].includes(name) ? 2 : 1,
+    version: name === 'data.changed' ? 2 : 1,
     visibility,
     capability,
     summary,

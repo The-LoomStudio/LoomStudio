@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
-import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
+import { createMemorySecretBackend } from '@loom-studio/kernel/secret-store'
 import { callRpc } from './helpers.js'
 
 let directory: string | undefined

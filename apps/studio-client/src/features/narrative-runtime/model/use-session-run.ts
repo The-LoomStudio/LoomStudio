@@ -14,7 +14,6 @@ type Input = {
   narrativeCommitted?(run: ObservedRun): Promise<void>
   completed(run: ObservedRun, result: InvokeAgentTurnResult): void
   reportFailure(error: unknown): void
-  reportAcknowledgement(error: unknown): void
   abandonRejected?: string
   abandonNotSuspended?: string
 }
@@ -87,13 +86,10 @@ export function useSessionRun(input: Input) {
         notifyAiRunFinished('completed')
         input.completed(run, result)
       }
-      const acknowledge = () => { void run.api.agentSessions.acknowledgeRunCompletion(run.runId).catch(input.reportAcknowledgement) }
-      if (result && input.kind === 'sidebar') acknowledge()
       if (input.kind === 'timeline' || run.status === 'cancelled') await settle(run)
       else {
         try { await refresh(run) } catch (error) { if (run.status !== 'completed') throw error }
       }
-      if (result && input.kind === 'timeline') acknowledge()
     } finally {
       run.observing = false
       if (owns(run)) setBusy(false)

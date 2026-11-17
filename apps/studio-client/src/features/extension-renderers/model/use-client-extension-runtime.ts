@@ -1,5 +1,6 @@
+import { QueryClientContext } from '@tanstack/react-query'
 import { subscribeExtensionEvents } from '../../../shared/api/extension-events.js'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { queryExtensionLogs, type Logger, type MemoryLogSink } from '@loom-studio/logging'
 import { useAppearanceStore } from '../../../shared/studio-shell/appearance-store.js'
 import type { JsonValue as ClientJsonValue } from '@loom-studio/shared'
@@ -32,7 +33,7 @@ export function createClientExtensionDataApi(api: Pick<StudioApi, 'extensionRunt
     },
     imports: { commit: (sessionId, owner) => api.extensionRuntime.importConvertedBatch({ ...owner, sessionId }) },
     rpc: {
-      call: (method, params, owner) => api.extensionRuntime.callInstalled({ ...owner, method, params: params as never }),
+      call: (method, params, owner) => api.extensionRuntime.invoke({ ...owner, method, params: params as never }),
     },
     assets: {
       url: (assetId, owner) => owner?.target.kind === 'card'
@@ -49,6 +50,7 @@ export function useClientExtensionRuntime(input: {
   clientLogs: MemoryLogSink
   notify(owner: string, input: ClientNotification): void
 }) {
+  const queryClient = useContext(QueryClientContext)
   const data = useMemo(() => createClientExtensionDataApi(input.api), [input.api])
   const sessionHost = useMemo(() => createRendererSessionHost(input.rendererHost), [input.rendererHost])
   const setAppearanceBackground = useAppearanceStore(state => state.setBackground)
@@ -139,10 +141,17 @@ export function useClientExtensionRuntime(input: {
     const stale = () => signal.aborted || requestSequence.current !== sequence
       || input.rendererHost.scopeSnapshot().cardId !== cardId
     try {
-      const [result, privateResult] = await Promise.all([
+      const fetchPackages = () => Promise.all([
         input.api.extensions.list(),
         cardId ? input.api.extensions.list({ kind: 'card', cardId }) : Promise.resolve({ items: [] }),
       ])
+      const [result, privateResult] = queryClient
+        ? await queryClient.fetchQuery({
+            queryKey: ['extensions', 'packages', cardId ?? 'global'],
+            queryFn: fetchPackages,
+            staleTime: 0,
+          })
+        : await fetchPackages()
       if (stale()) return []
       // Import badges and diagnostics do not grant Timeline participation.
       const [rules, extractors, diagnostics] = await Promise.allSettled([
@@ -175,7 +184,7 @@ export function useClientExtensionRuntime(input: {
       setError(reason instanceof Error ? reason : new Error(String(reason)))
       return []
     }
-  }, [host, input.api.extensions, input.api.textTransforms, input.rendererHost, refreshParticipation])
+  }, [host, input.api.extensions, input.api.textTransforms, input.rendererHost, queryClient, refreshParticipation])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -253,8 +262,12 @@ export function useClientExtensionRuntime(input: {
         onConnected: connected,
         events: {
           'directories.media.changed': invalidateCardMedia,
-          'extensions.changed': () => { void refresh() },
+          'extensions.changed': () => {
+            void queryClient?.invalidateQueries({ queryKey: ['extensions', 'packages'] })
+            void refresh()
+          },
           'extensions.data.changed': () => {
+            void queryClient?.invalidateQueries({ queryKey: ['extensions', 'packages'] })
             void refreshParticipation().then(async current => {
               if (!current || controller.signal.aborted) return
               input.rendererHost.invalidate()
@@ -306,18 +319,22 @@ export function useClientExtensionRuntime(input: {
     refresh,
     enable: async (packageId: string, moduleId: string, grants?: Parameters<StudioApi['extensions']['enable']>[2], target?: ExtensionInstallationTarget) => {
       await input.api.extensions.enable(packageId, moduleId, grants, target)
+      await queryClient?.invalidateQueries({ queryKey: ['extensions', 'packages'] })
       return await refresh()
     },
     disable: async (packageId: string, moduleId: string, target?: ExtensionInstallationTarget) => {
       await input.api.extensions.disable(packageId, moduleId, target)
+      await queryClient?.invalidateQueries({ queryKey: ['extensions', 'packages'] })
       return await refresh()
     },
     reload: async (packageId: string, moduleId: string, target?: ExtensionInstallationTarget) => {
       await input.api.extensions.reload(packageId, moduleId, target)
+      await queryClient?.invalidateQueries({ queryKey: ['extensions', 'packages'] })
       return await refresh()
     },
     uninstall: async (packageId: string, version?: string, deleteData?: boolean) => {
       await input.api.extensions.uninstall(packageId, version, deleteData)
+      await queryClient?.invalidateQueries({ queryKey: ['extensions', 'packages'] })
       return await refresh()
     },
   }

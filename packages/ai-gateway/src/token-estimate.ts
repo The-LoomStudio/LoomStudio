@@ -1,5 +1,5 @@
-import { countText, applyTokenMultiplier, type TokenCountOptions } from '@loom-studio/tokenizer'
-import type { TokenCount } from '@loom-studio/tokenizer/contracts'
+import { countText, applyTokenMultiplier, type TokenCountOptions } from '@loom-studio/shared/tokenizer'
+import type { TokenCount } from '@loom-studio/shared/tokenizer/contracts'
 import type { ChatMessage, JsonObject } from '@loom-studio/shared'
 
 export interface RequestTokenEstimate extends TokenCount {

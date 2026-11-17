@@ -7,7 +7,7 @@
 - [`createObservationStore()`](./store.ts) 默认只保存在进程内；Runtime 未注入 `observations` 时会创建这个内存 Store。内存记录按 TTL 与记录数/字节预算裁剪，默认保留最长一天。
 - 可选持久化需要创建 Store 时提供 `persistencePath`，并显式启用 `setPersistence(true)`。它保存受限 JSON 快照；没有配置路径时，持久化状态返回不可用。Runtime 暴露状态和切换方法，但宿主负责提供路径、权限及请求授权。
 - Runtime 查询会按 Session、Timeline 和 Extension Installation 引用过滤已删除或不可用的观测来源；这不替代宿主 RPC/API 的访问控制。
-- Provider API 请求观测与 Dashboard 用量统计是两套记录：前者用于诊断，可丢弃或过期；后者由 [`application-data` Statistics Store](../../../application-data/src/statistics/README.md) 持久化并参与统计。
+- Provider API 请求观测与 Dashboard 用量统计是两套记录：前者用于诊断，可丢弃或过期；后者由 [`application-data` Statistics Store](../data/statistics/README.md) 持久化并参与统计。
 
 ## 阅读入口与验证
 

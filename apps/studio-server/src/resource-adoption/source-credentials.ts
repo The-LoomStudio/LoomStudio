@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
-import { writeJsonAtomically } from '../platform/atomic-json.js'
+import type { SecretRef, SecretStore } from '@loom-studio/kernel/secret-store'
+import { writeJsonAtomically } from '@loom-studio/kernel/platform'
 
 /** Only secret references are stored here; credentials remain in SecretStore. */
 export function createSourceCredentialStore(filename: string, secrets?: SecretStore) {

@@ -4,10 +4,10 @@ import { cardMediaUrl, useCardMediaRevision } from '../shared/lib/card-media.js'
 export function useStudioDerivedState(
   state: {
     selectedCardId?: string
-    selectedCard?: { id: string; name: string; media?: { avatarAssetId?: string } }
-    selectedCardDetails?: { id: string; name: string; media?: { avatarAssetId?: string } }
+    selectedCard?: { id: string; name: string; media?: { avatarAssetId?: string }; updatedAt?: string }
+    selectedCardDetails?: { id: string; name: string; media?: { avatarAssetId?: string }; updatedAt?: string }
     narrativeTimeline?: { createdFrom?: { cardId?: string } }
-    cards: Array<{ id: string; name: string; media?: { avatarAssetId?: string } }>
+    cards: Array<{ id: string; name: string; media?: { avatarAssetId?: string }; updatedAt?: string }>
     narrativeAgentSession?: { agentPresetId?: string }
     operationPending: Record<string, { pendingCount: number }>
     startup: { ready(area: 'cards' | 'providers' | 'tools'): boolean }
@@ -40,7 +40,7 @@ export function useStudioDerivedState(
       canOpenTimelineSource: Boolean(state.narrativeTimeline?.createdFrom?.cardId
         && state.cards.some(card => card.id === state.narrativeTimeline?.createdFrom?.cardId)),
       narrativeCharacterAvatarUrl: state.narrativeTimeline && activeCard?.media?.avatarAssetId
-        ? cardMediaUrl(activeCard.id, 'avatar', activeCard.media.avatarAssetId, mediaRevision)
+        ? cardMediaUrl(activeCard.id, 'avatar', activeCard.media.avatarAssetId, mediaRevision, activeCard.updatedAt)
         : undefined,
       agentChatBusy: state.operationPending['agent-chat'].pendingCount > 0
         || state.operationPending.session.pendingCount > 0

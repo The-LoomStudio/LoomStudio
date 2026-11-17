@@ -1,22 +1,44 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Button } from '@loom-studio/ui'
 import { ArrowLeft, RefreshCw } from 'lucide-react'
 import { useDashboard } from '../features/dashboard/model/use-dashboard.js'
+import { notify } from '../shared/notifications/index.js'
 import { DashboardDialog } from '../widgets/dashboard/dashboard-panel.js'
 import type { DashboardAction } from '../widgets/dashboard/dashboard-view.js'
 import type { StudioApi } from '../shared/api/studio-api.js'
 import styles from '../widgets/dashboard/dashboard-panel.module.scss'
 
+function formatBackupSize(sizeBytes: number): string {
+  if (sizeBytes >= 1024 ** 2) return `${(sizeBytes / 1024 ** 2).toFixed(1)} MiB`
+  return `${Math.max(1, Math.round(sizeBytes / 1024))} KiB`
+}
+
 export function StudioDashboard(props: { api: StudioApi; endpoint: string; open: boolean; onClose(): void; onAction(action: DashboardAction): void }) {
   const dashboard = useDashboard(props.api, props.endpoint, props.open)
   const [providerId, setProviderId] = useState<string>()
+  const backupInFlightRef = useRef(false)
   const onAction = (action: DashboardAction) => {
     if (action.kind === 'calls') { setProviderId(action.id); return }
     props.onAction(action)
   }
+  const handleCreateBackup = async () => {
+    if (backupInFlightRef.current) return
+    backupInFlightRef.current = true
+    try {
+      const result = await dashboard.createBackup()
+      notify.success(`已创建数据库备份 · ${result.filename}`, {
+        description: `${formatBackupSize(result.sizeBytes)} · ${result.path}`,
+      })
+    } catch (error) {
+      notify.failure('数据库备份失败', error)
+    } finally {
+      backupInFlightRef.current = false
+    }
+  }
   return <DashboardDialog open={props.open} onClose={props.onClose} data={dashboard.data} period={dashboard.period}
     onPeriodChange={dashboard.setPeriod} onViewChange={dashboard.setView} onAction={onAction}
+    onCreateBackup={handleCreateBackup} creatingBackup={dashboard.creatingBackup}
     detailContent={providerId && <DashboardCalls api={props.api} endpoint={props.endpoint} open={props.open}
       providerId={providerId} range={dashboard.range} rangeLabel={dashboard.data.rangeLabel}
       providerName={dashboard.data.usage.find(row => row.providerProfileId === providerId)?.provider}

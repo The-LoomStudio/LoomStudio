@@ -186,7 +186,7 @@ SDK 的 Workspace 依赖主要作为作者类型来源：AI Gateway 的模型调
   Studio 侧读取 Manifest、加载模块并执行 capability gate 的实现。
 ```
 
-Host 的物理目录位于 [`extension-host/`](./extension-host/)，但它拥有独立 Package identity，不是 SDK 的 export subpath。
+Host 的物理目录位于 [`extension-host/`](../kernel/src/extension-host/)，但它拥有独立 Package identity，不是 SDK 的 export subpath。
 
 ## 构建与验证
 
@@ -201,7 +201,7 @@ Server 合同主要由示例 Extension 构建和 Extension Host contract tests �
 
 - [Extension Architecture](../../docs/architecture/extensions/README.md)
 - [Extension Data and Portable Payload](../../docs/architecture/application/extension/data-and-portable-payload.md)
-- [Extension Host Package Guide](./extension-host/README.md)
+- [Extension Host Package Guide](../kernel/src/extension-host/README.md)
 
 
 ### 提交通知合同

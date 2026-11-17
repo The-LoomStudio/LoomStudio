@@ -4,8 +4,8 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readOfficialContent } from '../../../apps/studio-server/src/official/official-content.js'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
-import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
+import { createMemorySecretBackend } from '@loom-studio/kernel/secret-store'
 import { callRpc } from './helpers.js'
 
 type PackageListing = {

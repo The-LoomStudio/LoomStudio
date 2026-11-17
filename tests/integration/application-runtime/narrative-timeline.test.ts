@@ -1,8 +1,8 @@
 import { createApplicationRuntime, createStateContributionRegistry, type StateContributionRegistry } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createAgentStore, createNarrativeStore } from '@loom-studio/application-data'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createAgentStore, createNarrativeStore } from '@loom-studio/application-runtime/data'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { describe, expect, it } from 'vitest'
 import { installedExtensionContributionId } from '@loom-studio/extension-sdk'
 

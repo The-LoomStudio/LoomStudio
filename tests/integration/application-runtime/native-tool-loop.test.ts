@@ -1,9 +1,10 @@
 import { join } from 'node:path'
-import { createBlobStore } from '@loom-studio/asset-store'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { createAgentStore } from '@loom-studio/application-data'
+import { createAgentStore } from '@loom-studio/application-runtime/data'
 import {
+  createAgentRunService,
   createObservationStore,
   createAgentToolRegistry,
   createOfficialAgentToolRegistry,
@@ -16,10 +17,10 @@ import {
   type PresetToolMountInput,
   type ToolDefinition,
 } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/application-data'
-import { createNarrativeStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
+import { createNarrativeStore } from '@loom-studio/application-runtime/data'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { callApplicationRpc as handleAgentsRpc } from '../../support/trpc-caller.js'
@@ -95,18 +96,22 @@ describe('Native Function Tool Loop', () => {
     } })
     const invoke = fixture.runtime.invokeAgentTurn.bind(fixture.runtime)
     let first = true
-    vi.spyOn(fixture.runtime, 'invokeAgentTurn').mockImplementation(async (input, context) => {
-      const result = await invoke(input, context)
-      if (first) {
-        first = false
-        const receipt = await handleAgentsRpc(fixture.runtime, 'application.submitAgentInterjection', { agentSessionId: fixture.sessionId,
-          requestId: 'finish-boundary', input: 'LATE_RECEIPT', mode: 'discussion' }) as { runId: string }
-        expect(receipt.runId).toBe(context!.agentRun!.runId)
-      }
-      return result
-    })
-    const run = await handleAgentsRpc(fixture.runtime, 'application.agent.run.create', { agentSessionId: fixture.sessionId, input: 'Start' }) as { runId: string }
-    await vi.waitFor(async () => expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', run)).toMatchObject({ state: 'completed' }))
+    const spiedRuntime = {
+      ...fixture.runtime,
+      invokeAgentTurn: async (input: Parameters<typeof invoke>[0], context?: Parameters<typeof invoke>[1]) => {
+        const result = await invoke(input, context)
+        if (first) {
+          first = false
+          const receipt = await handleAgentsRpc(spiedRuntime, 'application.submitAgentInterjection', { agentSessionId: fixture.sessionId,
+            requestId: 'finish-boundary', input: 'LATE_RECEIPT', mode: 'discussion' }) as { runId: string }
+          expect(receipt.runId).toBe(context!.agentRun!.runId)
+        }
+        return result
+      },
+    }
+    spiedRuntime.runs = createAgentRunService(spiedRuntime)
+    const run = await handleAgentsRpc(spiedRuntime, 'application.agent.run.create', { agentSessionId: fixture.sessionId, input: 'Start' }) as { runId: string }
+    await vi.waitFor(async () => expect(await handleAgentsRpc(spiedRuntime, 'application.agent.run.state', run)).toMatchObject({ state: 'completed' }))
     const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
     expect(page.entries.filter(item => item.entry.kind === 'message' && item.entry.content === 'LATE_RECEIPT')).toHaveLength(1)
     expect(calls).toBe(2)
@@ -353,7 +358,7 @@ describe('Native Function Tool Loop', () => {
     } finally { vi.useRealTimers(); fixture.close() }
   })
 
-  it('delivers a completed prompt beyond the replay budget until the Client acknowledges it', async () => {
+  it('bounds replay byte budget on large completed prompts while preserving bounded Observation metadata and Transcript', async () => {
     const fixture = await createFixture({
       execute: async ({ invocation }) => ({
         invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [],
@@ -364,7 +369,6 @@ describe('Native Function Tool Loop', () => {
       }),
     })
     try {
-      const invoke = vi.spyOn(fixture.runtime, 'invokeAgentTurn')
       const input = 'context '.repeat(75 * 1024)
       const { runId } = await handleAgentsRpc(fixture.runtime, 'application.agent.run.create', {
         agentSessionId: fixture.sessionId, input,
@@ -373,23 +377,30 @@ describe('Native Function Tool Loop', () => {
         expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', { runId }))
           .toMatchObject({ state: 'completed' })
       })
-      const result = await invoke.mock.results[0]!.value
-      expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(1024 * 1024)
-      const batch = await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 })
+      const batch = await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }) as {
+        done: boolean
+        state: string
+        replayExpired?: boolean
+        events: Array<{ type: string; result?: { runId: string; buildId: string } }>
+        partialEvents?: unknown[]
+      }
       expect(batch).toMatchObject({
-        done: true, state: 'completed', replayExpired: true,
-        events: [{ type: 'completed', result: JSON.parse(JSON.stringify(result)) }],
+        done: true, state: 'completed', replayExpired: true, events: [], partialEvents: [],
       })
+      expect(Buffer.byteLength(JSON.stringify(batch.events))).toBeLessThanOrEqual(1024 * 1024)
       expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
         .toEqual(batch)
-      expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.acknowledge-completion', { runId }))
-        .toMatchObject({ accepted: true })
-      expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.acknowledge-completion', { runId }))
-        .toMatchObject({ accepted: false })
-      expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
-        .toMatchObject({ done: true, state: 'completed', replayExpired: true, events: [] })
+      const observations = await fixture.runtime.listObservations({ kind: 'run', agentSessionId: fixture.sessionId })
+      const observedRun = observations.records.find(record => record.status === 'completed')
+      expect(observedRun?.id).toBeTruthy()
+      const detail = await fixture.runtime.getObservation({ id: observedRun!.id })
+      const buildObs = detail?.children.find(record => record.kind === 'build')
+      expect(buildObs?.id).toBeTruthy()
+      const build = await fixture.runtime.getObservationBuild({ id: buildObs!.id })
+      expect(build).toMatchObject({ kind: 'build', status: 'completed', availability: 'partial' })
       const transcript = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
       expect(transcript.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ entry: expect.objectContaining({ kind: 'message', role: 'user', content: input }) }),
         expect.objectContaining({ entry: expect.objectContaining({ kind: 'message', role: 'assistant', content: 'Done.' }) }),
       ]))
     } finally { fixture.close() }
@@ -1255,7 +1266,8 @@ describe('Native Function Tool Loop', () => {
     if (contentInvocation?.kind !== 'tool-invocation') throw new Error('Missing content tool invocation')
     expect(entries).toContainEqual(expect.objectContaining({ kind: 'tool-result', invocationId: contentInvocation.invocationId }))
     expect(requests[0]?.tools).toBeUndefined()
-    expect(turn.projection.messages.some(msg => msg.fragmentIds.includes('runtime.agent-tools.contribution.0'))).toBe(true)
+    const build = await fixture.runtime.getObservationBuild({ id: turn.buildId })
+    expect(build?.build?.projection?.messages.some(msg => msg.fragmentIds.includes('runtime.agent-tools.contribution.0'))).toBe(true)
     expect(requests[0]?.messages).toEqual(
       expect.arrayContaining([expect.objectContaining({
         role: 'system',

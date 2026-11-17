@@ -1,8 +1,6 @@
 import { UserInputEditor, type ReviseUserInput } from '../../features/attachments/user-input-editor.js'
 import { MessageAttachments } from '../../features/attachments/message-attachments.js'
 import type { AttachmentComposerProps } from '../../features/attachments/use-attachment-drafts.js'
-import { extensionInstallationId } from '@loom-studio/extension-sdk'
-import { ExtensionIcon, presetIconUrl, useExtensionIdentities } from '../../shared/ui/extension-icon/extension-icon.js'
 import { type RenderItem } from '../../features/sessions/model/transcript-render-items.js'
 import { buildRenderItems } from '../../features/sessions/model/transcript-render-items.js'
 import { ToolCollapse, type RowExpansion } from '../../features/sessions/ui/agent-tool-blocks.js'

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
-import type { NarrativeStore } from '@loom-studio/application-data'
+import type { NarrativeStore } from '@loom-studio/application-runtime/data'
 import type { ExtensionNarrativeRead, ExtensionNarrativeSnapshot, ExtensionNarrativeSource } from '@loom-studio/extension-sdk'
 
 export function createExtensionNarrativeReader(runtime: ApplicationRuntime, narratives: NarrativeStore) {

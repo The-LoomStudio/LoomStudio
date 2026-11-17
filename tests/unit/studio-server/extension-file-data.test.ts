@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
 import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createExtensionFileData } from '../../../apps/studio-server/src/extensions/extension-file-data.js'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
+import { createExtensionFileData } from '@loom-studio/kernel/extension-manager'
 
 const roots: string[] = []
 afterEach(async () => {

@@ -9,7 +9,7 @@
 1. [Client typed API](../../../apps/studio-client/src/shared/api/studio-api.ts)：UI 使用的方法名、请求及返回类型。
 2. [Server Router](../../../apps/studio-server/src/rpc/trpc/router.ts)：声明静态 procedure；动态扩展通过 `kernel.invoke` 交给 Kernel，并保留原权限校验。
 3. 下方领域 Handler：解析、校验参数并传播调用上下文。
-4. [ApplicationRuntime](../../../packages/application-runtime/src/types.ts) 与 [runtime/](../../../packages/application-runtime/src/runtime/)：领域行为；[领域 Store](../../../packages/application-data/README.md)负责持久化。
+4. [ApplicationRuntime](../../../packages/application-runtime/src/types.ts) 与 [runtime/](../../../packages/application-runtime/src/runtime/)：领域行为；[领域 Store](../../../packages/application-runtime/src/data/README.md)负责持久化。
 
 `system.introspect` 只覆盖 Kernel / Extension 注册面，不代表整个 Server API。`application.*` 不能仅从 Kernel Registry 推断。
 
@@ -42,14 +42,14 @@
 | Namespace / 入口 | 当前所有者 |
 |---|---|
 | `system.*`、`docs.*`、`diagnostics.*` | [Kernel](../../../packages/kernel/src/index.ts) 与 [handlers.ts](../../../packages/kernel/src/handlers.ts) |
-| `extensions.*`：安装、卸载、资源导入、授权、重载 | [Kernel handlers.ts](../../../packages/kernel/src/handlers.ts)注册，委托 [Server Extension Manager](../../../apps/studio-server/src/extensions/extension-manager.ts)；[安装及生命周期合同](../../architecture/extensions/README.md) |
+| `extensions.*`：安装、卸载、资源导入、授权、重载 | [Kernel handlers.ts](../../../packages/kernel/src/handlers.ts)注册，委托 [Server Extension Manager](../../../packages/kernel/src/extension-manager/extension-manager.ts)；[安装及生命周期合同](../../architecture/extensions/README.md) |
 | `ai.*` | [services.ts](../../../apps/studio-server/src/rpc/trpc/services.ts) |
 | `logs.*` | [services.ts](../../../apps/studio-server/src/rpc/trpc/services.ts)；[日志查询与隐私边界](../../architecture/platform/logging.md) |
 | `settings.*` | [services.ts](../../../apps/studio-server/src/rpc/trpc/services.ts)，不是 Lore Prompt Resource |
 | `official.*` | [official-content.ts](../../../apps/studio-server/src/official/official-content.ts)；[官方内容](../../../official/README.md) |
 | `directories.*` | [card-directory-catalog.ts](../../../apps/studio-server/src/resource-directories/card-directory-catalog.ts) |
 | `resourceDownloads.*`：`resolve`、`stageUpload`、`start`、`list`/`get`、`cancel`/`retry`、`prepareDependencies`、`listUpdates`/`checkUpdates`、`updatePolicy`/`ignore`/`acknowledge`、`preview*Update`/`apply*Update`、`previewUse`/`commitUse` | [resource-downloads.ts](../../../apps/studio-server/src/rpc/trpc/resource-downloads.ts)；[资源下载服务](../../../apps/studio-server/src/resource-downloads/README.md)与[资源更新计划](../plans/resource-download-and-update-plan.md) |
-| `dashboard.*`：`usage`、`usageRequests`、`play`、`resources`、`storage`、`database` | [dashboard.ts](../../../apps/studio-server/src/rpc/trpc/dashboard.ts)；[统计 Store](../../../packages/application-data/src/statistics/README.md)与[Dashboard 方案](../plans/dashboard-statistics-and-resource-inventory-plan.md) |
+| `dashboard.*`：`usage`、`usageRequests`、`play`、`resources`、`storage`、`database` | [dashboard.ts](../../../apps/studio-server/src/rpc/trpc/dashboard.ts)；[统计 Store](../../../packages/application-runtime/src/data/statistics/README.md)与[Dashboard 方案](../plans/dashboard-statistics-and-resource-inventory-plan.md) |
 | HTTP 认证、Asset、Card 文件、Extension 文件与 SSE | [Server README](../../../apps/studio-server/README.md#当前-http-面)、[http/](../../../apps/studio-server/src/http/)；不把文件接口当成 RPC |
 
 ## 旧名称与合同陷阱

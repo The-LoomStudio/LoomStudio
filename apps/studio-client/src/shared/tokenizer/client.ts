@@ -1,4 +1,4 @@
-import { applyTokenMultiplier, TOKEN_INPUT_LIMIT, TOKEN_QUEUE_LIMIT, type TokenCount } from '@loom-studio/tokenizer/contracts'
+import { applyTokenMultiplier, TOKEN_INPUT_LIMIT, TOKEN_QUEUE_LIMIT, type TokenCount } from '@loom-studio/shared/tokenizer/contracts'
 
 let worker: Worker | undefined
 let sequence = 0

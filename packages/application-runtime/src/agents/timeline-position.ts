@@ -1,4 +1,4 @@
-import type { AgentTranscriptEntry, NarrativeNode } from '@loom-studio/application-data'
+import type { AgentTranscriptEntry, NarrativeNode } from '../data/index.js'
 
 /** Project the selected transcript ancestry, never all candidates or array positions. */
 export function projectTimelinePositions(entries: AgentTranscriptEntry[], nodes: NarrativeNode[] = []): AgentTranscriptEntry[] {

@@ -1,4 +1,5 @@
 import { createClientBridge } from '../../apps/studio-client/src/shared/api/client-bridge.js'
+import type { ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
 import type { Kernel } from '@loom-studio/kernel'
 import { createId, type JsonValue } from '@loom-studio/shared'
 
@@ -9,10 +10,17 @@ export function createKernelBridge(kernel: Kernel, calls?: Array<{ method: strin
     try {
       const path = new URL(String(input)).pathname.split('/').at(-1)!
       const data = init?.body === undefined ? undefined : JSON.parse(String(init.body))
-      const request = path === 'kernel.invoke' ? data : { method: path, params: data }
+      const payload = path === 'extensions.invoke'
+        ? data as { packageId?: string; target?: ExtensionInstallationTarget; method: string; params?: JsonValue }
+        : undefined
+      const request = payload ? { method: payload.method, params: payload.params } : { method: path, params: data }
       calls?.push(request)
       const result = await kernel.callRpc(request.method, request.params, {
-        clientId: 'kernel-bridge-test', correlationId: createId('corr'), callId: createId('call'),
+        clientId: 'kernel-bridge-test',
+        correlationId: createId('corr'),
+        callId: createId('call'),
+        ...(payload?.target ? { extensionTarget: payload.target } : {}),
+        ...(payload?.packageId ? { expectedExtensionPackageId: payload.packageId } : {}),
       })
       response = { result: { data: result } }
     } catch (error) {

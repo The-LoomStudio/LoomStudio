@@ -1,5 +1,5 @@
-import { createAgentStore } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createAgentStore } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

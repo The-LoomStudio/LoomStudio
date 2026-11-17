@@ -9,10 +9,10 @@
 | 类型 | 当前职责与来源 |
 |---|---|
 | Kernel / EventBus | 进程内 RPC、事件与平台服务协调；[Kernel](../../../packages/kernel/src/index.ts) |
-| DataTransactionInput | 公共写入上下文（actor、reason、关联 ID）；各领域 WriteContext 和 DocumentTransactionInput 直接使用此类型；[Data Engine](../../../packages/data-engine/src/sqlite.ts) |
+| DataTransactionInput | 公共写入上下文（actor、reason、关联 ID）；各领域 WriteContext 和 DocumentTransactionInput 直接使用此类型；[Data Engine](../../../packages/kernel/src/data-engine/sqlite.ts) |
 | StudioEvent / EventMeta | 平台事件 envelope；[Extension SDK](../../../packages/extension-sdk/src/events.ts)，不再有独立 transport 包 |
-| DocumentStore | 版本化 typed JSON 聚合、Revision 与 Document revert；不拥有所有领域状态；[Document Store](../../../packages/document-store/src/index.ts) |
-| ExtensionHost | Server Module 加载、Scope 清理和 capability gate；[Host](../../../packages/extension-sdk/extension-host/src/index.ts) |
+| DocumentStore | 版本化 typed JSON 聚合、Revision 与 Document revert；不拥有所有领域状态；[Document Store](../../../packages/kernel/src/document-store/index.ts) |
+| ExtensionHost | Server Module 加载、Scope 清理和 capability gate；[Host](../../../packages/kernel/src/extension-host/index.ts) |
 | ExtensionManifest / Activation Context | Manifest v2 的 Package / Module / Instance 及作者能力合同；[SDK](../../../packages/extension-sdk/src/index.ts) |
 
 ## 应用层运行时
@@ -23,7 +23,7 @@
 | ApplicationRuntimeContext | 内部 Store / Gateway / Registry 等稳定基础设施；[Context](../../../packages/application-runtime/src/foundation/application-context.ts) |
 | AiGateway | Provider 调用与 Application 返回合同；[Gateway](../../../packages/application-runtime/src/providers/gateway.ts) |
 | CompiledPrompt | 当前 DFS 编译器的 messages 与 editorProjection；[Prompt 类型](../../../packages/application-runtime/src/prompt/prompt-builder.ts) |
-| ObservationStore / StatisticsStore | 短期模型构建/调用诊断快照与长期 SQLite 用量/交互统计；[Observability](../../../packages/application-runtime/src/observability/types.ts)、[Statistics](../../../packages/application-data/src/statistics/store.ts) |
+| ObservationStore / StatisticsStore | 短期模型构建/调用诊断快照与长期 SQLite 用量/交互统计；[Observability](../../../packages/application-runtime/src/observability/types.ts)、[Statistics](../../../packages/application-runtime/src/data/statistics/store.ts) |
 
 当前会话使用 `createNarrativeTimeline`、`createAgentSession`、`previewAgentTurn`、`invokeAgentTurn` 等领域方法，不再提供旧 `createSession / submitTurn` 主链。Timeline 根 Session 与 Timeline 同 ID，Transcript 是内容历史权威，Narrative Branch / Node 提供分支与正文投影；普通辅助 Session 仍独立运行。Narrative、Agent、Prompt Resource、State 与 Workspace 的持久化分别由对应 Store 管理，见 [Data Architecture](../../architecture/data/README.md)。
 

@@ -4,7 +4,7 @@ import { access, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, onTestFinished } from 'vitest'
-import type { ExtensionHostOptions } from '@loom-studio/extension-host'
+import type { ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
 import { createExtensionFixture, createExtensionHostHarness } from './helpers.js'
 
 type StoredAsset = ExtensionMediaAsset & { bytes: Uint8Array }

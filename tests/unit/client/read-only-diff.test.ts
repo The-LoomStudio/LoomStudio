@@ -25,7 +25,7 @@ describe('Read-only resource diff', () => {
       expect(container.querySelector('.cm-collapsedLines')).not.toBeNull()
       act(() => container.querySelector<HTMLButtonElement>('button')!.click())
       expect(container.querySelector('.cm-collapsedLines')).toBeNull()
-      expect(container.querySelector('button')?.textContent).toBe('Collapse unchanged lines')
+      expect(container.querySelector('button')?.getAttribute('aria-label')).toBe('Collapse unchanged lines')
       act(() => container.querySelector<HTMLButtonElement>('button')!.click())
       expect(container.querySelector('.cm-collapsedLines')).not.toBeNull()
     } finally {

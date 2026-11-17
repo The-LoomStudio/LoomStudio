@@ -3,8 +3,8 @@ import type { PromptResourceContent, PromptResourceNode } from '../prompt/prompt
 import { resolveTextTransformContributionRule, resolveLoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import { parseCardFrameworkFields, withCardFramework } from './card-framework.js'
 import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
-import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
-import type { PromptResourceStore } from '@loom-studio/application-data'
+import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import type { PromptResourceStore } from '../data/index.js'
 import { createId, nowIso } from '@loom-studio/shared'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { normalizeCardEditableFields, readCardEditableFields } from './card-fields.js'
@@ -77,7 +77,7 @@ export async function importCardBundle(input: {
   context?: RuntimeRequestContext
   documents: DocumentStore
   promptResources: PromptResourceStore
-  dataEngine: import('@loom-studio/data-engine').SqliteDataEngine
+  dataEngine: import('@loom-studio/kernel/data-engine').SqliteDataEngine
   blobs?: BlobStorage
   now?: string
 }): Promise<{

@@ -11,6 +11,10 @@ export function observationRequest<T extends CanonicalChatRequest>(request: T, i
   return request
 }
 
+export function readObservationRequestId(request: CanonicalChatRequest): string | undefined {
+  return requestIds.get(request)
+}
+
 /** Only explicitly supported non-secret generation settings enter historical evidence. */
 export function safeGenerationConfiguration(config: Record<string, unknown> | undefined): Record<string, unknown> {
   const result: Record<string, unknown> = {}

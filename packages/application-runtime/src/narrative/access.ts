@@ -1,4 +1,4 @@
-import type { NarrativeStore } from '@loom-studio/application-data'
+import type { NarrativeStore } from '../data/index.js'
 import type { ToolApprovalDecision } from '../agents/tool-registry.js'
 import type { NarrativeContextRegistry } from './context-provider.js'
 import { createNarrativeSampler, defaultNarrativeSampleBudget, type NarrativeSampleRequest, type NarrativeSampleResult } from './sampling.js'

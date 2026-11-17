@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
@@ -21,11 +22,13 @@ const api = {
 
 describe('StateVariablesPanel', () => {
   it('renders Text Variables workspace by default', () => {
-    const html = renderToStaticMarkup(createElement(StateVariablesPanel, {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(StateVariablesPanel, {
       api,
       t,
       timelineTarget: { scope: 'timeline', timelineId: 'timeline-1', branchId: 'branch-2' },
-    }))
+    })))
+    client.clear()
 
     expect(html).toContain('运行态变量')
     expect(html).toContain('当前世界线状态')
@@ -34,13 +37,15 @@ describe('StateVariablesPanel', () => {
   })
 
   it('renders the source action only when the timeline source is available', () => {
-    const html = renderToStaticMarkup(createElement(StateVariablesPanel, {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(StateVariablesPanel, {
       api,
       t,
       timelineTarget: { scope: 'timeline', timelineId: 'timeline-1', branchId: 'branch-2' },
       canOpenTimelineSource: false,
       onOpenSource: () => undefined,
-    }))
+    })))
+    client.clear()
 
     expect(html).not.toContain('打开来源配置')
     expect(html).toContain('timeline-1')

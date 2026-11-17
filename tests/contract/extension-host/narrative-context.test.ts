@@ -68,7 +68,7 @@ describe('Extension Narrative context registration', () => {
 
   it('resolves through the real host scope and releases the source on unload', async () => {
     const registry = createNarrativeContextRegistry()
-    const register = vi.fn<NonNullable<import('@loom-studio/extension-host').ExtensionHostOptions['registerNarrativeContextProvider']>>(
+    const register = vi.fn<NonNullable<import('@loom-studio/kernel/extension-host').ExtensionHostOptions['registerNarrativeContextProvider']>>(
       (provider, owner) => registry.register(provider, owner.target),
     )
     const { extensionHost } = createExtensionHostHarness({ registerNarrativeContextProvider: register })

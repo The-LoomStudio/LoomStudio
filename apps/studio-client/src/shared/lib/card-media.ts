@@ -19,6 +19,14 @@ export function useCardMediaRevision() {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
-export function cardMediaUrl(cardId: string, target: 'avatar' | 'background', assetId: string | undefined, mediaRevision: number): string | undefined {
-  return assetId ? `/cards/${encodeURIComponent(cardId)}/media/${target}?asset=${encodeURIComponent(assetId)}&revision=${mediaRevision}` : undefined
+export function cardMediaUrl(
+  cardId: string,
+  target: 'avatar' | 'background',
+  assetId: string | undefined,
+  mediaRevision: number,
+  updatedAt?: string,
+): string | undefined {
+  if (!assetId) return undefined
+  const base = `/cards/${encodeURIComponent(cardId)}/media/${target}?asset=${encodeURIComponent(assetId)}&revision=${mediaRevision}`
+  return updatedAt ? `${base}&v=${encodeURIComponent(updatedAt)}` : base
 }

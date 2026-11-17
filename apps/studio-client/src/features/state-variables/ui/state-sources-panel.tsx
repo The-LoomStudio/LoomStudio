@@ -1,13 +1,16 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { StudioPanelActive } from '../../../shared/studio-shell/studio-panel-active.js'
 import { MobileTabPageActive } from '../../../shared/ui/mobile-tab-pages/mobile-tab-pages.js'
 import { InfoDialog } from '../../../shared/ui/info-dialog/info-dialog.js'
 import { ExtensionIcon, useExtensionIdentities } from '../../../shared/ui/extension-icon/extension-icon.js'
-import { useContext, useEffect, useState, type ReactNode } from 'react'
+import { useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { BookOpen, Database, Folder, RefreshCw } from 'lucide-react'
 import { playerEntityPath, playerProfilePath, type StateContribution } from '@loom-studio/shared'
 import type { Card } from '../../../entities/card.js'
 import type { ExtensionInstallationSource } from '../../../entities/extension.js'
 import type { StateSourcesInspection, StateTarget } from '../../../entities/state.js'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
+import { subscribeExtensionEvents } from '../../../shared/api/extension-events.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
@@ -24,41 +27,75 @@ type Props = {
   header?: ReactNode
 }
 type ExtensionSource = StateSourcesInspection['extensions'][number]
-type Outcome = { api: Props['api']; key: string } & ({ data: StateSourcesInspection } | { error: string })
+
+const apiScopeIds = new WeakMap<Props['api'], number>()
+let nextApiScopeId = 1
+
+function getApiScopeId(api: Props['api']): number {
+  let id = apiScopeIds.get(api)
+  if (id === undefined) {
+    id = nextApiScopeId++
+    apiScopeIds.set(api, id)
+  }
+  return id
+}
 
 export function StateSourcesPanel(props: Props) {
+  const queryClient = useQueryClient()
   const panelActive = useContext(StudioPanelActive)
   const pageActive = useContext(MobileTabPageActive)
   const visible = panelActive && pageActive
   const identities = useExtensionIdentities()
-  const [outcome, setOutcome] = useState<Outcome>()
-  const [refresh, setRefresh] = useState(0)
   const [selectedId, setSelectedId] = useState('timeline')
   const [expandedIds, setExpandedIds] = useState(['definitions', 'extensions'])
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const { api, t, timelineTarget: target } = props
-  const key = JSON.stringify([props.card?.id, props.card?.version, target?.timelineId, target?.branchId, props.refreshToken])
-  const current = outcome?.api === api && outcome.key === key ? outcome : undefined
-  const data = current && 'data' in current ? current.data : undefined
-  const error = current && 'error' in current ? current.error : undefined
+  const apiScope = getApiScopeId(api)
+  const queryKey = useMemo(
+    () => ['state-sources', apiScope, props.card?.id, props.card?.version, target?.timelineId, target?.branchId, props.refreshToken] as const,
+    [apiScope, props.card?.id, props.card?.version, target?.timelineId, target?.branchId, props.refreshToken],
+  )
+  const sourcesQuery = useQuery({
+    queryKey,
+    enabled: visible,
+    queryFn: () => api.inspectSources({ cardId: props.card?.id, target }),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  })
+  const current = !sourcesQuery.isPending
+  const data = sourcesQuery.data
+  const error = sourcesQuery.error ? (sourcesQuery.error instanceof Error ? sourcesQuery.error.message : String(sourcesQuery.error)) : undefined
 
   useEffect(() => {
     if (!visible) return
-    const update = () => { if (document.visibilityState === 'visible') setRefresh(value => value + 1) }
-    window.addEventListener('focus', update)
-    const timer = window.setInterval(update, 5000)
-    return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
-  }, [visible])
-
-  useEffect(() => {
-    if (!visible) return
-    let active = true
-    void api.inspectSources({ cardId: props.card?.id, target }).then(
-      data => { if (active) setOutcome({ api, key, data }) },
-      cause => { if (active) setOutcome({ api, key, error: cause instanceof Error ? cause.message : String(cause) }) },
+    const invalidate = () => {
+      void queryClient.invalidateQueries({ exact: true, queryKey })
+    }
+    const unsubscribeData = subscribeDataCommits(
+      operations => {
+        const hasRelevantChange = operations.some(op =>
+          op.entityType.startsWith('state.')
+          || op.entityType === 'airp.cardSource'
+          || op.entityType === 'airp.stateDefinition'
+          || op.entityType === 'airp.extensionInstallation'
+          || op.entityType === 'airp.timelineExtensionParticipation'
+          || op.entityType === 'airp.timelineRuntimeContext'
+          || op.entityType === 'narrative.timeline'
+          || op.entityType === 'narrative.branch',
+        )
+        if (!hasRelevantChange) return
+        invalidate()
+      },
+      invalidate,
     )
-    return () => { active = false }
-  }, [api, key, refresh, visible])
+    const unsubscribeState = subscribeExtensionEvents({
+      events: { 'state.changed': invalidate },
+    })
+    return () => {
+      unsubscribeData()
+      unsubscribeState()
+    }
+  }, [queryClient, queryKey, visible])
 
   const nodes: FileTreeNode[] = data ? [
     ...(data.timeline ? [{ id: 'section:timeline', isSection: true, label: 'Timeline', children: [
@@ -94,7 +131,7 @@ export function StateSourcesPanel(props: Props) {
         </header>
         {error && <div className={styles.masterToolbar}>
           <button type="button" className={styles.toolbarIconBtn} disabled={!current}
-            aria-label={t('stateVariables.refresh')} title={t('stateVariables.refresh')} onClick={() => setRefresh(value => value + 1)}>
+            aria-label={t('stateVariables.refresh')} title={t('stateVariables.refresh')} onClick={() => void sourcesQuery.refetch()}>
             <RefreshCw size={14} aria-hidden="true" />
           </button>
         </div>}

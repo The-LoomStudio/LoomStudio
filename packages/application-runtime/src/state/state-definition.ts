@@ -1,4 +1,4 @@
-import type { DocumentRecord } from '@loom-studio/document-store'
+import type { DocumentRecord } from '@loom-studio/kernel/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type {
   StateEntityRefAnnotation,

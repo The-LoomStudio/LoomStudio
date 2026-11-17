@@ -10,7 +10,7 @@ export async function loadEntityReference(api: StudioApi, reference: EntityRefer
   const { id, type } = reference
   if (type === 'card') {
     const { card } = await api.cards.get(id)
-    return { title: card.name, uri: formatEntityReference({ kind: 'entity', type, id: card.id }), avatarUrl: cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version) }
+    return { title: card.name, uri: formatEntityReference({ kind: 'entity', type, id: card.id }), avatarUrl: cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version, card.updatedAt) }
   }
   if (type === 'timeline') {
     const { timeline } = await api.narratives.get(id)

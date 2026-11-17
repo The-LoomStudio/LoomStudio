@@ -8,7 +8,7 @@
 
 - [`packages/extension-sdk/src/index.ts`](../../../packages/extension-sdk/src/index.ts)
 - [`apps/studio-client/src/features/extension-renderers/`](../../../apps/studio-client/src/features/extension-renderers/)
-- [`apps/studio-server/src/extensions/extension-manager.ts`](../../../apps/studio-server/src/extensions/extension-manager.ts)
+- [`packages/kernel/src/extension-manager/extension-manager.ts`](../../../packages/kernel/src/extension-manager/extension-manager.ts)
 - [`apps/studio-server/src/http/http-server.ts`](../../../apps/studio-server/src/http/http-server.ts)
 
 ## 1. 加载与身份

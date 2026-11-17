@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countText, applyTokenMultiplier } from '@loom-studio/tokenizer'
+import { countText, applyTokenMultiplier } from '@loom-studio/shared/tokenizer'
 
 describe('literal text token counting', () => {
   it('counts empty, mixed text, whitespace and code deterministically', () => {

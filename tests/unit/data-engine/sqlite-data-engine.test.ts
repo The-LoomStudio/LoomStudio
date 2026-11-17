@@ -1,4 +1,8 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it, vi } from 'vitest'
 
 function createTestEngine() {
@@ -238,5 +242,64 @@ describe('sqlite data engine', () => {
     await expect(engine.read(() => 1)).rejects.toMatchObject({
       code: 'data.engine_closed',
     })
+  })
+
+  it('rejects backup on an in-memory database', async () => {
+    const engine = createTestEngine()
+    try {
+      await expect(engine.backup('/tmp/unused-backup.sqlite')).rejects.toMatchObject({
+        code: 'data.backup_unsupported',
+      })
+    } finally {
+      await engine.close()
+    }
+  })
+
+  it('creates an isolated SQLite backup via VACUUM INTO containing committed tables and rows', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'loom-sqlite-backup-'))
+    const sourceFile = join(dir, 'source.sqlite')
+    const backupFile = join(dir, 'nested', 'backups', 'snapshot.sqlite')
+    let nextId = 0
+    const engine = createSqliteDataEngine({
+      filename: sourceFile,
+      createId: prefix => `${prefix}-${++nextId}`,
+      now: () => '2026-11-17T00:00:00.000Z',
+    })
+    try {
+      engine.initializeSchema({
+        namespace: 'test.backup',
+        version: 1,
+        initialize: db => db.exec('CREATE TABLE backup_items (id TEXT PRIMARY KEY, label TEXT NOT NULL)'),
+      })
+      await engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+        tx.database.prepare('INSERT INTO backup_items (id, label) VALUES (?, ?)').run('item-1', 'Committed')
+        tx.recordOperations([{ store: 'test', kind: 'create', entityId: 'item-1', entityType: 'backup_item' }])
+      })
+
+      await engine.backup(backupFile)
+
+      await engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+        tx.database.prepare('INSERT INTO backup_items (id, label) VALUES (?, ?)').run('item-2', 'Post-backup')
+        tx.recordOperations([{ store: 'test', kind: 'create', entityId: 'item-2', entityType: 'backup_item' }])
+      })
+
+      const restored = new DatabaseSync(backupFile, { readOnly: true })
+      try {
+        expect(restored.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' })
+        expect(restored.prepare('SELECT id, label FROM backup_items ORDER BY id').all()).toEqual([
+          { id: 'item-1', label: 'Committed' },
+        ])
+        expect(restored.prepare('SELECT namespace, version FROM schema_migrations WHERE namespace = ?').get('test.backup')).toEqual({
+          namespace: 'test.backup',
+          version: 1,
+        })
+        expect(restored.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual({ count: 1 })
+      } finally {
+        restored.close()
+      }
+    } finally {
+      await engine.close()
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

@@ -33,7 +33,7 @@ HTTP 已完成应用会话认证，`trpc-request.ts` 注入 `runtime`、`request
 
 ## 静态平台与动态扩展
 
-`kernel.invoke` 只给动态扩展方法使用。它拒绝静态平台保留命名空间，调用者不能借传入 method 绕过具体 typed procedure 的输入合同；实际扩展 owner、权限、安装范围与实例生命周期继续由 Kernel / Host 判断。已指定 Package/安装目标的管理调用沿 `extensions` 的既有入口，不从普通业务 params 猜测安装身份。
+`extensions.invoke` 只给动态扩展方法使用。它拒绝静态平台保留命名空间，调用者不能借传入 method 绕过具体 typed procedure 的输入合同；实际扩展 owner、权限、安装范围与实例生命周期继续由 Kernel / Host 判断。已指定 Package/安装目标的管理调用沿 `extensions` 的既有入口，不从普通业务 params 猜测安装身份。
 
 新增静态 API：在所属 `trpc/application/` 或平台 router 声明 procedure，并在 `router.ts` 组装；方法返回类型由真实 handler 推导。修改安全摘要定位 [`rpc-summary.ts`](./rpc-summary.ts)，修改参数读取定位 `rpc-params.ts`；修改领域行为则沿调用进入其拥有者。完整动态权限规则见 [Kernel](../../../../docs/architecture/kernel/README.md)和 [Extensions](../../../../docs/architecture/extensions/README.md)，不要在 RPC 层复制授权表。
 

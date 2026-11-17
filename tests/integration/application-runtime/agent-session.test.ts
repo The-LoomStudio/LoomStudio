@@ -1,14 +1,14 @@
 import { join } from 'node:path'
-import { createBlobStore } from '@loom-studio/asset-store'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { createAgentStore, createNarrativeSwipeStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeSwipeStore } from '@loom-studio/application-runtime/data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, createDocumentBackedAiGateway, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createNarrativeStore } from '@loom-studio/application-data'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createNarrativeStore } from '@loom-studio/application-runtime/data'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 
@@ -247,7 +247,9 @@ describe('application agent session lifecycle', () => {
       expect(JSON.stringify(other.messages)).not.toContain('ONLY_THIS_ANCHOR')
       expect(JSON.stringify(other.messages)).not.toContain('ONLY_THIS_SETTING')
       const run = await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'hello', promptAddition: addition })
-      expect(run.projection).toEqual(preview.projection)
+      const build = await runtime.getObservationBuild({ id: run.buildId })
+      const { observation: _observation, ...expectedProjection } = preview.projection
+      expect(build?.build?.projection).toEqual(expectedProjection)
       expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()).toEqual({ count: 0 })
       const next = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'next' })
       expect(next.messages.at(-1)?.content).toBe('next')
@@ -282,7 +284,7 @@ describe('application agent session lifecycle', () => {
       const result = await createDocumentBackedAiGateway({ documents }).invokeChat({
         model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
         request: { messages: [{ role: 'user', content: 'hello' }] },
-        runId: 'direct', sessionId: 'extension-direct', branchId: 'extension-direct',
+        runId: 'direct', sessionId: 'test-session', branchId: 'test-branch',
         delivery: 'stream', onEvent: event => events.push(event),
       })
       expect(result.text).toContain('hello')
@@ -767,7 +769,8 @@ describe('application agent session lifecycle', () => {
       agentSessionId: session.session.id,
       input: 'Read the workspace.',
     })
-    expect(turn.toolPromptBuildTrace.orders).toEqual([
+    const build = await firstRuntime.getObservationBuild({ id: turn.buildId })
+    expect(build?.build?.toolPromptBuildTrace?.orders).toEqual([
       expect.objectContaining({ toolId: tool.id, providerOrder: 3, projection: 'provider-tools' }),
     ])
     expect(providerRequests[0]?.tools).toEqual([
@@ -1034,7 +1037,9 @@ describe('application agent session lifecycle', () => {
       expect(JSON.stringify(preview.messages)).toContain('ONLY_A_SETTING')
       expect(JSON.stringify(other.messages)).not.toContain('ONLY_A_SETTING')
       const run = await runtime.invokeAgentTurn({ agentSessionId: a.session.id, input: 'hello' })
-      expect(run.projection).toEqual(preview.projection)
+      const build = await runtime.getObservationBuild({ id: run.buildId })
+      const { observation: _observation, ...expectedProjection } = preview.projection
+      expect(build?.build?.projection).toEqual(expectedProjection)
       expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()).toEqual({ count: 0 })
     } finally { engine.close() }
   })
@@ -1118,8 +1123,8 @@ describe('application agent session lifecycle', () => {
     const documents = createSqliteDocumentStore({ engine })
     let nextAgentId = 0
     const agents = createAgentStore({ engine, createId: prefix => `${prefix}-history-${++nextAgentId}`, now: () => '2026-08-12T03:00:00.000Z' })
-    const narratives = createNarrativeStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
-    const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
+    const narratives = createNarrativeStore({ engine, createId: prefix => `${prefix}-history-${++nextAgentId}`, now: () => '2026-08-12T03:00:00.000Z' })
+    const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-history-${++nextAgentId}`, now: () => '2026-08-12T03:00:00.000Z' })
     const runtime = createApplicationRuntime({
       agents,
       dataEngine: engine,
@@ -1197,10 +1202,11 @@ describe('application agent session lifecycle', () => {
     expect(result.entries.user.entry).toMatchObject({ kind: 'message', role: 'user', content: 'Continue.' })
     expect(result.mutation.scope).toBe('agent-session-transcript')
 
-    expect(result.projection.messages[0]).toMatchObject({
+    const build = await runtime.getObservationBuild({ id: result.buildId })
+    expect(build?.build?.projection?.messages[0]).toMatchObject({
       role: 'system', content: expect.stringContaining('Continue the accepted narrative.'),
     })
-    expect(result.projection.messages.at(-1)).toMatchObject({ role: 'user', content: 'Continue.' })
+    expect(build?.build?.projection?.messages.at(-1)).toMatchObject({ role: 'user', content: 'Continue.' })
     expect(JSON.parse(commit.operations_json).some((operation: { entityType: string }) => operation.entityType.startsWith('narrative.'))).toBe(false)
     const nextSession = await runtime.createAgentSession({ agentPresetId: profile.id })
     const redelivered = await runtime.invokeAgentTurn({ agentSessionId: nextSession.session.id, input: '', narrativeTarget: target })
@@ -1245,7 +1251,7 @@ describe('application agent session lifecycle', () => {
     const documents = createSqliteDocumentStore({ engine })
     let nextAgentId = 0
     const agents = createAgentStore({ engine, createId: prefix => `${prefix}-failure-${++nextAgentId}`, now: () => '2026-08-12T01:00:00.000Z' })
-    const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-failure`, now: () => '2026-08-12T01:00:00.000Z' })
+    const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-failure-${++nextAgentId}`, now: () => '2026-08-12T01:00:00.000Z' })
     const runtime = createApplicationRuntime({
       agents,
       dataEngine: engine,

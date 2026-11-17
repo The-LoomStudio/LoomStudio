@@ -9,8 +9,14 @@ import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studi
 import type { AgentPreset, AgentToolDefinition } from '../../../apps/studio-client/src/entities/index.js'
 
 const cleanups: Array<() => void> = []
-beforeEach(() => notifyManager.setScheduler(queueMicrotask))
-afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); notifyManager.setScheduler(defaultScheduler) })
+class StubEventSource extends EventTarget {
+  static OPEN = 1
+  static CLOSED = 2
+  readyState = 0
+  close() { this.readyState = 2 }
+}
+beforeEach(() => { notifyManager.setScheduler(queueMicrotask); vi.stubGlobal('EventSource', StubEventSource) })
+afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); notifyManager.setScheduler(defaultScheduler); vi.unstubAllGlobals() })
 const original: AgentToolDefinition = { id: 'tool', version: 1, name: 'Original', description: '', owner: { namespace: 'test' },
   input: { kind: 'structured', schema: { type: 'object' } }, createdAt: '', updatedAt: '' }
 const saved = { ...original, version: 2, name: 'Saved' }
@@ -28,8 +34,10 @@ function fixture() {
 }
 
 describe('Agent catalog consumers', () => {
-  it('keeps selection while loading and replaces a missing Preset after the catalog succeeds', () => {
+  it('keeps selection while loading and replaces a missing Preset after the catalog succeeds', async () => {
     const f = fixture()
+    await act(async () => {})
+    const initialCalls = f.api.agentTools.list.mock.calls.length
     act(() => f.hook.current.selectAgentPreset('selected'))
     f.source.resources = [{ id: 'new-preset', resourceKind: 'preset' }, { id: 'lore', resourceKind: 'lore' }] as AgentPreset[]
     f.hook.rerender()
@@ -41,11 +49,12 @@ describe('Agent catalog consumers', () => {
     f.source.resources = []
     f.hook.rerender()
     expect(f.hook.current.selectedAgentPresetId).toBeUndefined()
-    expect(f.api.agentTools.list).not.toHaveBeenCalled()
+    expect(f.api.agentTools.list).toHaveBeenCalledTimes(initialCalls)
   })
 
   it('keeps the newest Agent tool refresh when an older request finishes last', async () => {
     const f = fixture()
+    await act(async () => {})
     const pending = Promise.withResolvers<{ tools: AgentToolDefinition[] }>()
     f.api.agentTools.list.mockReturnValueOnce(pending.promise).mockResolvedValue({ tools: [saved] })
     let old!: Promise<void>

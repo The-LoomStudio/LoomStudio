@@ -1,9 +1,9 @@
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
+import { createMemorySecretBackend } from '@loom-studio/kernel/secret-store'
 
 export async function withStudioServer<T>(run: (port: number, dir: string) => Promise<T>, extensionRootDirectory?: string): Promise<T> {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'loom-server-')))
@@ -24,9 +24,9 @@ export async function withStudioServer<T>(run: (port: number, dir: string) => Pr
 }
 
 export async function callRpc<T>(port: number, method: string, params: unknown): Promise<T> {
-  const platform = ['application','official','directories','settings','logs','ai','system','docs','extensions','diagnostics','loom','trace','audit','kernel'].includes(method.split('.')[0]!)
-  const response = await authenticatedFetch(port, `/trpc/${platform ? method : 'kernel.invoke'}`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(platform ? params : { method, params }),
+  const platform = ['application', 'official', 'directories', 'settings', 'logs', 'ai', 'system', 'extensions', 'diagnostics', 'resourceDownloads', 'dashboard'].includes(method.split('.')[0]!)
+  const response = await authenticatedFetch(port, `/trpc/${platform ? method : 'extensions.invoke'}`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(platform ? params : { packageId: method.split('.')[0] ?? '', method, params }),
   })
   const payload = await response.json() as { result?: { data: T }; error?: { message: string } }
   if (payload.error) throw new Error(payload.error.message)

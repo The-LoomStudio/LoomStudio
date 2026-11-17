@@ -1,7 +1,33 @@
 import { createKernelBridge } from '../../support/kernel-bridge.js'
-import { createExtensionHostHarness as createKernelHarness } from '../../contract/extension-host/helpers.js'
+import { createExtensionFixture, createExtensionHostHarness as createKernelHarness, manifest } from '../../contract/extension-host/helpers.js'
 
 import { describe, expect, it } from 'vitest'
+
+async function setupPerfExtension() {
+  const harness = createKernelHarness()
+  await harness.kernel.start()
+  const dir = createExtensionFixture('perf-docs', {
+    manifest: manifest(
+      'perf',
+      [{ name: 'perf.write' }, { name: 'perf.get' }, { name: 'perf.list' }],
+      ['perf.small', 'perf.medium', 'perf.page'],
+    ),
+    source: `export function activate(ctx) {
+      ctx.rpc.register('perf.write', params => ctx.documents.write(params))
+      ctx.rpc.register('perf.get', async params => ({ document: await ctx.documents.get(params.id, params) }))
+      ctx.rpc.register('perf.list', async params => {
+        const all = await ctx.documents.list({ type: params.type, limit: 1000 })
+        const offset = params.cursor ? Number(params.cursor) : 0
+        const items = all.slice(offset, offset + (params.limit ?? 100))
+        const nextOffset = offset + items.length
+        return { items, ...(nextOffset < all.length ? { nextCursor: String(nextOffset) } : {}) }
+      })
+    }`,
+  })
+  await harness.extensionHost.discover(dir)
+  await harness.extensionHost.activate('perf', 'server')
+  return { ...harness, bridge: createKernelBridge(harness.kernel) }
+}
 
 type Measurement = {
   name: string
@@ -26,20 +52,18 @@ describe('JSON communication performance probes', () => {
     expect(measurement.count).toBe(100)
   })
 
-  it('P2: measures small JSON docs.write throughput through ClientBridge', async () => {
-    const { kernel } = createKernelHarness()
-    await kernel.start()
-    const bridge = createKernelBridge(kernel)
+  it('P2: measures small JSON document write throughput through ClientBridge -> extensions.invoke', async () => {
+    const { bridge } = await setupPerfExtension()
 
-    const measurement = await measure('100 sequential small docs.write', 100, async index => {
-      await bridge.call('docs.write', {
+    const measurement = await measure('100 sequential small perf.write', 100, async index => {
+      await bridge.call('perf.write', {
         id: `perf-small:${index}`,
-        type: 'example.perf.small',
+        type: 'perf.small',
         content: { index, label: `document-${index}`, flags: [true, false, true] },
         expectedVersion: 'new',
       })
     })
-    const listed = await bridge.call<{ items: unknown[] }>('docs.list', { type: 'example.perf.small', limit: 100 })
+    const listed = await bridge.call<{ items: unknown[] }>('perf.list', { type: 'perf.small', limit: 100 })
 
     reportMeasurement(measurement)
     expect(listed.items).toHaveLength(100)
@@ -47,21 +71,19 @@ describe('JSON communication performance probes', () => {
   })
 
   it('P3: probes medium JSON payload round trip without strict timing assertions', async () => {
-    const { kernel } = createKernelHarness()
-    await kernel.start()
-    const bridge = createKernelBridge(kernel)
+    const { bridge } = await setupPerfExtension()
     const content = createJsonPayload(128 * 1024)
 
-    const write = await measure('1 medium docs.write 128KiB JSON', 1, async () => {
-      await bridge.call('docs.write', {
+    const write = await measure('1 medium perf.write 128KiB JSON', 1, async () => {
+      await bridge.call('perf.write', {
         id: 'perf-medium:128k',
-        type: 'example.perf.medium',
+        type: 'perf.medium',
         content,
         expectedVersion: 'new',
       })
     })
-    const read = await measure('1 medium docs.get 128KiB JSON', 1, async () => {
-      const result = await bridge.call<{ document: { content: unknown } | null }>('docs.get', { id: 'perf-medium:128k' })
+    const read = await measure('1 medium perf.get 128KiB JSON', 1, async () => {
+      const result = await bridge.call<{ document: { content: unknown } | null }>('perf.get', { id: 'perf-medium:128k' })
       expect(result.document?.content).toEqual(content)
     })
 
@@ -71,15 +93,13 @@ describe('JSON communication performance probes', () => {
     expect(read.count).toBe(1)
   })
 
-  it('P4: measures docs.list pagination over 500 small JSON documents', async () => {
-    const { kernel } = createKernelHarness()
-    await kernel.start()
-    const bridge = createKernelBridge(kernel)
+  it('P4: measures perf.list pagination over 500 small JSON documents', async () => {
+    const { bridge } = await setupPerfExtension()
 
     for (let index = 0; index < 500; index += 1) {
-      await bridge.call('docs.write', {
+      await bridge.call('perf.write', {
         id: `perf-page:${index}`,
-        type: 'example.perf.page',
+        type: 'perf.page',
         content: { index },
         expectedVersion: 'new',
       })
@@ -88,9 +108,9 @@ describe('JSON communication performance probes', () => {
     let cursor: string | undefined
     let pages = 0
     let total = 0
-    const measurement = await measure('docs.list 500 docs in pages of 50', 10, async () => {
-      const page = await bridge.call<{ items: unknown[]; nextCursor?: string }>('docs.list', {
-        type: 'example.perf.page',
+    const measurement = await measure('perf.list 500 docs in pages of 50', 10, async () => {
+      const page = await bridge.call<{ items: unknown[]; nextCursor?: string }>('perf.list', {
+        type: 'perf.page',
         limit: 50,
         ...(cursor ? { cursor } : {}),
       })

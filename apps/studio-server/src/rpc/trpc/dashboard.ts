@@ -17,4 +17,8 @@ export const dashboardRouter = t.router({
   resources: dashboard.query(({ ctx }) => ctx.dashboard.statistics.resources()),
   storage: dashboard.input(z.object({ refresh: z.boolean().optional() })).query(({ ctx, input }) => ctx.dashboard.storage(input.refresh)),
   database: dashboard.query(({ ctx }) => ctx.dashboard.database()),
+  createBackup: dashboard.mutation(({ ctx }) => {
+    if (!ctx.dashboard.createBackup) throw new Error('Database backup unavailable')
+    return ctx.dashboard.createBackup()
+  }),
 })

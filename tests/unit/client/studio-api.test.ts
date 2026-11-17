@@ -114,12 +114,11 @@ describe('studio client typed api', () => {
     expect(JSON.stringify(calls)).not.toContain('apiKey')
   })
 
-  it('maps Agent run pause, resume and completion acknowledgement calls', async () => {
+  it('maps Agent run pause and resume calls', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
       'application.agent.run.pause': { runId: 'run-1', accepted: true, state: 'suspended' },
       'application.agent.run.resume': { runId: 'run-2', sourceRunId: 'run-1', accepted: true, state: 'running' },
-      'application.agent.run.acknowledge-completion': { runId: 'run-2', accepted: true },
     }))
 
     await expect(api.agentSessions.pauseRun('run-1')).resolves.toEqual({
@@ -128,13 +127,9 @@ describe('studio client typed api', () => {
     await expect(api.agentSessions.resumeRun('run-1')).resolves.toEqual({
       runId: 'run-2', sourceRunId: 'run-1', accepted: true, state: 'running',
     })
-    await expect(api.agentSessions.acknowledgeRunCompletion('run-2')).resolves.toEqual({
-      runId: 'run-2', accepted: true,
-    })
     expect(calls).toEqual([
       { method: 'application.agent.run.pause', params: { runId: 'run-1' } },
       { method: 'application.agent.run.resume', params: { runId: 'run-1' } },
-      { method: 'application.agent.run.acknowledge-completion', params: { runId: 'run-2' } },
     ])
   })
 
@@ -221,6 +216,20 @@ describe('studio client typed api', () => {
         namespacePrefix: 'transport.rpc',
       },
     }])
+  })
+
+  it('maps dashboard.createBackup through the typed studio api surface', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'dashboard.createBackup': { filename: 'studio-backup.sqlite', path: '/tmp/studio-backup.sqlite', sizeBytes: 4096 },
+    }))
+
+    await expect(api.dashboard.createBackup()).resolves.toEqual({
+      filename: 'studio-backup.sqlite',
+      path: '/tmp/studio-backup.sqlite',
+      sizeBytes: 4096,
+    })
+    expect(calls).toEqual([{ method: 'dashboard.createBackup', params: undefined }])
   })
 
   it('maps application calls through the typed studio api surface', async () => {

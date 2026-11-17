@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { safeLocalStorage } from '../browser/safe-local-storage.js'
-import { applyTokenMultiplier } from '@loom-studio/tokenizer/contracts'
+import { applyTokenMultiplier } from '@loom-studio/shared/tokenizer/contracts'
 
 export const useTokenDisplaySettings = create<{
   multiplier: number

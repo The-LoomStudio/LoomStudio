@@ -22,11 +22,11 @@ class TestWorker {
   }
 }
 
-afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.doUnmock('@loom-studio/tokenizer'); TestWorker.instances = [] })
+afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.doUnmock('@loom-studio/shared/tokenizer'); TestWorker.instances = [] })
 
 it('runs the Worker cache handler: reuses equal texts and evicts the oldest digest beyond 2048 entries', async () => {
   const countText = vi.fn((text: string) => ({ baseTokens: text.length }))
-  vi.doMock('@loom-studio/tokenizer', () => ({ countText }))
+  vi.doMock('@loom-studio/shared/tokenizer', () => ({ countText }))
   const worker = {
     postMessage: vi.fn(),
     onmessage: undefined as unknown as (event: { data: { id: number; texts: string[] } }) => Promise<void>,
@@ -117,7 +117,7 @@ describe('shared token Worker client', () => {
   })
   it('does not split, truncate or drop texts at the character boundary and snapshots unsent inputs', async () => {
     vi.stubGlobal('Worker', TestWorker)
-    const { TOKEN_INPUT_LIMIT } = await import('../../../packages/tokenizer/src/contracts.js')
+    const { TOKEN_INPUT_LIMIT } = await import('@loom-studio/shared/tokenizer/contracts')
     const { countTexts } = await import('../../../apps/studio-client/src/shared/tokenizer/client.js')
     await expect(countTexts(['x'.repeat(TOKEN_INPUT_LIMIT + 1)])).rejects.toThrow('per text')
     expect(TestWorker.instances).toHaveLength(0)

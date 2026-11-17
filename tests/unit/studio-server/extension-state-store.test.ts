@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   createExtensionStateStore,
   type ExtensionModuleDesiredState,
-} from '../../../apps/studio-server/src/extensions/extension-state-store.js'
+} from '@loom-studio/kernel/extension-manager'
 
 const updatedAt = '2026-09-22T00:00:00.000Z'
 let directory: string

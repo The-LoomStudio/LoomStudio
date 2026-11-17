@@ -1,5 +1,5 @@
 import type { JsonObject } from '@loom-studio/shared'
-import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
+import type { TokenUsage } from '@loom-studio/shared/tokenizer/contracts'
 
 export type ExtensionAgentTaskCreate = ({ presetId: string } | { presetContributionId: string }) & {
   title?: string

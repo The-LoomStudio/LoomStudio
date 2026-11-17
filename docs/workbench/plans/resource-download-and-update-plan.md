@@ -29,7 +29,7 @@
 
 [2026-11-04 Extension 定向交付](../../archive/plans/extension-flow-remediation-2026-11-04.md)已经提供恢复记录可见性、安装阶段结果、Global／Card 资源增改删预览和 fingerprint 冲突拒绝，界面区分代码版本与资源采用版本，不重复建设。其本地编辑未知提示和有限 ID 引用匹配不等于内容级合并，也不要求继续建设三方审阅系统。
 
-源码入口：[扩展管理器](../../../apps/studio-server/src/extensions/extension-manager.ts)、[下载器](../../../apps/studio-server/src/extensions/extension-download.ts)、[资源采用](../../../packages/application-runtime/src/runtime/extensions-runtime.ts)、[Card Bundle 合同](../../architecture/application/card-bundle-files.md)、[State 合同](../../architecture/application/state-and-variables.md)。
+源码入口：[扩展管理器](../../../packages/kernel/src/extension-manager/extension-manager.ts)、[下载器](../../../packages/kernel/src/extension-manager/extension-download.ts)、[资源采用](../../../packages/application-runtime/src/runtime/extensions-runtime.ts)、[Card Bundle 合同](../../architecture/application/card-bundle-files.md)、[State 合同](../../architecture/application/state-and-variables.md)。
 
 ## 3. 下载链路（已确认）
 

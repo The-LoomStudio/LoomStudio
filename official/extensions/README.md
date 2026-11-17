@@ -17,6 +17,6 @@
 - STBridge：[LS_STBridge](https://github.com/The-LoomStudio/LS_STBridge)，安装后位于应用根目录 `extensions/`。
 - The World：[LS_The_World](https://github.com/The-LoomStudio/LS_The_World)，安装后位于应用根目录 `extensions/`。
 
-用户在官方扩展选择或扩展中心确认后下载，安装、授权与启用分别执行。推荐地址由 `apps/studio-server/src/extensions/extension-manager.ts` 维护。
+用户在官方扩展选择或扩展中心确认后下载，安装、授权与启用分别执行。推荐地址由 `packages/kernel/src/extension-manager/extension-manager.ts` 维护。
 
 独立扩展以自己的仓库源码为基准。Git 安装不运行构建，因此扩展仓库需同时交付 Manifest、资源与对应源码构建出的完整 `dist/`；源码变更后重新构建，不单独手改 `dist/`。本地开发可放在根目录 `extensions/`，修改应提交到对应独立仓库，不能复制回本目录形成另一份实现。

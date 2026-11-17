@@ -1,4 +1,4 @@
-import { countText } from '@loom-studio/tokenizer'
+import { countText } from '@loom-studio/shared/tokenizer'
 
 const cache = new Map<string, number>()
 const CACHE_LIMIT = 2048

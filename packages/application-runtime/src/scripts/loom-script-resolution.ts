@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentTransaction } from '@loom-studio/kernel/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { resolveLoomScriptSettings } from '@loom-studio/shared/loom-scripts'
 import type { ExtensionInstallationContent } from '../types.js'

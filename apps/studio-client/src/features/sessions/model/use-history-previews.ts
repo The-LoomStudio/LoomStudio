@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useMemo } from 'react'
 import type { AgentSession, AgentTranscriptEntry, NarrativeBranch, NarrativeNode, NarrativeTimeline } from '../../../entities/index.js'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 
 type HistoryPreview<T> = { key: string } & (
@@ -8,102 +10,108 @@ type HistoryPreview<T> = { key: string } & (
   | { status: 'error'; error: string }
 )
 
+const apiScopeIds = new WeakMap<StudioApi, number>()
+let nextApiScopeId = 1
+
+function getApiScopeId(api: StudioApi): number {
+  let id = apiScopeIds.get(api)
+  if (id === undefined) {
+    id = nextApiScopeId++
+    apiScopeIds.set(api, id)
+  }
+  return id
+}
+
+function readError(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
+}
+
 export function useHistoryPreviews({ api, branches, selectedTimeline, selectedSession }: {
   api?: StudioApi
   branches: NarrativeBranch[]
   selectedTimeline?: NarrativeTimeline
   selectedSession?: AgentSession
 }) {
-  const [previews, setPreviews] = useState<{
-    api?: StudioApi
-    timelineNodes: Record<string, HistoryPreview<NarrativeNode> | undefined>
-    sessionTranscripts: Record<string, HistoryPreview<AgentTranscriptEntry> | undefined>
-  }>({ api, timelineNodes: {}, sessionTranscripts: {} })
-  const [previewRetry, setPreviewRetry] = useState(0)
-  const timelineNodesMap = previews.api === api ? previews.timelineNodes : undefined
-  const sessionTranscriptMap = previews.api === api ? previews.sessionTranscripts : undefined
+  const queryClient = useQueryClient()
+  const apiScope = api ? getApiScopeId(api) : undefined
 
   const previewBranch = branches.find(branch => branch.id === selectedTimeline?.activeBranchId)
   const timelinePreviewKey = JSON.stringify([selectedTimeline?.activeBranchId, selectedTimeline?.updatedAt, previewBranch?.updatedAt, previewBranch?.headNodeId])
   const sessionPreviewKey = JSON.stringify([selectedSession?.updatedAt, selectedSession?.entryCount])
-  const timelinePreview = selectedTimeline && timelineNodesMap?.[selectedTimeline.id]?.key === timelinePreviewKey
-    ? timelineNodesMap[selectedTimeline.id] : undefined
-  const sessionPreview = selectedSession && sessionTranscriptMap?.[selectedSession.id]?.key === sessionPreviewKey
-    ? sessionTranscriptMap[selectedSession.id] : undefined
+
+  const timelineQueryKey = useMemo(
+    () => ['history-previews', apiScope, 'timeline', selectedTimeline?.id, timelinePreviewKey] as const,
+    [apiScope, selectedTimeline?.id, timelinePreviewKey],
+  )
+  const sessionQueryKey = useMemo(
+    () => ['history-previews', apiScope, 'session', selectedSession?.id, sessionPreviewKey] as const,
+    [apiScope, selectedSession?.id, sessionPreviewKey],
+  )
 
   // 按需拉取选中时间线的演变节点日志
-  useEffect(() => {
-    if (!selectedTimeline || !api) return
-    const timelineId = selectedTimeline.id
-    if (timelineNodesMap?.[timelineId]?.key === timelinePreviewKey && timelineNodesMap[timelineId]?.status === 'ready') return
-
-    let active = true
-    setPreviews(prev => ({
-      api,
-      timelineNodes: { ...(prev.api === api ? prev.timelineNodes : {}), [timelineId]: { key: timelinePreviewKey, status: 'loading' } },
-      sessionTranscripts: prev.api === api ? prev.sessionTranscripts : {},
-    }))
-    void api.narratives
-      .getPage({ timelineId, branchId: selectedTimeline.activeBranchId, limit: 20 })
-      .then(page => {
-        if (active) {
-          setPreviews(prev => ({
-            api,
-            timelineNodes: { ...(prev.api === api ? prev.timelineNodes : {}), [timelineId]: { key: timelinePreviewKey, status: 'ready', data: page.nodes } },
-            sessionTranscripts: prev.api === api ? prev.sessionTranscripts : {},
-          }))
-        }
-      })
-      .catch(cause => {
-        if (active) setPreviews(prev => ({
-          api,
-          timelineNodes: { ...(prev.api === api ? prev.timelineNodes : {}), [timelineId]: {
-            key: timelinePreviewKey, status: 'error', error: cause instanceof Error ? cause.message : String(cause),
-          } },
-          sessionTranscripts: prev.api === api ? prev.sessionTranscripts : {},
-        }))
-      })
-    return () => {
-      active = false
-    }
-  }, [selectedTimeline?.id, timelinePreviewKey, api, previewRetry])
+  const timelineQuery = useQuery({
+    queryKey: timelineQueryKey,
+    enabled: Boolean(api && selectedTimeline),
+    queryFn: async () => (await api!.narratives.getPage({
+      timelineId: selectedTimeline!.id,
+      branchId: selectedTimeline!.activeBranchId,
+      limit: 20,
+    })).nodes,
+  })
 
   // 按需拉取选中会话的转录缩略预览
+  const sessionQuery = useQuery({
+    queryKey: sessionQueryKey,
+    enabled: Boolean(api && selectedSession),
+    queryFn: async () => (await api!.agentSessions.getTranscript({
+      agentSessionId: selectedSession!.id,
+      limit: 12,
+    })).entries,
+  })
+
   useEffect(() => {
-    if (!selectedSession || !api) return
-    const sessionId = selectedSession.id
-    if (sessionTranscriptMap?.[sessionId]?.key === sessionPreviewKey && sessionTranscriptMap[sessionId]?.status === 'ready') return
+    if (apiScope === undefined) return
+    return subscribeDataCommits(
+      operations => {
+        const hasNarrativeChange = operations.some(op =>
+          op.entityType === 'narrative.timeline'
+          || op.entityType === 'narrative.branch'
+          || op.entityType === 'narrative.node'
+          || op.entityType === 'narrative.swipe-group',
+        )
+        const hasAgentChange = operations.some(op =>
+          op.entityType === 'agent.session'
+          || op.entityType === 'agent.transcript-entry',
+        )
+        if (hasNarrativeChange) void queryClient.invalidateQueries({ queryKey: ['history-previews', apiScope, 'timeline'] })
+        if (hasAgentChange) void queryClient.invalidateQueries({ queryKey: ['history-previews', apiScope, 'session'] })
+      },
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ['history-previews', apiScope] })
+      },
+    )
+  }, [apiScope, queryClient])
 
-    let active = true
-    setPreviews(prev => ({
-      api,
-      timelineNodes: prev.api === api ? prev.timelineNodes : {},
-      sessionTranscripts: { ...(prev.api === api ? prev.sessionTranscripts : {}), [sessionId]: { key: sessionPreviewKey, status: 'loading' } },
-    }))
-    void api.agentSessions
-      .getTranscript({ agentSessionId: sessionId, limit: 12 })
-      .then(page => {
-        if (active) {
-          setPreviews(prev => ({
-            api,
-            timelineNodes: prev.api === api ? prev.timelineNodes : {},
-            sessionTranscripts: { ...(prev.api === api ? prev.sessionTranscripts : {}), [sessionId]: { key: sessionPreviewKey, status: 'ready', data: page.entries } },
-          }))
-        }
-      })
-      .catch(cause => {
-        if (active) setPreviews(prev => ({
-          api,
-          timelineNodes: prev.api === api ? prev.timelineNodes : {},
-          sessionTranscripts: { ...(prev.api === api ? prev.sessionTranscripts : {}), [sessionId]: {
-            key: sessionPreviewKey, status: 'error', error: cause instanceof Error ? cause.message : String(cause),
-          } },
-        }))
-      })
-    return () => {
-      active = false
-    }
-  }, [selectedSession?.id, sessionPreviewKey, api, previewRetry])
+  const timelinePreview: HistoryPreview<NarrativeNode> | undefined = !api || !selectedTimeline
+    ? undefined
+    : timelineQuery.isPending
+      ? { key: timelinePreviewKey, status: 'loading' }
+      : timelineQuery.isError
+        ? { key: timelinePreviewKey, status: 'error', error: readError(timelineQuery.error) }
+        : { key: timelinePreviewKey, status: 'ready', data: timelineQuery.data }
 
-  return { timelinePreview, sessionPreview, retryPreview: () => setPreviewRetry(value => value + 1) }
+  const sessionPreview: HistoryPreview<AgentTranscriptEntry> | undefined = !api || !selectedSession
+    ? undefined
+    : sessionQuery.isPending
+      ? { key: sessionPreviewKey, status: 'loading' }
+      : sessionQuery.isError
+        ? { key: sessionPreviewKey, status: 'error', error: readError(sessionQuery.error) }
+        : { key: sessionPreviewKey, status: 'ready', data: sessionQuery.data }
+
+  const retryPreview = useCallback(() => {
+    if (apiScope === undefined) return
+    void queryClient.invalidateQueries({ queryKey: ['history-previews', apiScope] })
+  }, [apiScope, queryClient])
+
+  return { timelinePreview, sessionPreview, retryPreview }
 }

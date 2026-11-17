@@ -1,9 +1,9 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import {
   createPromptResourceStore,
   type PromptResourceMutation,
   type PromptResourceTreeNode,
-} from '@loom-studio/application-data'
+} from '@loom-studio/application-runtime/data'
 import { createId, nowIso } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
 

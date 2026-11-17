@@ -6,6 +6,7 @@
 
 | 计划 | 状态 | 真正剩余范围 |
 | --- | --- | --- |
+| [Host Kernel 重塑与平台架构收敛](./host-kernel-and-platform-consolidation-plan.md) | 工程与测试已通过 / 待人工验收归档 | P1–P5 与 Wave 6–8（15→7 包收敛、Kernel 零应用层依赖、`dashboard.createBackup` UI 与 SQLite 备份、卡片媒体 `?v=`、`InspectorPanel` 三账本联查与单元测试、`extension-module-batches` Query 迁移、全量测试套件与 Wave 8 审计修复）已通过验证；待人工 UI 验收后归档。 |
 | [Fake Provider 真实链路调试](./fake-provider-debug-runtime-plan.md) | 方向已确认 / 待实施 | 模拟模型响应，复用正式 Run、工具、持久化与日志；按真实闭环、可控生命周期、前端调试三阶段交付。本次仅编写计划。 |
 | [扩展角色目录与 Framework 依赖](./extension-character-catalog-plan.md) | W1–W3 已归档 / W4–W5 延期 | 仅保留远程角色目录、跨包 RPC 与独立脚本依赖；诺姆已实际导入使用。 |
 | [资源下载与更新](./resource-download-and-update-plan.md) | 实施中 / 第二轮接续 | 来源策略、包版本与 Card 更新采用（脚本/载荷/扩展归档/媒体）已接入并定向验证；待玩家修改冲突保护、私有依赖界面及真实环境验收。 |

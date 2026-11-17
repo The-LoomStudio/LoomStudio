@@ -2,12 +2,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createExtensionHost } from '@loom-studio/extension-host'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
+import { createExtensionHost } from '@loom-studio/kernel/extension-host'
 import { expect, it, onTestFinished } from 'vitest'
-import { createServerExtensionManager } from '../../../apps/studio-server/src/extensions/extension-manager.js'
-import { createExtensionStateStore } from '../../../apps/studio-server/src/extensions/extension-state-store.js'
+import { createServerExtensionManager } from '@loom-studio/kernel/extension-manager'
+import { createExtensionStateStore } from '@loom-studio/kernel/extension-manager'
 
 it('installs the official theme package and serves its CSS and palette previews without enabling JS', async () => {
   const root = await mkdtemp(join(tmpdir(), 'loom-theme-package-'))

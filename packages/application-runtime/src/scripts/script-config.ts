@@ -1,5 +1,5 @@
-import type { SqliteDataTransaction } from '@loom-studio/data-engine'
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { SqliteDataTransaction } from '@loom-studio/kernel/data-engine'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import type { ExtensionStorageScope, ScriptConfigEntry } from '@loom-studio/extension-sdk'
 import { extensionStorageScopeKey, extensionStorageTokenPattern } from '@loom-studio/extension-sdk'
 import type { JsonValue } from '@loom-studio/shared'

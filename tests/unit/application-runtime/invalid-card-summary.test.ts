@@ -1,4 +1,4 @@
-import type { DocumentRecord } from '@loom-studio/document-store'
+import type { DocumentRecord } from '@loom-studio/kernel/document-store'
 import { describe, expect, it, vi } from 'vitest'
 import { toCardSource } from '../../../packages/application-runtime/src/cards/card.js'
 import { createCardsRuntimeMethods } from '../../../packages/application-runtime/src/runtime/cards-runtime.js'

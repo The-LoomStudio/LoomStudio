@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest'
-import { countText } from '@loom-studio/tokenizer'
+import { countText } from '@loom-studio/shared/tokenizer'
 
 it('counts tokens without SubtleCrypto on LAN HTTP', async () => {
   const worker = { onmessage: undefined as unknown as (event: unknown) => Promise<void>, postMessage: vi.fn() }

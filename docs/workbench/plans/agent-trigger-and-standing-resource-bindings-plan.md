@@ -21,10 +21,10 @@
 | 已核对事实 | 影响与入口 |
 | --- | --- |
 | 主写作 Session 按 Timeline 保存在前端 localStorage；故事发送在未设置时直接报错 | 后端不知道默认接收方，首次发送尚不能自动准备。[Client](../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.ts) 的 `primaryStorageKey`、`sendNarrativeInput` |
-| Session 固定引用一个 Agent Preset，创建后不能改绑 | 换预设需创建或选择另一 Session，不迁移旧 Transcript。[Session 契约](../../architecture/application/agent/runtime-and-session.md)、[Store 类型](../../../packages/application-data/src/agent/types.ts) |
-| Run 服务已有创建、订阅、取消、暂停、审批、恢复和放弃；同 Session 忙碌时拒绝并发执行 | 复用现有执行循环，不增加第二套 Run 管理。[服务](../../../apps/studio-server/src/agents/agent-run-service.ts)、[Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts) |
-| `sourceRunId` 表达恢复链；调用追踪有 `parentCallId`，尚无父子 Agent Run 合同 | 不能把恢复或 RPC 调用关系当作 Agent 委派。[Runtime 类型](../../../packages/application-runtime/src/types.ts)、[Transcript 类型](../../../packages/application-data/src/agent/types.ts) |
-| 全局 Lore 绑定以 `{ kind: 'manual', id: 'global' }` 保存；实际 Agent 提示词只选预设挂载及按配置采用的角色 Lore | 全局绑定存在存储与 UI，却未接入当前 Agent 消费链。[挂载](../../../packages/application-data/src/prompt-resource/mounts.ts)、[组装](../../../packages/application-runtime/src/agents/agent-turn.ts) |
+| Session 固定引用一个 Agent Preset，创建后不能改绑 | 换预设需创建或选择另一 Session，不迁移旧 Transcript。[Session 契约](../../architecture/application/agent/runtime-and-session.md)、[Store 类型](../../../packages/application-runtime/src/data/agent/types.ts) |
+| Run 服务已有创建、订阅、取消、暂停、审批、恢复和放弃；同 Session 忙碌时拒绝并发执行 | 复用现有执行循环，不增加第二套 Run 管理。[服务](../../../packages/application-runtime/src/agents/agent-run-service.ts)、[Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts) |
+| `sourceRunId` 表达恢复链；调用追踪有 `parentCallId`，尚无父子 Agent Run 合同 | 不能把恢复或 RPC 调用关系当作 Agent 委派。[Runtime 类型](../../../packages/application-runtime/src/types.ts)、[Transcript 类型](../../../packages/application-runtime/src/data/agent/types.ts) |
+| 全局 Lore 绑定以 `{ kind: 'manual', id: 'global' }` 保存；实际 Agent 提示词只选预设挂载及按配置采用的角色 Lore | 全局绑定存在存储与 UI，却未接入当前 Agent 消费链。[挂载](../../../packages/application-runtime/src/data/prompt-resource/mounts.ts)、[组装](../../../packages/application-runtime/src/agents/agent-turn.ts) |
 | 世界书 UI 把全局安装扩展中的 Lore 和内置 Lore 加入只读全局绑定集合 | 安装位置被表达成已采用，和真实执行不一致。[工作台](../../../apps/studio-client/src/widgets/context-workbench/context-workbench.tsx) 的 `readonlyGlobalIds` |
 | 正则和提取器以预设 `textUses` 覆盖资源 `enabled`；工作区/扩展等资源可以在未被预设引用时参与管线 | 其他 Agent 会继承公共默认候选规则；实际效果仍取决于规则阶段与匹配条件。[文本管线](../../../packages/application-runtime/src/runtime/transforms-runtime.ts) 的 `resolveEffectiveTextPipeline` |
 | Tools 只从当前预设挂载集合中选择，再检查启用、条件和来源 | 工具隔离可复用，但尚无独立的主写作常驻工具绑定。[工具解析](../../../packages/application-runtime/src/agents/tool-loop.ts) |
@@ -110,7 +110,7 @@ LoomScript 渲染挂载属于界面生命周期，本轮不把用户/工作区/�
 
 | 工作包 | 负责内容与主要范围 | 完成条件 |
 | --- | --- | --- |
-| W0 合同收束 | 本 Plan；核对 [Runtime 类型](../../../packages/application-runtime/src/types.ts)、[Session Store](../../../packages/application-data/src/agent/)、[Timeline Store](../../../packages/application-data/src/narrative/)、[Document 类型](../../../packages/application-runtime/src/foundation/document-types.ts) | 解决下方会影响产品/迁移的决策；确定写作配置、投递身份和资源合并最小合同 |
+| W0 合同收束 | 本 Plan；核对 [Runtime 类型](../../../packages/application-runtime/src/types.ts)、[Session Store](../../../packages/application-runtime/src/data/agent/)、[Timeline Store](../../../packages/application-runtime/src/data/narrative/)、[Document 类型](../../../packages/application-runtime/src/foundation/document-types.ts) | 解决下方会影响产品/迁移的决策；确定写作配置、投递身份和资源合并最小合同 |
 | W1 后端主写作与通用投递 | `packages/application-runtime/src/runtime/{agents,narrative}-runtime.ts` 及必要领域模块；`apps/studio-server/src/agents/agent-run-service.ts`；`apps/studio-server/src/rpc/trpc/application/`；W0 指定的持久化文件 | 后端保存接收配置；已有/新建 Session 均调用同一 Run 服务；首次创建与重复请求不重复执行，恢复/忙碌规则保留 |
 | W2 常驻引用与来源解析 | `packages/application-data/src/prompt-resource/`；`packages/application-runtime/src/agents/{agent-turn,tool-loop}.ts`；`runtime/{prompt,transforms,extensions}-runtime.ts`、`runtime/extension-resource-access.ts`；必要的 `extensions/`、`prompt/` 模块 | 主写作明确采用常驻配置；其他调用隔离；预览与运行一致；扩展来源停用可撤销；确定的数据迁移完成 |
 | W3 Client 接线与使用反馈 | `apps/studio-client/src/features/narrative-runtime/`、`features/prompt-resources/`、`widgets/{context,preset}-workbench/`、必要的 `features/text-transforms/` 与 `shared/api/`、`shared/i18n/` | 新故事直接发送；换预设/接收 Session 保留常驻采用；页面选择不改接收方；绑定来源与不可用状态准确 |

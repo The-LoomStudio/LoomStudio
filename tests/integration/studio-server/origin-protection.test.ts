@@ -1,6 +1,6 @@
 import { request as httpRequest } from 'node:http'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
-import type { AssetStore } from '@loom-studio/asset-store'
+import type { AssetStore } from '@loom-studio/kernel/asset-store'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApplicationSessionAuth } from '../../../apps/studio-server/src/http/application-session-auth.js'
 import { createStudioHttpServer } from '../../../apps/studio-server/src/http/http-server.js'

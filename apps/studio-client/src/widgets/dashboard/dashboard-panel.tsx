@@ -14,6 +14,8 @@ type Props = {
   onPeriodChange(period: DashboardPeriod): void
   onAction(action: DashboardAction): void
   onViewChange?(view: DashboardView): void
+  onCreateBackup?(): Promise<void> | void
+  creatingBackup?: boolean
 }
 type Detail = { kind: 'provider' | 'card' | 'storage'; id: string }
 const number = (value: number) => value.toLocaleString('zh-CN')
@@ -76,11 +78,11 @@ export function DashboardDialog(props: Props & { open: boolean; onClose(): void;
   return <Dialog open={props.open} onClose={props.onClose} title={<span className={styles.dialogTitle}><span>统计</span><span className={styles.headerMeta} title={snapshot ? undefined : rangeHelp}>{snapshot ? '当前快照' : props.data.rangeLabel}</span></span>} titleIcon={<ChartNoAxesCombined size={19} />} layout="workbench" className={styles.dialog} headerActions={props.headerActions}>
     {initialLoading && <div className={styles.empty} role="status">{props.data.notices?.map(notice => <p key={notice}>{notice}</p>)}</div>}
     {props.detailContent}
-    <div style={initialLoading || props.detailContent ? { display: 'none' } : { height: '100%', minHeight: 0 }}><DashboardPanel view={view} data={props.data} period={props.period} onPeriodChange={props.onPeriodChange} onAction={handleAction} onViewChange={changeView} /></div>
+    <div style={initialLoading || props.detailContent ? { display: 'none' } : { height: '100%', minHeight: 0 }}><DashboardPanel view={view} data={props.data} period={props.period} onPeriodChange={props.onPeriodChange} onAction={handleAction} onViewChange={changeView} onCreateBackup={props.onCreateBackup} creatingBackup={props.creatingBackup} /></div>
   </Dialog>
 }
 
-export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewChange, view }: Props & { view: DashboardView }) {
+export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewChange, onCreateBackup, creatingBackup, view }: Props & { view: DashboardView }) {
   const [detail, setDetail] = useState<Detail>()
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<'sends' | 'activeDays'>('sends')
@@ -285,7 +287,11 @@ export function DashboardPanel({ data, period, onPeriodChange, onAction, onViewC
           })}</div> : <Empty title="暂无资源" description="创建或导入资源后，可在这里查看数量。" />}
         </Section>}
         {view === 'storage' && <>
-          <Section title="应用存储" subtitle={`服务端文件快照 · ${data.storageUpdatedAt}`}><div className={styles.storageHero}><HardDrive size={26} /><strong>{data.storage.length ? bytes(storageBytes) : '—'}</strong><span>数据目录磁盘剩余 {data.diskFreeBytes === undefined ? '—' : bytes(data.diskFreeBytes)}</span></div><StorageBar groups={data.storage} onSelect={(group, button) => open({ kind: 'storage', id: group.id }, button)} /></Section>
+          <Section
+            title="应用存储"
+            subtitle={`服务端文件快照 · ${data.storageUpdatedAt}`}
+            action={onCreateBackup ? <Button size="small" disabled={creatingBackup} onClick={() => void onCreateBackup()}>{creatingBackup ? '备份中…' : '备份数据库'}</Button> : undefined}
+          ><div className={styles.storageHero}><HardDrive size={26} /><strong>{data.storage.length ? bytes(storageBytes) : '—'}</strong><span>数据目录磁盘剩余 {data.diskFreeBytes === undefined ? '—' : bytes(data.diskFreeBytes)}</span></div><StorageBar groups={data.storage} onSelect={(group, button) => open({ kind: 'storage', id: group.id }, button)} /></Section>
           <Section title="分类管理">{data.storage.length ? data.storage.map(group => <button type="button" className={styles.storageRow} key={group.id} onClick={event => open({ kind: 'storage', id: group.id }, event.currentTarget)} style={toneStyle(group.tone)}><span className={styles.dot} /><span className={styles.rowCopy}><strong>{group.name}</strong><small>{group.description}</small></span><span className={styles.rowValue}><strong>{bytes(group.bytes)}</strong><small>{(group.bytes / (storageBytes || 1) * 100).toFixed(1)}%</small></span><ChevronRight size={15} /></button>) : <Empty title="暂无存储快照" description="获取快照后，可查看各类文件的大小与内容。" />}</Section>
         </>}
       </>}

@@ -2,8 +2,8 @@ import { DatabaseSync, backup } from 'node:sqlite'
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { resolve, dirname, join } from 'node:path'
-import { createSqliteDataEngine } from '../../packages/data-engine/dist/index.js'
-import { createSqliteDocumentStore } from '../../packages/document-store/dist/index.js'
+import { createSqliteDataEngine } from '../../packages/kernel/dist/data-engine/index.js'
+import { createSqliteDocumentStore } from '../../packages/kernel/dist/document-store/index.js'
 
 // One-off repair for the local pre-single-opening database, not a runtime reader.
 const filename = resolve(process.argv[2] ?? 'data/studio.sqlite')

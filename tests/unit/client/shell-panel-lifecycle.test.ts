@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, createElement, type ComponentProps } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -60,10 +61,11 @@ it('opens the requested inspector only on the active management surface', () => 
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   function render(active: boolean) {
-    root.render(createElement('div', null,
+    root.render(createElement(QueryClientProvider, { client }, createElement('div', null,
       createElement(RendererWorkspacePanel, { ...props, mode: 'workspace' }),
-      createElement(RendererWorkspacePanel, { ...props, active, mode: 'management' })))
+      createElement(RendererWorkspacePanel, { ...props, active, mode: 'management' }))))
   }
   try {
     act(() => render(true))
@@ -72,5 +74,5 @@ it('opens the requested inspector only on the active management surface', () => 
     expect(container.querySelectorAll('dialog')).toHaveLength(0)
     act(() => render(true))
     expect(container.querySelectorAll('dialog[open]')).toHaveLength(1)
-  } finally { act(() => root.unmount()); container.remove() }
+  } finally { act(() => root.unmount()); client.clear(); container.remove() }
 })

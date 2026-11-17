@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createApplicationRuntime, type ImportExtensionPackageResourcesInput } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createId, nowIso, type PromptResourceDisplayMetadata } from '@loom-studio/shared'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 

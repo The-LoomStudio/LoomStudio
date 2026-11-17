@@ -1,7 +1,7 @@
 import { createEventBus } from '@loom-studio/kernel'
 import type { JsonValue } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
-import { isJsonValue } from '../../../packages/application-data/src/json.js'
+import { isJsonValue } from '../../../packages/application-runtime/src/data/json.js'
 
 function createBus() {
   const bus = createEventBus()

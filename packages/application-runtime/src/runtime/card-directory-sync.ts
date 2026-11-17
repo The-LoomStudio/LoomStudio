@@ -1,7 +1,7 @@
 import { parseCardFrameworkFields, validateCardFramework } from '../cards/card-framework.js'
 import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
 import { isDeepStrictEqual } from 'node:util'
-import type { PromptResource, PromptResourceTransaction, PromptResourceTreeNode } from '@loom-studio/application-data'
+import type { PromptResource, PromptResourceTransaction, PromptResourceTreeNode } from '../data/index.js'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes as types } from '../foundation/document-types.js'

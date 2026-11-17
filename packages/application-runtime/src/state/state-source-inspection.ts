@@ -1,4 +1,4 @@
-import { listStateDefinitionDocuments } from '@loom-studio/application-data'
+import { listStateDefinitionDocuments } from '../data/index.js'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'

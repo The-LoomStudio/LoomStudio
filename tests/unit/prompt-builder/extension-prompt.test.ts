@@ -1,4 +1,4 @@
-import type { PromptResource, PromptResourceStore } from '@loom-studio/application-data'
+import type { PromptResource, PromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createVariableRenderContext } from '@loom-studio/shared'
 import { describe, expect, it, vi } from 'vitest'
 import { buildExtensionPrompt, readExtensionPromptInputs } from '../../../packages/application-runtime/src/prompt/extension-prompt.js'

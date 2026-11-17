@@ -1,5 +1,5 @@
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

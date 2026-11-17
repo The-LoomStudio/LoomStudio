@@ -22,13 +22,13 @@ Kernel 与 Extension RPC 必须注册到同一个 Runtime Registry，并通过 `
 
 不要把全局的 Event Bus 当成任意通信的 Command Bus。我们严格限制事件必须先分类再命名：
 
-- **Fact Event (事实)**：已发生的事实，如 `docs.changed`, `run.completed`。必须在状态真正落库后才发出。
+- **Fact Event (事实)**：已发生的事实，如 `data.changed`, `run.completed`。必须在状态真正落库后才发出。
 - **Notification Event (通知)**：状态刷新通知，不承载完整业务数据，如 `diagnostics.updated`。
 - **Stream Event (流)**：持续更新的数据，如 `provider.stream.chunk`。
 - **Lifecycle Event (生命周期)**：如 `extension.activated`。
 
-**命名规范**：`<namespace>.<past-tense-or-state>` (如 `docs.changed`)。严禁使用诸如 `update`, `onProviderData` 这种意义不明的动词。
-> **特别注意**：`docs.changed` 仅仅是一个数据库事实，不要用它来驱动特定的上层业务逻辑（例如"收到 docs.changed 就认为对话生成完毕"是极其错误的设计）。上层逻辑应该触发或监听专门的领域事件，如 `run.completed`。
+**命名规范**：`<namespace>.<past-tense-or-state>` (如 `data.changed`)。严禁使用诸如 `update`, `onProviderData` 这种意义不明的动词。
+> **特别注意**：`data.changed` 仅仅是一个数据库提交失效通知（轻量化小纸条），不要用它来驱动特定的上层业务逻辑（例如"收到 data.changed 就认为对话生成完毕"是极其错误的设计）。上层逻辑应该触发或监听专门的领域事件，如 `run.completed`。
 
 ## 5. Application Runtime 的领域切片
 

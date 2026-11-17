@@ -7,7 +7,7 @@ import { Calculator } from 'lucide-react'
 import type { ResourceTokenSnapshot } from '../model/use-resource-token-snapshot.js'
 import type { aggregateTokenCounts } from '../model/resource-token-counts.js'
 import { useTokenCounts } from '../../../shared/tokenizer/use-token-counts.js'
-import { applyTokenMultiplier } from '@loom-studio/tokenizer/contracts'
+import { applyTokenMultiplier } from '@loom-studio/shared/tokenizer/contracts'
 
 export function ResourceTokenSummary(props: { roots: ContextAssetNode[]; scope: string; t: Translator; incomplete?: boolean }) {
   const multiplier = useTokenDisplaySettings(state => state.multiplier)

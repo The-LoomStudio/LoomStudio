@@ -29,7 +29,7 @@ export function RecentPlayRail(props: Props) {
     {recent.map(({ visit, card }) => {
       const timeline = props.timelines.find(item => item.id === visit.timelineId && item.createdFrom?.cardId === card.id)
       const subtitle = timeline ? props.t('recentCharacters.continue', { title: timeline.title || props.t('sessions.untitledTimeline') }) : props.t('recentCharacters.choose')
-      const avatar = card.media?.avatarAssetId ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision) : undefined
+      const avatar = card.media?.avatarAssetId ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision, card.updatedAt) : undefined
       return <button data-hover-item className={styles.item} key={card.id} type="button" onClick={() => props.onOpenCharacter(visit)}>
         <span className={styles.avatar}>{avatar ? <img src={avatar} alt="" /> : card.name.slice(0, 1)}</span>
         <span className={styles.info}><strong title={card.name}>{card.name}</strong><small title={subtitle}>{subtitle}</small></span>

@@ -58,7 +58,6 @@ async function runChecks() {
     },
     agentSessions: {
       ...baseApi.agentSessions,
-      acknowledgeRunCompletion: async runId => ({ runId, accepted: true }),
       list: async ({ timelineId, standalone } = {}) => ({
         sessions: sessions.filter(item => standalone ? !item.timelineId : item.timelineId === timelineId),
       }),
@@ -88,16 +87,15 @@ async function runChecks() {
         const owner = sessions.find(item => item.id === input.agentSessionId)!
         return {
           events: [{
-            type: 'completed', runId, result: {
-              runId, provider: { provider: 'test', model: 'test-model', finishReason: 'stop' },
-              projection: { messages: [], editorProjection: { sourceRows: [], promptRows: [] } }, toolExposures: [], toolPromptBuildTrace: { sourceCount: 0, activeCount: 0, requestedOrder: [], effectiveOrder: [], activations: [], orders: [] },
-    promptBuildTrace: { version: 'core-compact-1' as const, status: 'ok' as const, initialFragmentCount: 0, finalFragmentCount: 0, messageFragmentCount: 0, diagnostics: [], executions: [] }, macroInspection: { snapshot: { global: {}, computed: {}, aliases: {} }, entries: [], capturedAt: '' },
+            type: 'completed' as const, runId, result: {
+              runId, buildId: 'build', provider: { provider: 'test', model: 'test-model', finishReason: 'stop' as const },
+              toolExposures: [],
               mutation: { changesetId: 'turn-commit', scope: 'agent-session-transcript' as const },
               agentSession: owner, entries: { user: message(owner, '-u'), assistant: message(owner, '-a', 'assistant') },
               ...(input.narrativeTarget ? { narrative: page(input.narrativeTarget.timelineId) } : {}),
             },
           }],
-          nextCursor: 1, done: true, state: 'completed',
+          nextCursor: 1, done: true, state: 'completed' as const,
         }
       },
     },

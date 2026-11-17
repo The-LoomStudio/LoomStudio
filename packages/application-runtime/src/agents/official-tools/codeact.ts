@@ -25,7 +25,7 @@ export const officialCodeActJsonTool: ToolDefinition = {
       additionalProperties: false,
     },
   },
-  prompt: { guidance: renderCodeActTutorial(), content: { targetAnchorId: '@chat.tools' } },
+  prompt: { guidance: renderCodeActTutorial() },
 }
 
 export const officialCodeActRegistration: ToolRuntimeRegistration = {

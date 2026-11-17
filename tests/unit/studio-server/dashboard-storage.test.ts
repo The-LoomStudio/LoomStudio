@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, it } from 'vitest'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { createStorageSnapshot } from '../../../apps/studio-server/src/statistics/storage-snapshot.js'
 
 it('counts overlapping managed roots once, keeps SQLite sidecars separate and skips linked targets', async () => {

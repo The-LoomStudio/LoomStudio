@@ -6,10 +6,10 @@
 
 | 要定位的职责 | 下一入口 |
 | --- | --- |
-| Connection、FIFO、事务、Schema 初始化与提交通知 | [Data Engine README](../../../packages/data-engine/README.md) |
-| Document / Revision / Changeset 的版本化操作 | [Document Store README](../../../packages/document-store/README.md) |
-| Transcript、正文分支索引、State、Workspace、Prompt Resource 与统计 | [Application Data README](../../../packages/application-data/README.md)；统计的采集与保留口径就近维护在该包内 |
-| Blob 字节、Source Artifact 与 Media Asset 元数据 | [Asset Store README](../../../packages/asset-store/README.md) |
+| Connection、FIFO、事务、Schema 初始化与提交通知 | [Data Engine README](../../../packages/kernel/src/data-engine/README.md) |
+| Document / Revision / Changeset 的版本化操作 | [Document Store README](../../../packages/kernel/src/document-store/README.md) |
+| Transcript、正文分支索引、State、Workspace、Prompt Resource 与统计 | [Application Data README](../../../packages/application-runtime/src/data/README.md)；统计的采集与保留口径就近维护在该包内 |
+| Blob 字节、Source Artifact 与 Media Asset 元数据 | [Asset Store README](../../../packages/kernel/src/asset-store/README.md) |
 
 本页维护跨 Store 的事务与数据边界，表结构和具体 Store 操作从所属包继续定位。观测存储与模型请求链由 [Application Runtime](../../../packages/application-runtime/README.md)拥有，不按 SQLite 是否存在判断领域归属。
 
@@ -41,11 +41,12 @@ Prompt Resource 使用当前 schema namespace `application.prompt-resource@9`。
 
 ## 当前 SQLite Data Engine 基线
 
-Studio Server 当前创建一个 `@loom-studio/data-engine` SQLite Engine，并把同一 Engine 注入 Document Store。Engine 负责：
+Studio Server 当前创建一个 `@loom-studio/kernel`（`data-engine`）SQLite Engine，并把同一 Engine 注入 Document Store。Engine 负责：
 
-- 单 SQLite connection 的生命周期；
+- 单 SQLite connection 的生命周期（启动前由 `<dataRoot>/loom.lock` 目录独占锁保护）；
 - 公开读写的 FIFO 串行化；
 - `BEGIN IMMEDIATE` transaction 与失败回滚；
+- 在线一致性热快照备份 `SqliteDataEngine.backup`（基于 `VACUUM INTO`，排入 FIFO 队列确保事务一致性）；
 - namespaced schema 初始化；
 - 一次 transaction 对应一个 Changeset / Data Commit Fact；
 - commit 成功后的进程内通知。
@@ -53,9 +54,10 @@ Studio Server 当前创建一个 `@loom-studio/data-engine` SQLite Engine，并�
 当前 namespace 版本记录在 `schema_migrations(namespace, version)`，不再使用单一 `PRAGMA user_version`。当前已注册：
 
 - `platform.data-engine@1`：`schema_migrations` 与通用 `changesets` Commit Journal；
-- `platform.documents@2`：`documents`、`document_revisions` 及其索引与外键约束。
+- `platform.documents@2`：`documents`、`document_revisions` 及其索引与外键约束；
 - `platform.blob-store@1`：`stored_blobs` 与 SHA-256 唯一索引；
-- `platform.asset-store@1`：`source_artifacts`、`media_assets` 及 Blob / owner 索引。
+- `platform.asset-store@1`：`source_artifacts`、`media_assets` 及 Blob / owner 索引；
+- `platform.extension-state@1`：`extension_installations`、`extension_official_setup` 与 `extension_dev_links`。
 
 Store 通过 `initializeSchema({ namespace, version, initialize })` 声明当前 schema。空 namespace 在事务中直接建立当前最终 DDL 并记录版本；版本相同时继续打开；任意已有非零版本不匹配都会拒绝打开，不做连续版本升级、降级或兼容读取。初始化失败时 DDL 与版本记录一起回滚。Engine 使用 WAL 与 foreign key，不依赖 ORM、通用 Repository 或外部 migration framework。
 
@@ -98,8 +100,8 @@ Document Store 不再自行打开第二条 SQLite connection，也不再写第�
 平台已经定义领域无关的 `DataCommitFact` 与 `DataCommitSource`。当前 Engine 在 SQLite commit 成功后生成 Commit Fact，其中包含：
 
 - 通用 `changesetId / createdAt / committedAt / actor / correlation`；
-- 不含正文的 `store / kind / entityId / entityType / version` operations；
-- 兼容 Document API 使用的 Changeset 与 Document summary。
+- 不含正文的 `store / kind / entityId / entityType / version` operations，以及写入源头前置附带的 `DataCommitOperationScope` 归属标签（`cardId / timelineId / installationId`）；
+- 当单次事务操作数超过批量阈值时，自动折叠为按 `store + scope` 聚合的 `overflow: true` 范围失效提示，以单帧 `data.changed` 投递，不再进行 64 KiB 分片或投影 `docs.changed`。
 
 Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit Source。测试或其他宿主组合如果使用非 Engine Document Store，可直接注入 Store；其 `subscribeCommits` 已满足同一订阅合同，不需要转发工厂。
 
@@ -116,7 +118,7 @@ Application Store 与 Document Store 共用 Engine，但各自拥有领域表。
 | Prompt Resource / `application.prompt-resource` | 9 | Resource Header / Node、修订、Lore Mount 与 Preset Tool Mount |
 | Statistics / `application.statistics` | 1 | `statistics_metadata`、`usage_requests`、`play_interactions`：Dashboard 模型用量与已接受交互统计 |
 
-精确 namespace 与当前 schema 版本以 [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Workspace Store](../../../packages/application-data/src/workspace/store.ts)、[Agent Store](../../../packages/application-data/src/agent/store.ts)、[State Store](../../../packages/application-data/src/state/store.ts)、[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/store.ts)和 [Statistics Store](../../../packages/application-data/src/statistics/store.ts)的声明为准。
+精确 namespace 与当前 schema 版本以 [Narrative Store](../../../packages/application-runtime/src/data/narrative/store.ts)、[Workspace Store](../../../packages/application-runtime/src/data/workspace/store.ts)、[Agent Store](../../../packages/application-runtime/src/data/agent/store.ts)、[State Store](../../../packages/application-runtime/src/data/state/store.ts)、[Prompt Resource Store](../../../packages/application-runtime/src/data/prompt-resource/store.ts)和 [Statistics Store](../../../packages/application-runtime/src/data/statistics/store.ts)的声明为准。
 
 Narrative v9 将正文权威放在 `agent_transcript_entries`，`narrative_nodes.entry_id` 引用正文 Entry；`narrative_node_projection` 将其投影为 Node body 读取形状。Branch 与恢复点分别保存 `head_entry_id`。Agent v9 增加 Session `kind`、可空预设绑定、Narrative mode，以及 Entry 的 round / candidate 引用；Timeline 主 Session 与普通 Agent Session 的行为由 Runtime 约束。Store 不提供从其他 namespace 版本升级到这些 schema 的路径。
 

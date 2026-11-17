@@ -1,6 +1,6 @@
 import { promptPackageAttachmentsDigest, promptPackageNodeIds } from './prompt-package-updates.js'
 import { loomScriptMediaType } from '@loom-studio/shared/loom-scripts'
-import type { PromptResourceMutation, PromptResourceMutationResult } from '@loom-studio/application-data'
+import type { PromptResourceMutation, PromptResourceMutationResult } from '../data/index.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, writeDocument } from '../foundation/document-store.js'
@@ -111,7 +111,7 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
               defaultEnabled: false,
               ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
               ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
-              ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+              ...(definition.input.kind !== 'structured' && definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
               origin: { kind: 'manual' },
             })
           }
@@ -576,7 +576,7 @@ async function importPromptResourceContent(
           presetResourceId: resource.id, toolId: definition.id, orderIndex, defaultEnabled: false,
           ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
           ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
-          ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+          ...(definition.input.kind !== 'structured' && definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
           origin: { kind: 'manual' },
         })
       }

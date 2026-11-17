@@ -228,7 +228,7 @@
               {
                 "group": [
                   "@loom-studio/kernel",
-                  "@loom-studio/extension-host",
+                  "@loom-studio/kernel/extension-host",
                   "@loom-studio/transport",
                   "@loom-studio/client-bridge"
                 ],
@@ -251,7 +251,7 @@
               {
                 "group": [
                   "@loom-studio/kernel",
-                  "@loom-studio/extension-host"
+                  "@loom-studio/kernel/*"
                 ],
                 "message": "Architecture Guardrail: Extension SDK cannot depend on Kernel or Extension Host."
               }
@@ -272,7 +272,7 @@
               {
                 "group": [
                   "@loom-studio/kernel",
-                  "@loom-studio/document-store/src/*"
+                  "@loom-studio/kernel/*"
                 ],
                 "message": "Architecture Guardrail: Extensions cannot depend on Kernel or internal implementation details of Document Store."
               }

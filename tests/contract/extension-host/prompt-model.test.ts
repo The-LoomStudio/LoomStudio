@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createExtensionFixture, createExtensionHostHarness } from './helpers.js'
 import { createPromptProcessorRegistry } from '@loom-studio/application-runtime'
-import type { ExtensionHostOptions } from '@loom-studio/extension-host'
+import type { ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
 
 describe('extension prompt and model entrypoints', () => {
   it('holds one Timeline lease through prepare/render and rejects late results after pause', async () => {

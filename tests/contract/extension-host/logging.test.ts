@@ -1,8 +1,8 @@
 import { createMemoryLogSink, createRootLogger, queryExtensionLogs, type ExtensionLogPage } from '@loom-studio/logging'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
-import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createExtensionHost, type ExtensionHostOptions } from '@loom-studio/extension-host'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
+import { createExtensionHost, type ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { createExtensionFixture, createExtensionHostHarness, manifest } from './helpers.js'
 

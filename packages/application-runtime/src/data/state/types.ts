@@ -1,0 +1,94 @@
+import type { DataTransactionInput } from '@loom-studio/kernel/data-engine'
+import type {
+  DataCommitFact,
+  SqliteDataTransaction,
+} from '@loom-studio/kernel/data-engine'
+import type { JsonObject } from '@loom-studio/shared'
+
+export type StateScopeKind = 'global' | 'timeline'
+
+export type StateScope = {
+  id: string
+  kind: StateScopeKind
+  ownerId: string
+  headRevisionId?: string
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string
+}
+
+export type StateRevision = {
+  id: string
+  scopeId: string
+  parentRevisionId?: string
+  changesetId: string
+  snapshot: JsonObject
+  operations: JsonObject[]
+  idempotencyKey?: string
+  createdAt: string
+}
+
+export type StateSnapshot = {
+  scope: StateScope
+  revision: StateRevision
+}
+
+export type StateWriteContext = DataTransactionInput
+
+export type CreateStateScopeInput = {
+  id?: string
+  kind: StateScopeKind
+  ownerId: string
+}
+
+export type CreateStateRevisionInput = {
+  id?: string
+  scopeId: string
+  parentRevisionId?: string
+  snapshot: JsonObject
+  operations: JsonObject[]
+  idempotencyKey?: string
+}
+
+export type SetGlobalStateHeadInput = {
+  scopeId: string
+  expectedRevisionId: string | null
+  revisionId: string
+}
+
+export type TombstoneStateScopeInput = {
+  scopeId: string
+}
+
+export type CreateStateRevisionResult = {
+  revision: StateRevision
+  replayed: boolean
+}
+
+export type StateTransaction = {
+  getGlobalSnapshot(ownerId?: string): StateSnapshot | null
+  createScope(input: CreateStateScopeInput): StateScope
+  createRevision(input: CreateStateRevisionInput): CreateStateRevisionResult
+  setGlobalHead(input: SetGlobalStateHeadInput): StateScope
+  tombstoneScope(input: TombstoneStateScopeInput): StateScope
+}
+
+export type StateStore = {
+  getScope(input: {
+    kind: StateScopeKind
+    ownerId: string
+    includeDeleted?: boolean
+  }): Promise<StateScope | null>
+  getScopeById(id: string, options?: { includeDeleted?: boolean }): Promise<StateScope | null>
+  getScopeForRevision(id: string, options?: { includeDeleted?: boolean }): Promise<StateScope | null>
+  getRevision(id: string): Promise<StateRevision | null>
+  getRevisionByChangesetId(changesetId: string): Promise<StateRevision | null>
+  listRevisions(scopeId: string): Promise<StateRevision[]>
+  getRevisionByIdempotencyKey(scopeId: string, idempotencyKey: string): Promise<StateRevision | null>
+  getGlobalSnapshot(ownerId?: string): Promise<StateSnapshot | null>
+  transaction(tx: SqliteDataTransaction): StateTransaction
+  createScopeWithInitialRevision(input: StateWriteContext & {
+    scope: CreateStateScopeInput
+    revision: Omit<CreateStateRevisionInput, 'scopeId' | 'parentRevisionId'>
+  }): Promise<{ snapshot: StateSnapshot; commit: DataCommitFact }>
+}

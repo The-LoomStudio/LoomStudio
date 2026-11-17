@@ -1,10 +1,10 @@
 import { branchTranscriptEntries, pendingInterjections, withInterjectionLock } from './interjections.js'
 import { projectTimelinePositions } from './timeline-position.js'
 import { attachmentMessage, mountMessageAttachments } from './message-attachments.js'
-import { recordUserInteraction } from '@loom-studio/application-data'
+import { recordUserInteraction } from '../data/index.js'
 import { cloneToolSchema } from './tool-schema.js'
 import { createLoomContentScannerState, pushLoomContentChunk } from './content-transport.js'
-import type { SqliteDataTransaction } from '@loom-studio/data-engine'
+import type { SqliteDataTransaction } from '@loom-studio/kernel/data-engine'
 import { measureObservationSize } from '../observability/store.js'
 import { observationRequest } from '../observability/gateway.js'
 import type { ObservationRequest } from '../observability/types.js'
@@ -16,8 +16,8 @@ import type {
   AgentTranscriptEntry,
   AgentTranscriptEntryData,
   AgentSession,
-} from '@loom-studio/application-data'
-import type { PresetToolMount } from '@loom-studio/application-data'
+} from '../data/index.js'
+import type { PresetToolMount } from '../data/index.js'
 import { readLogFailure } from '@loom-studio/logging'
 import type { ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'

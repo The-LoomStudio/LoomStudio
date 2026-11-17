@@ -644,7 +644,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
                     const isExpanded = expandedTimelines.has(timeline.id)
                     const card = timeline.createdFrom?.cardId ? cardMap.get(timeline.createdFrom.cardId) : undefined
                     const avatarUrl = card?.media?.avatarAssetId
-                      ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision)
+                      ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision, card.updatedAt)
                       : undefined
 
                     return (
@@ -1206,7 +1206,7 @@ function TimelineDetail(props: {
   const archiveInputRef = useRef<HTMLInputElement>(null)
   const chatInputRef = useRef<HTMLInputElement>(null)
   const avatarUrl = props.card?.media?.avatarAssetId
-    ? cardMediaUrl(props.card.id, 'avatar', props.card.media.avatarAssetId, mediaRevision)
+    ? cardMediaUrl(props.card.id, 'avatar', props.card.media.avatarAssetId, mediaRevision, props.card.updatedAt)
     : undefined
 
   const isActive = props.timeline.id === props.activeTimeline?.id

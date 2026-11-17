@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildExtensionAuthoring } from '../../../scripts/pack/extension-authoring.js'
 import { loadResourceAuthoring, projectResourceAuthoring, writeResourceAuthoring } from '../../../apps/studio-server/src/codecs/resource-authoring.js'
-import { installExtensionPackageFromDirectory } from '../../../apps/studio-server/src/extensions/extension-package-installer.js'
+import { installExtensionPackageFromDirectory } from '@loom-studio/kernel/extension-manager'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })

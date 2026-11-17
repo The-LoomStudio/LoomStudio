@@ -5,16 +5,18 @@ import { observationOrigin } from '../observability/origin.js'
 import type { ObservationBuild } from '../observability/types.js'
 import { createVariableRenderContext } from '../prompt/variables.js'
 import { parseAgentApprovalPolicy } from '../agents/approval-policy.js'
-import type { DocumentStore } from '@loom-studio/document-store'
-import { countText } from '@loom-studio/tokenizer'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
+import { countText } from '@loom-studio/shared/tokenizer'
 import { estimateRequestTokens } from '@loom-studio/ai-gateway'
 import { readLogFailure } from '@loom-studio/logging'
-import type {
-  PromptResourceMutation,
-  AgentSession,
-  NarrativeNode,
-  NarrativePage,
-} from '@loom-studio/application-data'
+import {
+  PromptResourceStoreError,
+  type PromptResourceHeader,
+  type PromptResourceMutation,
+  type AgentSession,
+  type NarrativeNode,
+  type NarrativePage,
+} from '../data/index.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { readDocument, writeDocument } from '../foundation/document-store.js'
@@ -50,8 +52,10 @@ import { createEmptyPromptResourceContent, createPromptRuntimeMethods } from './
 import { getApplicationStateSnapshot } from '../state/state.js'
 import type {
   AgentPresetResult,
+  AgentPresetSummary,
   CreateAgentPresetInput,
   UpdateAgentPresetInput,
+  ListAgentPresetSummariesResult,
   AgentToolContent,
   AgentTranscriptPage,
   AppendAgentTranscriptEntriesInput,
@@ -347,7 +351,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
             defaultEnabled: false,
             ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
             ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
-            ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+            ...(definition.input.kind !== 'structured' && definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
           })
         }
         return fromStoredResource(resource)
@@ -362,6 +366,24 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     listAgentPresets: async (input?: { limit?: number; cursor?: string }) => {
       const page = await ctx.promptResources.listResources({ ...input, resourceKind: 'preset' })
       return { agentPresets: page.resources.map(fromStoredResource), nextCursor: page.nextCursor }
+    },
+
+    listAgentPresetSummaries: async (input?: { limit?: number; cursor?: string }): Promise<ListAgentPresetSummariesResult> => {
+      const page = await ctx.promptResources.listResourceHeaders({ ...input, resourceKind: 'preset' })
+      if (page.resources.length === 0) {
+        return { agentPresets: [], nextCursor: page.nextCursor }
+      }
+      const metadataById = await ctx.dataEngine.read(database => {
+        const placeholders = page.resources.map(() => '?').join(', ')
+        const rows = database.prepare(
+          `SELECT id, metadata_json FROM prompt_resources WHERE id IN (${placeholders})`,
+        ).all(...page.resources.map(header => header.id)) as Array<{ id: string; metadata_json: string }>
+        return new Map(rows.map(row => [row.id, parsePresetHeaderMetadata(row.metadata_json)]))
+      })
+      return {
+        agentPresets: page.resources.map(header => toAgentPresetSummary(header, metadataById.get(header.id) ?? {})),
+        nextCursor: page.nextCursor,
+      }
     },
 
     updateAgentPreset: async (input: UpdateAgentPresetInput, requestContext?: RuntimeRequestContext): Promise<AgentPresetResult> => {
@@ -814,6 +836,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           ownerController.signal.throwIfAborted()
           return {
             runId,
+            buildId: prepared.buildId,
             agentSession,
             summaryStatus: summaries.status(input.agentSessionId),
             entries: { user: loop.userEntry, assistant: loop.assistantEntry },
@@ -824,12 +847,8 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
               ...(loop.providerResult.usage ? { usage: loop.providerResult.usage } : {}),
               ...(loop.providerResult.providerCallId ? { providerCallId: loop.providerResult.providerCallId } : {}),
             },
-            projection: prompt.projection,
-            promptBuildTrace: prompt.promptBuildTrace,
             toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
-            toolPromptBuildTrace: loop.toolPromptBuildTrace,
             mutation: { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
-            macroInspection: prepared.macroInspection,
           }
         } catch (error) {
           const failure = readLogFailure(error)
@@ -1072,12 +1091,21 @@ async function prepareAgentTurn(
         if (selected?.selectedSourceId) variable.source = [variable.source, selected.selectedSourceId, selected.selectedOptionId].filter(Boolean).join(' · ')
       }
     })
+    const { observation: _projectionObservation, ...persistedProjection } = prepared.prompt.projection
+    const { observation: _traceObservation, ...persistedPromptBuildTrace } = prepared.prompt.promptBuildTrace
     ctx.observations.capture(() => ctx.observations.patch(buildId, {
       availability: observation.diagnostics?.some(item => item && typeof item === 'object' && 'code' in item && String(item.code).startsWith('observation.')) ? 'partial' : 'recorded',
       agentPresetId: prepared.preset.id, title: prepared.preset.rootNode.label || 'Prompt Build', status: 'completed',
       timelineId: prepared.narrativePage?.timeline.id ?? prepared.session.timelineId,
       branchId: prepared.narrativePage?.branch.id, durationMs: readDurationMs(startedAt),
-      build: { ...observation, messages: prepared.agentStepMessages },
+      build: {
+        ...observation,
+        messages: prepared.agentStepMessages,
+        projection: persistedProjection,
+        promptBuildTrace: persistedPromptBuildTrace,
+        toolPromptBuildTrace: prepared.compiledToolSet.trace,
+        macroInspection: prepared.macroInspection,
+      },
     }))
     return prepared
   } catch (error) {
@@ -1517,6 +1545,7 @@ async function prepareAgentTurnContent(
     compiledToolSet,
     agentStepMessages: prompt.messages,
     agentPage,
+    buildId,
     runId,
     session,
   }
@@ -1551,4 +1580,63 @@ function requireSessionPreset(session: AgentSession): string {
 async function activeTimelineBranch(ctx: AgentsRuntimeContext, sessionId: string): Promise<string | undefined> {
   const session = await requireAgents(ctx).getSession(sessionId)
   return session?.kind === 'timeline' ? (await ctx.narratives?.getTimeline(sessionId))?.activeBranchId : undefined
+}
+
+type PresetHeaderMetadata = {
+  release?: NonNullable<PromptResourceContent['metadata']>['release']
+  icon?: NonNullable<PromptResourceContent['metadata']>['icon']
+  historyPolicy?: PromptResourceContent['historyPolicy']
+  model?: PromptResourceContent['model']
+  delivery?: PromptResourceContent['delivery']
+  approvalPolicy?: PromptResourceContent['approvalPolicy']
+  origin?: PromptResourceContent['origin']
+  sourceArtifactRef?: PromptResourceContent['sourceArtifactRef']
+  useCardLore?: boolean
+  useCardText?: boolean
+  useGlobalLore?: boolean
+  useGlobalText?: boolean
+  textUses?: PromptResourceContent['textUses']
+}
+
+function parsePresetHeaderMetadata(raw: string): PresetHeaderMetadata {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new PromptResourceStoreError('prompt_resource.json_invalid', 'Invalid Prompt resource metadata JSON')
+  }
+  if (!isRecord(parsed)) {
+    throw new PromptResourceStoreError('prompt_resource.json_invalid', 'Expected Prompt resource metadata JSON object')
+  }
+  return parsed as PresetHeaderMetadata
+}
+
+function toAgentPresetSummary(header: PromptResourceHeader, metadata: PresetHeaderMetadata): AgentPresetSummary {
+  return {
+    id: header.id,
+    version: header.version,
+    resourceKind: header.resourceKind,
+    rootNodeId: header.rootNodeId,
+    label: header.label,
+    ...((metadata.icon || metadata.release) ? {
+      metadata: {
+        ...(metadata.icon ? { icon: structuredClone(metadata.icon) } : {}),
+        ...(metadata.release ? { release: structuredClone(metadata.release) } : {}),
+      },
+    } : {}),
+    historyPolicy: metadata.historyPolicy ?? 'persistent',
+    ...(metadata.model !== undefined ? { model: metadata.model } : {}),
+    ...(metadata.delivery !== undefined ? { delivery: metadata.delivery } : {}),
+    ...(metadata.approvalPolicy !== undefined ? { approvalPolicy: metadata.approvalPolicy } : {}),
+    ...(metadata.useCardLore !== undefined ? { useCardLore: metadata.useCardLore } : {}),
+    ...(metadata.useCardText !== undefined ? { useCardText: metadata.useCardText } : {}),
+    ...(metadata.useGlobalLore !== undefined ? { useGlobalLore: metadata.useGlobalLore } : {}),
+    ...(metadata.useGlobalText !== undefined ? { useGlobalText: metadata.useGlobalText } : {}),
+    ...(metadata.textUses !== undefined ? { textUses: metadata.textUses } : {}),
+    ...(metadata.origin ? { origin: metadata.origin } : {}),
+    ...(metadata.sourceArtifactRef ? { sourceArtifactRef: metadata.sourceArtifactRef } : {}),
+    createdAt: header.createdAt,
+    updatedAt: header.updatedAt,
+    ...(header.tombstoned ? { tombstoned: true } : {}),
+  }
 }

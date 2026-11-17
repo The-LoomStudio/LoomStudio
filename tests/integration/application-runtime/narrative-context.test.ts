@@ -1,9 +1,9 @@
-import { createBlobStore } from '@loom-studio/asset-store'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import {
   createAgentToolRegistry,
   createApplicationRuntime,
@@ -11,8 +11,8 @@ import {
   type NarrativeContextProjection,
   type ToolDefinition,
 } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createId, nowIso, type ChatMessage } from '@loom-studio/shared'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { callApplicationRpc as handleAgentsRpc } from '../../support/trpc-caller.js'

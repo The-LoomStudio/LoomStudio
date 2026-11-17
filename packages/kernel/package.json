@@ -1,1 +1,32 @@
-{"name":"@loom-studio/kernel","version":"0.0.0","private":true,"type":"module","exports":{".":"./dist/index.js"},"types":"./dist/index.d.ts","scripts":{"build":"tsc -b","test":"vitest run --root ../.. tests/contract/kernel","lint":"oxlint ."},"dependencies":{"@loom-studio/data-engine":"workspace:*","@loom-studio/diagnostics":"workspace:*","@loom-studio/document-store":"workspace:*","@loom-studio/extension-host":"workspace:*","@loom-studio/extension-sdk":"workspace:*","@loom-studio/shared":"workspace:*"}}
+{
+  "name": "@loom-studio/kernel",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./data-engine": "./dist/data-engine/index.js",
+    "./document-store": "./dist/document-store/index.js",
+    "./asset-store": "./dist/asset-store/index.js",
+    "./secret-store": "./dist/secret-store/index.js",
+    "./diagnostics": "./dist/diagnostics/index.js",
+    "./extension-host": "./dist/extension-host/index.js",
+    "./platform": "./dist/platform/index.js",
+    "./extension-manager": "./dist/extension-manager/index.js",
+    "./script-runtime": "./dist/script-runtime/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --root ../.. tests/contract/kernel",
+    "lint": "oxlint ."
+  },
+  "dependencies": {
+    "@loom-studio/extension-sdk": "workspace:*",
+    "@loom-studio/logging": "workspace:*",
+    "@loom-studio/shared": "workspace:*",
+    "@napi-rs/keyring": "2.1.0",
+    "fflate": "0.8.3",
+    "semver": "7.8.5"
+  }
+}

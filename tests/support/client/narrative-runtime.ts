@@ -53,10 +53,9 @@ export async function fixture() {
   }
   const narrative: Awaited<ReturnType<StudioApi['narratives']['getPage']>> = { timeline, branch, nodes: [] }
   const result = {
-    narrative, agentSession: session, runId: 'run',
+    narrative, agentSession: session, runId: 'run', buildId: 'build',
     provider: { provider: 'test', model: 'test-model', finishReason: 'stop' },
-    projection: { messages: [], editorProjection: { sourceRows: [], promptRows: [] } }, toolExposures: [], toolPromptBuildTrace: { sourceCount: 0, activeCount: 0, requestedOrder: [], effectiveOrder: [], activations: [], orders: [] },
-    promptBuildTrace: { version: 'core-compact-1' as const, status: 'ok' as const, initialFragmentCount: 0, finalFragmentCount: 0, messageFragmentCount: 0, diagnostics: [], executions: [] }, macroInspection: { snapshot: { global: {}, computed: {}, aliases: {} }, entries: [], capturedAt: '' },
+    toolExposures: [],
     mutation: { changesetId: 'turn-commit', scope: 'agent-session-transcript' as const },
     entries: {
       user: {
@@ -107,7 +106,6 @@ export async function fixture() {
     ? rootGetTranscript(request) : ({ session, entries: [result.entries.user, result.entries.assistant] }))
   const getPage = vi.fn<StudioApi['narratives']['getPage']>(async () => narrative)
   const resumeRun = vi.fn(async () => ({ runId: 'continued', accepted: true }))
-  const acknowledgeRunCompletion = vi.fn(async (runId: string) => ({ runId, accepted: true }))
   const reportFailure = vi.fn<(error: unknown) => void>()
   const input: Parameters<typeof useNarrativeRuntime>[0] = {
     api: {
@@ -117,7 +115,7 @@ export async function fixture() {
         list: vi.fn<StudioApi['narratives']['list']>(async () => ({ timelines: [] })),
       },
       agentSessions: {
-        list: vi.fn(async () => ({ sessions: [] })), create: createSession, createRun, submitInterjection, subscribeRun, getTranscript, resumeRun, acknowledgeRunCompletion,
+        list: vi.fn(async () => ({ sessions: [] })), create: createSession, createRun, submitInterjection, subscribeRun, getTranscript, resumeRun,
         update: vi.fn(async patch => { Object.assign(rootSession, patch); return { session: rootSession, mutation: { changesetId: 'configure-root' } } }),
         runState: vi.fn(async () => ({ runId: 'run', state: 'suspended' })),
       },
@@ -152,7 +150,7 @@ export async function fixture() {
   const loadRoot = async () => { render(); await act(async () => {}); return render() }
   const event = { preventDefault: vi.fn() } as unknown as FormEvent
   await loadRoot()
-  return { render, loadRoot, unmount, rootSession, rootEntries, rootGetTranscript, event, input, result, rootResult, appendInput, createTimeline, createSession, createRun, submitInterjection, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
+  return { render, loadRoot, unmount, rootSession, rootEntries, rootGetTranscript, event, input, result, rootResult, appendInput, createTimeline, createSession, createRun, submitInterjection, subscribeRun, getTranscript, getPage, resumeRun, reportFailure }
 }
 
 export async function primaryFixture() {

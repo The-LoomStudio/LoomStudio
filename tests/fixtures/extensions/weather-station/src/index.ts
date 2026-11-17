@@ -60,10 +60,13 @@ export const activate = defineServerExtension({
       parse: parseWeatherEvent,
     })
 
-    ctx.events.subscribe(['docs.changed'], event => {
+    ctx.events.subscribe(['data.changed'], event => {
       const payload = asRecord(event.payload)
-      const documents = Array.isArray(payload.documents) ? payload.documents : []
-      if (documents.some(item => asRecord(item).id === documentId)) documentChanges += 1
+      const operations = Array.isArray(payload.operations) ? payload.operations : []
+      if (operations.some(item => {
+        const op = asRecord(item)
+        return op.store === 'documents' && op.entityId === documentId
+      })) documentChanges += 1
     })
 
     ctx.events.subscribe(['example.weatherStation.updated'], () => {

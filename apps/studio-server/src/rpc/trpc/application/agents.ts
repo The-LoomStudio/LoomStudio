@@ -7,7 +7,6 @@ import type {
 } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import { listPresetToolMountsInputSchema, replacePresetToolMountsInputSchema } from '@loom-studio/shared/tool-mounts'
-import { getAgentRunService } from '../../../agents/agent-run-service.js'
 import {
   isRecord,
   readBoolean,
@@ -39,6 +38,11 @@ export const agentsProcedures = {
       cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit'),
     }
   })).query(({ ctx, input }) => ctx.runtime.listAgentPresets(input)),
+  'listAgentPresetSummaries': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['listAgentPresetSummaries']>[0] => {
+    return {
+      cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit'),
+    }
+  })).query(({ ctx, input }) => ctx.runtime.listAgentPresetSummaries(input)),
   'updateAgentPreset': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['updateAgentPreset']>[0] => {
     return {
       agentPresetId: readString(params, 'agentPresetId'),
@@ -130,13 +134,13 @@ export const agentsProcedures = {
   'invokeAgentTurn': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['invokeAgentTurn']>[0] => {
     return readAgentTurnInput(params)
   })).mutation(({ ctx, input }) => ctx.runtime.invokeAgentTurn(input, ctx.request)),
-  'agent.run.list': procedure.input(jsonInput((params: JsonValue | undefined): { timelineId?: string } => ({ timelineId: readOptionalString(params, 'timelineId') }))).query(({ ctx, input }) => getAgentRunService(ctx.runtime).list(input)),
+  'agent.run.list': procedure.input(jsonInput((params: JsonValue | undefined): { timelineId?: string } => ({ timelineId: readOptionalString(params, 'timelineId') }))).query(({ ctx, input }) => ctx.runtime.runs.list(input)),
   'reviseAgentInput': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['reviseAgentInput']>[0] => ({
     agentSessionId: readString(params, 'agentSessionId'), entryId: readString(params, 'entryId'),
     expectedContent: readString(params, 'expectedContent'), content: readString(params, 'content'),
     expectedAttachments: readChatAttachments(isRecord(params) ? params.expectedAttachments : undefined),
     attachments: readChatAttachments(isRecord(params) ? params.attachments : undefined),
-  }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).reviseInput(input, ctx.request)),
+  }))).mutation(({ ctx, input }) => ctx.runtime.runs.reviseInput(input, ctx.request)),
   'submitAgentInterjection': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['submitAgentInterjection']>[0] => {
     const mode = readString(params, 'mode')
     if (mode !== 'discussion' && mode !== 'narrative') throw new Error('Invalid interjection mode')
@@ -147,17 +151,16 @@ export const agentsProcedures = {
       macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
       activationFacts: readOptionalObject(params, 'activationFacts'),
       ...(target ? { narrativeTarget: { timelineId: readString(target, 'timelineId'), branchId: readString(target, 'branchId') } } : {}) }
-  })).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).interject(input, ctx.request)),
-  'agent.run.create': procedure.input(jsonInput(readAgentTurnInput)).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).create(input, ctx.request)),
-  'agent.run.subscribe': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; cursor?: number; agentSessionId?: string } => ({ runId: readString(params, 'runId'), cursor: readOptionalNumber(params, 'cursor'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).query(({ ctx, input }) => getAgentRunService(ctx.runtime).subscribe(input.runId, input.cursor, input.agentSessionId)),
-  'agent.run.acknowledge-completion': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).acknowledgeCompletion(input.runId)),
-  'agent.run.cancel': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; reason?: string } => ({ runId: readString(params, 'runId'), reason: readOptionalString(params, 'reason') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).cancel(input.runId, input.reason ?? 'cancelled')),
-  'agent.run.pause': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).cancel(input.runId, 'user-pause')),
-  'agent.run.history-read-approval': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; requestId: string; allow: boolean; reason?: string } => ({ runId: readString(params, 'runId'), requestId: readString(params, 'requestId'), allow: readBoolean(params, 'allow'), reason: readOptionalString(params, 'reason') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).approve(input.runId, input.requestId, 'history-read', input.allow, input.reason)),
-  'agent.run.mutation-approval': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; requestId: string; allow: boolean; reason?: string } => ({ runId: readString(params, 'runId'), requestId: readString(params, 'requestId'), allow: readBoolean(params, 'allow'), reason: readOptionalString(params, 'reason') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).approve(input.runId, input.requestId, 'mutation', input.allow, input.reason)),
-  'agent.run.abandon': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).abandon(input.runId, ctx.request, input.agentSessionId)),
-  'agent.run.resume': procedure.input(jsonInput((params: JsonValue | undefined): { runId?: string; agentSessionId?: string } => ({ runId: readOptionalString(params, 'runId'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).mutation(({ ctx, input }) => getAgentRunService(ctx.runtime).resume(input, ctx.request)),
-  'agent.run.state': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).query(({ ctx, input }) => getAgentRunService(ctx.runtime).state(input.runId, input.agentSessionId)),
+  })).mutation(({ ctx, input }) => ctx.runtime.runs.interject(input, ctx.request)),
+  'agent.run.create': procedure.input(jsonInput(readAgentTurnInput)).mutation(({ ctx, input }) => ctx.runtime.runs.create(input, ctx.request)),
+  'agent.run.subscribe': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; cursor?: number; agentSessionId?: string } => ({ runId: readString(params, 'runId'), cursor: readOptionalNumber(params, 'cursor'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).query(({ ctx, input }) => ctx.runtime.runs.subscribe(input.runId, input.cursor, input.agentSessionId)),
+  'agent.run.cancel': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; reason?: string } => ({ runId: readString(params, 'runId'), reason: readOptionalString(params, 'reason') }))).mutation(({ ctx, input }) => ctx.runtime.runs.cancel(input.runId, input.reason ?? 'cancelled')),
+  'agent.run.pause': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId') }))).mutation(({ ctx, input }) => ctx.runtime.runs.cancel(input.runId, 'user-pause')),
+  'agent.run.history-read-approval': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; requestId: string; allow: boolean; reason?: string } => ({ runId: readString(params, 'runId'), requestId: readString(params, 'requestId'), allow: readBoolean(params, 'allow'), reason: readOptionalString(params, 'reason') }))).mutation(({ ctx, input }) => ctx.runtime.runs.approve(input.runId, input.requestId, 'history-read', input.allow, input.reason)),
+  'agent.run.mutation-approval': procedure.input(jsonInput((params: JsonValue | undefined): { runId: string; requestId: string; allow: boolean; reason?: string } => ({ runId: readString(params, 'runId'), requestId: readString(params, 'requestId'), allow: readBoolean(params, 'allow'), reason: readOptionalString(params, 'reason') }))).mutation(({ ctx, input }) => ctx.runtime.runs.approve(input.runId, input.requestId, 'mutation', input.allow, input.reason)),
+  'agent.run.abandon': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).mutation(({ ctx, input }) => ctx.runtime.runs.abandon(input.runId, ctx.request, input.agentSessionId)),
+  'agent.run.resume': procedure.input(jsonInput((params: JsonValue | undefined): { runId?: string; agentSessionId?: string } => ({ runId: readOptionalString(params, 'runId'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).mutation(({ ctx, input }) => ctx.runtime.runs.resume(input, ctx.request)),
+  'agent.run.state': procedure.input(jsonInput((params: JsonValue | undefined) => ({ runId: readString(params, 'runId'), agentSessionId: readOptionalString(params, 'agentSessionId') }))).query(({ ctx, input }) => ctx.runtime.runs.state(input.runId, input.agentSessionId)),
   'previewAgentTurn': procedure.input(jsonInput((params: JsonValue | undefined): Parameters<ApplicationRuntime['previewAgentTurn']>[0] => {
     return readAgentTurnInput(params)
   })).query(({ ctx, input }) => ctx.runtime.previewAgentTurn(input, ctx.request)),

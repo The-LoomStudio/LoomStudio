@@ -20,7 +20,7 @@
 | 层 | 职责与入口 |
 | --- | --- |
 | Shared | [查询 Schema 与结果身份](../../../packages/shared/src/global-search.ts)，不包含前端 Panel ID |
-| Application Data | [节点检索与目录浏览](../../../packages/application-data/src/prompt-resource/search.ts)、[索引迁移](../../../packages/application-data/src/prompt-resource/schema.ts)，SQL 由领域 Store 持有 |
+| Application Data | [节点检索与目录浏览](../../../packages/application-runtime/src/data/prompt-resource/search.ts)、[索引迁移](../../../packages/application-runtime/src/data/prompt-resource/schema.ts)，SQL 由领域 Store 持有 |
 | Application Runtime | [search-runtime.ts](../../../packages/application-runtime/src/runtime/search-runtime.ts)：资源可用性、范围关系、排序和跨类型分页 |
 | Server | [search.ts](../../../apps/studio-server/src/rpc/trpc/application/search.ts)：typed tRPC 参数校验和转发 |
 | Client feature | [global-search/model](../../../apps/studio-client/src/features/global-search/model/)：查询、Token、缓存和持久状态 |

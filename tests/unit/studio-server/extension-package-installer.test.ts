@@ -8,7 +8,7 @@ import {
   installExtensionPackageFromDirectory,
   installExtensionPackageFromZip,
   uninstallExtensionPackageDirectory,
-} from '../../../apps/studio-server/src/extensions/extension-package-installer.js'
+} from '@loom-studio/kernel/extension-manager'
 
 const temporaryDirectories: string[] = []
 

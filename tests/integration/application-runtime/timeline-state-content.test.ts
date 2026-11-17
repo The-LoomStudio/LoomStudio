@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createApplicationRuntime, createStateContentRegistry, createStateContributionRegistry, createOfficialAgentToolRegistry, applicationDocumentTypes, type ApplicationRuntimeOptions } from '@loom-studio/application-runtime'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { extensionInstallationId } from '@loom-studio/extension-sdk'
 
 const defaultPlayerState = {

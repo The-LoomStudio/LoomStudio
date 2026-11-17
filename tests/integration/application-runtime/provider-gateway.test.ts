@@ -1,14 +1,13 @@
-import { getAgentRunService } from '../../../apps/studio-server/src/agents/agent-run-service.js'
 import { runAgentTurn } from '../../../apps/studio-client/src/features/narrative-runtime/model/agent-run-observer.js'
 import type { AgentTranscriptEntry } from '../../../apps/studio-client/src/entities/agent.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
-import { createAgentStore, createNarrativeStore, createStatisticsStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createStatisticsStore } from '@loom-studio/application-runtime/data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { applicationDocumentTypes, createApplicationRuntime, createDocumentBackedAiGateway, createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
-import { createPromptResourceStore } from '../../../packages/application-data/src/index.js'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createMemorySecretBackend, createSecretStore } from '@loom-studio/kernel/secret-store'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('application runtime Provider Profile integration', () => {
@@ -46,8 +45,8 @@ describe('application runtime Provider Profile integration', () => {
       })
     }) satisfies typeof fetch)
     const f = createRuntimeFixture()
-    const service = getAgentRunService(f.runtime)
-    let runId: string | undefined
+    const service = f.runtime.runs
+    let activeRunId: string | undefined
     let consuming: Promise<unknown> | undefined
     try {
       const { providerProfile } = await f.runtime.createProviderProfile({ providerExtensionId: 'official.openai-compatible',
@@ -57,7 +56,8 @@ describe('application runtime Provider Profile integration', () => {
       await f.runtime.updateAgentPreset({ agentPresetId: preset.id, expectedVersion: preset.version, name: 'Stream',
         delivery: 'stream', model: { providerProfileId: providerProfile.id, modelId: 'stream-model' } })
       const { session } = await f.runtime.createAgentSession({ agentPresetId: preset.id })
-      ;({ runId } = await service.create({ agentSessionId: session.id, input: 'Stream a reply' }))
+      const { runId } = await service.create({ agentSessionId: session.id, input: 'Stream a reply' })
+      activeRunId = runId
       const api = { agentSessions: { subscribeRun: service.subscribe,
         getTranscript: (input: { agentSessionId: string }) => f.runtime.getAgentTranscriptPage(input),
       } } as unknown as StudioApi
@@ -87,7 +87,7 @@ describe('application runtime Provider Profile integration', () => {
       expect(entries.find(item => item.entry.kind === 'message' && item.entry.content === 'The door opens.')?.presentationId).toBe(textKey)
       expect(entries.some(item => item.id.startsWith('streaming-reasoning-'))).toBe(false)
     } finally {
-      if (runId) { service.cancel(runId); service.acknowledgeCompletion(runId) }
+      if (activeRunId) service.cancel(activeRunId)
       await consuming?.catch(() => {})
       f.close()
     }

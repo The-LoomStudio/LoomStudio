@@ -1,15 +1,15 @@
 import {
   createSqliteDataEngine,
   type SqliteDataEngine,
-} from '../../packages/data-engine/src/index.js'
+} from '../../packages/kernel/src/data-engine/index.js'
 import {
   createSqliteDocumentStore,
   type SqliteDocumentStore,
-} from '../../packages/document-store/src/index.js'
+} from '../../packages/kernel/src/document-store/index.js'
 import {
   createPromptResourceStore,
   type PromptResourceStore,
-} from '../../packages/application-data/src/index.js'
+} from '../../packages/application-runtime/src/data/index.js'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

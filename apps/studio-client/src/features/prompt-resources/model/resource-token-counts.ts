@@ -1,5 +1,5 @@
 import type { ContextAssetNode } from '../../../entities/index.js'
-import { applyTokenMultiplier } from '@loom-studio/tokenizer/contracts'
+import { applyTokenMultiplier } from '@loom-studio/shared/tokenizer/contracts'
 
 export function collectTokenEntries(roots: readonly ContextAssetNode[]) {
   const entries: Array<{ id: string; body: string }> = []

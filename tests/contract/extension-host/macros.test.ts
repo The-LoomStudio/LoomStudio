@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ExtensionHostOptions } from '@loom-studio/extension-host'
+import type { ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
 import { createMacroProviderRegistry } from '@loom-studio/application-runtime'
 import { installedExtensionContributionId } from '@loom-studio/extension-sdk'
 import { createExtensionFixture, createExtensionHostHarness } from './helpers.js'

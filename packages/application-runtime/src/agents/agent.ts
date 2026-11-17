@@ -1,4 +1,4 @@
-import type { DocumentStore } from '@loom-studio/document-store'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { readDocument } from '../foundation/document-store.js'
 import type {

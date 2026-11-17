@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 
 describe('resolveLoomStudioLocalPaths', () => {
   it('overrides persistent data without moving caches or logs', () => {

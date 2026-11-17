@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentTransaction, WriteDocumentInput } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentTransaction, WriteDocumentInput } from '@loom-studio/kernel/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { isObject } from './json.js'
 import { collectPages } from './pagination.js'

@@ -1,13 +1,33 @@
+import type { DiagnosticsRegistry } from '@loom-studio/kernel/diagnostics'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
 import { applicationDocumentTypes, type ApplicationRuntime } from '@loom-studio/application-runtime'
-import type { ExtensionHostOptions } from '@loom-studio/extension-host'
-import { createServerScriptRuntime, type ServerScriptRun, type ServerScriptInstanceSummary } from './server-script-runtime.js'
+import type { ExtensionHost, ExtensionHostOptions } from '@loom-studio/kernel/extension-host'
+import { createServerScriptRuntime, type ServerScriptRun, type ServerScriptInstanceSummary } from '@loom-studio/kernel/script-runtime'
 
 export type ScriptContext = NonNullable<Parameters<ApplicationRuntime['resolveLoomScriptRendererMounts']>[0]>
 
+export type ScriptServiceOptions = {
+  runtime: ApplicationRuntime
+  host?: ExtensionHost
+  documents?: Pick<DocumentStore, 'subscribeCommits'>
+  diagnostics?: Pick<DiagnosticsRegistry, 'add'>
+  hostOptions?: ExtensionHostOptions
+}
+
 /** Source and grants always come from the authoritative runtime, never the client request. */
-export function createScriptService(options: { runtime: ApplicationRuntime; hostOptions: ExtensionHostOptions }) {
+export function createScriptService(options: ScriptServiceOptions) {
+  const documents = options.documents ?? options.hostOptions?.documents
+  const diagnostics = options.diagnostics ?? options.hostOptions?.diagnostics
+  if (!documents) throw new Error('Script service requires documents or hostOptions')
+  if (!diagnostics) throw new Error('Script service requires diagnostics or hostOptions')
+  if (!options.host && !options.hostOptions) throw new Error('Script service requires host or hostOptions')
   let context: ScriptContext = {}
-  const runtime = createServerScriptRuntime({ hostOptions: options.hostOptions, prepareSource, configs: options.runtime,
+  const runtime = createServerScriptRuntime({
+    host: options.host,
+    diagnostics,
+    hostOptions: options.hostOptions,
+    prepareSource,
+    configs: options.runtime,
     configScope: () => context.timelineId ? { kind: 'timeline', timelineId: context.timelineId } : context.cardId ? { kind: 'card', cardId: context.cardId } : { kind: 'global' },
   })
   let sequence = 0
@@ -18,7 +38,7 @@ export function createScriptService(options: { runtime: ApplicationRuntime; host
     published = new Map(states.filter(state => state.active).map(state => [state.mountId, state.revision]))
     options.runtime.setLoomScriptExecutionStates(states)
   }
-  const deletionSubscription = options.hostOptions.documents.subscribeCommits(commit => {
+  const deletionSubscription = documents.subscribeCommits(commit => {
     const deleted = commit.operations.filter(operation => operation.store === 'documents' && operation.kind === 'delete'
       && (operation.entityType === applicationDocumentTypes.loomScript || operation.entityType === applicationDocumentTypes.loomScriptMount || operation.entityType === applicationDocumentTypes.extensionInstallation))
     if (closed || !deleted.length) return
@@ -37,7 +57,7 @@ export function createScriptService(options: { runtime: ApplicationRuntime; host
           active: serverInstances.some(instance => instance.mountId === run.mountId && (instance.state === 'active' || instance.state === 'degraded')) })))
       }
     }).catch(error => {
-      options.hostOptions.diagnostics.add({ severity: 'error', code: 'script.owner_cleanup_failed', source: 'script-runtime',
+      diagnostics.add({ severity: 'error', code: 'script.owner_cleanup_failed', source: 'script-runtime',
         message: error instanceof Error ? error.message : String(error), details: { changesetId: commit.changesetId } })
     })
   })

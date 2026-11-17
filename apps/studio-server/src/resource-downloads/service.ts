@@ -5,12 +5,19 @@ import { unzipSync } from 'fflate'
 import { createId } from '@loom-studio/shared'
 import type { Logger } from '@loom-studio/logging'
 import type { ExtensionManifest } from '@loom-studio/extension-sdk'
-import { acquireExtension, parseDownloadSource, satisfiesExtensionVersion, type ExtensionCandidate } from '../extensions/extension-download.js'
-import { exportExtensionPackageZip, installExtensionPackageFromZip } from '../extensions/extension-package-installer.js'
+import {
+  acquireExtension,
+  exportExtensionPackageZip,
+  installExtensionPackageFromZip,
+  parseDownloadSource,
+  satisfiesExtensionVersion,
+  type ExtensionCandidate,
+} from '@loom-studio/kernel/extension-manager'
+import { writeJsonAtomically } from '@loom-studio/kernel/platform'
 import { decodeCardBundleZip } from '../codecs/card-bundle-zip.js'
 import { decodePromptResourceZip } from '../codecs/prompt-resource-zip.js'
+import { loadPromptResourceFiles } from '../codecs/prompt-resource-files.js'
 import { isPng, readCardPngArchive, readPolyglotArchive } from '../codecs/card-png.js'
-import { writeJsonAtomically } from '../platform/atomic-json.js'
 import { createBuiltinSourceAdapters, displayUrl, downloadPublicResource, publicUrl, safeDownloadError, semver, type DownloadTransport } from './sources.js'
 import type { PreparedResourceCandidate, ResourceCandidate, ResourceDownloadArtifact, ResourceDownloadTask, ResourceDependency, ResourceSourceAdapter, ResourceUpdateRecord } from './types.js'
 export type * from './types.js'
@@ -127,7 +134,7 @@ export function createResourceDownloadService(options: {
   }
   async function inspect(bytes: Uint8Array, kind: ResourceCandidate['kind'], root: string) {
     if (kind === 'extension') {
-      const installed = await installExtensionPackageFromZip({ source: bytes, installedDirectory: join(root, 'package'), flat: true })
+      const installed = await installExtensionPackageFromZip({ source: bytes, installedDirectory: join(root, 'package'), flat: true, loadPromptResourceFiles })
       return { directory: installed.directory, manifest: installed.manifest }
     }
     if (kind === 'preset') {
@@ -161,13 +168,15 @@ export function createResourceDownloadService(options: {
       let bytes: Uint8Array
       let directory: string | undefined
       if (prepared.target.kind === 'git') {
-        const acquired = await (options.acquireGit ? options.acquireGit(prepared.target, root, controller.signal) : acquireExtension(prepared.target, root, { signal: controller.signal }))
+        const acquired = await (options.acquireGit
+          ? options.acquireGit(prepared.target, root, controller.signal)
+          : acquireExtension(prepared.target, root, { signal: controller.signal, loadPromptResourceFiles }))
         manifest = acquired.manifest; directory = acquired.directory
         if (acquired.source?.kind === 'git') {
           const ref = acquired.source.ref
           entry.fixed ||= !!ref && (/^[a-f0-9]{40}$/i.test(ref) || ref.startsWith('refs/tags/'))
         }
-        bytes = await exportExtensionPackageZip(directory, manifest)
+        bytes = await exportExtensionPackageZip(directory, manifest, { loadPromptResourceFiles })
         entry.task.revision = acquired.commit
       } else {
         bytes = await download(prepared.target.url, { maxBytes: 256 * 1024 * 1024, timeoutMs: 120_000, signal: controller.signal, onProgress(receivedBytes, totalBytes) { entry.task.receivedBytes = receivedBytes; entry.task.totalBytes = totalBytes; entry.task.updatedAt = stamp() } })
@@ -288,7 +297,7 @@ export function createResourceDownloadService(options: {
       const inspection = await mkdtemp(join(options.directory, id, 'dependency-inspection-'))
       try {
         for (const embedded of artifact.extensionPackages ?? []) {
-          const installed = await installExtensionPackageFromZip({ source: Buffer.from(embedded.archiveBase64, 'base64'), installedDirectory: inspection })
+          const installed = await installExtensionPackageFromZip({ source: Buffer.from(embedded.archiveBase64, 'base64'), installedDirectory: inspection, loadPromptResourceFiles })
           if (installed.manifest.id !== embedded.packageId || installed.manifest.version !== embedded.version) throw new Error('Embedded extension Manifest identity differs from Card declaration')
           dependencies.push({ id: embedded.packageId, version: embedded.version, target: 'card', embedded: true })
           dependencies.push(...(installed.manifest.dependencies ?? []).map(dependency => ({ ...dependency, requestedBy: embedded.packageId })))

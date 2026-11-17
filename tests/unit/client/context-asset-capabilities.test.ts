@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { PromptResource } from '@loom-studio/application-data'
+import type { PromptResource } from '@loom-studio/application-runtime/data'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
 import { isPromptResourceArtifact } from '../../../packages/application-runtime/src/cards/card-bundle-codec.js'
 import { fromStoredResource, toStoredNode } from '../../../packages/application-runtime/src/prompt/prompt-resource-mapper.js'

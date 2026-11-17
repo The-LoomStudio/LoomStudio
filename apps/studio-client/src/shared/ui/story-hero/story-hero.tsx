@@ -7,7 +7,7 @@ import styles from './story-hero.module.scss'
 type StoryHeroProps = {
   label?: ReactNode
   title: string
-  character?: Pick<CardSummary, 'id' | 'name' | 'media'>
+  character?: Pick<CardSummary, 'id' | 'name' | 'media'> & { updatedAt?: string }
   description?: ReactNode
   metadata?: ReactNode
   actions?: ReactNode
@@ -18,7 +18,7 @@ type StoryHeroProps = {
 export function StoryHero({ label, title, character, description, metadata, actions, compact = false }: StoryHeroProps) {
   const revision = useCardMediaRevision()
   const [failedUrl, setFailedUrl] = useState<string>()
-  const url = character && cardMediaUrl(character.id, 'avatar', character.media?.avatarAssetId, revision)
+  const url = character && cardMediaUrl(character.id, 'avatar', character.media?.avatarAssetId, revision, character.updatedAt)
   const image = url && url !== failedUrl ? url : undefined
   return <div className={`${styles.hero} ${compact ? styles.compact : ''} ${!image ? styles.noArt : ''}`}>
     <div className={styles.layout}>

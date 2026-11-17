@@ -2,12 +2,12 @@ import {
   createApplicationRuntime,
   createMacroProviderRegistry,
 } from '@loom-studio/application-runtime'
-import { createAgentStore } from '@loom-studio/application-data'
+import { createAgentStore } from '@loom-studio/application-runtime/data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createNarrativeStore } from '@loom-studio/application-data'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createNarrativeStore } from '@loom-studio/application-runtime/data'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createVariableRenderContext, renderVariableMacros } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
 
@@ -212,8 +212,9 @@ describe('application macro provider integration', () => {
       narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id },
     })
     expect(providerCalls).toBe(3)
-    expect(invoked.macroInspection.entries.find(entry => entry.name === 'dynamic')).toMatchObject({ value: 'dynamic-3', status: 'resolved' })
-    expect(invoked.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ value: 'card-v2', status: 'resolved' })
+    const invokedBuild = await runtime.getObservationBuild({ id: invoked.buildId })
+    expect(invokedBuild?.build?.macroInspection?.entries.find(entry => entry.name === 'dynamic')).toMatchObject({ value: 'dynamic-3', status: 'resolved' })
+    expect(invokedBuild?.build?.macroInspection?.entries.find(entry => entry.name === 'greeting')).toMatchObject({ value: 'card-v2', status: 'resolved' })
     const inspected = await runtime.inspectMacros({ timelineTarget: { timelineId: timeline.timeline.id }, presetId: presetWithBody.resource.id, macroSelections: selection })
     expect(inspected.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ value: 'card-v2', status: 'resolved' })
     await runtime.updateCard({ cardId: card.card.id, macros: {} })

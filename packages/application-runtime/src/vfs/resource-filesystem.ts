@@ -5,7 +5,7 @@ import type {
   PromptResourceNodeDraft,
   PromptResourceStore,
   PromptResourceTreeNode,
-} from '@loom-studio/application-data'
+} from '../data/index.js'
 import { createId, type JsonObject, type JsonValue } from '@loom-studio/shared'
 import { applyPatch, parsePatch } from 'diff'
 import { parse, stringify } from 'yaml'

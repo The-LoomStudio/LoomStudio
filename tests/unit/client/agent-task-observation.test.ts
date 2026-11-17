@@ -19,7 +19,10 @@ describe('Task menu Run observation', () => {
     const f = await primaryFixture()
     f.render().setAgentInput('Unsent agent draft')
     f.render().observeTaskRun('session', 'background-continuation')
-    await vi.waitFor(() => expect(f.acknowledgeRunCompletion).toHaveBeenCalled())
+    await vi.waitFor(() => {
+      expect(f.render().activeAgentRun?.status).toBe('completed')
+      expect(f.getPage).toHaveBeenCalled()
+    })
     expect(f.subscribeRun).toHaveBeenCalledWith('background-continuation', 0, 'session')
     expect(f.createRun).not.toHaveBeenCalled()
     expect(f.appendInput).not.toHaveBeenCalled()

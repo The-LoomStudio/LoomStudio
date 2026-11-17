@@ -411,6 +411,9 @@ export function createStudioPanels(input: {
     'text-transform': () => null,
     inspector: active => active ? (
       <LazyInspectorPanel
+        api={state.api}
+        endpoint={state.endpoint}
+        runId={state.lastRun?.runId}
         agentTranscript={state.agentMessages}
         cardSnapshot={currentCard ?? null}
         promptBuildSteps={state.promptBuildSteps}
@@ -419,6 +422,11 @@ export function createStudioPanels(input: {
         providerPayloadPreview={state.providerPayloadPreview ?? null}
         tokenEstimate={state.tokenEstimate}
         runDetails={state.lastRun ?? null}
+        buildId={state.promptPreview ? undefined : state.lastRun?.buildId}
+        loadBuild={id => state.api.observations.getBuild(id)}
+        resolvePromptBuildSteps={state.resolvePromptBuildSteps}
+        toolPromptBuildTrace={state.promptPreview?.toolPromptBuildTrace ?? null}
+        macroInspection={state.promptPreview?.macroInspection ?? null}
         aiProviders={state.aiProviders}
         aiCapabilityProfiles={state.aiCapabilityProfiles}
         providerAccounts={state.providerAccounts}

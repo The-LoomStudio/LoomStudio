@@ -1,4 +1,4 @@
-import { createBlobStore } from '@loom-studio/asset-store'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import {
@@ -7,9 +7,9 @@ import {
   readPromptResourceInputs,
   type CardBundleArtifact,
 } from '../../../packages/application-runtime/src/index.js'
-import { createSqliteDataEngine } from '../../../packages/data-engine/src/index.js'
-import { createSqliteDocumentStore } from '../../../packages/document-store/src/index.js'
-import { createPromptResourceStore } from '../../../packages/application-data/src/index.js'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it, onTestFinished } from 'vitest'

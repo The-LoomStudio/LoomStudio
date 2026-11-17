@@ -6,14 +6,14 @@ Studio Application 是 Loom Studio 第一方内建的 AIRP 领域层。它定义
 
 ## 源码入口
 
-领域流程、所需 Store / Gateway 注入及局部模块导航从 [Application Runtime README](../../../packages/application-runtime/README.md)进入；领域持久化从 [Application Data README](../../../packages/application-data/README.md)进入。界面分层从 [Client FSD](../../../apps/studio-client/README.md#源码导航与-fsd-架构规范)进入，传输与宿主服务从 [Server README](../../../apps/studio-server/README.md)进入。先确认所有者，再沿各包内的局部说明定位实现；整体关系见[系统总览](../system-overview.md)。
+领域流程、所需 Store / Gateway 注入及局部模块导航从 [Application Runtime README](../../../packages/application-runtime/README.md)进入；领域持久化从 [Application Data README](../../../packages/application-runtime/src/data/README.md)进入。界面分层从 [Client FSD](../../../apps/studio-client/README.md#源码导航与-fsd-架构规范)进入，传输与宿主服务从 [Server README](../../../apps/studio-server/README.md)进入。先确认所有者，再沿各包内的局部说明定位实现；整体关系见[系统总览](../system-overview.md)。
 
 ## 子分类
 
 | 分类                                                   | 职责                                                                                  | 状态与入口                                             |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | 模型观测 | Build / Provider 观察及可选保留；运行日志与 Transcript 分别拥有各自合同 | [Runtime 包导航](../../../packages/application-runtime/README.md#源码导航)、[日志与观测边界](../platform/logging.md) |
-| 统计与 Dashboard 数据 | 累计模型用量、交互计数与当前资源/存储快照的来源 | [Data 包导航](../../../packages/application-data/README.md)、[Server 组合与服务入口](../../../apps/studio-server/README.md) |
+| 统计与 Dashboard 数据 | 累计模型用量、交互计数与当前资源/存储快照的来源 | [Data 包导航](../../../packages/application-runtime/src/data/README.md)、[Server 组合与服务入口](../../../apps/studio-server/README.md) |
 | Timeline 归档与恢复 | Session、分支、State、Workspace 及扩展参与者的归档边界 | [Runtime 包导航](../../../packages/application-runtime/README.md#源码导航)、[归档与恢复合同](agent/runtime-and-session.md#6-narrative-边界) |
 | [用户资料与背景集合](user-profiles.md) | 全局用户配置、头像、背景目录与媒体引用；不属于剧情 State | [Runtime 包导航](../../../packages/application-runtime/README.md#源码导航) |
 | [全局资源搜索](global-resource-search.md) | 导航、定义全文索引、范围关系、空关键词浏览与定位高亮 | 已实现；独立于运行时内容搜索 |
@@ -36,7 +36,7 @@ Extension 安装可分别以全局或 Card 为目标；资源 origin 关联安�
 
 显式资源/包更新提交后，后续资源解析使用当前资源；State、Session Transcript 与 Narrative History 不自动重置或重写。单个 Prompt Resource 导出包含资源树、作者宏配置及可选的包图标引用，不递归携带图标文件、规则、脚本、模型绑定、工具实现或关联 Lore；组合分发使用 Card/Extension Package。Card Bundle 中的扩展归档与扩展 Portable Payload 私有数据分开。Loom Script 声明 `client-sandbox` 运行目标不等于任意代码的 OS 级强沙箱。
 
-源码入口：[Agent Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts)、[资源导入导出](../../../packages/application-runtime/src/runtime/prompt-runtime.ts)、[Extension 安装管理](../../../apps/studio-server/src/extensions/extension-manager.ts)、[Card Bundle](../../../packages/application-runtime/src/cards/card-bundle.ts)。
+源码入口：[Agent Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts)、[资源导入导出](../../../packages/application-runtime/src/runtime/prompt-runtime.ts)、[Extension 安装管理](../../../packages/kernel/src/extension-manager/extension-manager.ts)、[Card Bundle](../../../packages/application-runtime/src/cards/card-bundle.ts)。
 
 ## Application Runtime Context
 

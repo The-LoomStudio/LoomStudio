@@ -5,6 +5,6 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "references": [{ "path": "../shared" }, { "path": "../tokenizer" }],
+  "references": [{ "path": "../shared" }],
   "include": ["src/**/*.ts"]
 }

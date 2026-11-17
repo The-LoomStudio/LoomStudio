@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { assertCardBundleArtifact, isPromptResourceArtifact } from '@loom-studio/application-runtime/artifacts'
 import type { ApplicationRuntime, RuntimeRequestContext, ExtensionInstallationTarget } from '@loom-studio/application-runtime'
-import type { AssetStore } from '@loom-studio/asset-store'
+import type { AssetStore } from '@loom-studio/kernel/asset-store'
 import type { Kernel } from '@loom-studio/kernel'
 
 // Importers yield native Loom data. Foreign file formats stay in their extension.
@@ -31,10 +31,11 @@ export function createExtensionBatchImporter(input: {
       const cards = new Map<string, string>()
       const resources = new Map<string, string>()
       const keys = new Set<string>()
-      const call = (action: 'prepare' | 'cancel', params: { sessionId: string; index?: number }) => input.kernel.callRpc('extensions.callPackageRpc', {
-        packageId: source.packageId, target: source.target,
-        method: `${source.packageId}.migration.${action}`, params,
-      }, context)
+      const call = (action: 'prepare' | 'cancel', params: { sessionId: string; index?: number }) => input.kernel.callRpc(`${source.packageId}.migration.${action}`, params, {
+        ...context,
+        extensionTarget: source.target,
+        expectedExtensionPackageId: source.packageId,
+      })
       let failure: unknown
       let currentKey: string | undefined
       try {

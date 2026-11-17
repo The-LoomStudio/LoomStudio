@@ -1,5 +1,5 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createAgentStore, createNarrativeStore, createNarrativeSwipeStore, createStateStore, type NarrativeSwipeGroup } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createAgentStore, createNarrativeStore, createNarrativeSwipeStore, createStateStore, type NarrativeSwipeGroup } from '@loom-studio/application-runtime/data'
 import { describe, expect, it } from 'vitest'
 
 async function setup() {

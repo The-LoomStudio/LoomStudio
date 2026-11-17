@@ -8,8 +8,43 @@ import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/in
 import type { AgentSession, AgentTranscriptEntry, NarrativeNode, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
+const queryStore = vi.hoisted(() => ({
+  entries: new Map<string, {
+    queryKey: readonly unknown[]
+    status: 'pending' | 'success' | 'error'
+    data?: unknown
+    error?: unknown
+    invalidations: number
+    token: number
+  }>(),
+}))
+class StubEventSource {
+  static CONNECTING = 0
+  static OPEN = 1
+  static CLOSED = 2
+  readyState = 0
+  addEventListener() {}
+  removeEventListener() {}
+  close() {
+    this.readyState = StubEventSource.CLOSED
+  }
+}
+const stableQueryClient = vi.hoisted(() => ({
+  invalidateQueries: async ({ queryKey }: { queryKey?: readonly unknown[] } = {}) => {
+    for (const entry of queryStore.entries.values()) {
+      if (!queryKey || (queryKey.length <= entry.queryKey.length
+        && queryKey.every((part, index) => Object.is(part, entry.queryKey[index])))) {
+        entry.invalidations += 1
+      }
+    }
+  },
+}))
+function flushMicrotasks() {
+  return Promise.resolve().then(() => Promise.resolve()).then(() => Promise.resolve()).then(() => Promise.resolve())
+}
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
+  useCallback: (callback: unknown) => callback,
   useMemo: (compute: () => unknown) => compute(),
   useRef: (initial: unknown) => {
     const index = hooks.cursor++
@@ -32,13 +67,73 @@ vi.mock('react', async importOriginal => ({
     hooks.effects.push(() => { previous?.cleanup?.(); next.cleanup = effect() || undefined })
   },
 }))
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => stableQueryClient,
+  useQuery: ({ queryKey, enabled = true, queryFn }: {
+    queryKey: readonly unknown[]
+    enabled?: boolean
+    queryFn: () => Promise<unknown>
+  }) => {
+    const serialized = JSON.stringify(queryKey)
+    let entry = queryStore.entries.get(serialized)
+    if (!entry) {
+      entry = { queryKey, status: 'pending', invalidations: 0, token: 0 }
+      queryStore.entries.set(serialized, entry)
+    }
+    const effectIndex = hooks.cursor++
+    const previous = hooks.values[effectIndex] as { deps: unknown[] } | undefined
+    const deps = [serialized, enabled, entry.invalidations]
+    if (!previous || deps.some((value, i) => !Object.is(value, previous.deps[i]))) {
+      hooks.values[effectIndex] = { deps }
+      if (enabled) {
+        const target = entry
+        const token = ++target.token
+        hooks.effects.push(() => {
+          void queryFn().then(
+            data => {
+              if (target.token !== token) return
+              target.status = 'success'
+              target.data = data
+              target.error = undefined
+            },
+            error => {
+              if (target.token !== token) return
+              target.status = 'error'
+              target.error = error
+            },
+          )
+        })
+      }
+    }
+    return {
+      data: entry.data,
+      error: entry.error ?? null,
+      isPending: entry.status === 'pending',
+      isError: entry.status === 'error',
+      isSuccess: entry.status === 'success',
+    }
+  },
+}))
 vi.mock('../../../apps/studio-client/src/shared/lib/card-media.js', async importOriginal => ({
   ...await importOriginal<typeof import('../../../apps/studio-client/src/shared/lib/card-media.js')>(),
   useCardMediaRevision: () => 0,
 }))
 
-beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = [] })
-afterEach(() => vi.unstubAllGlobals())
+beforeEach(() => {
+  hooks.cursor = 0
+  hooks.values = []
+  hooks.effects = []
+  queryStore.entries.clear()
+  vi.stubGlobal('EventSource', StubEventSource)
+})
+afterEach(() => {
+  for (const value of hooks.values) {
+    if (value && typeof value === 'object' && 'cleanup' in value && typeof (value as { cleanup?: () => void }).cleanup === 'function') {
+      ;(value as { cleanup: () => void }).cleanup()
+    }
+  }
+  vi.unstubAllGlobals()
+})
 
 type Element = ReactElement<Record<string, unknown>>
 function elements(value: unknown): Element[] {
@@ -223,7 +318,7 @@ describe('Session panel preview source isolation', () => {
   it.each(['timeline', 'session'] as const)('refreshes the same %s after its content revision changes', async kind => {
     const f = fixture(kind)
     f.render()
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual(kind === 'timeline' ? f.a.nodes : f.a.entries)
     if (kind === 'timeline') {
       f.props.timelines = [{ ...timeline, activeBranchId: 'other-branch', updatedAt: 'later' }]
@@ -233,7 +328,7 @@ describe('Session panel preview source isolation', () => {
       f.a.getTranscript.mockResolvedValueOnce(f.b.transcript)
     }
     expect(f.preview(f.render())).toEqual([])
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual(kind === 'timeline' ? f.b.nodes : f.b.entries)
     if (kind === 'timeline') expect(f.a.getPage).toHaveBeenLastCalledWith(expect.objectContaining({ branchId: 'other-branch' }))
   })
@@ -244,14 +339,13 @@ describe('Session panel preview source isolation', () => {
     else f.a.getTranscript.mockRejectedValueOnce(new Error('Preview unavailable'))
     const detail = () => f.render().find(element => 'onRetryPreview' in element.props)!
     expect(detail().props.previewLoading).toBe(true)
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(detail().props.previewError).toBe('Preview unavailable')
     detail()
     expect(kind === 'timeline' ? f.a.getPage : f.a.getTranscript).toHaveBeenCalledOnce()
     ;(detail().props.onRetryPreview as () => void)()
     detail()
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual(kind === 'timeline' ? f.a.nodes : f.a.entries)
     expect(detail().props.previewError).toBeUndefined()
   })
@@ -334,7 +428,7 @@ describe('Session panel preview source isolation', () => {
     ]
     f.a.getTranscript.mockResolvedValue({ session, entries })
     f.render()
-    await Promise.resolve()
+    await flushMicrotasks()
     const detail = f.render().find(element => Array.isArray(element.props.entries))
     if (!detail) throw new Error('Missing Session detail')
     const content = elements((detail.type as (props: Record<string, unknown>) => Element)(detail.props))
@@ -401,11 +495,11 @@ describe('Session panel preview source isolation', () => {
   it.each(['timeline', 'session'] as const)('does not reuse a cached %s preview for the same ID on another API', async kind => {
     const f = fixture(kind)
     f.render()
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual(kind === 'timeline' ? f.a.nodes : f.a.entries)
     f.props.api = f.b.api
     expect(f.preview(f.render())).toEqual([])
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual(kind === 'timeline' ? f.b.nodes : f.b.entries)
     expect(kind === 'timeline' ? f.b.getPage : f.b.getTranscript).toHaveBeenCalledOnce()
     f.render()
@@ -420,24 +514,23 @@ describe('Session panel preview source isolation', () => {
     f.render()
     f.props.api = f.b.api
     f.render()
-    await Promise.resolve()
+    await flushMicrotasks()
     pending.resolve()
     await pending.promise
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual(kind === 'timeline' ? f.b.nodes : f.b.entries)
   })
 
   it.each(['timeline', 'session'] as const)('does not fall back to the previous API when the new %s preview fails', async kind => {
     const f = fixture(kind)
     f.render()
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual(kind === 'timeline' ? f.a.nodes : f.a.entries)
     if (kind === 'timeline') f.b.getPage.mockRejectedValueOnce(new Error('Unavailable'))
     else f.b.getTranscript.mockRejectedValueOnce(new Error('Unavailable'))
     f.props.api = f.b.api
     expect(f.preview(f.render())).toEqual([])
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushMicrotasks()
     expect(f.preview()).toEqual([])
     expect(kind === 'timeline' ? f.b.getPage : f.b.getTranscript).toHaveBeenCalledOnce()
   })

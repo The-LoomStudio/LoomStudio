@@ -1,5 +1,5 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createId, nowIso } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
 import { listMappedResources } from '../../../packages/application-runtime/src/prompt/prompt-resource-mapper.js'

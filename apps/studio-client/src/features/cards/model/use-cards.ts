@@ -1,6 +1,8 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from 'react'
 import { notify } from '../../../shared/notifications/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { subscribeDataCommits } from '../../../shared/api/data-commit-events.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { Card, CardMedia, CardSummary } from '../../../entities/index.js'
 import { downloadBlob } from '../../../shared/browser/download.js'
@@ -20,19 +22,30 @@ type UseCardsInput = {
   t: Translator
 }
 
-type CardEditor = {
-  selectedCardId?: string
-  selectedCardDetails?: Card
+type GetCardResult = Awaited<ReturnType<StudioApi['cards']['get']>>
+type CardDetail = GetCardResult['card']
+
+const EMPTY_CARDS: CardSummary[] = []
+const apiScopeIds = new WeakMap<StudioApi, number>()
+let nextApiScopeId = 1
+
+function getApiScopeId(api: StudioApi): number {
+  let id = apiScopeIds.get(api)
+  if (id === undefined) {
+    id = nextApiScopeId++
+    apiScopeIds.set(api, id)
+  }
+  return id
 }
 
-const emptyCardEditor: CardEditor = {}
-
 export function useCards(input: UseCardsInput) {
-  const selectionSourceRef = useRef({ api: input.api, request: 0, collectionWrite: 0, disposed: false,
-    detailReads: new Map<string, ReturnType<StudioApi['cards']['get']>>() })
+  const queryClient = useQueryClient()
+  const apiScope = getApiScopeId(input.api)
+  const cardsListKey = ['cards', apiScope, 'list'] as const
+
+  const selectionSourceRef = useRef({ api: input.api, request: 0, disposed: false })
   if (selectionSourceRef.current.api !== input.api) {
-    selectionSourceRef.current = { api: input.api, request: 0, collectionWrite: 0, disposed: false,
-      detailReads: new Map() }
+    selectionSourceRef.current = { api: input.api, request: 0, disposed: false }
   }
   const selectionSource = selectionSourceRef.current
   useEffect(() => {
@@ -40,96 +53,103 @@ export function useCards(input: UseCardsInput) {
     return () => {
       selectionSource.disposed = true
       selectionSource.request += 1
-      selectionSource.detailReads.clear()
     }
   }, [selectionSource])
-  const refreshRequest = useRef(0)
+
   const forking = useRef(false)
-  useEffect(() => () => { refreshRequest.current += 1 }, [input.api])
-  const [cardCollection, setCardCollection] = useState<{ source: typeof selectionSource; cards: CardSummary[] }>()
-  const cards = cardCollection?.source === selectionSource ? cardCollection.cards : []
-  const [editorState, setEditorState] = useState<{ source: typeof selectionSource; editor: CardEditor }>()
-  const { selectedCardId, selectedCardDetails } = editorState?.source === selectionSource
-    ? editorState.editor : emptyCardEditor
-  const updateEditor = useCallback((update: (editor: CardEditor) => CardEditor) => {
+  const [selectedCardIdBySource, setSelectedCardIdBySource] = useState<{ source: typeof selectionSource; cardId?: string }>()
+  const explicitSelectedCardId = selectedCardIdBySource?.source === selectionSource ? selectedCardIdBySource.cardId : undefined
+
+  const setSelectedCardId = useCallback((value: SetStateAction<string | undefined>) => {
     if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
-    setEditorState(current => {
-      const editor = current?.source === selectionSource ? current.editor : emptyCardEditor
-      const next = update(editor)
-      return next === editor && current?.source === selectionSource ? current : { source: selectionSource, editor: next }
+    setSelectedCardIdBySource(current => {
+      const prev = current?.source === selectionSource ? current.cardId : undefined
+      const next = typeof value === 'function' ? value(prev) : value
+      return next === prev && current?.source === selectionSource ? current : { source: selectionSource, cardId: next }
     })
   }, [selectionSource])
-  const setSelectedCardId = useCallback((value: SetStateAction<string | undefined>) => {
-    updateEditor(editor => ({ ...editor, selectedCardId: typeof value === 'function' ? value(editor.selectedCardId) : value }))
-  }, [updateEditor])
-  const setSelectedCardDetails = useCallback((value: SetStateAction<Card | undefined>) => {
-    updateEditor(editor => ({ ...editor, selectedCardDetails: typeof value === 'function' ? value(editor.selectedCardDetails) : value }))
-  }, [updateEditor])
+
   const setSelectedCardIdFromNavigation = useCallback((cardId: string | undefined) => {
     if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
     selectionSource.request += 1
     setSelectedCardId(cardId)
   }, [selectionSource, setSelectedCardId])
+
+  const cardsQuery = useQuery({
+    queryKey: cardsListKey,
+    queryFn: async () => {
+      const collected: CardSummary[] = []
+      let cursor: string | undefined
+      do {
+        const result = await input.api.cards.list({ cursor, limit: 100 })
+        collected.push(...result.cards)
+        cursor = result.nextCursor
+      } while (cursor)
+      return collected
+    },
+  })
+
+  const cards = cardsQuery.data ?? EMPTY_CARDS
+  const selectedCardId = explicitSelectedCardId && cards.some(card => card.id === explicitSelectedCardId)
+    ? explicitSelectedCardId
+    : cardsQuery.isSuccess
+      ? cards.find(card => card.name === input.initialCardName)?.id ?? cards[0]?.id
+      : explicitSelectedCardId
   const selectedCard = cards.find(card => card.id === selectedCardId)
-  const readCardDetails = useCallback((cardId: string, fresh = false) => {
-    const pending = selectionSource.detailReads.get(cardId)
-    if (pending && !fresh) return pending
-    const request = selectionSource.api.cards.get(cardId)
-    selectionSource.detailReads.set(cardId, request)
-    const clear = () => {
-      if (selectionSource.detailReads.get(cardId) === request) selectionSource.detailReads.delete(cardId)
-    }
-    void request.then(clear, clear)
-    return request
-  }, [selectionSource])
+
+  const cardDetailKey = ['cards', apiScope, 'detail', selectedCardId] as const
+  const cardDetailQuery = useQuery({
+    queryKey: cardDetailKey,
+    enabled: Boolean(selectedCardId) && selectedCard?.validationError === undefined,
+    queryFn: () => {
+      if (!selectedCardId) throw new Error('No card selected')
+      return input.api.cards.get(selectedCardId)
+    },
+  })
+
+  const selectedCardDetails: Card | undefined = selectedCardId && selectedCard?.validationError === undefined
+    ? cardDetailQuery.data?.card as Card | undefined
+    : undefined
+
   useEffect(() => {
-    if (!selectedCardId || selectedCard?.validationError !== undefined) {
-      setSelectedCardDetails(undefined)
-      return
+    return subscribeDataCommits(
+      operations => {
+        const hasCardChange = operations.some(op =>
+          op.entityType === 'card'
+          || op.entityType === 'cardSource'
+          || op.scope?.entityType === 'card'
+          || op.scope?.entityType === 'cardSource',
+        )
+        if (!hasCardChange) return
+        void queryClient.invalidateQueries({ queryKey: ['cards', apiScope] })
+      },
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ['cards', apiScope] })
+      },
+    )
+  }, [apiScope, queryClient])
+
+  const readCardDetails = useCallback(async (cardId: string, fresh = false): Promise<GetCardResult> => {
+    if (!fresh) {
+      const cached = queryClient.getQueryData<GetCardResult>(['cards', apiScope, 'detail', cardId])
+      if (cached) return cached
     }
-    if (cardCollection?.source !== selectionSource) return
-    let current = true
-    void input.runAction(async () => {
-      let result
-      try {
-        result = await readCardDetails(selectedCardId)
-        if (current && selectedCard && result.card.version < selectedCard.version) {
-          result = await readCardDetails(selectedCardId, true)
-        }
-      } catch (error) {
-        if (current && selectionSourceRef.current === selectionSource && !selectionSource.disposed) throw error
-        return
-      }
-      if (!current) return
-      updateEditor(editor => {
-        if (editor.selectedCardId !== selectedCardId) return editor
-        const previous = editor.selectedCardDetails
-        if (previous?.id === result.card.id && previous.version >= result.card.version) return editor
-        return { ...editor, selectedCardDetails: result.card }
-      })
-    }).catch(() => undefined)
-    return () => { current = false }
-  }, [input.api, selectedCardId, selectedCard?.version, selectedCard?.validationError, cardCollection?.source])
+    return queryClient.fetchQuery({
+      queryKey: ['cards', apiScope, 'detail', cardId],
+      queryFn: () => input.api.cards.get(cardId),
+      staleTime: fresh ? 0 : undefined,
+    })
+  }, [apiScope, input.api, queryClient])
 
   async function refreshCards(): Promise<CardSummary[]> {
-    if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return []
-    const request = ++refreshRequest.current
-    const revision = selectionSource.collectionWrite
-    const cards: CardSummary[] = []
-    let cursor: string | undefined
-    do {
-      const result = await input.api.cards.list({ cursor, limit: 100 })
-      cards.push(...result.cards)
-      cursor = result.nextCursor
-    } while (cursor)
-    if (selectionSourceRef.current !== selectionSource || selectionSource.disposed || request !== refreshRequest.current) return cards
-    if (revision !== selectionSource.collectionWrite) return refreshCards()
-    setCardCollection({ source: selectionSource, cards })
+    const result = await cardsQuery.refetch()
+    if (result.error) throw result.error
+    const nextCards = result.data ?? EMPTY_CARDS
     setSelectedCardId(current => {
-      if (current && cards.some(card => card.id === current)) return current
-      return cards.find(card => card.name === input.initialCardName)?.id ?? cards[0]?.id
+      if (current && nextCards.some(card => card.id === current)) return current
+      return nextCards.find(card => card.name === input.initialCardName)?.id ?? nextCards[0]?.id
     })
-    return cards
+    return nextCards
   }
 
   async function createCard() {
@@ -145,10 +165,10 @@ export function useCards(input: UseCardsInput) {
       const { id, artifactId, derivedFrom, version, name, userName, description, media, createdAt, updatedAt } = result.card
       setCards(current => [
         { id, artifactId, derivedFrom, version, name, userName, description, media, createdAt, updatedAt },
-        ...current.filter(card => card.id !== id),
+        ...(current ?? []).filter(card => card.id !== id),
       ])
       if (selection === selectionSource.request) publishSelectedCard(result.card)
-      await refreshCards()
+      await queryClient.invalidateQueries({ queryKey: cardsListKey })
     })
   }
 
@@ -164,10 +184,10 @@ export function useCards(input: UseCardsInput) {
         const { id, artifactId, derivedFrom, version, name, userName, description, media, createdAt, updatedAt } = result.card
         setCards(current => [
           { id, artifactId, derivedFrom, version, name, userName, description, media, createdAt, updatedAt },
-          ...current.filter(card => card.id !== id),
+          ...(current ?? []).filter(card => card.id !== id),
         ])
         if (selection === selectionSource.request) publishSelectedCard(result.card)
-        await refreshCards()
+        await queryClient.invalidateQueries({ queryKey: cardsListKey })
         assertCurrentSource()
         await input.onCardsImported?.()
       })
@@ -195,7 +215,7 @@ export function useCards(input: UseCardsInput) {
         anchor: { documentId: result.card.id },
       })
       applyUpdatedCard(result.card)
-      await refreshCards()
+      await queryClient.invalidateQueries({ queryKey: cardsListKey })
     })
   }
 
@@ -209,7 +229,7 @@ export function useCards(input: UseCardsInput) {
         anchor: { documentId: result.card.id },
       })
       applyUpdatedCard(result.card)
-      await refreshCards()
+      await queryClient.invalidateQueries({ queryKey: cardsListKey })
     })
   }
 
@@ -221,7 +241,7 @@ export function useCards(input: UseCardsInput) {
         anchor: { documentId: result.card.id },
       })
       applyUpdatedCard(result.card)
-      await refreshCards()
+      await queryClient.invalidateQueries({ queryKey: cardsListKey })
     })
   }
 
@@ -300,11 +320,13 @@ export function useCards(input: UseCardsInput) {
         anchor: { documentId: ids[0]! },
       })
       const deletedIds = new Set(deleted.cardIds)
-      setCards(current => current.filter(card => !deletedIds.has(card.id)))
+      setCards(current => current?.filter(card => !deletedIds.has(card.id)))
+      for (const deletedId of deletedIds) {
+        queryClient.removeQueries({ exact: true, queryKey: ['cards', apiScope, 'detail', deletedId] })
+      }
       setSelectedCardId(current => current && deletedIds.has(current) ? undefined : current)
-      setSelectedCardDetails(current => current && deletedIds.has(current.id) ? undefined : current)
       onCommitted?.(deleted.cardIds)
-      await refreshCards()
+      await queryClient.invalidateQueries({ queryKey: cardsListKey })
       if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
       if (options?.includePromptResources) {
         await input.onCardsDeleted?.()
@@ -355,7 +377,7 @@ export function useCards(input: UseCardsInput) {
         anchor: { documentId: cardId },
       })
       applyUpdatedCard(updated.card)
-      await refreshCards()
+      await queryClient.invalidateQueries({ queryKey: cardsListKey })
       assertCurrentSource()
     })
   }
@@ -384,7 +406,7 @@ export function useCards(input: UseCardsInput) {
           const { id, artifactId, derivedFrom, version, name, userName, description, media, createdAt, updatedAt } = result.card
           setCards(current => [
             { id, artifactId, derivedFrom, version, name, userName, description, media, createdAt, updatedAt },
-            ...current.filter(card => card.id !== id),
+            ...(current ?? []).filter(card => card.id !== id),
           ])
           if (selection === selectionSource.request) publishSelectedCard(result.card)
           const cardName = typeof result.card.name === 'string' ? result.card.name : file.name.replace(/\.[^/.]+$/, '')
@@ -400,7 +422,7 @@ export function useCards(input: UseCardsInput) {
         notify.success(input.t('character.cardsImportedNotice', { count: importedNames.length }))
       }
       try {
-        await refreshCards()
+        await queryClient.invalidateQueries({ queryKey: cardsListKey })
         assertCurrentSource()
         await input.onCardsImported?.()
         assertCurrentSource()
@@ -438,16 +460,28 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
-  function applyUpdatedCard(card: Card): void {
-    selectionSource.detailReads.delete(card.id)
-    setSelectedCardDetails(current => current?.id === card.id && current.version <= card.version ? card : current)
-    setCards(current => current.map(summary => summary.id === card.id && summary.version <= card.version
-      ? { ...summary, ...readCardDraft(card), media: card.media, version: card.version, updatedAt: card.updatedAt }
+  function applyUpdatedCard(card: Card | CardDetail): void {
+    const nextCard = card as CardDetail
+    void queryClient.cancelQueries({ exact: true, queryKey: ['cards', apiScope, 'detail', nextCard.id] })
+    queryClient.setQueryData<GetCardResult>(['cards', apiScope, 'detail', nextCard.id], current =>
+      current && current.card.version > nextCard.version ? current : { ...current, card: nextCard },
+    )
+    if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
+    const currentList = queryClient.getQueryData<CardSummary[]>(cardsListKey)
+    const wasFetching = queryClient.isFetching({ exact: true, queryKey: cardsListKey }) > 0
+    setCards(current => current?.map(summary => summary.id === nextCard.id && summary.version <= nextCard.version
+      ? { ...summary, ...readCardDraft(nextCard), media: nextCard.media, version: nextCard.version, updatedAt: nextCard.updatedAt }
       : summary))
+    if (currentList === undefined || wasFetching) {
+      void queryClient.invalidateQueries({ exact: true, queryKey: cardsListKey })
+    }
   }
 
-  function publishSelectedCard(card: Card): void {
-    updateEditor(() => ({ selectedCardId: card.id, selectedCardDetails: card }))
+  function publishSelectedCard(card: Card | CardDetail): void {
+    const nextCard = card as CardDetail
+    setSelectedCardId(nextCard.id)
+    void queryClient.cancelQueries({ exact: true, queryKey: ['cards', apiScope, 'detail', nextCard.id] })
+    queryClient.setQueryData<GetCardResult>(['cards', apiScope, 'detail', nextCard.id], { card: nextCard })
   }
 
   function recordCardEdit(entry: Parameters<UseCardsInput['recordEdit']>[0]): void {
@@ -460,20 +494,19 @@ export function useCards(input: UseCardsInput) {
     }
   }
 
-  function setCards(update: CardSummary[] | ((current: CardSummary[]) => CardSummary[])): void {
+  function setCards(update: CardSummary[] | ((current: CardSummary[] | undefined) => CardSummary[] | undefined)): void {
     if (selectionSourceRef.current !== selectionSource || selectionSource.disposed) return
-    selectionSource.collectionWrite += 1
-    setCardCollection(current => ({
-      source: selectionSource,
-      cards: typeof update === 'function'
-        ? update(current?.source === selectionSource ? current.cards : [])
-        : update,
-    }))
+    void queryClient.cancelQueries({ exact: true, queryKey: cardsListKey })
+    queryClient.setQueryData<CardSummary[] | undefined>(cardsListKey, current =>
+      typeof update === 'function' ? update(current) : update,
+    )
   }
 
   return {
     directoryApi: input.api.directories,
     cards,
+    loading: cardsQuery.isPending,
+    error: cardsQuery.error ?? cardDetailQuery.error ?? null,
     selectedCardId,
     setSelectedCardId: setSelectedCardIdFromNavigation,
     selectedCard,

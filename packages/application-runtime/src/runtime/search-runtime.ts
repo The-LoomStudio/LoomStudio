@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import type { PromptResourceStore } from '@loom-studio/application-data'
-import type { DocumentRecord } from '@loom-studio/document-store'
+import type { PromptResourceStore } from '../data/index.js'
+import type { DocumentRecord } from '@loom-studio/kernel/document-store'
 import {
   isRecord,
   listGlobalSearchScopesInputSchema,

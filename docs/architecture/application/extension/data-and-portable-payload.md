@@ -111,7 +111,7 @@ Extension publishes Payload
 ## 6. 实现位置
 
 - [`packages/extension-sdk/src/index.ts`](../../../../packages/extension-sdk/src/index.ts)
-- [`packages/extension-sdk/extension-host/src/index.ts`](../../../../packages/extension-sdk/extension-host/src/index.ts)
+- [`packages/extension-sdk/extension-host/src/index.ts`](../../../../packages/kernel/src/extension-host/index.ts)
 - [`packages/application-runtime/src/runtime/extensions-runtime.ts`](../../../../packages/application-runtime/src/runtime/extensions-runtime.ts)
 - [`packages/application-runtime/src/cards/card-bundle.ts`](../../../../packages/application-runtime/src/cards/card-bundle.ts)
 - [`apps/studio-server/src/main.ts`](../../../../apps/studio-server/src/main.ts)

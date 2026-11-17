@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { applicationDocumentTypes, createApplicationRuntime, extensionInstallationId } from '@loom-studio/application-runtime'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore, createStateStore } from '@loom-studio/application-data'
-import type { DataCommitFact } from '@loom-studio/data-engine'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore, createStateStore } from '@loom-studio/application-runtime/data'
+import type { DataCommitFact } from '@loom-studio/kernel/data-engine'
 import { createId, nowIso, type JsonObject } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/extension-sdk'
-import { summarizeDataCommit, summarizeDocumentCommit } from '../../../packages/kernel/src/handlers.js'
+import { compactCommitPayload } from '../../../packages/kernel/src/commit-notifications.js'
+import { summarizeDataCommit } from '../../../packages/kernel/src/handlers.js'
 import { projectExtensionEvent } from '../../../apps/studio-server/src/extensions/extension-event-projection.js'
 
 const packageId = 'example.events'
@@ -30,7 +31,7 @@ describe('Card extension platform event projection', () => {
       expect(await projectExtensionEvent(stores, own, b)).toBeUndefined()
       expect(await projectExtensionEvent(stores, own, { ...a, packageId: 'other.package' })).toBeUndefined()
       expect(await projectExtensionEvent(stores, event('extensions.changed', { packageId, action: 'enabled' }), a)).toBeUndefined()
-      for (const name of ['diagnostics.updated', 'docs.rollback.failed', 'extensions.data.changed', 'directories.media.changed']) {
+      for (const name of ['diagnostics.updated', 'extensions.data.changed', 'directories.media.changed']) {
         const input = event(name, { changesetId: 'workspace', count: 9 })
         expect(await projectExtensionEvent(stores, input, a)).toBeUndefined()
         expect(await projectExtensionEvent(stores, input, { ...a, target: { kind: 'global' } })).toEqual(input)
@@ -66,18 +67,17 @@ describe('Card extension platform event projection', () => {
       })
       const deleted = await documents.delete({ id: `A:${applicationDocumentTypes.textTransformRule}`, expectedVersion: 1, actor })
       for (const target of [a, b]) {
-        for (const input of [event('docs.changed', { ...summarizeDocumentCommit(created.commit) as JsonObject, chunk: { index: 1, count: 3 } }), event('data.changed', { ...summarizeDataCommit(created.commit) as JsonObject, chunk: { index: 1, count: 3 } })]) {
-          const result = await projectExtensionEvent({ documents }, input, target)
-          expect(result!.payload).not.toHaveProperty('chunk')
-          const operations = (result!.payload as JsonObject).operations as JsonObject[]
-          expect(operations).toHaveLength(resourceTypes.length)
-          expect(operations.every(operation => {
-            const id = operation.documentId ?? operation.entityId
-            return id === extensionInstallationId(packageId, target.target) || (typeof id === 'string' && id.startsWith(`${target.target.cardId}:airp.`))
-          })).toBe(true)
-        }
+        const input = event('data.changed', { ...summarizeDataCommit(created.commit) as JsonObject, chunk: { index: 1, count: 3 } })
+        const result = await projectExtensionEvent({ documents }, input, target)
+        expect(result!.payload).not.toHaveProperty('chunk')
+        const operations = (result!.payload as JsonObject).operations as JsonObject[]
+        expect(operations).toHaveLength(resourceTypes.length)
+        expect(operations.every(operation => {
+          const id = operation.entityId
+          return id === extensionInstallationId(packageId, target.target) || (typeof id === 'string' && id.startsWith(`${target.target.cardId}:airp.`))
+        })).toBe(true)
       }
-      const deletion = event('docs.changed', summarizeDocumentCommit(deleted.commit))
+      const deletion = event('data.changed', summarizeDataCommit(deleted.commit))
       expect(await projectExtensionEvent({ documents }, deletion, a)).toBeDefined()
       expect(await projectExtensionEvent({ documents }, deletion, b)).toBeUndefined()
     } finally {
@@ -223,43 +223,36 @@ describe('Card extension platform event projection', () => {
           })
         }
       })
-      const documentEvent = event('docs.changed', summarizeDocumentCommit(created.commit))
       const dataEvent = event('data.changed', summarizeDataCommit(created.commit))
-      for (const input of [documentEvent, dataEvent]) {
-        const result = await projectExtensionEvent({ documents }, input, a)
-        expect(result).toMatchObject({ payload: { changesetId: created.commit.changesetId, operations: [expect.any(Object)] } })
-        expect(JSON.stringify(result)).toContain('A-owned')
-        for (const foreign of ['B-owned', 'global-owned', 'other-package']) expect(JSON.stringify(result)).not.toContain(foreign)
-        expect((result!.payload as { operations: unknown[] }).operations).toHaveLength(1)
-        expect(await projectExtensionEvent({ documents }, input, { ...a, target: { kind: 'global' } })).toEqual(input)
-      }
-      expect((await projectExtensionEvent({ documents }, documentEvent, a))!.payload).toMatchObject({
-        documents: [{ id: 'A-owned', type: 'test.note', version: 1, tombstoned: false }],
-      })
+      const result = await projectExtensionEvent({ documents }, dataEvent, a)
+      expect(result).toMatchObject({ payload: { changesetId: created.commit.changesetId, operations: [expect.any(Object)] } })
+      expect(JSON.stringify(result)).toContain('A-owned')
+      for (const foreign of ['B-owned', 'global-owned', 'other-package']) expect(JSON.stringify(result)).not.toContain(foreign)
+      expect((result!.payload as { operations: unknown[] }).operations).toHaveLength(1)
+      expect(await projectExtensionEvent({ documents }, dataEvent, { ...a, target: { kind: 'global' } })).toEqual(dataEvent)
       const moved = await documents.write({
         id: 'A-owned', type: 'test.note', content: {}, expectedVersion: 1,
         meta: { ownerInstallationId: extensionInstallationId(packageId, b.target) },
       })
-      expect(await projectExtensionEvent({ documents }, documentEvent, a)).toBeDefined()
-      const movedEvent = event('docs.changed', summarizeDocumentCommit(moved.commit))
+      expect(await projectExtensionEvent({ documents }, dataEvent, a)).toBeDefined()
+      const movedEvent = event('data.changed', summarizeDataCommit(moved.commit))
       expect(await projectExtensionEvent({ documents }, movedEvent, a)).toBeUndefined()
-      expect(await projectExtensionEvent({ documents }, movedEvent, b)).toBeDefined()
+      expect((await projectExtensionEvent({ documents }, movedEvent, b))!.payload).toMatchObject({
+        operations: [expect.objectContaining({ kind: 'update', entityId: 'A-owned', fromVersion: 1, toVersion: 2 })],
+      })
       const deleted = await documents.delete({ id: 'A-owned', expectedVersion: 2 })
-      const deletion = event('docs.changed', summarizeDocumentCommit(deleted.commit))
+      const deletion = event('data.changed', summarizeDataCommit(deleted.commit))
       expect(await projectExtensionEvent({ documents }, deletion, a)).toBeUndefined()
       expect((await projectExtensionEvent({ documents }, deletion, b))!.payload).toMatchObject({
-        documents: [{ id: 'A-owned', version: 3, tombstoned: true }],
+        operations: [expect.objectContaining({ kind: 'delete', entityId: 'A-owned', fromVersion: 2, toVersion: 3 })],
       })
       const restored = await documents.revertChangeset({
         changesetId: deleted.changesetId, actor: { kind: 'system', id: 'test' },
       })
-      const rollback = event('docs.rollback.completed', {
-        ...summarizeDocumentCommit(restored.commit) as JsonObject, targetChangesetId: deleted.changesetId,
-      })
-      expect(await projectExtensionEvent({ documents }, rollback, a)).toBeUndefined()
-      expect((await projectExtensionEvent({ documents }, rollback, b))!.payload).toMatchObject({
-        targetChangesetId: deleted.changesetId,
-        documents: [{ id: 'A-owned', version: 4, tombstoned: false }],
+      const revertedEvent = event('data.changed', summarizeDataCommit(restored.commit))
+      expect(await projectExtensionEvent({ documents }, revertedEvent, a)).toBeUndefined()
+      expect((await projectExtensionEvent({ documents }, revertedEvent, b))!.payload).toMatchObject({
+        operations: [expect.objectContaining({ kind: 'restore', entityId: 'A-owned', fromVersion: 3, toVersion: 4 })],
       })
       expect(await projectExtensionEvent({ documents }, event('data.changed', {
         changesetId: 'non-document-commit',
@@ -269,6 +262,90 @@ describe('Card extension platform event projection', () => {
         root: { kind: 'card', id: 'B' }, operation: 'tombstoned',
       }), a)).toBeUndefined()
       expect(await projectExtensionEvent({ documents }, event('diagnostics.updated', { count: 10 }), a)).toBeUndefined()
+    } finally {
+      await engine.close()
+    }
+  })
+
+  it('uses upfront scope tags and preserves overflow=true on compacted data.changed events', async () => {
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
+    const documents = createSqliteDocumentStore({ engine })
+    const installationA = extensionInstallationId(packageId, a.target)
+    const installationB = extensionInstallationId(packageId, b.target)
+    try {
+      const scoped = event('data.changed', {
+        changesetId: 'scoped-changeset',
+        operations: [
+          {
+            store: 'documents', kind: 'update', entityId: 'unpersisted-id', entityType: 'test.note', toVersion: 1,
+            scope: { installationId: installationA, cardId: 'A' },
+          },
+          {
+            store: 'narrative', kind: 'create', entityId: 'node-a', entityType: 'narrative.node',
+            scope: { cardId: 'A' },
+          },
+          {
+            store: 'documents', kind: 'update', entityId: 'b-id', entityType: 'test.note', toVersion: 1,
+            scope: { installationId: installationB, cardId: 'B' },
+          },
+          {
+            store: 'documents', kind: 'update', entityId: 'mismatch-id', entityType: 'test.note', toVersion: 1,
+            scope: { installationId: installationA, cardId: 'B' },
+          },
+        ],
+      })
+      expect(await projectExtensionEvent({ documents }, scoped, a)).toMatchObject({
+        payload: {
+          changesetId: 'scoped-changeset',
+          operations: [
+            expect.objectContaining({ entityId: 'unpersisted-id', scope: { installationId: installationA, cardId: 'A' } }),
+            expect.objectContaining({ entityId: 'node-a', scope: { cardId: 'A' } }),
+          ],
+        },
+      })
+      expect(await projectExtensionEvent({ documents }, scoped, { ...a, packageId: 'other.package' })).toMatchObject({
+        payload: {
+          changesetId: 'scoped-changeset',
+          operations: [expect.objectContaining({ entityId: 'node-a', scope: { cardId: 'A' } })],
+        },
+      })
+
+      const compacted = compactCommitPayload({
+        changesetId: 'overflow-changeset',
+        operations: [
+          ...Array.from({ length: 40 }, (_, index) => ({
+            store: 'documents', kind: 'create', entityId: `a-${index}`, entityType: 'test.note', toVersion: 1,
+            scope: { installationId: installationA, cardId: 'A' },
+          })),
+          ...Array.from({ length: 40 }, (_, index) => ({
+            store: 'narrative', kind: 'create', entityId: `b-${index}`, entityType: 'narrative.node',
+            scope: { cardId: 'B' },
+          })),
+        ],
+      }, 64 * 1024) as JsonObject
+      expect(compacted.overflow).toBe(true)
+
+      const overflowEvent = event('data.changed', compacted)
+      const projectedA = await projectExtensionEvent({ documents }, overflowEvent, a)
+      expect(projectedA?.payload).toMatchObject({
+        changesetId: 'overflow-changeset',
+        overflow: true,
+        operations: [expect.objectContaining({ count: 40, scope: { installationId: installationA, cardId: 'A' } })],
+      })
+      expect(await projectExtensionEvent({ documents }, overflowEvent, b)).toMatchObject({
+        payload: {
+          changesetId: 'overflow-changeset',
+          overflow: true,
+          operations: [expect.objectContaining({ count: 40, scope: { cardId: 'B' } })],
+        },
+      })
+
+      const unscopedDocOverflow = event('data.changed', {
+        changesetId: 'unscoped-doc-overflow',
+        overflow: true,
+        operations: [{ store: 'documents', kind: 'update', entityId: '*', entityType: '*' }],
+      })
+      expect(await projectExtensionEvent({ documents }, unscopedDocOverflow, a)).toBeUndefined()
     } finally {
       await engine.close()
     }

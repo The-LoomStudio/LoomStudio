@@ -20,9 +20,13 @@ export function createStudioRpcRouter(services: StudioRpcServices): StudioRpcRou
         request: { ...context, abortSignal: context.signal },
       })
       const namespace = method.split('.')[0]!
-      const result = ['application','official','directories','settings','logs','ai','system','docs','extensions','diagnostics','loom','trace','audit'].includes(namespace)
+      const result = ['application', 'official', 'directories', 'settings', 'logs', 'ai', 'system', 'extensions', 'diagnostics', 'resourceDownloads', 'dashboard'].includes(namespace)
         ? await Reflect.get(caller, method)(params)
-        : await caller.kernel.invoke({ method, params })
+        : await caller.extensions.invoke({
+            packageId: services.extensionHost?.list().find(item => method.startsWith(`${item.packageId}.`))?.packageId ?? namespace,
+            method,
+            params,
+          })
       return JSON.parse(JSON.stringify(result))
     },
   }

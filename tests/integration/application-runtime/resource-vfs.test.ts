@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { createResourceVfs, type ResourceVfsOptions } from '../../../packages/application-runtime/src/vfs/resource-filesystem.js'
 import { createCodeActContext } from '../../../packages/application-runtime/src/agents/codeact/context.js'
 import type { ToolExecutionScope } from '../../../packages/application-runtime/src/agents/tool-registry.js'

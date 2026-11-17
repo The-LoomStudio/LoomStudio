@@ -8,41 +8,20 @@
       "node"
     ],
     "paths": {
-      "@loom-studio/tokenizer": [
-        "../packages/tokenizer/src/index.ts"
-      ],
-      "@loom-studio/tokenizer/async": [
-        "../packages/tokenizer/src/async-counter.ts"
-      ],
-      "@loom-studio/tokenizer/contracts": [
-        "../packages/tokenizer/src/contracts.ts"
-      ],
       "@loom-studio/ai-gateway": [
         "../packages/ai-gateway/src/index.ts"
       ],
       "@loom-studio/ai-gateway/contracts": [
         "../packages/ai-gateway/src/contracts.ts"
       ],
-      "@loom-studio/application-data": [
-        "../packages/application-data/src/index.ts"
-      ],
-      "@loom-studio/asset-store": [
-        "../packages/asset-store/src/index.ts"
-      ],
-      "@loom-studio/data-engine": [
-        "../packages/data-engine/src/index.ts"
-      ],
-      "@loom-studio/diagnostics": [
-        "../packages/diagnostics/src/index.ts"
-      ],
-      "@loom-studio/document-store": [
-        "../packages/document-store/src/index.ts"
-      ],
       "@loom-studio/application-runtime": [
         "../packages/application-runtime/src/index.ts"
       ],
-      "@loom-studio/extension-host": [
-        "../packages/extension-sdk/extension-host/src/index.ts"
+      "@loom-studio/application-runtime/artifacts": [
+        "../packages/application-runtime/src/artifacts.ts"
+      ],
+      "@loom-studio/application-runtime/data": [
+        "../packages/application-runtime/src/data/index.ts"
       ],
       "@loom-studio/extension-sdk": [
         "../packages/extension-sdk/src/index.ts"
@@ -50,17 +29,53 @@
       "@loom-studio/kernel": [
         "../packages/kernel/src/index.ts"
       ],
+      "@loom-studio/kernel/asset-store": [
+        "../packages/kernel/src/asset-store/index.ts"
+      ],
+      "@loom-studio/kernel/data-engine": [
+        "../packages/kernel/src/data-engine/index.ts"
+      ],
+      "@loom-studio/kernel/diagnostics": [
+        "../packages/kernel/src/diagnostics/index.ts"
+      ],
+      "@loom-studio/kernel/document-store": [
+        "../packages/kernel/src/document-store/index.ts"
+      ],
+      "@loom-studio/kernel/extension-host": [
+        "../packages/kernel/src/extension-host/index.ts"
+      ],
+      "@loom-studio/kernel/extension-manager": [
+        "../packages/kernel/src/extension-manager/index.ts"
+      ],
+      "@loom-studio/kernel/platform": [
+        "../packages/kernel/src/platform/index.ts"
+      ],
+      "@loom-studio/kernel/script-runtime": [
+        "../packages/kernel/src/script-runtime/index.ts"
+      ],
+      "@loom-studio/kernel/secret-store": [
+        "../packages/kernel/src/secret-store/index.ts"
+      ],
       "@loom-studio/logging": [
         "../packages/logging/src/index.ts"
       ],
       "@loom-studio/logging/node": [
         "../packages/logging/src/node.ts"
       ],
-      "@loom-studio/secret-store": [
-        "../packages/secret-store/src/index.ts"
-      ],
       "@loom-studio/shared": [
         "../packages/shared/src/index.ts"
+      ],
+      "@loom-studio/shared/id": [
+        "../packages/shared/src/id.ts"
+      ],
+      "@loom-studio/shared/tokenizer": [
+        "../packages/shared/src/tokenizer/index.ts"
+      ],
+      "@loom-studio/shared/tokenizer/async": [
+        "../packages/shared/src/tokenizer/async-counter.ts"
+      ],
+      "@loom-studio/shared/tokenizer/contracts": [
+        "../packages/shared/src/tokenizer/contracts.ts"
       ],
       "@loom-studio/ui": [
         "../packages/loom-ui/src/index.ts"

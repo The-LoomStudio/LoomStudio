@@ -108,12 +108,11 @@ describe('Narrative Run recovery', () => {
     finish.resolve({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 2, done: true, state: 'suspended' })
     await running
   })
-  it('publishes the Inspector result after expired replay and acknowledges only received completion', async () => {
+  it('publishes the Inspector result after expired replay', async () => {
     const f = await fixture()
     await settle(() => f.render().createTimelineFromCard())
     await settle(() => f.render().createAgentSession('profile', true))
-    const projection: Awaited<ReturnType<StudioApi['agentSessions']['invoke']>>['projection'] = { messages: [{ role: 'user', content: 'Large compiled prompt', fragmentIds: [] }], editorProjection: { sourceRows: [], promptRows: [] } }
-    const result = { ...f.result, projection, promptBuildTrace: { ...f.result.promptBuildTrace, buildId: 'original-trace' } }
+    const result = { ...f.result, buildId: 'original-trace' }
     f.subscribeRun.mockResolvedValueOnce({
       events: [{ type: 'completed', runId: 'run', result }],
       nextCursor: 100, done: true, state: 'completed',
@@ -123,7 +122,7 @@ describe('Narrative Run recovery', () => {
     await settle(() => f.render().submitAgentTurn(f.event))
       await f.loadRoot()
     expect(f.render().lastRun).toBe(result)
-    expect(f.acknowledgeRunCompletion).toHaveBeenCalledExactlyOnceWith('run')
+    expect(f.render().lastRun?.buildId).toBe('original-trace')
     expect(f.reportFailure).not.toHaveBeenCalled()
   })
   it('resynchronizes expired replay before accepting new deltas and restores pending approval', async () => {
@@ -213,7 +212,7 @@ describe('Narrative Run recovery', () => {
     expect(f.reportFailure).not.toHaveBeenCalled()
     expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.subscribeRun).toHaveBeenCalledWith('run', 0, 'session')
-    expect(f.acknowledgeRunCompletion).not.toHaveBeenCalled()
+    expect(f.render().lastRun).toBeUndefined()
   })
 
   it.each(['selection', 'api'])('ignores expired Transcript reload after %s changes', async change => {
@@ -321,9 +320,9 @@ describe('Narrative Run recovery', () => {
     state.restoreRunInput()
     expect(f.render().composerInput).toBe('')
     expect(f.render().rootRecovery?.input).toBeUndefined()
-    // This fixture exposes no swipe action or recovery checkpoint. A terminal
-    // message must remain persisted without manufacturing a new submission.
-    expect(state.canRetryNarrativeInput).toBe(false)
+    // This fixture exposes no swipe action or recovery checkpoint. A failed run
+    // allows manual retry, while a cancelled run remains terminal without manufacturing a submission.
+    expect(state.canRetryNarrativeInput).toBe(status === 'failed')
     expect(f.appendInput).not.toHaveBeenCalled()
     expect(f.submitInterjection).toHaveBeenCalledOnce()
     expect(f.resumeRun).not.toHaveBeenCalled()

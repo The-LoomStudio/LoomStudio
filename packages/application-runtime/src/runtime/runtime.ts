@@ -20,6 +20,7 @@ import { createCardDirectoryRuntimeMethods } from './card-directory-sync.js'
 import { createNarrativeRuntimeMethods } from './narrative-runtime.js'
 import { createSwipeRuntimeMethods } from './swipe-runtime.js'
 import { createAgentsRuntimeMethods } from './agents-runtime.js'
+import { createAgentRunService } from '../agents/agent-run-service.js'
 import { refreshAgentToolRegistry, toAgentToolContent, toAgentToolDefinition } from '../agents/tool-catalog.js'
 import { createPromptRuntimeMethods } from './prompt-runtime.js'
 import { createSearchRuntimeMethods } from './search-runtime.js'
@@ -48,9 +49,13 @@ import { createTimelineExtensionStateInitializationMethods } from '../extensions
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx: ApplicationRuntimeContext = createApplicationRuntimeContext(options)
+  const agentsRuntime = createAgentsRuntimeMethods(ctx)
+  const runs = createAgentRunService(agentsRuntime)
 
   return {
     ...createObservabilityRuntimeMethods(ctx),
+    extensionPorts: ctx.extensionPorts,
+    scopeValidator: ctx.scopeValidator,
     subscribeNarrativeActivity: ctx.narrativeActivity.subscribe,
     registerReadonlyFiles: ctx.extensionReadonlyFiles.register,
     registerTimelineArchiveParticipant: ctx.timelineArchiveParticipants.register,
@@ -97,7 +102,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     ...createResourceAuthoringRuntimeMethods(ctx),
     ...createNarrativeRuntimeMethods(ctx),
     ...createSwipeRuntimeMethods(ctx),
-    ...createAgentsRuntimeMethods(ctx),
+    ...agentsRuntime,
+    runs,
     buildExtensionPrompt: async (input, target, packageId, lease, requestContext) => {
       if (lease) {
         if (lease.installationId !== extensionInstallationId(packageId, target)) throw new Error('Prompt execution belongs to another installation')

@@ -2,9 +2,9 @@ import { createTextRuleDescriptionInputs } from '../prompt/text-rule-description
 import { attachmentMessage } from './message-attachments.js'
 import type { ObservationBuild } from '../observability/types.js'
 import type { ChatAttachment, ChatMessage } from '@loom-studio/shared'
-import type { PromptResourceStore } from '@loom-studio/application-data'
-import type { AgentTranscriptEntry } from '@loom-studio/application-data'
-import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
+import type { PromptResourceStore } from '../data/index.js'
+import type { AgentTranscriptEntry } from '../data/index.js'
+import type { NarrativeNode, NarrativeTimeline } from '../data/index.js'
 import type {
   CompiledPrompt,
   PromptContribution,

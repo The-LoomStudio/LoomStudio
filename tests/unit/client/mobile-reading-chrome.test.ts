@@ -34,6 +34,12 @@ async function touch(type: string, y: number, x = 0) {
   })
   await new Promise(requestAnimationFrame)
 }
+async function scrollTo(y: number) {
+  await act(async () => {
+    scroller.scrollTop = y
+    scroller.dispatchEvent(new Event('scroll', { bubbles: true }))
+  })
+}
 afterEach(async () => {
   await act(async () => root?.unmount())
   root = undefined!
@@ -41,22 +47,19 @@ afterEach(async () => {
   delete document.documentElement.dataset.keyboardOpen
 })
 
-it('tracks fractional gesture progress, reverses immediately, and does not snap on release', async () => {
+it('tracks fractional scroll progress, reverses immediately, and does not snap on touch release', async () => {
   await render()
-  scroller.scrollTop = 100
-  await act(async () => scroller.dispatchEvent(new Event('scroll', { bubbles: true })))
+  await scrollTo(100)
   expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0')
-  await touch('touchstart', 200)
-  await touch('touchmove', 164)
+  await scrollTo(116.8)
   expect(Number(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress'))).toBeCloseTo(0.3)
-  await touch('touchmove', 152)
+  await scrollTo(122.4)
   expect(Number(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress'))).toBeCloseTo(0.4)
-  await touch('touchmove', 156)
-  expect(Number(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress'))).toBeCloseTo(0.4 - 4 / 120)
+  await scrollTo(118.4)
+  expect(Number(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress'))).toBeCloseTo(0.4 - 4 / 56)
   await touch('touchend', 156)
-  expect(Number(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress'))).toBeCloseTo(0.4 - 4 / 120)
-  await touch('touchstart', 200)
-  await touch('touchmove', 0)
+  expect(Number(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress'))).toBeCloseTo(0.4 - 4 / 56)
+  await scrollTo(200)
   expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('1')
 })
 
@@ -73,31 +76,26 @@ it('ignores horizontal gestures and downward overscroll at the bottom', async ()
 
 it('keeps editing and expanded story controls visible', async () => {
   await render()
-  scroller.scrollTop = 100
-  await touch('touchstart', 100)
-  await touch('touchmove', 60)
-  expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe(String(1 / 3))
+  await scrollTo(100)
+  await scrollTo(128)
+  expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0.5')
   await act(async () => host.querySelector('textarea')!.focus())
-  expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0')
-  await touch('touchstart', 100)
-  await touch('touchmove', 60)
+  await scrollTo(140)
   expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0')
   host.querySelector('textarea')!.blur()
   host.querySelector<HTMLElement>('#story-menu')!.dataset.expanded = 'true'
-  await touch('touchstart', 100)
-  await touch('touchmove', 60)
+  await scrollTo(160)
   expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0')
 })
 
 it('resets on navigation and stops hiding when mobile reading is disabled', async () => {
   await render()
-  await act(async () => scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 30 })))
+  await act(async () => scroller.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 28 })))
   await new Promise(requestAnimationFrame)
-  expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0.25')
+  expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0.5')
   await render({ scope: 'story-b' })
   expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0')
   await render({ enabled: false })
-  await touch('touchstart', 100)
-  await touch('touchmove', 40)
+  await scrollTo(200)
   expect(stage.querySelector<HTMLElement>('header')!.style.getPropertyValue('--loom-mobile-chrome-progress')).toBe('0')
 })

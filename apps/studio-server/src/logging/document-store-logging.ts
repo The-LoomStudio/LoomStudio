@@ -4,7 +4,7 @@ import type {
   DocumentStore,
   SqliteDocumentStore,
   WriteDocumentResult,
-} from '@loom-studio/document-store'
+} from '@loom-studio/kernel/document-store'
 import { readLogFailure, type Logger } from '@loom-studio/logging'
 import type { JsonObject } from '@loom-studio/shared'
 

@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module'
-import { downloadExtensionZip, parseDownloadSource, type DownloadOptions } from '../extensions/extension-download.js'
+import { downloadExtensionZip, parseDownloadSource, type DownloadOptions } from '@loom-studio/kernel/extension-manager'
 import type { PreparedResourceCandidate, ResourceKind, ResourceSourceAdapter } from './types.js'
 
 const semver = createRequire(import.meta.url)('semver') as { valid(value: string): string | null; gt(a: string, b: string): boolean; prerelease(value: string): unknown }

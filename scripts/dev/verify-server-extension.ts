@@ -1,6 +1,6 @@
-import { createInMemoryDiagnosticsRegistry } from '../../packages/diagnostics/src/index.js'
-import { createInMemoryDocumentStore } from '../../packages/document-store/src/index.js'
-import { createExtensionHost } from '../../packages/extension-sdk/extension-host/src/index.js'
+import { createInMemoryDiagnosticsRegistry } from '../../packages/kernel/src/diagnostics/index.js'
+import { createInMemoryDocumentStore } from '../../packages/kernel/src/document-store/index.js'
+import { createExtensionHost } from '../../packages/kernel/src/extension-host/index.js'
 import { createKernel, type Kernel } from '../../packages/kernel/src/index.js'
 import { createMemoryLogSink, createRootLogger } from '../../packages/logging/src/index.js'
 import type { JsonValue } from '../../packages/shared/src/index.js'
@@ -61,7 +61,7 @@ kernel = createKernel({
 
 try {
   await kernel.start()
-  kernel.getEventBus().subscribe(['example.weatherStation.*', 'docs.changed'], event => observedEvents.push(event))
+  kernel.getEventBus().subscribe(['example.weatherStation.*', 'data.changed'], event => observedEvents.push(event))
 
   const extensionDirectory = resolve('tests/fixtures/extensions/weather-station')
   const discovered = await extensionHost.discover(extensionDirectory)
@@ -76,10 +76,10 @@ try {
   assert(firstStatus.packageId === 'example.weatherStation' && firstStatus.moduleId === 'server', 'RPC receives trusted package and module identity')
   assert(firstStatus.instanceId === firstInstanceId, 'RPC receives current instance identity')
   assert(firstStatus.aborted === false, 'activation AbortSignal remains active')
-  assert(firstStatus.grantedEventCapabilities.includes('documents'), 'manifest event capability is granted')
+  assert(firstStatus.grantedEventCapabilities.includes('platform-data'), 'manifest event capability is granted')
   assert(firstStatus.grantedEventCapabilities.includes('extension:example.weatherStation'), 'private extension event capability is granted')
   assert(firstStatus.state?.temperatureC === 20, 'extension initialized its owned document')
-  assert(firstStatus.counters.documentChanges === 1, 'extension consumed the platform docs.changed event')
+  assert(firstStatus.counters.documentChanges === 1, 'extension consumed the platform data.changed event')
 
   const document = await documents.get('example.weatherStation:state')
   assert(document?.meta.ownerExtensionId === 'example.weatherStation', 'document owner is bound by the Host')
@@ -139,7 +139,7 @@ try {
     'extension event enforces maxPayloadBytes at publish boundary',
   )
   expectThrow(
-    () => kernel.getEventBus().subscribe(['docs.changed'], () => {}, {
+    () => kernel.getEventBus().subscribe(['data.changed'], () => {}, {
       subscriber: {
         kind: 'extension',
         packageId: 'example.untrusted',
@@ -212,9 +212,9 @@ try {
   await kernel.stop()
 
   const runtimeLogs = logs.list().filter(item => item.event === 'extension.runtime.log')
-  assert(runtimeLogs.some(item => item.data?.instanceId === firstInstanceId), 'extension logger includes first instance identity')
-  assert(runtimeLogs.some(item => item.data?.instanceId === secondInstanceId), 'extension logger includes reloaded instance identity')
-  assert(runtimeLogs.every(item => item.data?.packageId === 'example.weatherStation' && item.data?.moduleId === 'server'), 'extension logger includes package and module identity')
+  assert(runtimeLogs.some(item => item.extension?.instanceId === firstInstanceId), 'extension logger includes first instance identity')
+  assert(runtimeLogs.some(item => item.extension?.instanceId === secondInstanceId), 'extension logger includes reloaded instance identity')
+  assert(runtimeLogs.every(item => item.extension?.packageId === 'example.weatherStation' && item.extension?.moduleId === 'server'), 'extension logger includes package and module identity')
 
   console.log(`Server extension verification passed: ${checks} checks`)
 } finally {

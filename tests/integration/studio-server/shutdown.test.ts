@@ -1,10 +1,10 @@
-import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
+import { createMemorySecretBackend } from '@loom-studio/kernel/secret-store'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { callRpc } from './helpers.js'
 
 describe('Studio Server shutdown', () => {

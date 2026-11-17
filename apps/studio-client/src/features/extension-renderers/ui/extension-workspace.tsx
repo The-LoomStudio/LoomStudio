@@ -78,7 +78,7 @@ export function ExtensionWorkspace(props: {
   onEnable(packageId: string, moduleId: string, grants?: Parameters<StudioApi['extensions']['enable']>[2], target?: ExtensionInstallationTarget): Promise<unknown>
   onImportResources(packageId: string): Promise<unknown>
   onAttachPackage(cardId: string, packageId: string, version: string): Promise<unknown>
-  embeddedPackageCard?: Pick<Card, 'id' | 'version' | 'name' | 'media' | 'extensionPackages'>
+  embeddedPackageCard?: Pick<Card, 'id' | 'version' | 'name' | 'media' | 'extensionPackages'> & { updatedAt?: string }
   onDetachPackage(cardId: string, expectedVersion: number, packageId: string): Promise<unknown>
   onInstallCardPackage(input: Parameters<StudioApi['extensions']['installCard']>[0]): Promise<unknown>
   onUpdateCardPackage(input: Parameters<StudioApi['extensions']['updateCard']>[0]): Promise<unknown>
@@ -586,7 +586,7 @@ export function ExtensionWorkspace(props: {
             )})}
             {view === 'packages' && props.embeddedPackageCard ? (
               <section className={styles.characterSummary} key={props.embeddedPackageCard.id}>
-                <h3 className={styles.cardHeading}><UserIdentity name={props.embeddedPackageCard.name} avatarUrl={cardMediaUrl(props.embeddedPackageCard.id, 'avatar', props.embeddedPackageCard.media?.avatarAssetId, props.embeddedPackageCard.version)} /></h3>
+                <h3 className={styles.cardHeading}><UserIdentity name={props.embeddedPackageCard.name} avatarUrl={cardMediaUrl(props.embeddedPackageCard.id, 'avatar', props.embeddedPackageCard.media?.avatarAssetId, props.embeddedPackageCard.version, props.embeddedPackageCard.updatedAt ?? String(props.embeddedPackageCard.version))} /></h3>
                 <div className={styles.characterStory}>
                   <p className={styles.storySummary}>{storyId ? props.timelineParticipation.timeline?.title || props.t('participation.timeline') : props.t('timelineQuick.opening')}</p>
                   {storyId && <button type="button" className={styles.storyEntry} aria-current={storyDetails ? 'page' : undefined} onClick={() => { setStoryDetails(true); setMobilePane('detail') }}>

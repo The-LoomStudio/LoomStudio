@@ -1,7 +1,7 @@
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
-import { createAssetStore } from '@loom-studio/asset-store'
-import { createBlobStore } from '@loom-studio/asset-store'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createAssetStore } from '@loom-studio/kernel/asset-store'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import { createId, nowIso } from '@loom-studio/shared'
 import { once } from 'node:events'
 import { ReadStream } from 'node:fs'
@@ -320,6 +320,68 @@ describe('HTTP request lifecycle', () => {
       await server.shutdown()
       await engine.close()
       await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('serves immutable cache headers only when ?v= matches card media version or card fallback metadata', async () => {
+    const bytes = Buffer.from([137, 80, 78, 71])
+    let mediaRecord: { bytes: Buffer; mediaType: string; updatedAt?: string; version?: number; etag?: string } = {
+      bytes,
+      mediaType: 'image/png',
+      updatedAt: '2026-11-17T01:00:00.000Z',
+      version: 3,
+    }
+    const getCard = vi.fn(async () => ({
+      card: { id: 'card-1', updatedAt: '2026-11-17T02:00:00.000Z', version: 5 },
+    }))
+    const { server, origin, cookie } = await listen({
+      cardMedia: {
+        read: async () => mediaRecord,
+      },
+      applicationRuntime: { getCard } as unknown as ApplicationRuntime,
+    })
+
+    try {
+      const matchedUpdatedAt = await fetch(`${origin}/cards/card-1/media/avatar?v=${encodeURIComponent('2026-11-17T01:00:00.000Z')}`, {
+        headers: { cookie },
+      })
+      expect(matchedUpdatedAt.status).toBe(200)
+      expect(matchedUpdatedAt.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+      expect(matchedUpdatedAt.headers.get('x-content-type-options')).toBe('nosniff')
+      const etag = matchedUpdatedAt.headers.get('etag')!
+      expect(etag).toBeTruthy()
+      expect(getCard).not.toHaveBeenCalled()
+
+      const matchedVersion = await fetch(`${origin}/cards/card-1/media/avatar?v=3`, { headers: { cookie } })
+      expect(matchedVersion.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+
+      const revalidated = await fetch(`${origin}/cards/card-1/media/avatar?v=3`, {
+        headers: { cookie, 'if-none-match': etag },
+      })
+      expect(revalidated.status).toBe(304)
+      expect(revalidated.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+
+      const mismatched = await fetch(`${origin}/cards/card-1/media/avatar?v=stale`, { headers: { cookie } })
+      expect(mismatched.status).toBe(200)
+      expect(mismatched.headers.get('cache-control')).toBe('no-cache')
+
+      const unversioned = await fetch(`${origin}/cards/card-1/media/avatar`, { headers: { cookie } })
+      expect(unversioned.status).toBe(200)
+      expect(unversioned.headers.get('cache-control')).toBe('no-cache')
+
+      mediaRecord = { bytes, mediaType: 'image/png' }
+      const fallbackMatched = await fetch(`${origin}/cards/card-1/media/background?v=${encodeURIComponent('2026-11-17T02:00:00.000Z')}`, {
+        headers: { cookie },
+      })
+      expect(fallbackMatched.status).toBe(200)
+      expect(fallbackMatched.headers.get('cache-control')).toBe('private, max-age=31536000, immutable')
+      expect(getCard).toHaveBeenCalledWith({ cardId: 'card-1' })
+
+      const fallbackMismatched = await fetch(`${origin}/cards/card-1/media/background?v=999`, { headers: { cookie } })
+      expect(fallbackMismatched.status).toBe(200)
+      expect(fallbackMismatched.headers.get('cache-control')).toBe('no-cache')
+    } finally {
+      await server.shutdown()
     }
   })
 })

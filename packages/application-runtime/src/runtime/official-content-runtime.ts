@@ -153,7 +153,7 @@ export function createOfficialContentRuntimeMethods(ctx: OfficialContentRuntimeC
               defaultEnabled: false,
               ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
               ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
-              ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+              ...(definition.input.kind !== 'structured' && definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
               origin: { kind: 'builtin', key: builtinOriginKeys[presetId] ?? `${input.packageId}:${presetId}` },
             })
           }

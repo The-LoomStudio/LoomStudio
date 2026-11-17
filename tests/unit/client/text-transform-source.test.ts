@@ -12,6 +12,8 @@ import type { PromptResource } from '../../../apps/studio-client/src/entities/in
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
+  useContext: () => undefined,
+  useCallback: (callback: unknown) => callback,
   useState: (initial: unknown) => {
     const index = hooks.cursor++
     if (!(index in hooks.values)) hooks.values[index] = typeof initial === 'function' ? initial() : initial

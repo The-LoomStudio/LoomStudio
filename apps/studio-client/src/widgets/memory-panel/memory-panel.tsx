@@ -45,7 +45,7 @@ export function MemoryPanel(props: Props) {
   const cardQuery = useQuery({ queryKey: ['memory-card-owner', props.endpoint, cardId],
     queryFn: () => props.api.cards.get(cardId!), enabled: Boolean(cardId), retry: false })
   const card = cardQuery.data?.card
-  const avatar = card ? cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version) : undefined
+  const avatar = card ? cardMediaUrl(card.id, 'avatar', card.media?.avatarAssetId, card.version, card.updatedAt) : undefined
   const branchId = props.branchId ?? timeline?.activeBranchId
   const currentScope = props.rendererHost.scopeSnapshot()
   const scope = { kind: 'timeline' as const, key: timelineId ?? '' }

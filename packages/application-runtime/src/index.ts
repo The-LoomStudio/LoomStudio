@@ -1,6 +1,7 @@
 export * from './observability/types.js'
 export { createObservationStore } from './observability/store.js'
-export { createObservedAiGateway } from './observability/gateway.js'
+export { createObservedAiGateway, readObservationRequestId } from './observability/gateway.js'
+export { createAgentRunService, type AgentRunRuntime } from './agents/agent-run-service.js'
 export { applicationDocumentTypes } from './foundation/document-types.js'
 export { readUserProfiles, resolveCurrentUserProfile, userProfilesDocumentId } from './profiles/user-profiles.js'
 export type { UserProfile, UserProfilesConfig, UserProfilesContent, ResolvedUserProfile, CreateUserProfileInput, UpdateUserProfileInput, SelectUserProfileInput, DeleteUserProfileInput } from './profiles/user-profiles.js'
@@ -77,7 +78,19 @@ export {
   createDocumentBackedProfiledAiGateway,
   createFakeAiGateway,
   createOpenAICompatibleGateway,
+  createProviderLoggerGatewayHook,
+  createUnifiedAiGateway,
 } from './providers/gateway.js'
+export type {
+  AiGatewayLogEvent,
+  AiGatewayLogHook,
+  UnifiedAiGateway,
+  UnifiedAiGatewayOptions,
+} from './providers/gateway.js'
+export type {
+  ApplicationExtensionPorts,
+  ApplicationScopeValidator,
+} from './foundation/application-context.js'
 export { officialFakeModelId } from './runtime/providers-runtime.js'
 export {
   buildOpenAIChatPayload,

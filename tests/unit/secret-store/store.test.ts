@@ -1,12 +1,12 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import { createId, nowIso } from '@loom-studio/shared'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { createMemorySecretBackend } from '../../../packages/secret-store/src/memory-backend.js'
-import { createSecretStore, SecretStoreError } from '../../../packages/secret-store/src/store.js'
-import type { SecretBackend, SecretPlaintext } from '../../../packages/secret-store/src/types.js'
+import { createMemorySecretBackend } from '@loom-studio/kernel/secret-store'
+import { createSecretStore, SecretStoreError } from '@loom-studio/kernel/secret-store'
+import type { SecretBackend, SecretPlaintext } from '@loom-studio/kernel/secret-store'
 
 const actor = { kind: 'system' as const, id: 'secret-store-test' }
 const owner = { type: 'provider-profile', id: 'provider-1' }

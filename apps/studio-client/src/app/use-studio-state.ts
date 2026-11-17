@@ -239,8 +239,8 @@ export function useStudioState(transportLogger: Logger, runtimeLogger?: Logger) 
 
   const sessionBusy = operations.isPending('session')
   const promptMessages = narrativeRuntime.promptPreview?.messages
-  const promptProjection = narrativeRuntime.promptPreview?.projection ?? narrativeRuntime.lastRun?.projection
-  const promptBuildTrace = narrativeRuntime.promptPreview?.promptBuildTrace ?? narrativeRuntime.lastRun?.promptBuildTrace
+  const promptProjection = narrativeRuntime.promptPreview?.projection
+  const promptBuildTrace = narrativeRuntime.promptPreview?.promptBuildTrace
   const providerPayloadPreview = narrativeRuntime.promptPreview?.providerPayloadPreview
   const derivedValues = useStudioDerivedValues({
     t,
@@ -253,6 +253,7 @@ export function useStudioState(transportLogger: Logger, runtimeLogger?: Logger) 
     narrativeInput: narrativeRuntime.input,
     promptMessages,
     promptProjection,
+    promptBuildTrace,
     activationFacts,
     sessionBusy,
     agentSessionReady: narrativeRuntime.agentSessionReady,
@@ -264,7 +265,7 @@ export function useStudioState(transportLogger: Logger, runtimeLogger?: Logger) 
     macroPreview,
     macroKey: macroPreviewKey,
     user: userMacroValues,
-    macroInspection: narrativeRuntime.promptPreview?.macroInspection ?? narrativeRuntime.lastRun?.macroInspection,
+    macroInspection: narrativeRuntime.promptPreview?.macroInspection,
     macroContextCard: cardsState.selectedCardDetails,
   })
 

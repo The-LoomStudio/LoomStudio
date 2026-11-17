@@ -68,7 +68,7 @@ export function StudioTimelineActions({ state, navigation, cardId, busy, onDelet
 
   if (!card) return null
   return <>
-    <TimelineQuickActions character={{ name: card.name, avatarUrl: card.media?.avatarAssetId ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, revision) : undefined }}
+    <TimelineQuickActions character={{ name: card.name, avatarUrl: card.media?.avatarAssetId ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, revision, card.updatedAt) : undefined }}
       busy={disabled} canFork={Boolean(head)}
       selectedTimelineId={timeline?.id}
       timelines={state.allTimelines.filter(item => item.createdFrom?.cardId === cardId)

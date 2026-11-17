@@ -1,11 +1,11 @@
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import {
   createAgentToolRegistry, createApplicationRuntime, createNarrativeContextRegistry, createNarrativeReader, createNarrativeSampler,
   createOfficialAgentToolRegistry,
   type NarrativeContextProjection, type NarrativeHistoryReadApproval, type ToolApprovalHandler, type ToolDefinition, type ToolExecutionScope,
 } from '@loom-studio/application-runtime'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createId, nowIso, type ChatMessage } from '@loom-studio/shared'
 import { describe, expect, it, vi } from 'vitest'
 import { readNarrativeContext } from '../../../packages/application-runtime/src/narrative/context-provider.js'

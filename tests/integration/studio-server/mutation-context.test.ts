@@ -1,6 +1,6 @@
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import type { AgentToolEntry } from '@loom-studio/application-runtime'
-import { createMemorySecretBackend } from '@loom-studio/secret-store'
+import { createMemorySecretBackend } from '@loom-studio/kernel/secret-store'
 import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdtemp, realpath, rm } from 'node:fs/promises'
@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { callRpc, createApplicationSession } from './helpers.js'
 
 const captured = vi.hoisted(() => ({ events: [] as StudioEvent[] }))
@@ -18,7 +18,7 @@ vi.mock('@loom-studio/kernel', async importOriginal => {
     ...original,
     createKernel: (...args: Parameters<typeof original.createKernel>) => {
       const kernel = original.createKernel(...args)
-      kernel.getEventBus().subscribe(['data.changed', 'docs.changed'], event => { captured.events.push(event) })
+      kernel.getEventBus().subscribe(['data.changed'], event => { captured.events.push(event) })
       return kernel
     },
   }
@@ -64,11 +64,6 @@ describe('Application mutation request context', () => {
           expect(event?.meta).toMatchObject({
             clientId: metadata.clientId, correlationId, callId: metadata.callId, parentCallId,
           })
-          const operations = JSON.parse(String(row.operations_json)) as { store: string; entityId: string }[]
-          if (operations.some(operation => operation.store === 'documents')) {
-            expect(captured.events.find(item => item.name === 'docs.changed' && (item.payload as { changesetId: string }).changesetId === row.id)?.meta)
-              .toMatchObject({ clientId: metadata.clientId, correlationId, callId: metadata.callId, parentCallId })
-          }
         }
         return payload.result?.data
       }

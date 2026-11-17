@@ -1,162 +1,219 @@
 import type { MediaAssetLookup } from '../types.js'
 import { validateMessageAttachments } from '../agents/message-attachments.js'
-import type { StatisticsStore } from '@loom-studio/application-data'
+import type { StatisticsStore } from '../data/index.js'
 import {
   createAiGateway,
   createOfficialFakeChatCompletion,
   createOfficialProviderAdapterRegistry,
-  createProfiledAiGateway,
+  createProfiledRun,
   officialFakeModelId,
   parseProviderOptions,
   type AiGatewayCapabilityRegistry,
+  type AiGatewayInvocationContext,
+  type AiGatewayInvokeResult,
   type ProfiledAiGateway,
   type ProviderAdapterRegistry,
   type AiGatewayEvent,
 } from '@loom-studio/ai-gateway'
-import type { DocumentStore } from '@loom-studio/document-store'
-import type { SecretStore } from '@loom-studio/secret-store'
+import type { DocumentStore } from '@loom-studio/kernel/document-store'
+import { readLogFailure, type Logger } from '@loom-studio/logging'
+import type { SecretStore } from '@loom-studio/kernel/secret-store'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
+import type { TokenUsage } from '@loom-studio/shared/tokenizer/contracts'
 import { fetch as undiciFetch, ProxyAgent } from 'undici'
-import type { ObservationStore } from '../observability/types.js'
-import { safeGenerationConfiguration } from '../observability/gateway.js'
+import type { ObservationOrigin, ObservationStore } from '../observability/types.js'
+import { readObservationRequestId, safeGenerationConfiguration } from '../observability/gateway.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { readDocument } from '../foundation/document-store.js'
 import type {
   AiGateway,
   AiCapabilityProfileContent,
+  GatewayChatResult,
+  GatewayInvokeChatInput,
   OpenAICompatibleGatewayOptions,
   ProviderProfileContent,
 } from '../types.js'
 
-export function createDocumentBackedProfiledAiGateway(options: {
-  documents: DocumentStore
-  registry: AiGatewayCapabilityRegistry
-  secrets?: SecretStore
-  statistics?: StatisticsStore
-  observations?: ObservationStore
-}): ProfiledAiGateway {
-  const buildGateway = (id?: string, profileId?: string) => createProfiledAiGateway({
-    registry: {
-      ...options.registry,
-      invokeRegistered: async input => {
-        const invoke = (report?: Parameters<Parameters<StatisticsStore['track']>[1]>[0]) => options.registry.invokeRegistered({
-        ...input,
-        ...(report ? { onUsage: report } : {}),
-        onPrepared: evidence => options.observations?.capture(() => options.observations!.patch(id!, {
-          request: { phase: 'invoking', input: evidence.input,
-            capability: { profileId: profileId!, providerId: input.providerId, capabilityId: input.capabilityId },
-            providerCallId: evidence.providerCallId,
-            configuration: safeGenerationConfiguration(evidence.profileConfig) },
-        })),
-        })
-        if (!options.statistics) return invoke()
-        const profile = await readDocument<AiCapabilityProfileContent>(options.documents, profileId!, applicationDocumentTypes.aiCapabilityProfile)
-        const provider = await readDocument<ProviderProfileContent>(options.documents, profile.content.providerProfileId, applicationDocumentTypes.providerProfile)
-        return options.statistics.track({ id: id ?? createId('usage'), providerProfileId: provider.id,
-          providerId: input.providerId, providerName: provider.content.displayName, capabilityId: input.capabilityId,
-          modelId: typeof input.profileConfig.modelId === 'string' ? input.profileConfig.modelId : undefined,
-          purpose: input.caller?.kind === 'extension' ? 'extension-capability' : 'capability', simulated: input.providerId === 'official.fake',
-        }, report => invoke(report), input.signal)
-      },
-    },
-    resolveProfile: async profileId => {
-      const profile = await readDocument<AiCapabilityProfileContent>(
-        options.documents,
-        profileId,
-        applicationDocumentTypes.aiCapabilityProfile,
-      )
-      const providerProfile = await readDocument<ProviderProfileContent>(
-        options.documents,
-        profile.content.providerProfileId,
-        applicationDocumentTypes.providerProfile,
-      )
-      return {
-        profileId: profile.id,
-        providerProfileId: providerProfile.id,
-        providerId: providerProfile.content.providerExtensionId,
-        capabilityId: profile.content.capabilityId,
-        accountConfig: providerProfile.content.config,
-        profileConfig: profile.content.config,
-      }
-    },
-    credentials: {
-      withCredential: async (profile, operation) => {
-        const providerProfile = await readDocument<ProviderProfileContent>(
-          options.documents,
-          profile.providerProfileId,
-          applicationDocumentTypes.providerProfile,
-        )
-        if (!providerProfile.content.secretRef) return await operation(undefined)
-        if (!options.secrets) throw new Error('Provider credential is not configured')
-        return await options.secrets.withSecret(providerProfile.content.secretRef, {
-          caller: 'application.ai-gateway',
-          owner: { type: 'provider-profile', id: providerProfile.id },
-          purpose: 'provider.credentials',
-        }, async secret => await operation({ ...secret.values }))
-      },
-    },
-  })
-  // A per-call closure preserves correlation through asynchronous profile/credential resolution.
-  function prepare(input: Parameters<ProfiledAiGateway['invoke']>[0]) {
-    const id = createId('api')
-    const startedAt = performance.now()
-    options.observations?.capture(() => options.observations!.write({
-      id, kind: 'api', title: input.profileId, status: 'running',
-      origin: { actor: input.caller?.id },
-      request: { phase: 'prepared', capability: { profileId: input.profileId } },
-    }))
-    const complete = async (result: ReturnType<ProfiledAiGateway['invoke']>) => {
-      try {
-        const value = await result
-        options.observations?.capture(() => options.observations!.patch(id!, {
-          status: 'completed', durationMs: performance.now() - startedAt,
-          request: { phase: 'completed', providerCallId: value.providerCallId, response: value.output },
-        }))
-        return value
-      } catch (error) {
-        options.observations?.capture(() => {
-          const status = input.signal?.aborted || (error instanceof Error && error.name === 'AbortError') ? 'aborted' : 'failed'
-          options.observations!.patch(id!, { status, durationMs: performance.now() - startedAt,
-            diagnostic: error instanceof Error ? error.message : String(error), request: { phase: status } })
-        })
-        throw error
-      }
+export type AiGatewayLogEvent =
+  | {
+      phase: 'started'
+      kind: 'chat' | 'capability'
+      invocationId: string
+      model?: string
+      providerProfileId?: string
+      capabilityProfileId?: string
+      runId?: string
+      sessionId?: string
+      branchId?: string
+      messageCount?: number
+      toolCount?: number
+      delivery?: string
+      providerStep?: number
+      detail: string
+      correlationId?: string
+      callId?: string
+      parentCallId?: string
     }
-    return { gateway: buildGateway(id, input.profileId), complete }
-  }
-  if (!options.observations && !options.statistics) return buildGateway()
-  return {
-    invoke: input => { const call = prepare(input); return call.complete(call.gateway.invoke(input)) },
-    createRun: input => {
-      const call = prepare(input)
-      const run = call.gateway.createRun(input)
-      const result = call.complete(run.result)
-      result.catch(() => undefined)
-      return { ...run, result }
-    },
-  }
-}
+  | {
+      phase: 'completed'
+      kind: 'chat' | 'capability'
+      invocationId: string
+      provider: string
+      model: string
+      providerProfileId?: string
+      capabilityProfileId?: string
+      capabilityId?: string
+      runId?: string
+      sessionId?: string
+      branchId?: string
+      messageCount?: number
+      toolCount?: number
+      delivery?: string
+      providerStep?: number
+      outputCharacters?: number
+      toolCallCount?: number
+      detail: string
+      firstOutputMs?: number
+      durationMs: number
+      providerCallId?: string
+      finishReason?: string
+      usage?: TokenUsage
+      correlationId?: string
+      callId?: string
+      parentCallId?: string
+    }
+  | {
+      phase: 'cancelled' | 'failed'
+      kind: 'chat' | 'capability'
+      invocationId: string
+      model?: string
+      providerProfileId?: string
+      capabilityProfileId?: string
+      runId?: string
+      sessionId?: string
+      branchId?: string
+      messageCount?: number
+      toolCount?: number
+      delivery?: string
+      providerStep?: number
+      detail: string
+      firstOutputMs?: number
+      durationMs: number
+      error: unknown
+      correlationId?: string
+      callId?: string
+      parentCallId?: string
+    }
 
-export function createFakeAiGateway(): AiGateway {
-  return {
-    invokeChat: input => invokeFakeChat(input),
-  }
-}
+export type AiGatewayLogHook = (event: AiGatewayLogEvent) => void
 
-export function createDocumentBackedAiGateway(options: {
+export type UnifiedAiGateway = AiGateway & ProfiledAiGateway
+
+export type UnifiedAiGatewayOptions = {
   mediaAssets?: MediaAssetLookup
   documents: DocumentStore
   secrets?: SecretStore
   fallback?: AiGateway
   resolveProxyUrl?: () => string | undefined
   providerAdapters?: ProviderAdapterRegistry
+  aiCapabilities?: AiGatewayCapabilityRegistry
   statistics?: StatisticsStore
   observations?: ObservationStore
-}): AiGateway {
+  providerLogger?: Logger
+  onLog?: AiGatewayLogHook
+}
+
+export function createProviderLoggerGatewayHook(logger: Logger): AiGatewayLogHook {
+  return event => {
+    const logContext = {
+      ...(event.correlationId ? { correlationId: event.correlationId } : {}),
+      ...(event.callId ? { callId: event.callId } : {}),
+      ...(event.parentCallId ? { parentCallId: event.parentCallId } : {}),
+    }
+    const baseData = {
+      invocationId: event.invocationId,
+      ...(event.runId !== undefined ? { runId: event.runId } : {}),
+      ...(event.sessionId !== undefined ? { sessionId: event.sessionId } : {}),
+      ...(event.branchId !== undefined ? { branchId: event.branchId } : {}),
+      ...(event.providerProfileId !== undefined ? { providerProfileId: event.providerProfileId } : {}),
+      ...(event.capabilityProfileId !== undefined ? { capabilityProfileId: event.capabilityProfileId } : {}),
+      ...(event.model !== undefined ? { modelId: event.model } : {}),
+      ...(event.messageCount !== undefined ? { messageCount: event.messageCount } : {}),
+      ...(event.toolCount !== undefined ? { toolCount: event.toolCount } : {}),
+      ...(event.delivery !== undefined ? { delivery: event.delivery } : {}),
+      ...(event.providerStep !== undefined ? { providerStep: event.providerStep } : {}),
+      detail: event.detail,
+    }
+    const label = event.model ?? event.capabilityProfileId ?? 'default model'
+    if (event.phase === 'started') {
+      logger.info(`${label} · request started`, {
+        event: 'provider.invoke.started',
+        data: { ...baseData, outcome: 'running' },
+        ...logContext,
+      })
+      return
+    }
+    if (event.phase === 'completed') {
+      const detail = event.kind === 'chat'
+        ? `${event.detail} · ${event.outputCharacters ?? 0} output characters · ${event.toolCallCount ?? 0} native tool calls`
+        : event.detail
+      logger.info(`${event.model} · response completed${event.finishReason ? ` · ${event.finishReason}` : ''}`, {
+        event: 'provider.invoke.completed',
+        data: {
+          ...baseData,
+          provider: event.provider,
+          model: event.model,
+          outcome: 'completed',
+          ...(event.capabilityId !== undefined ? { capabilityId: event.capabilityId } : {}),
+          ...(event.outputCharacters !== undefined ? { outputCharacters: event.outputCharacters } : {}),
+          ...(event.toolCallCount !== undefined ? { toolCallCount: event.toolCallCount } : {}),
+          detail,
+          ...(event.firstOutputMs === undefined ? {} : { firstOutputMs: event.firstOutputMs }),
+          ...(event.providerCallId ? { providerCallId: event.providerCallId } : {}),
+          ...(event.finishReason ? { finishReason: event.finishReason } : {}),
+          ...(event.usage ? {
+            usage: {
+              ...(event.usage.inputTokens === undefined ? {} : { inputTokens: event.usage.inputTokens }),
+              ...(event.usage.outputTokens === undefined ? {} : { outputTokens: event.usage.outputTokens }),
+            },
+          } : {}),
+          durationMs: event.durationMs,
+        },
+        ...logContext,
+      })
+      return
+    }
+    const cancelled = event.phase === 'cancelled'
+    const failure = readLogFailure(event.error)
+    logger[cancelled ? 'info' : 'error'](`${label} · ${cancelled ? 'request cancelled' : failure.failureReason}`, {
+      event: cancelled ? 'provider.invoke.cancelled' : 'provider.invoke.failed',
+      data: {
+        ...baseData,
+        durationMs: event.durationMs,
+        outcome: event.phase,
+        ...failure,
+        ...(event.firstOutputMs === undefined ? {} : { firstOutputMs: event.firstOutputMs }),
+      },
+      ...logContext,
+    })
+  }
+}
+
+export function createUnifiedAiGateway(options: UnifiedAiGatewayOptions): UnifiedAiGateway {
   const fallback = options.fallback ?? createFakeAiGateway()
   const providerAdapters = options.providerAdapters ?? createOfficialProviderAdapterRegistry()
+  const platformGateway = createAiGateway()
   const proxyTransports = new Map<string, typeof fetch>()
+  const logHook = combineLogHooks(
+    options.providerLogger ? createProviderLoggerGatewayHook(options.providerLogger) : undefined,
+    options.onLog,
+  )
+
+  function emitLog(event: AiGatewayLogEvent): void {
+    if (!logHook) return
+    try { logHook(event) } catch { /* Logging cannot interrupt provider execution. */ }
+  }
 
   function resolveTransport(): typeof fetch {
     const proxyUrl = options.resolveProxyUrl?.()
@@ -169,6 +226,168 @@ export function createDocumentBackedAiGateway(options: {
     }) as typeof fetch
     proxyTransports.set(proxyUrl, transport)
     return transport
+  }
+
+  async function executeCapabilityInvoke(input: Parameters<ProfiledAiGateway['invoke']>[0]): Promise<AiGatewayInvokeResult> {
+    if (!options.aiCapabilities) throw new Error('AI Gateway capability registry is not configured')
+    const registry = options.aiCapabilities
+    const id = createId('api')
+    const invocationId = createId('invoke')
+    const startedAt = performance.now()
+    const context = input.context
+    const timelineId = context?.timelineId
+    const origin = buildCapabilityOrigin(input.caller, context)
+    const detail = `capability ${input.profileId}`
+
+    options.observations?.capture(() => options.observations!.write({
+      id,
+      kind: 'api',
+      title: input.profileId,
+      status: 'running',
+      ...(timelineId ? { timelineId } : {}),
+      ...(origin ? { origin } : {}),
+      request: { phase: 'prepared', capability: { profileId: input.profileId } },
+    }))
+    emitLog({
+      phase: 'started',
+      kind: 'capability',
+      invocationId,
+      capabilityProfileId: input.profileId,
+      detail,
+      ...(context?.correlationId ? { correlationId: context.correlationId } : {}),
+      ...(context?.callId ? { callId: context.callId } : {}),
+      ...(context?.parentCallId ? { parentCallId: context.parentCallId } : {}),
+    })
+
+    let resolvedCapabilityId: string | undefined
+    let resolvedProviderProfileId: string | undefined
+    let resolvedModelId: string | undefined
+    try {
+      const profile = await readDocument<AiCapabilityProfileContent>(
+        options.documents,
+        input.profileId,
+        applicationDocumentTypes.aiCapabilityProfile,
+      )
+      const providerProfile = await readDocument<ProviderProfileContent>(
+        options.documents,
+        profile.content.providerProfileId,
+        applicationDocumentTypes.providerProfile,
+      )
+      resolvedCapabilityId = profile.content.capabilityId
+      resolvedProviderProfileId = providerProfile.id
+      resolvedModelId = typeof profile.content.config.modelId === 'string' ? profile.content.config.modelId : undefined
+
+      const runWithCredential = async (credential: Record<string, string> | undefined): Promise<AiGatewayInvokeResult> => {
+        const invokeRegistered = (report?: Parameters<Parameters<StatisticsStore['track']>[1]>[0]) =>
+          registry.invokeRegistered({
+            providerId: providerProfile.content.providerExtensionId,
+            capabilityId: profile.content.capabilityId,
+            accountConfig: providerProfile.content.config,
+            ...(credential ? { credential } : {}),
+            profileConfig: profile.content.config,
+            input: input.input,
+            ...(input.signal ? { signal: input.signal } : {}),
+            ...(input.caller ? { caller: input.caller } : {}),
+            ...(report ? { onUsage: report } : {}),
+            onPrepared: evidence => {
+              options.observations?.capture(() => options.observations!.patch(id, {
+                request: {
+                  phase: 'invoking',
+                  input: evidence.input,
+                  capability: {
+                    profileId: profile.id,
+                    providerId: providerProfile.content.providerExtensionId,
+                    capabilityId: profile.content.capabilityId,
+                  },
+                  providerCallId: evidence.providerCallId,
+                  configuration: safeGenerationConfiguration(evidence.profileConfig),
+                },
+              }))
+            },
+          })
+
+        const registeredResult = options.statistics
+          ? await options.statistics.track({
+              id,
+              providerProfileId: providerProfile.id,
+              providerId: providerProfile.content.providerExtensionId,
+              providerName: providerProfile.content.displayName,
+              capabilityId: profile.content.capabilityId,
+              modelId: resolvedModelId,
+              ...(timelineId ? { timelineId } : {}),
+              purpose: input.caller?.kind === 'extension' ? 'extension-capability' : 'capability',
+              simulated: providerProfile.content.providerExtensionId === 'official.fake',
+            }, report => invokeRegistered(report), input.signal)
+          : await invokeRegistered()
+        return { profileId: profile.id, ...registeredResult }
+      }
+
+      const value = providerProfile.content.secretRef
+        ? await (() => {
+            if (!options.secrets) throw new Error('Provider credential is not configured')
+            return options.secrets.withSecret(providerProfile.content.secretRef, {
+              caller: 'application.ai-gateway',
+              owner: { type: 'provider-profile', id: providerProfile.id },
+              purpose: 'provider.credentials',
+            }, async secret => await runWithCredential({ ...secret.values }))
+          })()
+        : await runWithCredential(undefined)
+
+      const durationMs = readDurationMs(startedAt)
+      options.observations?.capture(() => options.observations!.patch(id, {
+        status: 'completed',
+        durationMs,
+        request: {
+          phase: 'completed',
+          providerCallId: value.providerCallId,
+          ...(value.usage ? { usage: value.usage } : {}),
+          response: value.output,
+        },
+      }))
+      emitLog({
+        phase: 'completed',
+        kind: 'capability',
+        invocationId,
+        provider: value.providerId,
+        model: resolvedModelId ?? value.capabilityId,
+        providerProfileId: resolvedProviderProfileId,
+        capabilityProfileId: value.profileId,
+        capabilityId: value.capabilityId,
+        detail,
+        durationMs,
+        providerCallId: value.providerCallId,
+        ...(value.usage ? { usage: value.usage } : {}),
+        ...(context?.correlationId ? { correlationId: context.correlationId } : {}),
+        ...(context?.callId ? { callId: context.callId } : {}),
+        ...(context?.parentCallId ? { parentCallId: context.parentCallId } : {}),
+      })
+      return value
+    } catch (error) {
+      const durationMs = readDurationMs(startedAt)
+      const aborted = Boolean(input.signal?.aborted || (error instanceof Error && error.name === 'AbortError'))
+      const status = aborted ? 'aborted' : 'failed'
+      options.observations?.capture(() => options.observations!.patch(id, {
+        status,
+        durationMs,
+        diagnostic: error instanceof Error ? error.message : String(error),
+        request: { phase: status },
+      }))
+      emitLog({
+        phase: aborted ? 'cancelled' : 'failed',
+        kind: 'capability',
+        invocationId,
+        model: resolvedModelId ?? resolvedCapabilityId ?? input.profileId,
+        providerProfileId: resolvedProviderProfileId,
+        capabilityProfileId: input.profileId,
+        detail,
+        durationMs,
+        error,
+        ...(context?.correlationId ? { correlationId: context.correlationId } : {}),
+        ...(context?.callId ? { callId: context.callId } : {}),
+        ...(context?.parentCallId ? { parentCallId: context.parentCallId } : {}),
+      })
+      throw error
+    }
   }
 
   return {
@@ -196,74 +415,340 @@ export function createDocumentBackedAiGateway(options: {
         }
       })
     },
-    invokeChat: async input => {
-      if (!input.model) {
-        return await fallback.invokeChat(input)
-      }
 
-      const providerProfile = await readDocument<ProviderProfileContent>(options.documents, input.model.providerProfileId, applicationDocumentTypes.providerProfile)
-      if (!providerProfile.content.enabledModelIds.includes(input.model.modelId)) {
-        throw new Error(`Provider model is not enabled: ${input.model.modelId}`)
-      }
-      const providerExtensionId = providerProfile.content.providerExtensionId
-      providerAdapters.validateAccountConfig(providerExtensionId, providerProfile.content.config)
-      if (providerProfile.content.secretRef) {
-        if (!options.secrets) throw new Error('Provider credential is not configured')
-        return await options.secrets.withSecret(providerProfile.content.secretRef, {
-          caller: 'application.ai-gateway',
-          owner: { type: 'provider-profile', id: providerProfile.id },
-          purpose: 'provider.credentials',
-        }, async secret => {
-          const resolved = providerAdapters.resolve(providerExtensionId, {
-            config: providerProfile.content.config,
-            credential: secret.values,
-            fetch: resolveTransport(),
+    invokeChat: async input => {
+      const existingId = readObservationRequestId(input.request)
+      const observationId = typeof existingId === 'string' ? existingId : createId('api')
+      const invocationId = createId('invoke')
+      const startedAt = performance.now()
+      let firstOutputMs: number | undefined
+      const timelineId = resolveChatTimelineId(input)
+      const origin = buildChatOrigin(input)
+      const references = buildChatLogReferences(input, invocationId)
+
+      options.observations?.capture(() => {
+        if (typeof existingId !== 'string') {
+          options.observations!.write({
+            id: observationId,
+            kind: 'api',
+            title: input.model?.modelId ?? 'Model API',
+            status: 'running',
+            modelId: input.model?.modelId,
+            timelineId,
+            ...(origin ? { origin } : {}),
+            request: {
+              preparedMessages: input.request.messages,
+              messages: input.request.messages,
+              tools: input.request.tools,
+              toolChoice: input.request.toolChoice,
+              model: input.model,
+              delivery: input.delivery ?? 'complete',
+              phase: 'prepared',
+              configuration: safeGenerationConfiguration(input.request.providerOptions),
+            },
           })
-          if (resolved.provider.kind === 'fake') return await invokeFakeChat(input)
-          const sanitizedMessages = input.request.messages.filter(message => {
-            if (message.role === 'assistant') {
-              return (typeof message.content === 'string' && message.content.trim().length > 0)
-                || Boolean(message.tool_calls && message.tool_calls.length > 0)
+        }
+        options.observations!.patch(observationId, { request: { phase: 'invoking' } })
+      })
+
+      emitLog({
+        phase: 'started',
+        kind: 'chat',
+        ...references,
+        ...(input.context?.correlationId ? { correlationId: input.context.correlationId } : {}),
+        ...(input.context?.callId ? { callId: input.context.callId } : {}),
+        ...(input.context?.parentCallId ? { parentCallId: input.context.parentCallId } : {}),
+      })
+
+      const trackedOnEvent = input.onEvent
+        ? (event: AiGatewayEvent) => {
+            if (
+              firstOutputMs === undefined &&
+              (event.type === 'text-delta' || event.type === 'reasoning-delta' || event.type === 'tool-input-delta')
+            ) {
+              firstOutputMs = readDurationMs(startedAt)
             }
-            return typeof message.content === 'string' && (message.content.trim().length > 0 || message.role === 'user' && Boolean(message.attachments?.length))
-          })
-          const actualProvider = resolved.provider
-          const providerKind = actualProvider.kind
-          options.observations?.capture(() => {
-            const id = input.request.metadata?.observationRequestId
-            if (typeof id === 'string') options.observations!.patch(id!, { request: {
-              messages: sanitizedMessages,
-              configuration: { provider: providerKind, ...safeGenerationConfiguration(parseProviderOptions(providerKind, input.request.providerOptions)?.[providerKind]) },
-            } })
-          })
-          const dispatch = async (report?: Parameters<Parameters<StatisticsStore['track']>[1]>[0]) => {
-            const result = await invokePlatformGateway(createAiGateway(), {
-            ...(report ? { onUsage: report } : {}),
-            provider: actualProvider,
-            modelId: input.model!.modelId,
-            messages: await prepareAttachmentTransport(sanitizedMessages, options.mediaAssets),
-            ...(input.request.tools ? { tools: input.request.tools } : {}),
-            ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
-            ...(input.request.providerOptions ? { providerOptions: input.request.providerOptions } : {}),
-            ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
-            ...(input.delivery ? { delivery: input.delivery } : {}),
-            ...(input.onEvent ? { onEvent: input.onEvent } : {}),
-            })
-            if (result.usage) report?.(result.usage, result.providerCallId)
-            return result
+            input.onEvent!(event)
           }
-          if (!options.statistics) return dispatch()
-          return options.statistics.track({ id: createId('usage'), providerProfileId: providerProfile.id,
-            providerId: providerExtensionId, providerName: providerProfile.content.displayName, modelId: input.model!.modelId,
-            sessionId: input.sessionId, purpose: String(input.request.metadata?.purpose ?? 'chat'), simulated: false,
-          }, report => dispatch(report), input.abortSignal)
+        : undefined
+
+      try {
+        let result: GatewayChatResult
+        if (!input.model) {
+          result = await fallback.invokeChat({
+            ...input,
+            ...(trackedOnEvent ? { onEvent: trackedOnEvent } : {}),
+          })
+        } else {
+          const providerProfile = await readDocument<ProviderProfileContent>(
+            options.documents,
+            input.model.providerProfileId,
+            applicationDocumentTypes.providerProfile,
+          )
+          if (!providerProfile.content.enabledModelIds.includes(input.model.modelId)) {
+            throw new Error(`Provider model is not enabled: ${input.model.modelId}`)
+          }
+          const providerExtensionId = providerProfile.content.providerExtensionId
+          providerAdapters.validateAccountConfig(providerExtensionId, providerProfile.content.config)
+
+          if (providerProfile.content.secretRef) {
+            if (!options.secrets) throw new Error('Provider credential is not configured')
+            result = await options.secrets.withSecret(providerProfile.content.secretRef, {
+              caller: 'application.ai-gateway',
+              owner: { type: 'provider-profile', id: providerProfile.id },
+              purpose: 'provider.credentials',
+            }, async secret => {
+              const resolved = providerAdapters.resolve(providerExtensionId, {
+                config: providerProfile.content.config,
+                credential: secret.values,
+                fetch: resolveTransport(),
+              })
+              if (resolved.provider.kind === 'fake') return await invokeFakeChat(input)
+              const sanitizedMessages = sanitizeChatMessages(input.request.messages)
+              const actualProvider = resolved.provider
+              const providerKind = actualProvider.kind
+              options.observations?.capture(() => {
+                options.observations!.patch(observationId, {
+                  request: {
+                    messages: sanitizedMessages,
+                    configuration: {
+                      provider: providerKind,
+                      ...safeGenerationConfiguration(parseProviderOptions(providerKind, input.request.providerOptions)?.[providerKind]),
+                    },
+                  },
+                })
+              })
+              const dispatch = async (report?: Parameters<Parameters<StatisticsStore['track']>[1]>[0]) => {
+                const chatResult = await invokePlatformGateway(platformGateway, {
+                  ...(report ? { onUsage: report } : {}),
+                  provider: actualProvider,
+                  modelId: input.model!.modelId,
+                  messages: await prepareAttachmentTransport(sanitizedMessages, options.mediaAssets),
+                  ...(input.request.tools ? { tools: input.request.tools } : {}),
+                  ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
+                  ...(input.request.providerOptions ? { providerOptions: input.request.providerOptions } : {}),
+                  ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+                  ...(input.delivery ? { delivery: input.delivery } : {}),
+                  ...(trackedOnEvent ? { onEvent: trackedOnEvent } : {}),
+                })
+                if (chatResult.usage) report?.(chatResult.usage, chatResult.providerCallId)
+                return chatResult
+              }
+              if (!options.statistics) return await dispatch()
+              return await options.statistics.track({
+                id: createId('usage'),
+                providerProfileId: providerProfile.id,
+                providerId: providerExtensionId,
+                providerName: providerProfile.content.displayName,
+                modelId: input.model!.modelId,
+                ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+                ...(timelineId ? { timelineId } : {}),
+                purpose: typeof input.request.metadata?.purpose === 'string' ? input.request.metadata.purpose : 'chat',
+                simulated: false,
+              }, report => dispatch(report), input.abortSignal)
+            })
+          } else {
+            const resolved = providerAdapters.resolve(providerExtensionId, { config: providerProfile.content.config })
+            if (resolved.provider.kind !== 'fake') throw new Error('Provider credential is not configured')
+            result = await invokeFakeChat(input)
+          }
+        }
+
+        const durationMs = readDurationMs(startedAt)
+        options.observations?.capture(() => options.observations!.patch(observationId, {
+          status: 'completed',
+          durationMs,
+          request: {
+            phase: 'completed',
+            usage: result.usage,
+            finishReason: result.finishReason,
+            providerCallId: result.providerCallId,
+            firstOutputMs,
+            response: {
+              message: result.message,
+              reasoning: result.reasoning,
+              model: result.model,
+              provider: result.provider,
+            },
+          },
+        }))
+        emitLog({
+          phase: 'completed',
+          kind: 'chat',
+          ...references,
+          provider: result.provider,
+          model: result.model,
+          outputCharacters: result.text.length,
+          toolCallCount: result.message.tool_calls?.length ?? 0,
+          ...(firstOutputMs === undefined ? {} : { firstOutputMs }),
+          durationMs,
+          ...(result.providerCallId ? { providerCallId: result.providerCallId } : {}),
+          ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+          ...(result.usage ? { usage: result.usage } : {}),
+          ...(input.context?.correlationId ? { correlationId: input.context.correlationId } : {}),
+          ...(input.context?.callId ? { callId: input.context.callId } : {}),
+          ...(input.context?.parentCallId ? { parentCallId: input.context.parentCallId } : {}),
         })
+        return result
+      } catch (error) {
+        const durationMs = readDurationMs(startedAt)
+        const aborted = Boolean(input.abortSignal?.aborted || (error instanceof Error && error.name === 'AbortError'))
+        const status = aborted ? 'aborted' : 'failed'
+        options.observations?.capture(() => options.observations!.patch(observationId, {
+          status,
+          durationMs,
+          diagnostic: error instanceof Error ? error.message : String(error),
+          request: { phase: status, firstOutputMs },
+        }))
+        emitLog({
+          phase: aborted ? 'cancelled' : 'failed',
+          kind: 'chat',
+          ...references,
+          ...(firstOutputMs === undefined ? {} : { firstOutputMs }),
+          durationMs,
+          error,
+          ...(input.context?.correlationId ? { correlationId: input.context.correlationId } : {}),
+          ...(input.context?.callId ? { callId: input.context.callId } : {}),
+          ...(input.context?.parentCallId ? { parentCallId: input.context.parentCallId } : {}),
+        })
+        throw error
       }
-      const resolved = providerAdapters.resolve(providerExtensionId, { config: providerProfile.content.config })
-      if (resolved.provider.kind === 'fake') return await invokeFakeChat(input)
-      throw new Error('Provider credential is not configured')
     },
+
+    invoke: executeCapabilityInvoke,
+    createRun: input => createProfiledRun(signal => executeCapabilityInvoke({ ...input, signal }), input.signal),
   }
+}
+
+export function createDocumentBackedProfiledAiGateway(options: {
+  documents: DocumentStore
+  registry: AiGatewayCapabilityRegistry
+  secrets?: SecretStore
+  statistics?: StatisticsStore
+  observations?: ObservationStore
+  providerLogger?: Logger
+  onLog?: AiGatewayLogHook
+}): ProfiledAiGateway {
+  const gateway = createUnifiedAiGateway({
+    documents: options.documents,
+    aiCapabilities: options.registry,
+    secrets: options.secrets,
+    statistics: options.statistics,
+    observations: options.observations,
+    providerLogger: options.providerLogger,
+    onLog: options.onLog,
+  })
+  return {
+    invoke: gateway.invoke,
+    createRun: gateway.createRun,
+  }
+}
+
+export function createFakeAiGateway(): AiGateway {
+  return {
+    invokeChat: input => invokeFakeChat(input),
+  }
+}
+
+export function createDocumentBackedAiGateway(options: {
+  mediaAssets?: MediaAssetLookup
+  documents: DocumentStore
+  secrets?: SecretStore
+  fallback?: AiGateway
+  resolveProxyUrl?: () => string | undefined
+  providerAdapters?: ProviderAdapterRegistry
+  statistics?: StatisticsStore
+  observations?: ObservationStore
+  providerLogger?: Logger
+  onLog?: AiGatewayLogHook
+}): AiGateway {
+  const gateway = createUnifiedAiGateway(options)
+  return {
+    listModels: gateway.listModels,
+    invokeChat: gateway.invokeChat,
+  }
+}
+
+function combineLogHooks(
+  primary?: AiGatewayLogHook,
+  secondary?: AiGatewayLogHook,
+): AiGatewayLogHook | undefined {
+  if (!primary) return secondary
+  if (!secondary) return primary
+  return event => {
+    primary(event)
+    secondary(event)
+  }
+}
+
+function buildCapabilityOrigin(
+  caller: Parameters<ProfiledAiGateway['invoke']>[0]['caller'],
+  context?: AiGatewayInvocationContext,
+): ObservationOrigin | undefined {
+  const origin: ObservationOrigin = {
+    ...(context?.packageId ? { packageId: context.packageId } : {}),
+    ...(context?.moduleId ? { moduleId: context.moduleId } : {}),
+    ...(context?.installationId ? { installationId: context.installationId } : {}),
+    ...(context?.timelineId ? { timelineId: context.timelineId } : {}),
+    ...(context?.eventId ? { eventId: context.eventId } : {}),
+    ...(context?.eventName ? { eventName: context.eventName } : {}),
+    ...(caller?.id ? { actor: caller.id } : {}),
+    ...(context?.correlationId ? { correlationId: context.correlationId } : {}),
+    ...(context?.callId ? { callId: context.callId } : {}),
+    ...(context?.parentCallId ? { parentCallId: context.parentCallId } : {}),
+  }
+  return Object.keys(origin).length > 0 ? origin : undefined
+}
+
+function resolveChatTimelineId(input: GatewayInvokeChatInput): string | undefined {
+  if (input.context?.observationOrigin?.timelineId) return input.context.observationOrigin.timelineId
+  const metadataTimelineId = input.request.metadata?.timelineId
+  return typeof metadataTimelineId === 'string' && metadataTimelineId.length > 0 ? metadataTimelineId : undefined
+}
+
+function buildChatOrigin(input: GatewayInvokeChatInput): ObservationOrigin | undefined {
+  if (!input.context) return undefined
+  return {
+    ...input.context.observationOrigin,
+    ...(input.context.actor?.id !== undefined ? { actor: input.context.actor.id } : {}),
+    ...(input.context.correlationId !== undefined ? { correlationId: input.context.correlationId } : {}),
+    ...(input.context.callId !== undefined ? { callId: input.context.callId } : {}),
+    ...(input.context.parentCallId !== undefined ? { parentCallId: input.context.parentCallId } : {}),
+  }
+}
+
+function buildChatLogReferences(input: GatewayInvokeChatInput, invocationId: string) {
+  const providerStep = input.request.metadata?.providerStep
+  return {
+    invocationId,
+    runId: input.runId,
+    ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+    ...(input.branchId !== undefined ? { branchId: input.branchId } : {}),
+    ...(input.model ? {
+      providerProfileId: input.model.providerProfileId,
+      model: input.model.modelId,
+    } : {}),
+    messageCount: input.request.messages.length,
+    toolCount: input.request.tools?.length ?? 0,
+    delivery: input.delivery ?? 'complete',
+    ...(typeof providerStep === 'number' ? { providerStep } : {}),
+    detail: `${typeof providerStep === 'number' ? `Step ${providerStep} · ` : ''}${input.request.messages.length} messages · ${input.request.tools?.length ?? 0} native tools · ${input.delivery ?? 'complete'}`,
+  }
+}
+
+function sanitizeChatMessages(messages: GatewayInvokeChatInput['request']['messages']) {
+  return messages.filter(message => {
+    if (message.role === 'assistant') {
+      return (typeof message.content === 'string' && message.content.trim().length > 0)
+        || Boolean(message.tool_calls && message.tool_calls.length > 0)
+    }
+    return typeof message.content === 'string'
+      && (message.content.trim().length > 0 || (message.role === 'user' && Boolean(message.attachments?.length)))
+  })
+}
+
+function readDurationMs(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) * 100) / 100
 }
 
 async function invokeFakeChat(

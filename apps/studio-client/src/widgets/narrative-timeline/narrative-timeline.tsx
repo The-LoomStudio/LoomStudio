@@ -40,7 +40,7 @@ import { displayText, type DisplayProjection, type OpeningDisplayProjection } fr
 import { TextTokenSummary, TokenSummary } from '../../features/prompt-resources/ui/resource-token-summary.js'
 import { useTokenCounts } from '../../shared/tokenizer/use-token-counts.js'
 import { useTokenDisplaySettings } from '../../shared/tokenizer/settings.js'
-import { applyTokenMultiplier } from '@loom-studio/tokenizer/contracts'
+import { applyTokenMultiplier } from '@loom-studio/shared/tokenizer/contracts'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../features/message-content/ui/message-content.js')

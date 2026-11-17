@@ -1,4 +1,4 @@
-import type { NarrativeNode, NarrativeStore } from '@loom-studio/application-data'
+import type { NarrativeNode, NarrativeStore } from '../data/index.js'
 import type { ExtensionInstallationTarget, NarrativeContextProjection, NarrativeContextProvider } from '@loom-studio/extension-sdk'
 import { createNarrativeSampler } from './sampling.js'
 

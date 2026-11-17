@@ -1,11 +1,11 @@
-import { PromptResourceStoreError } from '@loom-studio/application-data'
+import { PromptResourceStoreError } from '../data/index.js'
 import type { ListPromptResourcesResult } from '../types.js'
 import type {
   PromptResource as StoredPromptResource,
   PromptResourceNodeDraft as StoredPromptResourceNodeDraft,
   PromptResourceStore,
   PromptResourceTreeNode as StoredPromptResourceTreeNode,
-} from '@loom-studio/application-data'
+} from '../data/index.js'
 import type { JsonObject } from '@loom-studio/shared'
 import { stripPromptAuthorDepth, normalizeMacroOptions, canPlacePromptNode, promptAnchorOutput } from '@loom-studio/shared'
 import type { PromptResourceContent, PromptResourceNode, PromptResourceKind } from './prompt-resource-types.js'

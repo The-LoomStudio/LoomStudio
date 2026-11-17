@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { createSqliteDataEngine } from '../../packages/data-engine/src/sqlite.js'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 
 describe('SQLite concurrent transaction stress and SLA gate', () => {
   it('handles 50 concurrent transactions through FIFO queue with zero data loss within SLA', async () => {

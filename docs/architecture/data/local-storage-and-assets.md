@@ -4,10 +4,11 @@ Studio Server 是本地路径的唯一组合根。领域 Package 不读取 Home�
 
 ## 1. 本地路径合同
 
-`resolveLoomStudioLocalPaths()` 默认使用操作系统原生用户目录：macOS 的 Application Support / Caches / Logs、Linux 的 XDG data / cache / state、Windows 的 LocalAppData。`LOOM_STUDIO_HOME` 将三个根收拢为其下的 `data/`、`cache/`、`logs/`；`LOOM_STUDIO_DATA_ROOT` 独立覆盖持久数据根，优先于 HOME 推导出的 data 路径，不改变 cache/log 路径。对应 options 分别优先于同名环境变量，见 [路径解析器](../../../apps/studio-server/src/platform/local-paths.ts)。
+`resolveLoomStudioLocalPaths()` 默认使用操作系统原生用户目录：macOS 的 Application Support / Caches / Logs、Linux 的 XDG data / cache / state、Windows 的 LocalAppData。`LOOM_STUDIO_HOME` 将三个根收拢为其下的 `data/`、`cache/`、`logs/`；`LOOM_STUDIO_DATA_ROOT` 独立覆盖持久数据根，优先于 HOME 推导出的 data 路径，不改变 cache/log 路径。对应 options 分别优先于同名环境变量，见 [路径解析器](../../../packages/kernel/src/platform/local-paths.ts)。
 
 ```text
 data/
+├── loom.lock
 ├── studio.sqlite
 ├── blobs/
 │   ├── sha256/ab/cd/<full-sha256>
@@ -16,9 +17,6 @@ data/
 │   └── <package-id>/
 │       ├── global/
 │       └── card-<card-id-sha256>/
-├── config/
-│   ├── extensions-state.json
-│   └── extensions-dev-links.json
 └── backups/
 
 cache/
@@ -33,13 +31,13 @@ logs/
     └── .card-installed/<archive-sha256>/<package-id>/<version>/
 ```
 
-正式运行的 data/cache/log 默认使用用户目录。扩展代码安装根默认是发行安装根 `installationRoot` 下的 `extensions/`，与 `data/extensions/` 中按 Package / 安装目标隔离的扩展文件数据分开。Server 的 `extensionInstalledDirectory` 可覆盖代码安装根；`extensionStateDirectory` 可将状态和开发链接改放到指定目录的 `state.json` / `dev-links.json`，默认仍使用上述 data/config 路径，见 [Server 组合根](../../../apps/studio-server/src/server.ts)。
+正式运行的 data/cache/log 默认使用用户目录。Server 启动 Stage 1 会在 `<dataRoot>/loom.lock` 建立目录独占锁（记录 PID、启动时间与端口），防止双开毁库；`backups/` 目录通过 `SqliteDataEngine.backup`（`VACUUM INTO`）生成在线一致性热快照，并可通过 `dashboard.createBackup` 触发。扩展模块状态、官方初始化与开发链接已收归 SQLite `platform.extension-state@1`（首次启动自动迁移旧 `config/extensions-*.json`）；`extensionInstalledDirectory` 可覆盖代码安装根；`extensionStateDirectory` 仍可作为显式 JSON 覆盖目录，默认使用共享 SQLite 持久化。
 
 根开发命令通过 [开发路径配置](../../../scripts/lib/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。启动器不迁移或恢复其他目录中的旧数据库；Store namespace 版本必须匹配当前代码。测试使用注入的临时目录。
 
 ## 2. SQLite 与 Blob 的权威边界
 
-SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。两者的公共工厂 `createAssetStore` / `createBlobStore` 均由 `@loom-studio/asset-store` 导出；字节实现位于本包 `src/blobs/`，合包不改变文件路径、Blob 身份或 `platform.blob-store` schema namespace。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
+SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。两者的公共工厂 `createAssetStore` / `createBlobStore` 均由 `@loom-studio/kernel`（`asset-store`）导出；字节实现位于 `packages/kernel/src/asset-store/blobs/`，合包不改变文件路径、Blob 身份或 `platform.blob-store` schema namespace。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
 
 Blob 写入使用 Node stream、staging file、同步计算 SHA-256、按 hash 原子 finalize，再在调用者事务中提交 `stored_blobs` metadata。同 hash 的两个 prepared 写入中，一方失败/丢弃绝不删除另一方已提交或共用的 finalized 字节。公开 API 只接受 `blobId`，不返回物理路径。当前允许暂留无引用的孤儿文件，不实现全量物理 GC。
 

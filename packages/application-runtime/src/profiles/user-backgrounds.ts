@@ -1,4 +1,4 @@
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 
 export type UserBackground = { id: string; name: string; assetId: string }

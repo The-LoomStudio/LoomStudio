@@ -5,7 +5,7 @@ import {
   isPromptActivation,
   type PromptActivation,
 } from '../prompt/prompt-activation.js'
-import type { PromptResourceMutation, PromptResourceNodePatch, PromptResourceStore } from '@loom-studio/application-data'
+import type { PromptResourceMutation, PromptResourceNodePatch, PromptResourceStore } from '../data/index.js'
 import type { VfsEntry } from '../vfs/types.js'
 import type { ResourceVfs, VfsTextAttachment } from '../vfs/resource-filesystem.js'
 import type { NarrativeSampleRequest, NarrativeSampleResult } from '../narrative/sampling.js'
@@ -177,7 +177,7 @@ export type ToolExecutionScope = {
     resourceId: string
     parentNodeId: string
     expectedVersion: number
-    node: Omit<import('@loom-studio/application-data').PromptResourceNodeDraft, 'id'>
+    node: Omit<import('../data/index.js').PromptResourceNodeDraft, 'id'>
   }) => Promise<{ nodeId: string; version: number; changesetId: string }>
   copyPromptResourceNode?: (input: {
     resourceId: string

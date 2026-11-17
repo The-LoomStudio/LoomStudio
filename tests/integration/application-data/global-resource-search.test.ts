@@ -1,10 +1,10 @@
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
 import {
   createPromptResourceStore,
   createNarrativeStore,
   type PromptResourceStore,
   type PromptResourceTreeNode,
-} from '@loom-studio/application-data'
+} from '@loom-studio/application-runtime/data'
 import { describe, expect, it } from 'vitest'
 
 const actor = { kind: 'system' as const, id: 'global-resource-search-test' }

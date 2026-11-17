@@ -3,9 +3,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createAgentToolRegistry, createApplicationRuntime, createPromptProcessorRegistry, type ApplicationRuntimeOptions, type ToolDefinition } from '@loom-studio/application-runtime'
 import { describe, expect, it, vi } from 'vitest'
 import { callApplicationRpc as handleAgentsRpc } from '../../support/trpc-caller.js'
@@ -220,12 +220,13 @@ describe('durable Agent Run recovery', () => {
         agentRun: { runId: 'cold-original', onEvent: () => {} },
       })).rejects.toThrow('Initial interruption')
       await fixture.runtime.updateProviderProfile({ expectedVersion: (await fixture.runtime.listProviderProfiles()).providerProfiles.find(profile => profile.id === provider.id)!.version, providerProfileId: provider.id, enabledModelIds: ['other'] })
-      const invoke = vi.spyOn(fixture.runtime, 'invokeAgentTurn')
       const failed = await handleAgentsRpc(fixture.runtime, 'application.agent.run.resume', { agentSessionId: session.id }) as { runId: string }
-      await expect(invoke.mock.results[0]!.value).rejects.toThrow('Provider model is not enabled')
+      await expect.poll(async () => handleAgentsRpc(fixture.runtime, 'application.agent.run.state', { runId: failed.runId }))
+        .toMatchObject({ state: 'failed', reason: expect.stringContaining('Provider model is not enabled') })
       await fixture.runtime.updateProviderProfile({ expectedVersion: (await fixture.runtime.listProviderProfiles()).providerProfiles.find(profile => profile.id === provider.id)!.version, providerProfileId: provider.id, enabledModelIds: ['original', 'other'] })
-      await handleAgentsRpc(fixture.runtime, 'application.agent.run.resume', { runId: failed.runId })
-      await invoke.mock.results[1]!.value
+      const resumed = await handleAgentsRpc(fixture.runtime, 'application.agent.run.resume', { runId: failed.runId }) as { runId: string }
+      await expect.poll(async () => handleAgentsRpc(fixture.runtime, 'application.agent.run.state', { runId: resumed.runId }))
+        .toMatchObject({ state: 'completed' })
       expect(calls).toBe(2)
       const page = await fixture.agents.getEntryPage({ agentSessionId: session.id })
       expect(page.entries.filter(entry => entry.entry.kind === 'message' && entry.entry.role === 'user')).toHaveLength(1)
@@ -387,14 +388,16 @@ describe('durable Agent Run recovery', () => {
       }))
       reopened = open(filename, gateway, first.execute)
       await reopened.runtime.initialize()
-      const invoke = vi.spyOn(reopened.runtime, 'invokeAgentTurn')
-      expect(await handleAgentsRpc(reopened.runtime, 'application.agent.run.resume', { agentSessionId: session.id }))
-        .toMatchObject({ accepted: true, sourceRunId: 'original-run' })
-      await invoke.mock.results[0]!.value
+      const resumed = await handleAgentsRpc(reopened.runtime, 'application.agent.run.resume', { agentSessionId: session.id }) as { runId: string; accepted: boolean; sourceRunId: string }
+      expect(resumed).toMatchObject({ accepted: true, sourceRunId: 'original-run' })
+      await expect.poll(async () => handleAgentsRpc(reopened!.runtime, 'application.agent.run.state', { runId: resumed.runId }))
+        .toMatchObject({ state: 'completed' })
       expect(gateway).toHaveBeenCalledOnce()
       expect(gateway.mock.calls[0]![0].model).toEqual({ providerProfileId: replacement.id, modelId: 'replacement-model' })
       expect(gateway.mock.calls[0]![0].request.metadata?.providerStep).toBe(afterTool ? 2 : 1)
-      expect(invoke.mock.calls[0]![0].narrativeTarget).toEqual(target)
+      expect(gateway.mock.calls[0]![0].branchId).toBe(target.branchId)
+      const observedRuns = await reopened.runtime.listObservations({ kind: 'run', agentSessionId: session.id })
+      expect(observedRuns.records.at(-1)).toMatchObject({ timelineId: target.timelineId, branchId: target.branchId })
       expect(first.execute).toHaveBeenCalledTimes(afterTool ? 1 : 0)
       const resumedMessages = gateway.mock.calls[0]![0].request.messages
       expect(resumedMessages).toEqual(checkpoint.entry.recovery!.messages)

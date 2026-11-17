@@ -1,4 +1,4 @@
-import type { AgentStore } from '@loom-studio/application-data'
+import type { AgentStore } from '../data/index.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { requireAgents } from '../runtime/context.js'
 

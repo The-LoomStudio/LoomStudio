@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createApplicationRuntime, createAgentToolRegistry, defaultSessionSummaryPolicy, type GatewayInvokeChatInput, type ToolDefinition } from '@loom-studio/application-runtime'
 import { planSessionSummary } from '../../../packages/application-runtime/src/agents/session-summary.js'
-import type { AgentSession, AgentTranscriptEntry } from '@loom-studio/application-data'
+import type { AgentSession, AgentTranscriptEntry } from '@loom-studio/application-runtime/data'
 import { readSessionHistory } from '../../../packages/application-runtime/src/agents/session-history.js'
 
 async function fixture(standalone = false) {

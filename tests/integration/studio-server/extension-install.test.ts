@@ -1,10 +1,11 @@
+import { DatabaseSync } from 'node:sqlite'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '@loom-studio/kernel/platform'
 import { authenticatedFetch, callRpc } from './helpers.js'
 
 const temporaryDirectories: string[] = []
@@ -146,29 +147,39 @@ describe('Studio Server Extension Package install lifecycle', () => {
       moduleId: 'server',
       grants: { assets: ['assets.publish'] },
     })
-    const created = await callRpc<{ assetId: string }>(firstAddress.port, 'example.installed.create', {})
+    const invokeInstalled = <T>(port: number, method: string, params: unknown = {}) =>
+      callRpc<T>(port, 'extensions.invoke', { packageId: 'example.installed', method: `example.installed.${method}`, params })
+    const created = await invokeInstalled<{ assetId: string }>(firstAddress.port, 'create')
     await eventReader.cancel()
     await first.close()
 
     const second = createStudioServer({ localPaths, extensionRootDirectory: join(root, 'empty-repository'), extensionInstalledDirectory: join(root, 'app/extensions') })
     const secondAddress = await second.listen(0)
-    await expect(callRpc(secondAddress.port, 'example.installed.status', {})).resolves.toEqual({ active: true })
-    await expect(callRpc(secondAddress.port, 'example.installed.publish', {})).resolves.toMatchObject({ assetId: expect.any(String) })
+    await expect(invokeInstalled(secondAddress.port, 'status')).resolves.toEqual({ active: true })
+    await expect(invokeInstalled(secondAddress.port, 'publish')).resolves.toMatchObject({ assetId: expect.any(String) })
 
     await callRpc(secondAddress.port, 'extensions.uninstallPackage', {
       packageId: 'example.installed',
       version: '1.0.0',
     })
-    await expect(callRpc(secondAddress.port, 'example.installed.status', {})).rejects.toThrow('method not found')
+    await expect(invokeInstalled(secondAddress.port, 'status')).rejects.toThrow('method not found')
     const asset = await authenticatedFetch(secondAddress.port, `/assets/${created.assetId}`)
     expect(asset.status).toBe(200)
     expect([...new Uint8Array(await asset.arrayBuffer())]).toEqual([4, 5, 6])
-    await expect(callRpc(secondAddress.port, 'docs.get', { id: 'example.installed:data' })).resolves.toMatchObject({
-      document: { content: { retained: true } },
-    })
-    await expect(readFile(join(root, 'app/extensions/example.installed/manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' })
-    await expect(readFile(localPaths.extensionStateFile, 'utf8')).resolves.not.toContain('example.installed')
     await second.close()
+
+    await expect(readFile(join(root, 'app/extensions/example.installed/manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    const secondDatabase = new DatabaseSync(localPaths.databaseFile, { readOnly: true })
+    try {
+      const doc = secondDatabase.prepare('SELECT content_json, tombstoned FROM documents WHERE id = ?').get('example.installed:data') as { content_json: string; tombstoned: number } | undefined
+      expect(doc).toBeDefined()
+      expect(doc!.tombstoned).toBe(0)
+      expect(JSON.parse(doc!.content_json)).toEqual({ retained: true })
+      const remaining = secondDatabase.prepare('SELECT installation_id FROM extension_installations WHERE installation_id LIKE ?').all('%example.installed%')
+      expect(remaining).toEqual([])
+    } finally {
+      secondDatabase.close()
+    }
   })
 
   it('unlinks a dev Package and clears its persisted grants without deleting its source', async () => {
@@ -196,11 +207,19 @@ describe('Studio Server Extension Package install lifecycle', () => {
 
     await expect(callRpc<{ items: Array<{ packageId: string }> }>(address.port, 'extensions.listPackages', {}))
       .resolves.toMatchObject({ items: [] })
-    await expect(callRpc(address.port, 'example.installed.status', {})).rejects.toThrow('method not found')
-    await expect(readFile(localPaths.extensionDevLinksFile, 'utf8')).resolves.not.toContain('example.installed')
-    await expect(readFile(localPaths.extensionStateFile, 'utf8')).resolves.not.toContain('example.installed')
-    await expect(readFile(join(sourceDirectory, 'manifest.json'), 'utf8')).resolves.toContain('example.installed')
+    await expect(callRpc(address.port, 'extensions.invoke', {
+      packageId: 'example.installed', method: 'example.installed.status', params: {},
+    })).rejects.toThrow('method not found')
     await server.close()
+
+    const database = new DatabaseSync(localPaths.databaseFile, { readOnly: true })
+    try {
+      expect(database.prepare('SELECT package_id FROM extension_dev_links WHERE package_id = ?').all('example.installed')).toEqual([])
+      expect(database.prepare('SELECT installation_id FROM extension_installations WHERE installation_id LIKE ?').all('%example.installed%')).toEqual([])
+    } finally {
+      database.close()
+    }
+    await expect(readFile(join(sourceDirectory, 'manifest.json'), 'utf8')).resolves.toContain('example.installed')
   })
 
   it('installs a packaged ZIP through the RPC and serves its module files', async () => {

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { PromptResource } from '@loom-studio/application-data'
+import type { PromptResource } from '../data/index.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { normalizePromptResourceArtifact } from '../cards/card-bundle-codec.js'
 import { fromStoredResource, toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'

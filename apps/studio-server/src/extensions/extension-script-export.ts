@@ -1,13 +1,13 @@
 import { applicationDocumentTypes, type ApplicationRuntimeOptions, type BlobStorage, type ExtensionInstallationContent, type LoomScriptContent, type LoomScriptMountContent } from '@loom-studio/application-runtime'
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentStore } from '@loom-studio/kernel/document-store'
 import { parseLoomScriptSource } from '@loom-studio/shared/loom-scripts'
 import type { JsonValue } from '@loom-studio/shared'
-import { parseExtensionManifest } from '@loom-studio/extension-host'
+import { parseExtensionManifest } from '@loom-studio/kernel/extension-host'
 import { extensionInstallationId, installedExtensionContributionId } from '@loom-studio/extension-sdk'
 import { zipSync } from 'fflate'
 import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
-import { maxPackageBytes, readExtensionPackageZip } from './extension-package-installer.js'
+import { maxPackageBytes, readExtensionPackageZip } from '@loom-studio/kernel/extension-manager'
 
 export function createExtensionScriptArchiveExporter(options: {
   documents: DocumentStore

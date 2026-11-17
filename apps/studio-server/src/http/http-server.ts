@@ -3,7 +3,7 @@ import { handleTrpcRequest } from './trpc-request.js'
 import { readLogFailure, type Logger } from '@loom-studio/logging'
 import type { StudioEvent } from '@loom-studio/extension-sdk'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import type { AssetStore } from '@loom-studio/asset-store'
+import type { AssetStore } from '@loom-studio/kernel/asset-store'
 import type { ApplicationSession, ApplicationSessionAuth } from './application-session-auth.js'
 import type { StudioRpcServices } from '../rpc/trpc/services-context.js'
 import { maxCardPngBytes } from '../codecs/card-png.js'
@@ -18,7 +18,7 @@ export function createStudioHttpServer(options: {
   assets?: AssetStore
   canReadCardExtensionAsset?(input: { packageId: string; moduleId: string; cardId: string; assetId: string }): Promise<boolean>
   cardMedia?: {
-    read(cardId: string, kind: 'avatar' | 'background'): Promise<{ bytes: Uint8Array; mediaType: string; etag?: string } | undefined>
+    read(cardId: string, kind: 'avatar' | 'background'): Promise<{ bytes: Uint8Array; mediaType: string; etag?: string; updatedAt?: string; version?: string | number } | undefined>
   }
   cardPng?: {
     export(cardId: string): Promise<Uint8Array>
@@ -116,7 +116,7 @@ export function createStudioHttpServer(options: {
 
     const cardMedia = /^\/cards\/([A-Za-z0-9._-]+)\/media\/(avatar|background)(?:\?[^#]*)?$/.exec(request.url ?? '')
     if ((request.method === 'GET' || request.method === 'HEAD') && cardMedia && options.cardMedia) {
-      await handleCardMedia(request, response, options.cardMedia, cardMedia[1]!, cardMedia[2] as 'avatar' | 'background')
+      await handleCardMedia(request, response, options.cardMedia, cardMedia[1]!, cardMedia[2] as 'avatar' | 'background', options.applicationRuntime)
       return
     }
 
@@ -222,6 +222,7 @@ async function handleCardMedia(
   media: NonNullable<Parameters<typeof createStudioHttpServer>[0]['cardMedia']>,
   cardId: string,
   kind: 'avatar' | 'background',
+  applicationRuntime?: ApplicationRuntime,
 ): Promise<void> {
   try {
     const result = await media.read(cardId, kind)
@@ -229,10 +230,26 @@ async function handleCardMedia(
       writeJson(response, 404, { error: { code: 'card.media_not_found', message: 'Card media not found' } })
       return
     }
+    const versionParam = readCardMediaVersionParam(request.url)
+    let isImmutableMatch = false
+    if (versionParam) {
+      const explicitTokens = [
+        result.updatedAt,
+        result.version !== undefined ? String(result.version) : undefined,
+      ].filter((token): token is string => Boolean(token))
+      if (explicitTokens.length > 0) {
+        isImmutableMatch = explicitTokens.includes(versionParam)
+      } else if (applicationRuntime) {
+        const card = await applicationRuntime.getCard({ cardId }).then(loaded => loaded.card, () => undefined)
+        if (card) {
+          isImmutableMatch = versionParam === card.updatedAt || versionParam === String(card.version)
+        }
+      }
+    }
     const etag = result.etag ?? `"${createHash('sha256').update(result.bytes).digest('hex')}"`
     response.setHeader('content-type', result.mediaType)
     response.setHeader('x-content-type-options', 'nosniff')
-    response.setHeader('cache-control', 'no-cache')
+    response.setHeader('cache-control', isImmutableMatch ? 'private, max-age=31536000, immutable' : 'no-cache')
     response.setHeader('etag', etag)
     const matches = request.headers['if-none-match']?.split(',').some(value => value.trim().replace(/^W\//, '') === etag || value.trim() === '*')
     if (matches) {
@@ -244,6 +261,16 @@ async function handleCardMedia(
     response.end(request.method === 'HEAD' ? undefined : result.bytes)
   } catch (error) {
     writeJson(response, 400, { error: { code: 'card.media_invalid', message: error instanceof Error ? error.message : String(error) } })
+  }
+}
+
+function readCardMediaVersionParam(requestUrl: string | undefined): string | undefined {
+  if (!requestUrl) return undefined
+  try {
+    const value = new URL(requestUrl, 'http://localhost').searchParams.get('v')
+    return value && value.length > 0 ? value : undefined
+  } catch {
+    return undefined
   }
 }
 

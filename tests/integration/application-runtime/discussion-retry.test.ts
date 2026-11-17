@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore, type AgentTranscriptEntryData } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore, type AgentTranscriptEntryData } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 import { createApplicationRuntime, createOfficialAgentToolRegistry, type GatewayChatResult } from '@loom-studio/application-runtime'
 import { callApplicationRpc } from '../../support/trpc-caller.js'
-import { countText } from '@loom-studio/tokenizer'
+import { countText } from '@loom-studio/shared/tokenizer'
 import type { JsonObject } from '@loom-studio/shared'
 
 const text = (content: string): GatewayChatResult => ({ provider: 'test', model: 'test', text: content, message: { role: 'assistant', content } })

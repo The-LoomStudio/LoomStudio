@@ -1,7 +1,7 @@
 import type { CompiledPrompt, PromptContribution, SourceNode } from '../../prompt/prompt-builder.js'
 import type { ToolExecutionScope } from '../tool-registry.js'
 import { createPromptVfsEntries, resolveVirtualPath, resolveMediaType } from '../../vfs/vfs-gateway.js'
-import type { PromptResourceStore } from '@loom-studio/application-data'
+import type { PromptResourceStore } from '../../data/index.js'
 
 export function createPromptToolExecutionScope(input: {
   prompt: CompiledPrompt

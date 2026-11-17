@@ -30,7 +30,7 @@
 
 1. **Card 创建**：CharacterPanel → App registry → `useCards.createCard` → StudioApi → RPC；返回对象更新本地列表与选择，再刷新列表。入口见 [use-cards.ts](../../../apps/studio-client/src/features/cards/model/use-cards.ts)、[studio-api.ts](../../../apps/studio-client/src/shared/api/studio-api.ts)。
 2. **Preset/Lore 编辑**：Workbench → Feature 草稿 → scope 内串行提交与 `expectedVersion` → 返回资源同步 Query 与草稿视图。远端快照和未提交编辑有不同职责，不能仅因多份数据就删除。入口见 [use-context-assets.ts](../../../apps/studio-client/src/features/prompt-resources/model/use-context-assets.ts)、[use-prompt-resource-workspace.ts](../../../apps/studio-client/src/features/prompt-resources/model/use-prompt-resource-workspace.ts)。
-3. **State 写入**：认证 HTTP → typed procedure → Runtime → 同一事务内 revision/Head → COMMIT → 返回 snapshot/changeset 与提交后通知。形状校验、权限、版本冲突和幂等具有不同含义。入口见 [states.ts](../../../apps/studio-server/src/rpc/trpc/application/states.ts)、[state.ts](../../../packages/application-runtime/src/state/state.ts)、[State Store](../../../packages/application-data/src/state/store.ts)、[Data Engine](../../../packages/data-engine/src/sqlite.ts)。
+3. **State 写入**：认证 HTTP → typed procedure → Runtime → 同一事务内 revision/Head → COMMIT → 返回 snapshot/changeset 与提交后通知。形状校验、权限、版本冲突和幂等具有不同含义。入口见 [states.ts](../../../apps/studio-server/src/rpc/trpc/application/states.ts)、[state.ts](../../../packages/application-runtime/src/state/state.ts)、[State Store](../../../packages/application-runtime/src/data/state/store.ts)、[Data Engine](../../../packages/kernel/src/data-engine/sqlite.ts)。
 
 前端尚未全量迁入 Query；Card 本地状态、Query 远端缓存、编辑草稿、布局偏好和流式状态需要分别判断。静态 tRPC procedure 与动态扩展网关也不是可以直接合并的两份 API。
 

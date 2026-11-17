@@ -1,4 +1,4 @@
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createInMemoryDocumentStore } from '@loom-studio/kernel/document-store'
 import { applicationDocumentTypes, createTimelineArchiveParticipantRegistry } from '@loom-studio/application-runtime'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { createExtensionRecordArchiveParticipant } from '../../../apps/studio-server/src/extensions/extension-record-archive.js'

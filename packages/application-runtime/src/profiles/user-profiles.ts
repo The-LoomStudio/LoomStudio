@@ -1,4 +1,4 @@
-import type { DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/kernel/document-store'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { DashboardPeriod, DashboardSnapshot, DashboardTone, DashboardView, UsageDay } from '../../../widgets/dashboard/dashboard-view.js'
 
@@ -28,6 +28,7 @@ function captureRange(period: DashboardPeriod) {
 
 export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
   const [selection, setSelection] = useState(() => ({ period: '30' as DashboardPeriod, revision: 0, open, range: captureRange('30') }))
+  const [storageRevision, setStorageRevision] = useState(0)
   const [view, setView] = useState<DashboardView>('overview')
   // Capture before constructing queries so reopening never subscribes to the previous range first.
   let current = selection
@@ -46,8 +47,14 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
   const usage = useQuery({ queryKey: [...base, 'usage', range], queryFn: () => api.dashboard.usage(range), enabled: open, staleTime: 30000, placeholderData: keepPreviousData })
   const play = useQuery({ queryKey: [...base, 'play', range], queryFn: () => api.dashboard.play(range), enabled: open, staleTime: 30000, placeholderData: keepPreviousData })
   const resources = useQuery({ queryKey: [...base, 'resources', revision], queryFn: () => api.dashboard.resources(), enabled: open, staleTime: 30000 })
-  const storage = useQuery({ queryKey: [...base, 'storage', revision], queryFn: () => api.dashboard.storage(revision > 0), enabled: open && view === 'storage', staleTime: 60000 })
-  const database = useQuery({ queryKey: [...base, 'database', revision], queryFn: () => api.dashboard.database(), enabled: open && view === 'storage', staleTime: 60000 })
+  const storage = useQuery({ queryKey: [...base, 'storage', revision, storageRevision], queryFn: () => api.dashboard.storage(revision > 0 || storageRevision > 0), enabled: open && view === 'storage', staleTime: 60000 })
+  const database = useQuery({ queryKey: [...base, 'database', revision, storageRevision], queryFn: () => api.dashboard.database(), enabled: open && view === 'storage', staleTime: 60000 })
+  const backup = useMutation({
+    mutationFn: () => api.dashboard.createBackup(),
+    onSuccess: () => {
+      setStorageRevision(previous => previous + 1)
+    },
+  })
   const queries = [usage, play, resources, ...(view === 'storage' ? [storage, database] : [])]
   const notices: string[] = []
   if (queries.some(query => query.isPending)) notices.push('正在读取统计…')
@@ -228,5 +235,15 @@ export function useDashboard(api: StudioApi, endpoint: string, open: boolean) {
         : [{ name: group.name, description: `${group.files} 个文件`, bytes: group.bytes, count: group.files }],
     })) ?? [],
   }
-  return { data, range, period, setPeriod, setView, refresh, refreshing: queries.some(query => query.isFetching) }
+  return {
+    data,
+    range,
+    period,
+    setPeriod,
+    setView,
+    refresh,
+    refreshing: queries.some(query => query.isFetching),
+    createBackup: () => backup.mutateAsync(),
+    creatingBackup: backup.isPending,
+  }
 }

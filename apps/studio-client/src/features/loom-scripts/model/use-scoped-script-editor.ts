@@ -127,6 +127,7 @@ export function useScopedScriptEditor(props: Input) {
       const result = await props.loomScriptsApi.update({ scriptDocumentId: scriptDraft.id, expectedVersion: scriptDraft.version, fileName: scriptFileName, source: scriptSource })
       setScriptDraft(current => current === scriptDraft ? { ...current, version: result.script.version } : current)
       await refresh()
+      if (result.script.runtime === 'declarative') props.onRuntimeChanged?.()
       notify.success(props.t('notify.success.saved'))
     } catch (cause) {
       const message = readError(cause)

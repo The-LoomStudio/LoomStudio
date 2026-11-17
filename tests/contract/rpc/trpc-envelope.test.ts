@@ -51,9 +51,33 @@ describe('tRPC wire contract', () => {
 
   it('does not allow the dynamic extension gateway to bypass static procedures', async () => {
     await withStudioServer(async port => {
-      await expect(callRpc(port, 'kernel.invoke', { method: 'application.createCard', params: { name: 'Bypass' } })).rejects.toThrow('typed platform procedure')
+      const kernelResponse = await authenticatedFetch(port, '/trpc/kernel.invoke', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ method: 'application.createCard', params: { name: 'Bypass' } }),
+      })
+      expect(kernelResponse.status).toBe(404)
+      expect((await kernelResponse.json()).error.message).toContain('No procedure found on path "kernel.invoke"')
+      await expect(callRpc(port, 'extensions.invoke', { packageId: 'example.echo', method: 'application.createCard', params: { name: 'Bypass' } })).rejects.toThrow('package namespace')
+      await expect(callRpc(port, 'extensions.invoke', { packageId: 'application', method: 'application.createCard', params: { name: 'Bypass' } })).rejects.toThrow('RPC method not found')
       expect(await callRpc(port, 'application.listCards', {})).toMatchObject({ cards: [] })
       expect((await authenticatedFetch(port, '/rpc', { method: 'POST' })).status).toBe(404)
+    })
+  })
+
+  it('creates a SQLite backup through dashboard.createBackup', async () => {
+    await withStudioServer(async port => {
+      const response = await authenticatedFetch(port, '/trpc/dashboard.createBackup', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      })
+      expect(response.status).toBe(200)
+      const payload = await response.json() as { result?: { data: { filename: string; path: string; sizeBytes: number } } }
+      const backup = payload.result?.data
+      expect(backup?.filename).toMatch(/^studio-backup.*\.sqlite$/)
+      expect(backup?.path).toContain(backup?.filename)
+      expect(backup?.sizeBytes).toBeGreaterThan(0)
     })
   })
 })

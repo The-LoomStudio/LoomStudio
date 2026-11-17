@@ -9,10 +9,10 @@ import {
   type CardBundleArtifact,
 } from '@loom-studio/application-runtime'
 import { isPromptResourceArtifact, normalizePromptResourceArtifact } from '../../../packages/application-runtime/src/cards/card-bundle.js'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createBlobStore } from '@loom-studio/asset-store'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createBlobStore } from '@loom-studio/kernel/asset-store'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
+import { createPromptResourceStore } from '@loom-studio/application-runtime/data'
 import { describe, expect, it, onTestFinished } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -269,21 +269,29 @@ describe('card bundle artifact boundary', () => {
     })
   })
 
-  it('rejects legacy Card Bundle schemas and round-trips duplicate Metadata as separate Script attachments', async () => {
+  it('rejects legacy Card Bundle schemas, rejects duplicate Script metadataIds, and round-trips separate Script attachments', async () => {
     for (const schemaVersion of [2, 3]) {
       expect(isCardBundleArtifact({ ...createArtifact(), schemaVersion } as never)).toBe(false)
     }
 
     const fixture = createFixture()
     const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-card-script-'))
-    const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-blob`, now: () => '2026-09-11T00:00:00.000Z' })
+    let blobSequence = 0
+    const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-blob-${++blobSequence}`, now: () => '2026-09-11T00:00:00.000Z' })
     try {
-      const artifact = createArtifact()
-      artifact.scriptAttachments = [7, 8].map(orderIndex => ({
+      const duplicate = createArtifact()
+      duplicate.scriptAttachments = [7, 8].map(orderIndex => ({
         orderIndex,
         resourceOrigin: 'external' as const,
         script: { format: 'loom.script', schemaVersion: 1, fileName: 'alice.loom.js', source: loomScriptSource() },
       }))
+      await expect(importCardBundle({ artifact: duplicate, ...fixture, blobs })).rejects.toThrow('Card Script metadataId must be unique within its package')
+
+      const artifact = createArtifact()
+      artifact.scriptAttachments = [
+        { orderIndex: 7, resourceOrigin: 'external' as const, script: { format: 'loom.script', schemaVersion: 1, fileName: 'alice-a.loom.js', source: loomScriptSource('alice.presentation.a') } },
+        { orderIndex: 8, resourceOrigin: 'external' as const, script: { format: 'loom.script', schemaVersion: 1, fileName: 'alice-b.loom.js', source: loomScriptSource('alice.presentation.b') } },
+      ]
       const imported = await importCardBundle({ artifact, ...fixture, blobs })
       const documents = await fixture.documents.list({ type: 'airp.loomScriptMount' })
       const mount = documents.items.find(item => (item.content as any).target?.cardId === imported.card.id)
@@ -420,11 +428,11 @@ describe('card bundle artifact boundary', () => {
 
 })
 
-function loomScriptSource(): string {
+function loomScriptSource(id = 'alice.presentation'): string {
   return [
     '// ==LoomScript==',
     '// @format       1',
-    '// @id           alice.presentation',
+    `// @id           ${id}`,
     '// @name         Alice UI',
     '// @version      1.0.0',
     '// @runtime      client-sandbox',

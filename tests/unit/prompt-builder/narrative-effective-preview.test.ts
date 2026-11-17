@@ -2,9 +2,9 @@ import { createId, nowIso } from '@loom-studio/shared'
 import { describe, expect, it, vi } from 'vitest'
 import { createNarrativeRuntimeMethods } from '../../../packages/application-runtime/src/runtime/narrative-runtime.js'
 import { createApplicationRuntimeContext } from '../../../packages/application-runtime/src/foundation/application-context.js'
-import { createAgentStore, createNarrativeStore, createPromptResourceStore, type NarrativePage } from '@loom-studio/application-data'
-import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createAgentStore, createNarrativeStore, createPromptResourceStore, type NarrativePage } from '@loom-studio/application-runtime/data'
+import { createSqliteDataEngine } from '@loom-studio/kernel/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/kernel/document-store'
 
 describe('Narrative effective preview', () => {
   it('reads only after the published Memory boundary through the raw endpoint', async () => {
