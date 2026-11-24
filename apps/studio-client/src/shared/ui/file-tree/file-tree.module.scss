@@ -209,6 +209,27 @@
   box-shadow: inset 2px 0 0 var(--loom-color-accent);
 }
 
+.dragOverBefore::before,
+.dragOverAfter::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--loom-color-accent-strong);
+  pointer-events: none;
+}
+
+.dragOverBefore::before {
+  top: -1px;
+}
+
+.dragOverAfter::after {
+  bottom: -1px;
+}
+
 .row > .disclosure {
   position: relative;
   z-index: 1;

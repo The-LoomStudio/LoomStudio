@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import { Button, Dialog, ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, type MenuAction } from '@loom-studio/ui'
 import { useEffectiveMotion } from '../../hooks/use-motion-preference.js'
 import { useSlidingHover } from '../../hooks/use-sliding-hover.js'
-import { readDragTopScrollSpeed, readDropPosition, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
+import { readDragTopScrollSpeed, readDropPosition, readDropZone, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
 import { createTranslator, resolveCurrentLocale } from '../../i18n/index.js'
 import { useListSelection } from './use-list-selection.js'
 import styles from './file-tree.module.scss'
@@ -68,7 +68,7 @@ export function FileTree(props: FileTreeProps) {
   const [focusedId, setFocusedId] = useState<string>()
   const draggedIdRef = useRef<string | undefined>(undefined)
   const draggedElementRef = useRef<HTMLElement | undefined>(undefined)
-  const dragOverElementRef = useRef<HTMLElement | undefined>(undefined)
+  const dragOverRef = useRef<{ element: HTMLElement; position: 'before' | 'inside' | 'after' } | undefined>(undefined)
   const stopDragScrollRef = useRef<(() => void) | undefined>(undefined)
   const treeRef = useRef<HTMLDivElement>(null)
   const virtualContentRef = useRef<HTMLDivElement>(null)
@@ -339,37 +339,71 @@ export function FileTree(props: FileTreeProps) {
       || node.kind === 'slot'
   }
 
-  function dropPosition(sourceId: string, target: FileTreeNode): 'before' | 'inside' | 'after' | undefined {
-    if (isNodeContainer(target) && (props.canDrop?.(sourceId, target.id, 'inside') ?? true)) return 'inside'
+  function dropPosition(
+    sourceId: string,
+    target: FileTreeNode,
+    event: DragEvent<HTMLElement>,
+  ): 'before' | 'inside' | 'after' | undefined {
+    if (isNodeContainer(target)) {
+      const insideAllowed = props.canDrop?.(sourceId, target.id, 'inside') ?? true
+      const rect = event.currentTarget.getBoundingClientRect()
+      const position = readDropZone({
+        clientY: event.clientY,
+        rowTop: rect.top,
+        rowHeight: rect.height,
+        insideAllowed,
+      })
+      if (position === 'inside') return insideAllowed ? 'inside' : undefined
+      return (props.canDrop?.(sourceId, target.id, position) ?? true) ? position : undefined
+    }
     const position = readDropPosition(props.nodes, sourceId, target.id)
     return (props.canDrop?.(sourceId, target.id, position) ?? true) ? position : undefined
   }
 
+  function clearDragOverHighlight() {
+    const current = dragOverRef.current
+    if (!current) return
+    current.element.classList.remove(styles.dragOver, styles.dragOverBefore, styles.dragOverAfter)
+    delete current.element.dataset.fileTreeDropPosition
+    dragOverRef.current = undefined
+  }
+
+  function paintDragOver(element: HTMLElement, position: 'before' | 'inside' | 'after') {
+    const current = dragOverRef.current
+    if (current?.element === element && current.position === position) return
+    clearDragOverHighlight()
+    element.classList.add(position === 'before'
+      ? styles.dragOverBefore
+      : position === 'after' ? styles.dragOverAfter : styles.dragOver)
+    element.dataset.fileTreeDropPosition = position
+    dragOverRef.current = { element, position }
+  }
+
   function handleDragOver(event: DragEvent<HTMLElement>, node: FileTreeNode) {
-    if (!draggedIdRef.current || draggedIdRef.current === node.id) return
-    if (!dropPosition(draggedIdRef.current, node)) {
+    if (!draggedIdRef.current || draggedIdRef.current === node.id) {
+      clearDragOverHighlight()
+      return
+    }
+    const position = dropPosition(draggedIdRef.current, node, event)
+    if (!position) {
       event.dataTransfer.dropEffect = 'none'
-      dragOverElementRef.current?.classList.remove(styles.dragOver)
-      dragOverElementRef.current = undefined
+      clearDragOverHighlight()
       return
     }
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
-    if (dragOverElementRef.current === event.currentTarget) return
-    dragOverElementRef.current?.classList.remove(styles.dragOver)
-    dragOverElementRef.current = event.currentTarget
-    dragOverElementRef.current.classList.add(styles.dragOver)
+    paintDragOver(event.currentTarget, position)
   }
 
   function handleDrop(event: DragEvent<HTMLElement>, targetNode: FileTreeNode) {
     event.preventDefault()
     event.stopPropagation()
     const sourceId = draggedIdRef.current || event.dataTransfer.getData('text/plain')
+    const position = props.onMoveNode && sourceId && sourceId !== targetNode.id
+      ? dropPosition(sourceId, targetNode, event)
+      : undefined
     clearDragState()
-    if (!props.onMoveNode || !sourceId || sourceId === targetNode.id) return
-
-    const position = dropPosition(sourceId, targetNode)
-    if (position) props.onMoveNode(sourceId, targetNode.id, position)
+    if (position) props.onMoveNode?.(sourceId, targetNode.id, position)
   }
 
   function handleDragEnd() {
@@ -380,10 +414,9 @@ export function FileTree(props: FileTreeProps) {
     stopDragScrollRef.current?.()
     stopDragScrollRef.current = undefined
     draggedElementRef.current?.classList.remove(styles.dragging)
-    dragOverElementRef.current?.classList.remove(styles.dragOver)
+    clearDragOverHighlight()
     draggedIdRef.current = undefined
     draggedElementRef.current = undefined
-    dragOverElementRef.current = undefined
   }
 
   function handleContextMenu(event: MouseEvent<HTMLElement>) {

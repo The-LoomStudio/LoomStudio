@@ -1,4 +1,4 @@
-import { findNodeById, readDragTopScrollSpeed, readDropPosition, readVisibleFileTreeNodes } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree-model.js'
+import { findNodeById, readDragTopScrollSpeed, readDropPosition, readDropZone, readVisibleFileTreeNodes } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree-model.js'
 import type { FileTreeNode } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js'
 import { describe, expect, it } from 'vitest'
 
@@ -12,6 +12,28 @@ describe('file tree model', () => {
     expect(readDropPosition(nodes(), 'child-b', 'root-a')).toBe('before')
     expect(readDropPosition(nodes(), 'root-a', 'child-b')).toBe('after')
     expect(readDropPosition(nodes(), 'missing', 'child-b')).toBe('after')
+  })
+
+  it('uses edge zones when a container allows drops inside', () => {
+    const row = { rowTop: 100, rowHeight: 40, insideAllowed: true }
+    expect(readDropZone({ ...row, clientY: 104 })).toBe('before')
+    expect(readDropZone({ ...row, clientY: 110 })).toBe('inside')
+    expect(readDropZone({ ...row, clientY: 120 })).toBe('inside')
+    expect(readDropZone({ ...row, clientY: 130 })).toBe('inside')
+    expect(readDropZone({ ...row, clientY: 136 })).toBe('after')
+  })
+
+  it('splits the row when a container does not allow drops inside', () => {
+    const row = { rowTop: 100, rowHeight: 40, insideAllowed: false }
+    expect(readDropZone({ ...row, clientY: 104 })).toBe('before')
+    expect(readDropZone({ ...row, clientY: 119 })).toBe('before')
+    expect(readDropZone({ ...row, clientY: 120 })).toBe('after')
+    expect(readDropZone({ ...row, clientY: 136 })).toBe('after')
+  })
+
+  it('handles rows without a measurable height without producing an inside drop when unsupported', () => {
+    expect(readDropZone({ clientY: 100, rowTop: 100, rowHeight: 0, insideAllowed: true })).toBe('inside')
+    expect(readDropZone({ clientY: 100, rowTop: 100, rowHeight: 0, insideAllowed: false })).toBe('before')
   })
 
   it('keeps large collapsed branches out of the virtualized visible model', () => {
