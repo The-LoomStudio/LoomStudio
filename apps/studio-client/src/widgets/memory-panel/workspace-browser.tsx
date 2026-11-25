@@ -55,11 +55,23 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
   const uploadRef = useRef<HTMLInputElement>(null)
   const uploadDirectoryRef = useRef<string | undefined>(undefined)
   const generation = useRef(0)
+  const revisionEpoch = useRef(0)
+  const refreshInFlight = useRef(false)
   const selected = revision?.entries.find(entry => entry.id === selectedId)
   const text = selected?.kind === 'file' && 'text' in selected.content ? selected.content.text
     : selectedId && drafts.has(draftKey(selectedId)) ? baseline.text : undefined
   const dirty = text !== undefined && baseline.text !== draft
   const target = { timelineId, branchId }
+  const revisionRef = useRef(revision)
+  const selectedIdRef = useRef(selectedId)
+  const directoryIdRef = useRef(directoryId)
+  const busyRef = useRef(busy)
+  const dirtyRef = useRef(dirty)
+  revisionRef.current = revision
+  selectedIdRef.current = selectedId
+  directoryIdRef.current = directoryId
+  busyRef.current = busy
+  dirtyRef.current = dirty
   // Unsaved text stays in the per-file draft cache when navigating the tree.
   function restoreDraft(entry: Entry | undefined, value: Revision) {
     const saved = entry?.kind === 'file' && 'text' in entry.content ? entry.content.text : ''
@@ -78,6 +90,7 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
   useEffect(() => { onDirtyChange?.(dirty) }, [dirty, onDirtyChange])
   useEffect(() => {
     const token = ++generation.current
+    revisionEpoch.current++
     setRevision(undefined); setSelectedId(undefined); setDirectoryId(undefined); setDraft(''); setError(''); setBusy(true)
     api.workspace.get({ timelineId, branchId }).then(value => {
       if (token !== generation.current) return
@@ -118,6 +131,7 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
   }
   async function mutate(operations: Operation[], nextId = selectedId, expectedRevisionId = revision?.id) {
     if (!revision || !expectedRevisionId || busy) return
+    revisionEpoch.current++
     const token = generation.current
     setBusy(true); setError('')
     try {
@@ -149,28 +163,44 @@ export function WorkspaceBrowser({ api, timelineId, branchId, onDirtyChange }: {
     } finally { if (token === generation.current) setBusy(false) }
   }
   useEffect(() => {
-    const update = () => { if (document.visibilityState === 'visible' && !dirty && !busy) void refresh() }
+    const update = () => {
+      if (document.visibilityState === 'visible' && !dirtyRef.current && !busyRef.current) void refresh(true)
+    }
     window.addEventListener('focus', update)
     const timer = window.setInterval(update, 5000)
     return () => { window.removeEventListener('focus', update); window.clearInterval(timer) }
-  }, [api, timelineId, branchId, dirty, busy, selectedId, directoryId])
+  }, [api, timelineId, branchId])
 
-  async function refresh() {
-    if (busy) return
-    if (dirty) return
+  async function refresh(background = false) {
+    if (busyRef.current || refreshInFlight.current) return
+    if (dirtyRef.current) return
     const token = generation.current
-    setBusy(true); setError('')
+    const epoch = revisionEpoch.current
+    refreshInFlight.current = true
+    if (!background) { setBusy(true); setError('') }
     try {
       const value = await api.workspace.get(target)
       if (token !== generation.current) return
+      // A foreground edit, mutation, or selection reload must win over a stale poll response.
+      if (background && (dirtyRef.current || busyRef.current || epoch !== revisionEpoch.current)) return
+      if (background && value.id === revisionRef.current?.id) {
+        setError(current => current ? '' : current)
+        return
+      }
+      if (!background) setError(current => current ? '' : current)
+      revisionRef.current = value
       setRevision(value)
-      const next = value.entries.find(entry => entry.id === selectedId)
-      if (selectedId) drafts?.delete(draftKey(selectedId))
+      const currentSelectedId = selectedIdRef.current
+      const next = value.entries.find(entry => entry.id === currentSelectedId)
+      if (currentSelectedId) drafts?.delete(draftKey(currentSelectedId))
       if (drafts) syncUnloadGuard(drafts)
       setSelectedId(next?.id); restoreDraft(next, value)
-      if (!value.entries.some(entry => entry.id === directoryId)) setDirectoryId(undefined)
+      if (!value.entries.some(entry => entry.id === directoryIdRef.current)) setDirectoryId(undefined)
     } catch (reason) { if (token === generation.current) setError(message(reason)) }
-    finally { if (token === generation.current) setBusy(false) }
+    finally {
+      refreshInFlight.current = false
+      if (token === generation.current && !background) setBusy(false)
+    }
   }
   function openDialog(kind: NonNullable<typeof dialog>['kind'], entry = selected, creationTarget?: { parentId?: string }) {
     if (busy) return
