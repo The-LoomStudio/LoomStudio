@@ -32,6 +32,14 @@ describe('tRPC mount pilot', () => {
     })
   })
 
+  it('serves optional-input platform procedures without explicit arguments', async () => {
+    await withStudioServer(async port => {
+      const api = createStudioApi(await authenticatedTrpc(port))
+      await expect(api.diagnostics.list()).resolves.toEqual({ items: expect.any(Array) })
+      await expect(api.resourceDownloads.checkUpdates()).resolves.toEqual([])
+    })
+  })
+
   it('preserves tracing metadata and rejects batching', async () => {
     await withStudioServer(async port => {
       const path = '/trpc/application.listPresetToolMounts'
