@@ -16,6 +16,53 @@ describe('AI gateway run', () => {
     if (delivery === 'stream') expect(await collect(run.events)).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'reasoning-delta', delta: 'Think carefully' })]))
   })
 
+  it('replays OpenAI-compatible reasoning_content when tools are present', async () => {
+    const requestBodies: Array<{ messages: Array<Record<string, unknown>> }> = []
+    const fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)) as { messages: Array<Record<string, unknown>> })
+      return new Response(JSON.stringify({
+        id: 'reasoning-replay', model: 'test',
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Done' } }],
+        usage: usage(),
+      }), { headers: { 'content-type': 'application/json' } })
+    }) as typeof globalThis.fetch
+    const input = {
+      provider: provider(fetch),
+      modelId: 'test',
+      messages: [
+        { role: 'user' as const, content: 'Question' },
+        {
+          role: 'assistant' as const,
+          content: 'Calling a tool',
+          reasoning_content: 'Think before calling.',
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function' as const,
+            function: { name: 'read_context', arguments: '{"query":"x"}' },
+          }],
+        },
+        { role: 'tool' as const, tool_call_id: 'call-1', content: 'Result' },
+      ],
+    }
+    await createAiGateway().invokeChat({
+      ...input,
+      tools: [{ name: 'read_context', inputSchema: { type: 'object' } }],
+    })
+    expect(requestBodies[0]?.messages[1]).toEqual({
+      role: 'assistant',
+      content: 'Calling a tool',
+      reasoning_content: 'Think before calling.',
+      tool_calls: [{
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'read_context', arguments: '{"query":"x"}' },
+      }],
+    })
+
+    await createAiGateway().invokeChat(input)
+    expect(requestBodies[1]?.messages[1]).not.toHaveProperty('reasoning_content')
+  })
+
   it('preserves SDK invalid-tool diagnostics rather than treating them as a valid call', async () => {
     const fetch = (async () => new Response(JSON.stringify({
       id: 'invalid', model: 'test', choices: [{ finish_reason: 'tool_calls', message: { role: 'assistant', content: null,

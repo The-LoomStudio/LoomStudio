@@ -3,7 +3,12 @@ import type { MutationReceipt } from './common.js'
 
 export type ChatMessage =
   | { role: 'system' | 'developer' | 'user'; content: string }
-  | { role: 'assistant'; content?: string; tool_calls?: ChatToolCall[] }
+  | {
+      role: 'assistant'
+      content?: string
+      tool_calls?: ChatToolCall[]
+      reasoning_content?: string
+    }
   | { role: 'tool'; tool_call_id: string; content: string }
 
 type ChatToolCall = {

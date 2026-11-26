@@ -40,6 +40,9 @@ function normalizeMessage(message: ProviderMessage, index: number): OpenAIChatMe
   }
 
   const content = typeof message.content === 'string' && message.content.length > 0 ? message.content : undefined
+  const reasoningContent = typeof message.reasoning_content === 'string' && message.reasoning_content.length > 0
+    ? message.reasoning_content
+    : undefined
   const toolCalls = message.tool_calls?.map((call, callIndex) => {
     if (call.type !== 'function' || call.id.trim().length === 0 || call.function.name.trim().length === 0 || typeof call.function.arguments !== 'string') {
       throw new Error(`OpenAI chat payload tool call is invalid: messages[${index}].tool_calls[${callIndex}]`)
@@ -52,6 +55,7 @@ function normalizeMessage(message: ProviderMessage, index: number): OpenAIChatMe
   return {
     role: 'assistant',
     ...(content ? { content } : {}),
+    ...(reasoningContent ? { reasoning_content: reasoningContent } : {}),
     ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
   }
 }

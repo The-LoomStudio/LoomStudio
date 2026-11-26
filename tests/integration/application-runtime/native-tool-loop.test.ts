@@ -312,6 +312,44 @@ describe('Native Function Tool Loop', () => {
     } finally { fixture.close() }
   })
 
+  it('replays provider-native reasoning on later tool steps and turns', async () => {
+    let calls = 0
+    const fixture = await createFixture({
+      execute: async ({ invocation }) => ({ invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }),
+      invokeChat: async input => {
+        calls++
+        if (calls === 1) return {
+          provider: 'test', model: 'test-model', text: '', reasoning: 'Inspect before tool.', finishReason: 'tool_call',
+          message: { role: 'assistant', tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read_context', arguments: '{"query":"next"}' } }] },
+        }
+        if (calls === 2) {
+          expect(input.request.messages).toEqual(expect.arrayContaining([expect.objectContaining({
+            role: 'assistant', reasoning_content: 'Inspect before tool.', tool_calls: [expect.objectContaining({ id: 'call-1' })],
+          })]))
+          return {
+            provider: 'test', model: 'test-model', text: 'Done.', reasoning: 'Final reasoning.', finishReason: 'stop',
+            message: { role: 'assistant', content: 'Done.' },
+          }
+        }
+        if (calls === 3) {
+          expect(input.request.messages).toEqual(expect.arrayContaining([expect.objectContaining({
+            role: 'assistant', content: 'Done.', reasoning_content: 'Final reasoning.',
+          })]))
+          return {
+            provider: 'test', model: 'test-model', text: 'Again.', reasoning: 'Next reasoning.', finishReason: 'stop',
+            message: { role: 'assistant', content: 'Again.' },
+          }
+        }
+        throw new Error('Unexpected provider call')
+      },
+    })
+    try {
+      await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Use a tool' })
+      await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Ask again' })
+      expect(calls).toBe(3)
+    } finally { fixture.close() }
+  })
+
   it('continues beyond eight Provider rounds until a final response', async () => {
     let calls = 0
     let tools = 0

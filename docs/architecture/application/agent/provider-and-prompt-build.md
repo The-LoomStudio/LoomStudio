@@ -18,7 +18,7 @@ AI Gateway 使用 AI SDK adapter 统一 OpenAI、Anthropic、Google 和 OpenAI-c
 
 Gateway 当前负责 complete / stream 调用、text / reasoning / tool input delta、usage、terminal event、Function Tool 编解码及无效调用诊断、Abort、raw / normalized finish reason、Provider Call ID、Request ID，以及 Provider-specific options 的校验和透传。
 
-SDK 原生 reasoning 作为独立文本结果和事件传递，Runtime 保存为 `provider-native` Reasoning Entry，默认折叠并按既有 `omit` 策略不回灌正文；这不等同于已经支持供应商专属签名/思考块的完整 Replay。SDK 的 invalid Tool Call 被转换为结构化错误，Runtime 记录失败工具结果供后续模型纠正；不绕过工具验证或权限审批。
+SDK 原生 reasoning 作为独立文本结果和事件传递，Runtime 保存为 `provider-native` Reasoning Entry，默认折叠并按既有 `omit` 策略不回灌正文。对于请求携带 tools 的 OpenAI-compatible 模型，Gateway 会通过 transport-only 的 `reasoning_content` 回传历史 thinking 内容（例如 DeepSeek thinking mode）；这不等同于已经支持 Anthropic / Google 等供应商专属签名或思考块的完整 Replay。SDK 的 invalid Tool Call 被转换为结构化错误，Runtime 记录失败工具结果供后续模型纠正；不绕过工具验证或权限审批。
 
 Gateway 设置 `maxRetries: 0`。是否安全重试、创建新 Attempt 或继续 Agent Run 属于 Application Runtime，而不是 SDK callback。
 

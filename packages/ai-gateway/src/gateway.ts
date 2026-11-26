@@ -128,7 +128,14 @@ function prepareRequest(input: AiGatewayRequest, abortSignal: AbortSignal, deliv
   }
   return {
     model: createModel(provider, input.modelId),
-    messages: toModelMessages(input.messages),
+    // DeepSeek thinking models require every historical assistant message to
+    // replay its reasoning_content while the request carries tools. Other
+    // providers expose provider-specific reasoning blocks/signatures that the
+    // canonical transcript does not retain yet, so keep this opt-in narrow.
+    messages: toModelMessages(
+      input.messages,
+      input.provider.kind === 'openai-compatible' && Boolean(tools),
+    ),
     allowSystemInMessages: true as const,
     ...(tools ? { tools } : {}),
     ...(input.toolChoice ? { toolChoice: input.toolChoice } : {}),
@@ -300,7 +307,10 @@ function validateToolChoice(
   }
 }
 
-function toModelMessages(messages: AiGatewayRequest['messages']): ModelMessage[] {
+function toModelMessages(
+  messages: AiGatewayRequest['messages'],
+  replayReasoningContent: boolean,
+): ModelMessage[] {
   const toolNames = new Map<string, string>()
   return messages.map((message, index) => {
     if (message.role === 'system' || message.role === 'developer') {
@@ -326,6 +336,7 @@ function toModelMessages(messages: AiGatewayRequest['messages']): ModelMessage[]
       }
       const content: Array<
         | { type: 'text'; text: string }
+        | { type: 'reasoning'; text: string }
         | {
             type: 'tool-call'
             toolCallId: string
@@ -333,6 +344,8 @@ function toModelMessages(messages: AiGatewayRequest['messages']): ModelMessage[]
             input: unknown
           }
       > = []
+      if (replayReasoningContent && message.reasoning_content)
+        content.push({ type: 'reasoning', text: message.reasoning_content })
       if (message.content) content.push({ type: 'text', text: message.content })
       for (const call of message.tool_calls ?? []) {
         if (call.type !== 'function' || !call.id.trim() || !call.function.name.trim() || typeof call.function.arguments !== 'string') {

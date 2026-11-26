@@ -100,6 +100,24 @@ describe('Session tool history projection', () => {
     })).toThrow(/Session message sequence cannot receive text contributions/)
   })
 
+  it('re-attaches provider-native reasoning to matching assistant transport messages', () => {
+    const messages = replay(records([
+      observation,
+      { kind: 'reasoning', content: 'Inspect the saved text.', source: 'provider-native', visibility: 'collapsed', replay: 'omit' },
+      call('a'),
+      result('a'),
+      { kind: 'reasoning', content: 'Now answer.', source: 'provider-native', visibility: 'collapsed', replay: 'omit' },
+      { kind: 'message', role: 'assistant', content: 'DONE' },
+    ]))
+    expect(messages[0]).toMatchObject({
+      role: 'assistant',
+      reasoning_content: 'Inspect the saved text.',
+      tool_calls: [expect.objectContaining({ id: 'a' })],
+    })
+    expect(messages[1]).toEqual({ role: 'tool', tool_call_id: 'a', content: 'SAVED:a' })
+    expect(messages[2]).toEqual({ role: 'assistant', content: 'DONE', reasoning_content: 'Now answer.' })
+  })
+
   it('retains Content source and multiple results without evaluating macros or replaying code', () => {
     const messages = replay(records([
       observation, call('a', 'content'), call('b', 'content'), result('a'), result('b', 'failed'),
