@@ -134,7 +134,7 @@ function prepareRequest(input: AiGatewayRequest, abortSignal: AbortSignal, deliv
     // canonical transcript does not retain yet, so keep this opt-in narrow.
     messages: toModelMessages(
       input.messages,
-      input.provider.kind === 'openai-compatible' && Boolean(tools),
+      shouldReplayReasoningContent(input, tools),
     ),
     allowSystemInMessages: true as const,
     ...(tools ? { tools } : {}),
@@ -307,6 +307,24 @@ function validateToolChoice(
   }
 }
 
+function shouldReplayReasoningContent(
+  input: AiGatewayRequest,
+  tools: ToolSet | undefined,
+): boolean {
+  if (input.provider.kind !== 'openai-compatible' || !tools) return false
+  const modelId = input.modelId.toLowerCase()
+  const baseUrl = input.provider.baseUrl?.toLowerCase() ?? ''
+  // DeepSeek requires the reasoning_content field to be present on every
+  // assistant message in a tool-enabled thinking request. An empty string is
+  // valid when the provider returned no reasoning for that step. Alias-based
+  // or proxied DeepSeek profiles are also detected once any reasoning has been
+  // captured.
+  return modelId.includes('deepseek')
+    || baseUrl.includes('deepseek')
+    || input.messages.some(message =>
+      message.role === 'assistant' && typeof message.reasoning_content === 'string')
+}
+
 function toModelMessages(
   messages: AiGatewayRequest['messages'],
   replayReasoningContent: boolean,
@@ -344,8 +362,8 @@ function toModelMessages(
             input: unknown
           }
       > = []
-      if (replayReasoningContent && message.reasoning_content)
-        content.push({ type: 'reasoning', text: message.reasoning_content })
+      const reasoningContent = replayReasoningContent ? message.reasoning_content : undefined
+      if (reasoningContent) content.push({ type: 'reasoning', text: reasoningContent })
       if (message.content) content.push({ type: 'text', text: message.content })
       for (const call of message.tool_calls ?? []) {
         if (call.type !== 'function' || !call.id.trim() || !call.function.name.trim() || typeof call.function.arguments !== 'string') {
@@ -359,7 +377,15 @@ function toModelMessages(
           input: parseToolInput(call.function.arguments, index),
         })
       }
-      return { role: 'assistant', content }
+      return {
+        role: 'assistant',
+        content,
+        // The OpenAI-compatible adapter omits an empty reasoning part. Passing
+        // the provider metadata keeps the required field present as "".
+        ...(replayReasoningContent && !reasoningContent
+          ? { providerOptions: { openaiCompatible: { reasoning_content: '' } } }
+          : {}),
+      }
     }
     if (message.role !== 'tool')
       throw new Error(`Unsupported message role: messages[${index}]`)

@@ -63,6 +63,49 @@ describe('AI gateway run', () => {
     expect(requestBodies[1]?.messages[1]).not.toHaveProperty('reasoning_content')
   })
 
+  it('keeps reasoning_content present with an empty value for DeepSeek assistant rows', async () => {
+    let requestBody: { messages: Array<Record<string, unknown>> } | undefined
+    const fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body)) as { messages: Array<Record<string, unknown>> }
+      return new Response(JSON.stringify({
+        id: 'empty-reasoning-replay', model: 'deepseek-flash',
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Done' } }],
+        usage: usage(),
+      }), { headers: { 'content-type': 'application/json' } })
+    }) as typeof globalThis.fetch
+    await createAiGateway().invokeChat({
+      provider: { kind: 'openai-compatible', apiKey: 'test-key', baseUrl: 'https://api.deepseek.com', fetch },
+      modelId: 'deepseek-flash',
+      messages: [
+        { role: 'user', content: 'First question' },
+        { role: 'assistant', content: 'Earlier answer without reasoning' },
+        { role: 'user', content: 'Continue' },
+        {
+          role: 'assistant',
+          content: 'Calling a tool',
+          reasoning_content: 'Retained reasoning',
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'read_context', arguments: '{"query":"x"}' },
+          }],
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: 'Result' },
+      ],
+      tools: [{ name: 'read_context', inputSchema: { type: 'object' } }],
+    })
+    expect(requestBody?.messages[1]).toMatchObject({
+      role: 'assistant',
+      content: 'Earlier answer without reasoning',
+      reasoning_content: '',
+    })
+    expect(requestBody?.messages[3]).toMatchObject({
+      role: 'assistant',
+      reasoning_content: 'Retained reasoning',
+      tool_calls: [expect.objectContaining({ id: 'call-1' })],
+    })
+  })
+
   it('preserves SDK invalid-tool diagnostics rather than treating them as a valid call', async () => {
     const fetch = (async () => new Response(JSON.stringify({
       id: 'invalid', model: 'test', choices: [{ finish_reason: 'tool_calls', message: { role: 'assistant', content: null,
