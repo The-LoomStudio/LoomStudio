@@ -41,6 +41,30 @@ describe('OpenAI-compatible provider payload builder', () => {
     })
   })
 
+  it('preserves provider-native reasoning transport content', () => {
+    const payload = buildOpenAIChatPayload({
+      messages: [{
+        role: 'assistant',
+        reasoning_content: 'Think before answering.',
+        tool_calls: [{
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'lookup', arguments: '{}' },
+        }],
+      }],
+      modelId: 'compatible-model',
+    })
+    expect(payload.messages).toEqual([{
+      role: 'assistant',
+      reasoning_content: 'Think before answering.',
+      tool_calls: [{
+        id: 'call-1',
+        type: 'function',
+        function: { name: 'lookup', arguments: '{}' },
+      }],
+    }])
+  })
+
   it('downgrades developer messages and preserves message boundaries without coalescing', () => {
     const payload = buildOpenAIChatPayload({
       messages: [

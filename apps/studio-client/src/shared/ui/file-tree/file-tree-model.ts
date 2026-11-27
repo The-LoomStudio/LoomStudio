@@ -34,6 +34,22 @@ export function readDropPosition(nodes: FileTreeNode[], draggedId: string, overI
   return draggedIndex > overIndex ? 'before' : 'after'
 }
 
+export type FileTreeDropZone = 'before' | 'inside' | 'after'
+
+export function readDropZone(input: {
+  clientY: number
+  rowTop: number
+  rowHeight: number
+  insideAllowed: boolean
+}): FileTreeDropZone {
+  if (!(input.rowHeight > 0)) return input.insideAllowed ? 'inside' : 'before'
+  const position = Math.min(1, Math.max(0, (input.clientY - input.rowTop) / input.rowHeight))
+  if (!input.insideAllowed) return position < 0.5 ? 'before' : 'after'
+  if (position < 0.25) return 'before'
+  if (position > 0.75) return 'after'
+  return 'inside'
+}
+
 export function readDragTopScrollSpeed(
   clientX: number,
   clientY: number,

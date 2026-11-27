@@ -22,8 +22,26 @@ export function projectSessionHistory(
   const consumed = new Set<string>()
   const nativeIds = new Set<string>()
   const blocks: SessionHistoryBlock[] = []
+  let pendingProviderReasoning: string[] = []
   const add = (entry: AgentTranscriptEntry, messages: ChatMessage[], toolEvidence?: SessionHistoryBlock['toolEvidence']) => {
     if (messages.length) blocks.push({ entry, messages, ...(toolEvidence?.length ? { toolEvidence } : {}) })
+  }
+  // Provider-native reasoning is not replayed as assistant text, but some
+  // thinking models require it alongside the matching tool calls or reply.
+  const attachProviderReasoning = (messages: ChatMessage[]): ChatMessage[] => {
+    if (pendingProviderReasoning.length === 0) return messages
+    const index = messages.findIndex(message => message.role === 'assistant')
+    if (index < 0) return messages
+    const assistant = messages[index]!
+    if (assistant.role !== 'assistant') return messages
+    messages[index] = {
+      ...assistant,
+      reasoning_content: [assistant.reasoning_content, ...pendingProviderReasoning]
+        .filter((value): value is string => Boolean(value))
+        .join('\n'),
+    }
+    pendingProviderReasoning = []
+    return messages
   }
   for (let index = 0; index < entries.length; index++) {
     const record = entries[index]!
@@ -31,11 +49,20 @@ export function projectSessionHistory(
     if (data.kind === 'message') {
       const text = textById.get(record.id)
       if (text === undefined) throw new Error(`Session message has no projected text: ${record.id}`)
-      if (text.trim() || data.attachments?.length) add(record, [data.role === 'user'
-        ? attachmentMessage(text, data.attachments) : { role: data.role, content: text }])
-    } else if (data.kind === 'reasoning' && data.replay === 'assistant-content' && data.content.trim()) {
-      const dialect = data.dialect && (/^[A-Za-z][A-Za-z0-9_.-]*$/.test(data.dialect) ? data.dialect : 'reasoning')
-      add(record, [{ role: 'assistant', content: dialect ? `<${dialect}>${data.content}</${dialect}>` : data.content }])
+      if (text.trim() || data.attachments?.length) {
+        const messages: ChatMessage[] = data.role === 'user'
+          ? [attachmentMessage(text, data.attachments)]
+          : [{ role: data.role, content: text }]
+        if (data.role === 'assistant') attachProviderReasoning(messages)
+        else pendingProviderReasoning = []
+        add(record, messages)
+      }
+    } else if (data.kind === 'reasoning') {
+      if (data.source === 'provider-native' && data.content.trim()) pendingProviderReasoning.push(data.content)
+      if (data.replay === 'assistant-content' && data.content.trim()) {
+        const dialect = data.dialect && (/^[A-Za-z][A-Za-z0-9_.-]*$/.test(data.dialect) ? data.dialect : 'reasoning')
+        add(record, [{ role: 'assistant', content: dialect ? `<${dialect}>${data.content}</${dialect}>` : data.content }])
+      }
     } else if (data.kind === 'tool-invocation') {
       const group: Array<{ record: AgentTranscriptEntry; call: Invocation; result?: Result }> = []
       do {
@@ -94,7 +121,7 @@ export function projectSessionHistory(
             + (result ? `\n${renderToolResult(result)}` : ''),
         })
       }
-      add(record, messages, toolEvidence)
+      add(record, attachProviderReasoning(messages), toolEvidence)
     } else if (data.kind === 'tool-result' && !consumed.has(data.invocationId)) {
       add(record, [{
         role: 'assistant',

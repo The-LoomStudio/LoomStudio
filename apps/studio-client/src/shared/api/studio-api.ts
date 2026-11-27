@@ -192,7 +192,7 @@ export function createStudioApi(trpc: StudioTrpcClient = createStudioTrpcClient(
       history: (input: LogHistoryQuery, signal?: AbortSignal) => trpc.logs.history.query(input, { signal }),
     },
     diagnostics: {
-      list: (input?: Record<string, ClientJsonValue>) => trpc.diagnostics.list.query(input),
+      list: (input?: Record<string, ClientJsonValue>) => trpc.diagnostics.list.query((input ?? {})),
     },
     history: {
       revert: async (changesetId: string) => {

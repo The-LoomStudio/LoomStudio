@@ -565,7 +565,11 @@ async function runToolLoop(
         providerResult: logicalProviderResult, sessionId: session.id, classificationRules: input.classificationRules ?? [],
         byExposedName, contentTools, createInvocationId: () => input.ctx.createId('tool-invocation'),
       })
-      const providerMessage = { ...decodedProviderMessage, content: providerResult.message.content }
+      const providerMessage = {
+        ...decodedProviderMessage,
+        content: providerResult.message.content,
+        ...(providerResult.reasoning ? { reasoning_content: providerResult.reasoning } : {}),
+      }
       checkpointMessages = [...stepMessages, providerMessage]
       input.ctx.observations?.capture(() => {
         input.ctx.observations!.patch(measurementId!, { request: { assistantContent: contentScan.text } })

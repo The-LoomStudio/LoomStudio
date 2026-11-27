@@ -35,7 +35,7 @@ export function createResourceDownloadsClient(trpc: StudioTrpcClient): ResourceD
       retry: (id: string) => trpc.resourceDownloads.retry.mutate({ id }),
       prepareDependencies: (id: string) => trpc.resourceDownloads.prepareDependencies.mutate({ id }),
       listUpdates: () => trpc.resourceDownloads.listUpdates.query(),
-      checkUpdates: (input?: { force?: boolean }) => trpc.resourceDownloads.checkUpdates.mutate(input),
+      checkUpdates: (input?: { force?: boolean }) => trpc.resourceDownloads.checkUpdates.mutate((input ?? {})),
       updatePolicy: input => trpc.resourceDownloads.updatePolicy.mutate(input),
       ignore: (input: { id: string; candidateId?: string }) => trpc.resourceDownloads.ignore.mutate(input),
       acknowledge: (id: string) => trpc.resourceDownloads.acknowledge.mutate({ id }),

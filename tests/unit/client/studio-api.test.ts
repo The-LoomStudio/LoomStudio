@@ -28,6 +28,24 @@ describe('studio client typed api', () => {
     expect(transportSignal?.aborted).toBe(true)
   })
 
+  it('sends explicit object bodies for optional-input RPCs without filters', async () => {
+    const requests: Array<{ path: string; body?: string }> = []
+    const api = createStudioApi(createStudioTrpcClient({ fetch: async (input, init) => {
+      const path = new URL(String(input), 'http://localhost').pathname
+      requests.push({ path, body: init?.body as string | undefined })
+      return new Response(JSON.stringify({
+        result: { data: path === '/trpc/diagnostics.list' ? { items: [] } : [] },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    } }))
+
+    await expect(api.diagnostics.list()).resolves.toEqual({ items: [] })
+    await expect(api.resourceDownloads.checkUpdates()).resolves.toEqual([])
+    expect(requests).toEqual([
+      { path: '/trpc/diagnostics.list', body: '{}' },
+      { path: '/trpc/resourceDownloads.checkUpdates', body: '{}' },
+    ])
+  })
+
   it('preserves explicit story and session names at creation', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {}))
